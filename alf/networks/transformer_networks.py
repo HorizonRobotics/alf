@@ -33,8 +33,9 @@ class TransformerNetwork(PreprocessorNetwork):
         for i in range(num_prememory_layers):
             core, inputs = T_i([core, inputs], [core, inputs])
         for j in range(num_memory_layers):
-            core, inputs = TM_j([memory_j, core, inputs], [core, inputs])
+            new_core, inputs = TM_j([memory_j, core, inputs], [core, inputs])
             memory_j.write(core)
+            core = new_core
         return core, new_memory_state
 
     where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
@@ -60,6 +61,7 @@ class TransformerNetwork(PreprocessorNetwork):
                  core_size=1,
                  memory_size=0,
                  num_memory_layers=0,
+                 return_core_only=True,
                  centralized_memory=True,
                  input_preprocessors=None,
                  name="TransformerNetwork"):
@@ -79,6 +81,8 @@ class TransformerNetwork(PreprocessorNetwork):
             memory_size (int): size of memory.
             num_memory_layers (int): number of TransformerBlock calculation
                 using memory
+            return_core_only (bool): If True, only return the core embedding.
+                Otherwise, return all embeddings
             core_size (int): size of core (i.e. number of embeddings of core)
             centralized_memory (bool): if False, there will be a separate memory
                 for each memory layers. if True, there will be a single memory
@@ -150,6 +154,8 @@ class TransformerNetwork(PreprocessorNetwork):
                     memory_size=memory_size + input_size + core_size,
                     positional_encoding='abs'))
 
+        self._return_core_only = return_core_only
+
     @property
     def state_spec(self):
         return self._state_spec
@@ -161,7 +167,11 @@ class TransformerNetwork(PreprocessorNetwork):
                 at ``__init__()``
             state (nested Tensor): states
         Returns:
-            Tensor: shape is [B, core_size * d_model]
+            - Tensor: shape is [B, core_size * d_model] if ``return_core_only``,
+                    and [B, core_size + input_size, d_model] if not ``return_core_only``,
+                    where ``input_size`` is the number of embeddings from the
+                    (processed) input.
+            - nested Tensor: network states.
         """
         z, _ = super().forward(inputs, state)
         batch_size = z.shape[0]
@@ -193,4 +203,9 @@ class TransformerNetwork(PreprocessorNetwork):
                 query = new_query
 
         new_state = [mem.states for mem in self._memories]
-        return query[:, :self._core_size, :].reshape(batch_size, -1), new_state
+
+        if self._return_core_only:
+            return query[:, :self._core_size, :].reshape(batch_size,
+                                                         -1), new_state
+        else:
+            return query, new_state
