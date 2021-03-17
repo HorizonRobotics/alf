@@ -31,7 +31,7 @@ GeneratorLossInfo = namedtuple("GeneratorLossInfo",
                                ["generator", "mi_estimator"])
 
 
-@gin.configurable
+@alf.configurable
 class CriticAlgorithm(Algorithm):
     """
     Wrap a critic network as an Algorithm for flexible gradient updates
@@ -46,13 +46,11 @@ class CriticAlgorithm(Algorithm):
                  net: Network = None,
                  use_relu_mlp=False,
                  use_bn=True,
-                 force_fullrank=False,
-                 fullrank_diag_weight=1.0,
                  optimizer=None,
                  name="CriticAlgorithm"):
         """Create a CriticAlgorithm.
         Args:
-            input_tensor_spec (TensorSpec): spec of inputs. 
+            input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
             hidden_layers (tuple): size of hidden layers.
             activation (nn.functional): activation used for all critic layers.
@@ -61,10 +59,6 @@ class CriticAlgorithm(Algorithm):
             use_relu_mlp (bool): whether use ReluMLP as default net constrctor.
                 Diagonals of Jacobian can be explicitly computed for ReluMLP.
             use_bn (bool): whether use batch norm for each critic layers.
-            force_fullrank (bool): forces the input-output jacobian of the 
-                critic to be square.
-            fullrank_diag_weight (float): weight of the identity matrix added
-                to the critic when ensuring a full rank jacobian. 
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this CriticAlgorithm.
         """
@@ -73,17 +67,14 @@ class CriticAlgorithm(Algorithm):
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
 
         self._use_relu_mlp = use_relu_mlp
-        self._force_fullrank = force_fullrank
-        self._fullrank_diag_weight = fullrank_diag_weight
-        self._input_dim = input_tensor_spec.shape[0]
         self._output_dim = output_dim
         if output_dim is None:
             self._output_dim = input_tensor_spec.shape[0]
         if net is None:
+
             if use_relu_mlp:
                 net = ReluMLP(
                     input_tensor_spec=input_tensor_spec,
-                    output_size=self._output_dim,
                     hidden_layers=hidden_layers,
                     activation=activation)
             else:
@@ -102,55 +93,27 @@ class CriticAlgorithm(Algorithm):
         for fc in self._net._fc_layers:
             fc.reset_parameters()
 
-    def predict_step(self,
-                     inputs,
-                     vector=None,
-                     state=None,
-                     requires_jac_diag=False,
-                     requires_jac=False):
+    def predict_step(self, inputs, state=None, requires_jac_diag=False):
         """Predict for one step of inputs.
         Args:
-            inputs (torch.Tensor): inputs for prediction.
-            vector (torch.Tensor): used for vector-jacobian product, default 
-                value is None, i.e., no vjp computation.
+            inputs (Tensor): inputs for prediction.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
         Returns:
             AlgStep:
-            - output (torch.Tensor): predictions or (predictions, diag_jacobian)
+            - output (Tensor): predictions or (predictions, diag_jacobian)
                 if requires_jac_diag is True.
             - state: not used.
         """
         if self._use_relu_mlp:
-            if vector is not None:
-                input_dim = inputs.shape[-1]
-                if self._force_fullrank:
-                    assert input_dim == self._output_dim
-                    vjp, outputs = self._net.compute_vjp(
-                        inputs[:, :self._input_dim], vector)
-                    outputs += self._fullrank_diag_weight * inputs
-                    vjp = torch.cat(
-                        (vjp,
-                         torch.zeros(vjp.shape[0],
-                                     self._output_dim - self._input_dim)),
-                        dim=-1)
-                    vjp += self._fullrank_diag_weight * inputs  # [N2*N, D]
-                else:
-                    assert input_dim == self._input_dim
-                    vjp, outputs = self._net.compute_vjp(inputs, vector)
-                outputs = (outputs, vjp)
-            else:
-                outputs = self._net(
-                    inputs,
-                    requires_jac_diag=requires_jac_diag,
-                    requires_jac=requires_jac)[0]
+            outputs = self._net(inputs, requires_jac_diag=requires_jac_diag)[0]
         else:
             outputs = self._net(inputs)[0]
 
         return AlgStep(output=outputs, state=(), info=())
 
 
-@gin.configurable
+@alf.configurable
 class Generator(Algorithm):
     r"""Generator
 
@@ -399,7 +362,9 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgorithmStep: outputs with shape (batch_size, output_dim)
+            AlgStep:
+            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
+            - state: not used.
         """
         outputs, _ = self._predict(
             inputs=inputs,
@@ -482,9 +447,7 @@ class Generator(Algorithm):
             state=(),
             info=LossInfo(
                 loss=loss_propagated,
-                extra=GeneratorLossInfo(
-                    generator=loss,
-                    mi_estimator=mi_loss)))
+                extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
 
     def _ml_grad(self,
                  inputs,
@@ -510,11 +473,12 @@ class Generator(Algorithm):
         width, _ = torch.median(dist, dim=0)
         width = width / np.log(len(dist))
         self._kernel_width_averager.update(width)
+
         return self._kernel_width_averager.get()
 
 
     def _rbf_func(self, x, y):
-        """Compute RGF kernel, used by svgd_grad. """
+        """Compute RBF kernel, used by svgd_grad. """
         d = (x - y)**2
         d = torch.sum(d, -1)
         h = self._kernel_width(d)
@@ -577,7 +541,8 @@ class Generator(Algorithm):
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
+        kappa_grad = kappa_grad.sum(0)  # [N, D]
 
         return -kappa_inv @ kappa_grad
 
