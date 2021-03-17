@@ -55,15 +55,16 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     def assertArrayGreater(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
-
+    
     @parameterized.parameters(
         ('svgd', False),
         ('gfsf', False),
         ('svgd', True),
         ('gfsf', True),
         ('minmax', False),)
+   
     def test_functional_par_vi_algorithm(self,
-                                         par_vi='svgd',
+                                         par_vi='minmax',
                                          function_vi=False,
                                          num_particles=32,
                                          batch_size=10):
@@ -106,6 +107,8 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             par_vi=par_vi,
             function_vi=function_vi,
             function_bs=batch_size,
+            critic_hidden_layers=(10,),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             optimizer=alf.optimizers.Adam(lr=1e-2),
             logging_evaluate=True)
 
@@ -141,7 +144,7 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             absl.logging.info("computed_cov norm: {}".format(
                 computed_cov.norm()))
 
-        train_iter = 2000
+        train_iter = 1000
         for i in range(train_iter):
             algorithm.train_iter()
             if i % 1000 == 0:

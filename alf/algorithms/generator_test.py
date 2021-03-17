@@ -68,17 +68,12 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dict(entropy_regularization=1.0, par_vi='svgd2'),
         dict(entropy_regularization=1.0, par_vi='svgd3'),
         dict(entropy_regularization=1.0, par_vi='minmax'),
-        dict(entropy_regularization=1.0, par_vi='svgd',
-            functional_gradient='rkhs'),
-        dict(entropy_regularization=1.0, par_vi='minmax',
-            functional_gradient='minmax'),
         dict(entropy_regularization=0.0),
         dict(entropy_regularization=0.0, mi_weight=1),
     )
     def test_generator_unconditional(self,
                                      entropy_regularization=1.0,
                                      par_vi='minmax',
-                                     functional_gradient=None,
                                      mi_weight=None):
         r"""
         The generator is trained to match (STEIN) / maximize (ML) the likelihood
@@ -91,14 +86,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dim = 2
         batch_size = 512
         hidden_size = 10
-        if functional_gradient is not None:
-            input_dim = TensorSpec((3, ))
-            net = ReluMLP(input_dim, hidden_layers=(), output_size=dim)
-            w = torch.tensor([[1, 2], [-1, 1], [1, 1]], dtype=torch.float32)
-            net._fc_layers[0].weight = nn.Parameter(w.t())
-            critic_relu_mlp = True
-        else:
-            net = Net(dim)
+        net = Net(dim)
         generator = Generator(
             dim,
             noise_dim=3,
@@ -125,11 +113,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
 
         for i in range(5000):
             _train()
-            if functional_gradient is not None:
-                learned_var = torch.matmul(net._fc_layers[0].weight,
-                                           net._fc_layers[0].weight.t())
-            else:
-                learned_var = torch.matmul(net.fc.weight, net.fc.weight.t())
+            learned_var = torch.matmul(net.fc.weight, net.fc.weight.t())
             if i % 500 == 0:
                 print(i, "learned var=", learned_var)
 
@@ -141,13 +125,12 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             else:
                 self.assertGreater(
                    float(torch.sum(torch.abs(learned_var))), 0.5)
-    """
+    
     @parameterized.parameters(
         dict(entropy_regularization=1.0),
         dict(entropy_regularization=0.0),
         dict(entropy_regularization=0.0, mi_weight=1),
     )
-    """
     def test_generator_conditional(self,
                                    entropy_regularization=0.0,
                                    par_vi='svgd',

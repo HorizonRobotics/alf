@@ -27,7 +27,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
-from alf.networks import EncodingNetwork, ParamNetwork, ReluMLP
+from alf.networks import EncodingNetwork, ParamNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
@@ -185,16 +185,10 @@ class HyperNetwork(Algorithm):
                  function_extra_bs_ratio=0.01,
                  function_extra_bs_sampler='uniform',
                  function_extra_bs_std=1.,
-                 functional_gradient=None,
-                 force_fullrank=True,
-                 fullrank_diag_weight=1.0,
-                 pinverse_solve_iters=1,
-                 pinverse_hidden_size=100,
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
                  critic_optimizer=None,
-                 pinverse_optimizer=None,
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -231,10 +225,12 @@ class HyperNetwork(Algorithm):
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of entropy regularization
 
-            critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
             critic_hidden_layers (tuple): sizes of critic hidden layeres. 
-            critic_iter_num (int)
-            critic_l2_weight (float)
+                Used for ``minmax`` method. 
+            critic_iter_num (int): number of iterations to train critic per
+                training step. Used for ``minmax`` method. 
+            critic_l2_weight (float): weight of l2 regularization used for 
+                training the critic. Used for ``minmax`` method. 
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
@@ -246,12 +242,6 @@ class HyperNetwork(Algorithm):
                 training batch, types are [``uniform``, ``normal``].
             function_extra_bs_std (float): std of the normal distribution for
                 sampling extra training batch when using normal sampler.
-
-            functional_gradient (bool)
-            force_fullrank (bool)
-            fullrank_diag_weight (float)
-            pinverse_solve_iters (int)
-            pinverse_hidden_size (int)
 
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
@@ -277,8 +267,8 @@ class HyperNetwork(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                     the Stein discrepancy is solved by an inner optimization
                     procedure in the space of L2 neural networks.
-            critic_optimizer (torch.optim.Optimizer)
-            pinverse_optimizer (torch.optim.Optimizer)
+            critic_optimizer (torch.optim.Optimizer): The optimizer for training
+                critic network
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -299,20 +289,13 @@ class HyperNetwork(Algorithm):
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
         
-        if functional_gradient:
-            net = ReluMLP(
-                noise_spec,
-                hidden_layers=hidden_layers,
-                output_size=gen_output_dim,
-                name='Generator')
-        else:
-            net = EncodingNetwork(
-                noise_spec,
-                fc_layer_params=hidden_layers,
-                use_fc_bn=use_fc_bn,
-                last_layer_size=gen_output_dim,
-                last_activation=math_ops.identity,
-                name="Generator")
+        net = EncodingNetwork(
+            noise_spec,
+            fc_layer_params=hidden_layers,
+            use_fc_bn=use_fc_bn,
+            last_layer_size=gen_output_dim,
+            last_activation=math_ops.identity,
+            name="Generator")
 
         if logging_network:
             logging.info("Generated network")
@@ -351,14 +334,8 @@ class HyperNetwork(Algorithm):
             par_vi=par_vi,
             critic_input_dim=critic_input_dim,
             critic_hidden_layers=critic_hidden_layers,
-            critic_relu_mlp=functional_gradient,
             critic_iter_num=critic_iter_num,
             critic_l2_weight=critic_l2_weight,
-            functional_gradient=functional_gradient,
-            force_fullrank=force_fullrank,
-            fullrank_diag_weight=fullrank_diag_weight,
-            pinverse_solve_iters=pinverse_solve_iters,
-            pinverse_hidden_size=pinverse_hidden_size,
             optimizer=None,
             critic_optimizer=critic_optimizer,
             name=name)
@@ -371,7 +348,6 @@ class HyperNetwork(Algorithm):
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
-        self._functional_gradient = functional_gradient
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
@@ -482,7 +458,6 @@ class HyperNetwork(Algorithm):
         alf.summary.increment_global_counter()
         with record_time("time/train"):
             loss = 0.
-            pinverse_loss = 0.
             if self._loss_type == 'classification':
                 avg_acc = []
             for batch_idx, (data, target) in enumerate(self._train_loader):
@@ -493,8 +468,6 @@ class HyperNetwork(Algorithm):
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
                 loss += loss_info.extra.generator.loss
-                if self._functional_gradient:
-                    pinverse_loss += loss_info.extra.pinverse
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)
         acc = None
@@ -503,9 +476,6 @@ class HyperNetwork(Algorithm):
         if self._logging_training:
             if self._loss_type == 'classification':
                 logging.info("Avg acc: {}".format(acc))
-            if pinverse_loss > 0.:
-                pinverse_loss = pinverse_loss / batch_idx
-                logging.info("Avg pinverse loss: {}".format(pinverse_loss))
             logging.info("Cum loss: {}".format(loss))
         self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
         return batch_idx + 1

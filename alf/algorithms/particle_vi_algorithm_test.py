@@ -55,8 +55,11 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         fact = 1.0 / (x.size(1) - 1)
         x -= torch.mean(x, dim=1, keepdim=True)
         return fact * x.matmul(x.t()).squeeze()
-
-    @parameterized.parameters(('svgd'), ('gfsf'))
+    
+    @parameterized.parameters(
+            ('svgd'),
+            ('gfsf'),
+            ('minmax'))
     def test_par_vi_algorithm(self, par_vi='svgd'):
         """
         The par_vi algorithm is trained to match the likelihood of a Gaussian 
@@ -71,6 +74,8 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             dim,
             num_particles=num_particles,
             par_vi=par_vi,
+            critic_hidden_layers=(10,),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             optimizer=alf.optimizers.AdamTF(lr=1e-2))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
