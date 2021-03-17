@@ -49,6 +49,7 @@ class CriticAlgorithm(Algorithm):
                  optimizer=None,
                  name="CriticAlgorithm"):
         """Create a CriticAlgorithm.
+        
         Args:
             input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
@@ -95,6 +96,7 @@ class CriticAlgorithm(Algorithm):
 
     def predict_step(self, inputs, state=None, requires_jac_diag=False):
         """Predict for one step of inputs.
+        
         Args:
             inputs (Tensor): inputs for prediction.
             state: not used.
@@ -427,9 +429,9 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgorithmStep:
-                outputs: Tensor with shape (batch_size, dim)
-                info: LossInfo
+            AlgStep:
+            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
+            - info (LossInfo): loss
         """
         outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         if entropy_regularization is None:
@@ -475,7 +477,6 @@ class Generator(Algorithm):
         self._kernel_width_averager.update(width)
 
         return self._kernel_width_averager.get()
-
 
     def _rbf_func(self, x, y):
         """Compute RBF kernel, used by svgd_grad. """

@@ -161,6 +161,7 @@ class ParVIAlgorithm(Algorithm):
                 function value based par_vi, where each particle represents 
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
+
                 * outputs: outputs of network parameterized by particles evaluated
                   on predifined training batch.
                 * extra_outputs: outputs of network parameterized by particles
@@ -232,7 +233,6 @@ class ParVIAlgorithm(Algorithm):
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Ny]
         kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [Nx, Ny, W]
-
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):

@@ -16,7 +16,6 @@
 from absl import logging
 import functools
 import gin
-import sys
 import math
 import numpy as np
 import torch
@@ -183,7 +182,7 @@ class HyperNetwork(Algorithm):
                  critic_l2_weight=10.,
                  function_vi=False,
                  function_bs=None,
-                 function_extra_bs_ratio=0.01,
+                 function_extra_bs_ratio=0.1,
                  function_extra_bs_sampler='uniform',
                  function_extra_bs_std=1.,
                  loss_type="classification",
@@ -252,22 +251,22 @@ class HyperNetwork(Algorithm):
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
                 * svgd: empirical expectation of SVGD is evaluated by a single 
-                    resampled particle. The main benefit of this choice is it 
-                    supports conditional case, while all other options do not.
+                  resampled particle. The main benefit of this choice is it 
+                  supports conditional case, while all other options do not.
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
-                    half of the sampled batch. It is a trade-off between 
-                    computational efficiency and convergence speed.
+                  half of the sampled batch. It is a trade-off between 
+                  computational efficiency and convergence speed.
                 * svgd3: empirical expectation of SVGD is evaluated by 
-                    resampled particles of the same batch size. It has better
-                    convergence but involves resampling, so less efficient
-                    computaionally comparing with svgd2.
+                  resampled particles of the same batch size. It has better
+                  convergence but involves resampling, so less efficient
+                  computaionally comparing with svgd2.
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally most
-                    expensive, but in some case the convergence seems faster 
-                    than svgd approaches.
+                  involves a kernel matrix inversion, so computationally most
+                  expensive, but in some case the convergence seems faster 
+                  than svgd approaches.
                 * minmax: Fisher Neural Sampler, optimal descent direction of
-                    the Stein discrepancy is solved by an inner optimization
-                    procedure in the space of L2 neural networks.
+                  the Stein discrepancy is solved by an inner optimization
+                  procedure in the space of L2 neural networks.
             critic_optimizer (torch.optim.Optimizer): The optimizer for training
                 critic network
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
@@ -289,7 +288,6 @@ class HyperNetwork(Algorithm):
 
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
-        
         net = EncodingNetwork(
             noise_spec,
             fc_layer_params=hidden_layers,

@@ -126,7 +126,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             else:
                 self.assertGreater(
                     float(torch.sum(torch.abs(learned_var))), 0.5)
-    
+
     @parameterized.parameters(
         dict(entropy_regularization=1.0),
         dict(entropy_regularization=0.0),
