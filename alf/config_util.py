@@ -250,10 +250,6 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
             config_node.set_value(value)
             config_node.set_mutable(mutable)
         else:
-            if not mutable:
-                raise ValueError(
-                    "The config '%s' has been configured to an immutable value "
-                    "of %s. You cannot change it to a new immutable value")
             logging.warning(
                 "The config '%s' has been configured to an immutable value "
                 "of %s. The new value %s will be ignored" %
@@ -311,7 +307,11 @@ def validate_pre_configs():
     """Validate that all the configs set through ``pre_config()`` are correctly bound."""
 
     if _PRE_CONFIGS:
-        raise ValueError("Cannot find config name %s" % _PRE_CONFIGS[0][0])
+        raise ValueError((
+            "A pre-config '%s' was not handled, either because its config name "
+            +
+            "was not found, or there was some error when calling pre_config()")
+                         % _PRE_CONFIGS[0][0])
 
     for config_name in _HANDLED_PRE_CONFIGS:
         _get_config_node(config_name)

@@ -18,13 +18,15 @@ import math
 import numpy as np
 import weakref
 import threading
+from unittest.mock import Mock
 
 try:
     import carla
 except ImportError:
-    carla = None
+    # create 'carla' as a mock to not break python argument type hints
+    carla = Mock()
 
-if carla is not None:
+if not isinstance(carla, Mock):
     try:
         from agents.navigation.global_route_planner import GlobalRoutePlanner
         from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
@@ -32,7 +34,7 @@ if carla is not None:
     except ImportError:
         logging.fatal("Cannot import carla agents package. Please add "
                       "$CARLA_ROOT/PythonAPI/carla to your PYTHONPATH")
-        carla = None
+        carla = Mock()
 
 import alf
 from alf.data_structures import namedtuple

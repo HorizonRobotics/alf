@@ -48,11 +48,13 @@ import subprocess
 import sys
 import time
 import torch
+from unittest.mock import Mock
 
 try:
     import carla
 except ImportError:
-    carla = None
+    # create 'carla' as a mock to not break python argument type hints
+    carla = Mock()
 
 import alf
 import alf.data_structures as ds
@@ -66,7 +68,7 @@ from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
 
 
 def is_available():
-    return carla is not None
+    return not isinstance(carla, Mock)
 
 
 def geo_distance(loc1, loc2):
