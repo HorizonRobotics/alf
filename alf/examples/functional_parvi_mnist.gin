@@ -1,0 +1,47 @@
+import alf.algorithms.functional_particle_vi_algorithm
+import alf.trainers.policy_trainer
+
+# dataset config
+create_dataset.dataset_name='mnist'
+create_dataset.train_batch_size=50
+create_dataset.test_batch_size=100
+
+# network architecture
+CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
+FC_LAYER_PARAMS = ((84, True), )
+
+# optimizer settings
+func_parvi/Adam.lr = 1e-3
+func_parvi/Adam.weight_decay = 1e-4
+func_parvi_critic/Adam.lr = 1e-4
+func_parvi_critic/Adam.weight_decay = 1e-4
+
+# algorithm config
+FuncParVIAlgorithm.conv_layer_params = %CONV_LAYER_PARAMS
+FuncParVIAlgorithm.fc_layer_params = %FC_LAYER_PARAMS
+FuncParVIAlgorithm.num_particles = 10
+
+FuncParVIAlgorithm.par_vi = 'svgd'
+FuncParVIAlgorithm.loss_type = 'classification'
+FuncParVIAlgorithm.entropy_regularization = 1.0
+FuncParVIAlgorithm.optimizer = @func_parvi/Adam()
+FuncParVIAlgorithm.critic_optimizer = @func_parvi_critic/Adam()
+FuncParVIAlgorithm.critic_hidden_layers = (512,512)
+FuncParVIAlgorithm.critic_iter_num = 5
+FuncParVIAlgorithm.critic_l2_weight = 10.0
+FuncParVIAlgorithm.logging_training = True
+FuncParVIAlgorithm.logging_evaluate = True
+
+# training config
+TrainerConfig.algorithm_ctor=@FuncParVIAlgorithm
+TrainerConfig.num_iterations=100
+TrainerConfig.num_checkpoints=1
+TrainerConfig.evaluate=True
+TrainerConfig.eval_uncertainty=False
+TrainerConfig.eval_interval=1
+TrainerConfig.summary_interval=1
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.hold_out_dataset='mnist'
+TrainerConfig.train_classes = [0, 1, 2, 3, 4, 5]
+TrainerConfig.hold_out_classes = [6, 7, 8, 9]

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Hypernetwork algorithm test."""
 
 from absl.testing import parameterized
 import numpy as np
@@ -54,13 +55,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('minmax'),
+    @parameterized.parameters(('gfsf', False), ('svgd2', False),
+                              ('svgd3', False), ('minmax', False),
                               ('gfsf', True), ('svgd2', True), ('svgd3', True))
     def test_bayesian_linear_regression(self,
                                         par_vi='minmax',
                                         function_vi=False,
                                         train_batch_size=10,
-                                        num_particles=64):
+                                        num_particles=128):
         r"""
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
@@ -83,10 +85,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         print("beta: {}".format(beta))
         noise = torch.randn(batch_size, output_dim)
         targets = inputs @ beta + noise
-        true_cov = torch.inverse(
-            inputs.t() @ inputs)  # + torch.eye(input_size))
+        true_cov = torch.inverse(inputs.t() @ inputs)
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
+
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             last_layer_param=(output_dim, False),

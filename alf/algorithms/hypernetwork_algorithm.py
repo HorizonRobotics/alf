@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""HyperNetwork algorithm."""
 
 from absl import logging
 import functools
@@ -31,8 +32,26 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
 
+try:
+    from sklearn.metrics import roc_auc_score
+except:
+    pass
+
 
 def classification_loss(output, target):
+    """
+    Computes the cross entropy loss with respect to a batch of predictions and
+        targets.
+    
+    Args:
+        output (Tensor): predictions of shape ``[B, D]`` or ``[N, B, D]`` 
+        target (Tensor): targets of shape ``[B, 1]`` or ``[B, N, 1]``
+
+    Returns:
+        LossInfo containing the computed cross entropy loss and the average
+            accuracy.
+    """
+
     if output.ndim == 2:
         output = output.reshape(output.shape[0], target.shape[1], -1)
     pred = output.max(-1)[1]
@@ -49,6 +68,18 @@ def classification_loss(output, target):
 
 
 def regression_loss(output, target):
+    """
+    Computes the MSE loss with respect to a batch of predictions and
+        targets.
+    
+    Args:
+        output (Tensor): predictions of shape ``[B, 1]`` or ``[N, B, 1]`` 
+        target (Tensor): targets of shape ``[B, 1]`` or ``[B, N, 1]``
+
+    Returns:
+        LossInfo containing the computed MSE loss
+    """
+
     out_shape = output.shape[-1]
     assert (target.shape[-1] == out_shape), (
         "feature dimension of output and target does not match.")
@@ -57,6 +88,58 @@ def regression_loss(output, target):
         target.reshape(-1, out_shape),
         reduction='sum')
     return LossInfo(loss=loss, extra=())
+
+
+def auc_score(inliers, outliers):
+    """
+    Computes the AUROC score w.r.t network outputs on two distinct datasets.
+        Typically, one dataset is the main training/testing set, while the
+        second dataset represents a set of unseen outliers.
+    
+    Args: 
+        inliers (torch.tensor): set of predictions on inlier data
+        outliers (torch.tensor): set of predictions on outlier data
+    
+    Returns:
+        AUROC score (float)
+    """
+    inliers = inliers.detach().cpu().numpy()
+    outliers = outliers.detach().cpu().numpy()
+    y_true = np.array([0] * len(inliers) + [1] * len(outliers))
+    y_score = np.concatenate([inliers, outliers])
+    return roc_auc_score(y_true, y_score)
+
+
+def predict_dataset(model, testset):
+    """
+    Computes predictions for an input dataset. 
+    Args: 
+        model (Callable): model with which to compute predictions.
+        testset (torch.utils.data.DataLoader): dataset for which to compute
+            predictions.
+
+    Returns:
+        model_outputs (torch.tensor): a tensor of shape [N, S, D] where
+        N refers to the number of predictors, S is the number of data
+        points, and D is the output dimensionality. 
+    """
+    if hasattr(testset.dataset, 'dataset'):
+        cls = len(testset.dataset.dataset.classes)
+    else:
+        cls = len(testset.dataset.classes)
+    outputs = []
+    targets = []
+    for batch, (data, target) in enumerate(testset):
+        data = data.to(alf.get_default_device())
+        target = target.to(alf.get_default_device())
+        targets.append(target.view(-1))
+        output, _ = model(data)
+        if output.dim() == 2:
+            output = output.unsqueeze(1)
+        output = output.transpose(0, 1)
+        outputs.append(output)
+    model_outputs = torch.cat(outputs, dim=1)  # [N, B, D]
+    return model_outputs, torch.cat(targets, -1).view(-1)
 
 
 @alf.configurable
@@ -95,8 +178,9 @@ class HyperNetwork(Algorithm):
                  use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
-                 critic_optimizer=None,
                  critic_hidden_layers=(100, 100),
+                 critic_iter_num=2,
+                 critic_l2_weight=10.,
                  function_vi=False,
                  function_bs=None,
                  function_extra_bs_ratio=0.1,
@@ -105,6 +189,7 @@ class HyperNetwork(Algorithm):
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
+                 critic_optimizer=None,
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -139,10 +224,14 @@ class HyperNetwork(Algorithm):
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.
             num_particles (int): number of sampling particles
-            entropy_regularization (float): weight of entropy regularization
+            entropy_regularization (float): weight for par_vi repulsive term. 
 
-            critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
             critic_hidden_layers (tuple): sizes of critic hidden layeres. 
+                Used for ``minmax`` method. 
+            critic_iter_num (int): number of iterations to train critic per
+                training step. Used for ``minmax`` method. 
+            critic_l2_weight (float): weight of l2 regularization used for 
+                training the critic. Used for ``minmax`` method. 
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
@@ -179,6 +268,8 @@ class HyperNetwork(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
+            critic_optimizer (torch.optim.Optimizer): The optimizer for training
+                critic network
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -243,6 +334,8 @@ class HyperNetwork(Algorithm):
             par_vi=par_vi,
             critic_input_dim=critic_input_dim,
             critic_hidden_layers=critic_hidden_layers,
+            critic_iter_num=critic_iter_num,
+            critic_l2_weight=critic_l2_weight,
             optimizer=None,
             critic_optimizer=critic_optimizer,
             name=name)
@@ -270,16 +363,33 @@ class HyperNetwork(Algorithm):
         else:
             raise ValueError("Unsupported loss_type: %s" % loss_type)
 
-    def set_data_loader(self, train_loader, test_loader=None):
+    def set_data_loader(self,
+                        train_loader,
+                        test_loader=None,
+                        outlier_data_loaders=None,
+                        entropy_regularization=None):
         """Set data loadder for training and testing.
 
         Args:
             train_loader (torch.utils.data.DataLoader): training data loader
             test_loader (torch.utils.data.DataLoader): testing data loader
+            outlier_data_loaders (tuple[torch.utils.data.DataLoader): 
+                (trainloader, testloader) for outlier datasets
+            entropy_regularization (float): weight for par_vi repulsive term. 
+                If None, then self._entropy_regarization is used.
         """
         self._train_loader = train_loader
         self._test_loader = test_loader
-        self._entropy_regularization = 1 / len(train_loader)
+        if entropy_regularization is not None:
+            self._entropy_regularization = entropy_regularization
+
+        if outlier_data_loaders is not None:
+            assert isinstance(outlier_data_loaders, tuple), "outlier dataset "\
+                "must be provided in the format (outlier_train, outlier_test)"
+            self._outlier_train_loader = outlier_data_loaders[0]
+            self._outlier_test_loader = outlier_data_loaders[1]
+        else:
+            self._outlier_train_loader = self._outlier_test_loader = None
 
     def set_num_particles(self, num_particles):
         """Set the number of particles to sample through one forward
@@ -320,13 +430,13 @@ class HyperNetwork(Algorithm):
             params (Tensor): parameters of the ensemble of networks,
                 if None, will resample.
             num_particles (int): size of sampled ensemble. Default is None.
-            state: not used.
+            state (None): not used.
 
         Returns:
             AlgStep: 
             - output (Tensor): shape is 
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
-            - state: not used
+            - state (None): not used
         """
         if params is None:
             params = self.sample_parameters(num_particles=num_particles)
@@ -339,7 +449,7 @@ class HyperNetwork(Algorithm):
 
         Args:
             num_particles (int): number of sampled particles. Default is None.
-            state: not used
+            state (None): not used
 
         Return:
             mini_batch number
@@ -369,7 +479,6 @@ class HyperNetwork(Algorithm):
                 logging.info("Avg acc: {}".format(acc))
             logging.info("Cum loss: {}".format(loss))
         self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
-
         return batch_idx + 1
 
     def train_step(self,
@@ -384,7 +493,9 @@ class HyperNetwork(Algorithm):
             num_particles (int): number of sampled particles. Default is None,
                 in which case self._num_particles will be used for batch_size
                 of self._generator.
-            state: not used
+            entropy_regularization (float): weight for par_vi repulsive term. 
+                If None, then self._entropy_regarization is used.
+            state (None): not used
 
         Returns:
             ``train_step`` of ``self._generator``
@@ -500,7 +611,8 @@ class HyperNetwork(Algorithm):
         """Evaluate on a randomly drawn ensemble. 
 
         Args:
-            num_particles (int): number of sampled particles. Default is None.
+            num_particles (int): number of sampled particles.
+                If None, then self.num_particles is used. 
         """
 
         assert self._test_loader is not None, "Must set test_loader first."
@@ -566,6 +678,49 @@ class HyperNetwork(Algorithm):
         total_loss = regression_loss(output, target)
         return loss, total_loss
 
+    def eval_uncertainty(self, num_particles=None):
+        """
+        Function to evaluate the epistemic uncertainty of a sampled ensemble.
+            This method computes the following metrics:
+        
+            * AUROC (AUC): AUC is computed with respect to the entropy in the 
+                averaged softmax probabilities, as well as the sum of the
+                variance of the softmax probabilities over the ensemble. 
+        Args:
+            num_particles (int): number of sampled particles.
+                If None, then self.num_particles is used. 
+        """
+
+        if num_particles is None:
+            num_particles = self._num_particles
+        params = self.sample_parameters(num_particles=num_particles)
+        self._param_net.set_parameters(params)
+
+        with torch.no_grad():
+            outputs, labels = predict_dataset(self._param_net,
+                                              self._test_loader)
+            outputs_outlier, _ = predict_dataset(self._param_net,
+                                                 self._outlier_test_loader)
+        mean_outputs = outputs.mean(0)
+        mean_outputs_outlier = outputs_outlier.mean(0)
+
+        probs = F.softmax(mean_outputs, -1)
+        probs_outlier = F.softmax(mean_outputs_outlier, -1)
+
+        entropy = torch.distributions.Categorical(probs).entropy()
+        entropy_outlier = torch.distributions.Categorical(
+            probs_outlier).entropy()
+
+        variance = F.softmax(outputs, -1).var(0).sum(-1)
+        variance_outlier = F.softmax(outputs_outlier, -1).var(0).sum(-1)
+
+        auroc_entropy = auc_score(entropy, entropy_outlier)
+        auroc_variance = auc_score(variance, variance_outlier)
+        logging.info("AUROC score (entropy): {}".format(auroc_entropy))
+        logging.info("AUROC score (variance): {}".format(auroc_variance))
+        alf.summary.scalar(name='eval/auroc_entropy', data=auroc_entropy)
+        alf.summary.scalar(name='eval/auroc_variance', data=auroc_variance)
+
     def summarize_train(self, loss_info, params, cum_loss=None, avg_acc=None):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
@@ -578,8 +733,10 @@ class HyperNetwork(Algorithm):
             train_info (nested Tensor): ``AlgStep.info`` returned by either
                 ``rollout_step()`` (on-policy training) or ``train_step()``
                 (off-policy training). By default it's not summarized.
-            loss_info (LossInfo): loss
-            params (list[Parameter]): list of parameters with gradients
+            loss_info (LossInfo): loss. 
+            params (list[Parameter]): list of parameters with gradients. 
+            cum_loss (float): cumulative training loss of epoch. 
+            avg_acc (float): average accuracy across batches in epoch. 
         """
         if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
