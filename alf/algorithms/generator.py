@@ -101,6 +101,7 @@ class CriticAlgorithm(Algorithm):
             inputs (Tensor): inputs for prediction.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
+        
         Returns:
             AlgStep:
             - output (Tensor): predictions or (predictions, diag_jacobian)
