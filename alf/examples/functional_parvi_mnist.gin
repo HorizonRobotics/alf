@@ -17,25 +17,23 @@ func_parvi_critic/Adam.lr = 1e-4
 func_parvi_critic/Adam.weight_decay = 1e-4
 
 # algorithm config
-FuncParVI.fc_layer_params = %FC_LAYER_PARAMS
-FuncParVI.hidden_layers = %HIDDEN_LAYERS
-FuncParVI.num_particles = 10
+FuncParVIAlgorithm.conv_layer_params = %CONV_LAYER_PARAMS
+FuncParVIAlgorithm.fc_layer_params = %FC_LAYER_PARAMS
+FuncParVIAlgorithm.num_particles = 10
 
-FuncParVI.use_fc_bn = True
-FuncParVI.par_vi = 'svgd3'
-FuncParVI.loss_type = 'classification'
-FuncParVI.entropy_regularization = 1.0
-FuncParVI.optimizer = @func_parvi/Adam()
-FuncParVI.critic_optimizer = @func_parvi_critic/Adam()
-FuncParVI.critic_hidden_layers = (512,512)
-FuncParVI.critic_iter_num = 5
-FuncParVI.critic_l2_weight = 10.0
-FuncParVI.logging_training = True
-FuncParVI.logging_evaluate = True
-
+FuncParVIAlgorithm.par_vi = 'svgd'
+FuncParVIAlgorithm.loss_type = 'classification'
+FuncParVIAlgorithm.entropy_regularization = 1.0
+FuncParVIAlgorithm.optimizer = @func_parvi/Adam()
+FuncParVIAlgorithm.critic_optimizer = @func_parvi_critic/Adam()
+FuncParVIAlgorithm.critic_hidden_layers = (512,512)
+FuncParVIAlgorithm.critic_iter_num = 5
+FuncParVIAlgorithm.critic_l2_weight = 10.0
+FuncParVIAlgorithm.logging_training = True
+FuncParVIAlgorithm.logging_evaluate = True
 
 # training config
-TrainerConfig.algorithm_ctor=@FuncParVI
+TrainerConfig.algorithm_ctor=@FuncParVIAlgorithm
 TrainerConfig.num_iterations=100
 TrainerConfig.num_checkpoints=1
 TrainerConfig.evaluate=True

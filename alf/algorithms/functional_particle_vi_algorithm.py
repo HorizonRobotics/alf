@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""ParticleVI algorithm on parameterized functions."""
 
 from absl import logging
 import functools
@@ -255,6 +256,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             test_loader (torch.utils.data.DataLoader): testing data loader
             outlier_data_loaders (tuple[torch.utils.data.DataLoader): 
                 (trainloader, testloader) for outlier datasets
+            entropy_regularization (float): weight of particle VI repulsive
+                term.
         """
         self._train_loader = train_loader
         self._test_loader = test_loader
@@ -278,13 +281,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
                 if None, use self.particles.
-            state: not used.
+            state (None): not used.
 
         Returns:
             AlgStep: 
             - output (Tensor): predictions with shape 
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
-            - state: not used
+            - state (None): not used
         """
         if params is None:
             params = self.particles
@@ -296,9 +299,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         """Perform one epoch (iteration) of training.
         
         Args:
-            state: not used
+            state (None): not used
 
-        Return:
+        Returns:
             mini_batch number
         """
 
@@ -340,7 +343,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 If None, use self._entropy_regularization.
             loss_mask (Tensor): mask indicating which samples are valid for 
                 loss propagation.
-            state: not used
+            state (None): not used
 
         Returns:
             AlgStep:
@@ -465,9 +468,11 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
         return self._loss_func(output, target)
 
-    def evaluate(self, num_particles=None):
-        """Evaluate on the fixed ensemble. """
-
+    def evaluate(self):
+        """
+        Evaluatation of the ParVI ensemble on a test dataset
+        """
+        
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin evaluating")
         self._param_net.set_parameters(self.particles)
@@ -479,10 +484,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 output, _ = self._param_net(data)  # [B, N, D]
-                if num_particles is not None:
-                    idxs = torch.randint(0, self._num_particles,
-                                         (num_particles, ))
-                    output = torch.index_select(output, 1, idxs)
                 loss, extra = self._vote(output, target)
                 if self._loss_type == 'classification':
                     test_acc += extra.item()
@@ -530,14 +531,16 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         total_loss = regression_loss(output, target)
         return loss, total_loss
     
-    def eval_uncertainty(self, num_particles=None):
+    def eval_uncertainty(self):
         """
-        Function to evaluate the metrics uncertainty quantification and
-            calibration
-        AUROC (AUC) evaluates the separability of model predictions with
-            respect to the training data and a prespecified outlier dataset
-        ECE evaluates how well calibrated the model's predictions are. That
-            is, how well does the expected confidence match the accuracy
+        Function to evaluate the epistemic uncertainty of the ensemble.
+            This method computes the following metrics:
+        
+            * AUROC (AUC) evaluates the separability of model predictions with
+                respect to the training data and a prespecified outlier dataset.
+                AUC is computed with respect to the entropy in the averaged
+                softmax probabilities, as well as the sum of the variance of 
+                the softmax probabilities over the ensemble. 
         """  
 
         with torch.no_grad():

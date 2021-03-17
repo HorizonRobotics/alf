@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""HyperNetwork algorithm."""
 
 from absl import logging
 import functools
@@ -223,7 +224,7 @@ class HyperNetwork(Algorithm):
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.
             num_particles (int): number of sampling particles
-            entropy_regularization (float): weight of entropy regularization
+            entropy_regularization (float): weight for par_vi repulsive term. 
 
             critic_hidden_layers (tuple): sizes of critic hidden layeres. 
                 Used for ``minmax`` method. 
@@ -375,6 +376,8 @@ class HyperNetwork(Algorithm):
             test_loader (torch.utils.data.DataLoader): testing data loader
             outlier_data_loaders (tuple[torch.utils.data.DataLoader): 
                 (trainloader, testloader) for outlier datasets
+            entropy_regularization (float): weight for par_vi repulsive term. 
+                If None, then self._entropy_regarization is used.
         """
         self._train_loader = train_loader
         self._test_loader = test_loader
@@ -429,13 +432,13 @@ class HyperNetwork(Algorithm):
             params (Tensor): parameters of the ensemble of networks,
                 if None, will resample.
             num_particles (int): size of sampled ensemble. Default is None.
-            state: not used.
+            state (None): not used.
 
         Returns:
             AlgStep: 
             - output (Tensor): shape is 
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
-            - state: not used
+            - state (None): not used
         """
         if params is None:
             params = self.sample_parameters(num_particles=num_particles)
@@ -448,7 +451,7 @@ class HyperNetwork(Algorithm):
 
         Args:
             num_particles (int): number of sampled particles. Default is None.
-            state: not used
+            state (None): not used
 
         Return:
             mini_batch number
@@ -492,7 +495,9 @@ class HyperNetwork(Algorithm):
             num_particles (int): number of sampled particles. Default is None,
                 in which case self._num_particles will be used for batch_size
                 of self._generator.
-            state: not used
+            entropy_regularization (float): weight for par_vi repulsive term. 
+                If None, then self._entropy_regarization is used.
+            state (None): not used
 
         Returns:
             ``train_step`` of ``self._generator``
@@ -608,7 +613,8 @@ class HyperNetwork(Algorithm):
         """Evaluate on a randomly drawn ensemble. 
 
         Args:
-            num_particles (int): number of sampled particles. Default is None.
+            num_particles (int): number of sampled particles.
+                If None, then self.num_particles is used. 
         """
 
         assert self._test_loader is not None, "Must set test_loader first."
@@ -676,13 +682,17 @@ class HyperNetwork(Algorithm):
 
     def eval_uncertainty(self, num_particles=None):
         """
-        Function to evaluate the metrics uncertainty quantification and
-            calibration
-        AUROC (AUC) evaluates the separability of model predictions with
-            respect to the training data and a prespecified outlier dataset
-        ECE evaluates how well calibrated the model's predictions are. That
-            is, how well does the expected confidence match the accuracy
+        Function to evaluate the epistemic uncertainty of a sampled ensemble.
+            This method computes the following metrics:
+        
+            * AUROC (AUC): AUC is computed with respect to the entropy in the 
+                averaged softmax probabilities, as well as the sum of the
+                variance of the softmax probabilities over the ensemble. 
+        Args:
+            num_particles (int): number of sampled particles.
+                If None, then self.num_particles is used. 
         """  
+
         if num_particles is None:
             num_particles = self._num_particles
         params = self.sample_parameters(num_particles=num_particles)
@@ -726,8 +736,10 @@ class HyperNetwork(Algorithm):
             train_info (nested Tensor): ``AlgStep.info`` returned by either
                 ``rollout_step()`` (on-policy training) or ``train_step()``
                 (off-policy training). By default it's not summarized.
-            loss_info (LossInfo): loss
-            params (list[Parameter]): list of parameters with gradients
+            loss_info (LossInfo): loss. 
+            params (list[Parameter]): list of parameters with gradients. 
+            cum_loss (float): cumulative training loss of epoch. 
+            avg_acc (float): average accuracy across batches in epoch. 
         """
         if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
