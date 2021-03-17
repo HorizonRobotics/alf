@@ -564,6 +564,7 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='sarsa_ddpg_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sarsa_pendulum(self):
         self._test(
             conf_file='sarsa_pendulum.gin',

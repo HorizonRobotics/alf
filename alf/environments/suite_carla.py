@@ -48,25 +48,27 @@ import subprocess
 import sys
 import time
 import torch
+from unittest.mock import Mock
 
 try:
     import carla
-    from .carla_sensors import (
-        CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
-        LaneInvasionSensor, NavigationSensor, RadarSensor, World,
-        get_scaled_image_size, MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 except ImportError:
-    carla = None
+    # create 'carla' as a mock to not break python argument type hints
+    carla = Mock()
 
 import alf
 import alf.data_structures as ds
 from alf.utils import common
 from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
+from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
+                            IMUSensor, LaneInvasionSensor, NavigationSensor,
+                            RadarSensor, World, get_scaled_image_size,
+                            MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 
 def is_available():
-    return carla is not None
+    return not isinstance(carla, Mock)
 
 
 def geo_distance(loc1, loc2):
