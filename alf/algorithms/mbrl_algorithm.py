@@ -57,6 +57,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  dynamics_module: DynamicsLearningAlgorithm,
                  reward_module: RewardEstimationAlgorithm,
                  planner_module: PlanAlgorithm,
+                 reward_spec=TensorSpec(()),
                  particles_per_replica=1,
                  env=None,
                  config: TrainerConfig = None,
@@ -85,6 +86,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 the reward, i.e.,  evaluating the reward for a (s, a) pair
             planner_module (PlanAlgorithm): module for generating planned action
                 based on specified reward function and dynamics function
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             particles_per_replica (int): number of particles for each replica
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -108,6 +111,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             feature_spec,
             action_spec,
+            reward_spec=reward_spec,
             train_state_spec=train_state_spec,
             env=env,
             config=config,
@@ -322,6 +326,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
                  observation_spec,
                  action_spec,
                  planner_module: PlanAlgorithm,
+                 reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
                  planner_optimizer=None,
@@ -344,9 +349,12 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         the latent representation in loss calculation.
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (BoundedTensorSpec): representing the actions.
             planner_module (PlanAlgorithm): module for generating planned action
                 based on specified reward function and dynamics function
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -363,6 +371,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
             observation_spec,
             feature_spec=observation_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             dynamics_module=None,
             reward_module=None,
             planner_module=planner_module,

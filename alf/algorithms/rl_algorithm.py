@@ -26,6 +26,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
 from alf.utils import common, dist_utils, summary_utils, math_ops
+from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
 
@@ -74,8 +75,10 @@ class RLAlgorithm(Algorithm):
                  observation_spec,
                  action_spec,
                  train_state_spec,
+                 reward_spec=TensorSpec(()),
                  predict_state_spec=None,
                  rollout_state_spec=None,
+                 reward_weights=None,
                  env=None,
                  config: TrainerConfig = None,
                  optimizer=None,
@@ -87,12 +90,17 @@ class RLAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             train_state_spec (nested TensorSpec): for the network state of
                 ``train_step()``.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             rollout_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``train_state_spec``.
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``rollout_state_spec``.
+            reward_weights (None|list[float]): this is only used when the reward is
+                multidimensional. If not None, the weighted sum of rewards is
+                the reward for training. Otherwise, the sum of rewards is used.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
@@ -118,6 +126,23 @@ class RLAlgorithm(Algorithm):
         self._env = env
         self._observation_spec = observation_spec
         self._action_spec = action_spec
+        assert reward_spec.ndim <= 1, "reward_spec must be rank-0 or rank-1!"
+        self._reward_spec = reward_spec
+
+        self._reward_weights = None
+        if reward_spec.numel > 1:
+            if reward_weights:
+                assert reward_spec.numel == len(reward_weights), (
+                    "Mismatch between len(reward_weights)=%s and reward_dim=%s"
+                    % (len(reward_weights), reward_spec.numel))
+                self._reward_weights = torch.tensor(
+                    reward_weights, dtype=torch.float32)
+            else:
+                self._reward_weights = torch.ones(
+                    reward_spec.shape, dtype=torch.float32)
+        else:
+            assert reward_weights is None, (
+                "reward_weights cannot be used for one dimensional reward")
 
         self._proc = psutil.Process(os.getpid())
 
@@ -146,7 +171,7 @@ class RLAlgorithm(Algorithm):
                 alf.metrics.AverageReturnMetric(
                     batch_size=env.batch_size,
                     buffer_size=metric_buf_size,
-                    reward_shape=env.reward_spec().shape),
+                    reward_shape=reward_spec.shape),
                 alf.metrics.AverageEpisodeLengthMetric(
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
                 alf.metrics.AverageEnvInfoMetric(
@@ -156,7 +181,7 @@ class RLAlgorithm(Algorithm):
                 alf.metrics.AverageDiscountedReturnMetric(
                     batch_size=env.batch_size,
                     buffer_size=metric_buf_size,
-                    reward_shape=env.reward_spec().shape)
+                    reward_shape=reward_spec.shape)
             ]
 
         self._original_rollout_step = self.rollout_step
@@ -193,6 +218,33 @@ class RLAlgorithm(Algorithm):
     def action_spec(self):
         """Return the action spec."""
         return self._action_spec
+
+    @torch.no_grad()
+    def set_reward_weights(self, reward_weights):
+        """Update reward weights; this function can be called at any step during
+        training. Once called, the updated reward weights are expected to be used
+        by the algorithm in the next.
+
+        Args:
+            reward_weights (Tensor): a tensor that is compatible with
+                ``self._reward_spec``.
+        """
+        assert self.has_multidim_reward(), (
+            "Can't update weights for a scalar reward!")
+        self._reward_weights.copy_(reward_weights)
+
+    def has_multidim_reward(self):
+        """Check if the algorithm uses multi-dim reward or not.
+
+        Returns:
+            bool: True if the reward has multiple dims.
+        """
+        return self._reward_spec.numel > 1
+
+    @property
+    def reward_weights(self):
+        """Return the current reward weights."""
+        return self._reward_weights
 
     def get_step_metrics(self):
         """Get step metrics that used for generating summaries against

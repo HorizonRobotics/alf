@@ -46,6 +46,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  feature_spec,
                  action_spec,
+                 reward_spec=TensorSpec(()),
                  planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
@@ -53,6 +54,8 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """Create a PlanningAlgorithm.
 
         Args:
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             planning_horizon (int): planning horizon in terms of time steps
             upper_bound (int): upper bound for elements in solution;
                 action_spec.maximum will be used if not specified
@@ -63,6 +66,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             feature_spec,
             action_spec,
+            reward_spec=reward_spec,
             train_state_spec=PlannerState(
                 prev_plan=TensorSpec((planning_horizon,
                                       action_spec.shape[-1]))),
@@ -141,6 +145,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                  feature_spec,
                  action_spec,
                  population_size,
+                 reward_spec=TensorSpec(()),
                  planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
@@ -149,6 +154,8 @@ class RandomShootingAlgorithm(PlanAlgorithm):
 
         Args:
             population_size (int): the size of polulation for random shooting
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             planning_horizon (int): planning horizon in terms of time steps
             upper_bound (int): upper bound for elements in solution;
                 action_spec.maximum will be used if not specified
@@ -158,6 +165,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,
@@ -254,6 +262,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
                  action_spec,
                  population_size,
                  planning_horizon,
+                 reward_spec=TensorSpec(()),
                  elite_size=50,
                  max_iter_num=5,
                  epsilon=0.01,
@@ -267,6 +276,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         Args:
             population_size (int): the size of polulation for optimization
             planning_horizon (int): planning horizon in terms of time steps
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s.)
             elite_size (int): the number of elites selected in each round
             max_iter_num (int|Tensor): the maximum number of CEM iterations
             epsilon (float): a minimum variance threshold. If the variance of
@@ -287,6 +298,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,

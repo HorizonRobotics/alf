@@ -27,6 +27,7 @@ from alf.algorithms.mcts_models import MCTSModel, ModelOutput, ModelTarget
 from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.tensor_specs import TensorSpec
 
 MuzeroInfo = namedtuple(
     'MuzeroInfo',
@@ -67,6 +68,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  mcts_algorithm_ctor,
                  num_unroll_steps,
                  td_steps,
+                 reward_spec=TensorSpec(()),
                  recurrent_gradient_scaling_factor=0.5,
                  reward_normalizer=None,
                  reward_clip_value=-1.,
@@ -97,6 +99,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 Can only used for environments whose rewards are zero except for
                 the last step as the current implmentation only use the reward
                 at the last step to calculate the return.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             recurrent_gradient_scaling_factor (float): the gradient go through
                 the ``model.recurrent_inference`` is scaled by this factor. This
                 is suggested in Appendix G.
@@ -133,6 +137,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             train_state_spec=mcts.predict_state_spec,
             predict_state_spec=mcts.predict_state_spec,
             rollout_state_spec=mcts.predict_state_spec,
