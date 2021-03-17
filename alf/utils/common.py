@@ -211,11 +211,11 @@ def expand_dims_as(x, y):
         ``x`` with extra singular dimensions.
     """
     assert x.ndim <= y.ndim
-    assert x.shape == y.shape[:len(x.shape)]
     k = y.ndim - x.ndim
     if k == 0:
         return x
     else:
+        assert x.shape == y.shape[:len(x.shape)]
         return x.reshape(*x.shape, *([1] * k))
 
 

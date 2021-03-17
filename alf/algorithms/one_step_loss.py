@@ -24,7 +24,7 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.algorithms.td_loss import TDLoss
 
 
-@gin.configurable
+@alf.configurable
 class OneStepTDLoss(TDLoss):
     def __init__(self,
                  gamma=0.99,
@@ -33,7 +33,9 @@ class OneStepTDLoss(TDLoss):
                  name="TDLoss"):
         """
         Args:
-            gamma (float): A discount factor for future rewards.
+            gamma (float|list[float]): A discount factor for future rewards. For
+                multi-dim reward, this can also be a list of discounts, each
+                discount applies to a reward dim.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
