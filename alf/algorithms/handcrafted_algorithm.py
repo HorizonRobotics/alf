@@ -21,7 +21,7 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
-from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.tensor_specs import BoundedTensorSpec
 
 
 @gin.configurable
@@ -35,7 +35,6 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
@@ -44,8 +43,6 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -60,7 +57,6 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
-            reward_spec=reward_spec,
             train_state_spec=(),
             env=env,
             config=config,
@@ -108,7 +104,6 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 reward_spec=TensorSpec(()),
                  distance_to_decelerate=50.0,
                  distance_to_stop=1.0,
                  env=None,
@@ -119,8 +114,6 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             distance_to_decelerate (float|int): the distance in meter to goal
                 from which to start decreasing the speed
             distance_to_stop (float|int): the distance in meter to goal
@@ -139,7 +132,6 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
-            reward_spec=reward_spec,
             env=env,
             config=config,
             debug_summaries=debug_summaries,

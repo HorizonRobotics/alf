@@ -20,6 +20,7 @@ import torch
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
+from alf.algorithms.generator import CriticAlgorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
 from alf.networks import Network, EncodingNetwork
@@ -38,13 +39,13 @@ class ParVIAlgorithm(Algorithm):
 
         1. Stein Variational Gradient Descent (SVGD):
 
-           Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
-           A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+        Feng et al "Learning to Draw Samples with Amortized Stein Variational
+        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
 
         2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
 
-           Liu, Chang, et al. "Understanding and accelerating particle-based 
-           variational inference." International Conference on Machine Learning. 2019.
+        Liu, Chang, et al. "Understanding and accelerating particle-based 
+        variational inference." International Conference on Machine Learning. 2019.
     """
 
     def __init__(self,
@@ -52,6 +53,12 @@ class ParVIAlgorithm(Algorithm):
                  num_particles=10,
                  entropy_regularization=1.,
                  par_vi="gfsf",
+                 critic_input_dim=None,
+                 critic_hidden_layers=(100,100),
+                 critic_l2_weight=10.,
+                 critic_iter_num=2,
+                 critic_use_bn=True,
+                 critic_optimizer=None,
                  optimizer=None,
                  debug_summaries=False,
                  name="ParVIAlgorithm"):
@@ -64,11 +71,23 @@ class ParVIAlgorithm(Algorithm):
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``, ``None``],
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
-                  the same batch of particles.   
+                    the same batch of particles.   
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                  involves a kernel matrix inversion, so computationally more
-                  expensive, but in some cases the convergence seems faster 
-                  than svgd approaches.
+                    involves a kernel matrix inversion, so computationally more
+                    expensive, but in some cases the convergence seems faster 
+                    than svgd approaches.
+            critic_input_dim (int): dimension of critic input, used for ``minmax``.
+            critic_hidden_layers (tuple): sizes of hidden layers of the critic,
+                used for ``minmax``.
+            critic_l2_weight (float): weight of L2 regularization in training
+                the critic, used for ``minmax``.
+            critic_iter_num (int): number of critic updates for each generator
+                train_step, used for ``minmax``.
+            critic_use_bn (book): whether use batch norm for each layers of the
+                critic, used for ``minmax``.
+            critic_optimizer (torch.optim.Optimizer): Optimizer for training the
+                critic, used for ``minmax``.
+ 
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -83,6 +102,19 @@ class ParVIAlgorithm(Algorithm):
             self._grad_func = self._gfsf_grad
         elif par_vi == 'svgd':
             self._grad_func = self._svgd_grad
+        elif par_vi == 'minmax':
+            self._grad_func = self._minmax_grad
+            if critic_input_dim is None:
+                critic_input_dim = particle_dim
+            self._critic_iter_num = critic_iter_num
+            self._critic_l2_weight = critic_l2_weight
+            if critic_optimizer is None:
+                critic_optimizer = alf.optimizers.Adam(lr=1e-3)
+            self._critic = CriticAlgorithm(
+                TensorSpec(shape=(critic_input_dim, )),
+                hidden_layers=critic_hidden_layers,
+                use_bn=critic_use_bn,
+                optimizer=critic_optimizer)
         elif par_vi == None:
             self._grad_func = self._ml_grad
         else:
@@ -130,11 +162,10 @@ class ParVIAlgorithm(Algorithm):
                 function value based par_vi, where each particle represents 
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
-
-                * outputs: outputs of network parameterized by particles evaluated
-                  on predifined training batch.
-                * extra_outputs: outputs of network parameterized by particles
-                  evaluated on additional sampled data.
+                - outputs: outputs of network parameterized by particles evaluated
+                    on predifined training batch.
+                - extra_outputs: outputs of network parameterized by particles
+                    evaluated on additional sampled data.
             entropy_regularization (float): weight of the repulsive term in par_vi. 
                 If None, use self._entropy_regularization.
             loss_mask (Tensor): mask indicating which samples are valid for loss
@@ -177,9 +208,9 @@ class ParVIAlgorithm(Algorithm):
 
         Args:
             x (Tensor): set of N particles, shape (Nx x W), where W is the 
-                dimenseion of each particle
+                dimension of each particle
             y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle. If y is None, treat y=x. 
+                dimension of each particle. If y is None, treat y=x. 
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
@@ -201,7 +232,8 @@ class ParVIAlgorithm(Algorithm):
             h = h / max(np.log(Nx), 1.)
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Ny]
-        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [Nx, Ny, W]
+        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
+                                  -2 * diff / h)  # [Nx, Ny, W]
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):
@@ -224,15 +256,11 @@ class ParVIAlgorithm(Algorithm):
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
         dist_sq = torch.sum(diff**2, -1)  # [N, N]
         h, _ = torch.median(dist_sq.view(-1), dim=0)
-        if h == 0.:
-            h = torch.ones_like(h)
-        else:
-            h = h / max(np.log(N), 1.)
+        h = h / np.log(N)
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
-        kappa_grad = kappa_grad.sum(0)  # [N, D]
+        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
 
         return kappa_inv @ kappa_grad
 
@@ -319,5 +347,65 @@ class ParVIAlgorithm(Algorithm):
         loss_prop_neglogp = torch.sum(loss_grad.detach() * particles, dim=-1)
         loss_prop_logq = torch.sum(-logq_grad.detach() * aug_particles, dim=-1)
         loss_propagated = loss_prop_neglogp + loss_prop_logq
+
+        return loss, loss_propagated
+
+    def _jacobian_trace(self, fx, x):
+        """Hutchinson's trace Jacobian estimator O(1) call to autograd,
+            used by ``minmax`` method"""
+        assert fx.shape[-1] == x.shape[-1], (
+            "Jacobian is not square, no trace defined.")
+        eps = torch.randn_like(fx)
+        jvp = torch.autograd.grad(
+            fx, x, grad_outputs=eps, retain_graph=True, create_graph=True)[0]
+        tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
+        return tr_jvp
+
+    def _critic_train_step(self, inputs, loss_func, entropy_regularization=1.):
+        """
+        Compute the loss for critic training.
+        """
+        loss = loss_func(inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), inputs)[0]  # [N, D]
+        outputs = self._critic.predict_step(inputs).output
+        tr_gradf = self._jacobian_trace(outputs, inputs)  # [N]
+
+        f_loss_grad = (loss_grad.detach() * outputs).sum(1)  # [N]
+        loss_stein = f_loss_grad - entropy_regularization * tr_gradf  # [N]
+
+        l2_penalty = (outputs * outputs).sum(1).mean() * self._critic_l2_weight
+        critic_loss = loss_stein.mean() + l2_penalty
+
+        return critic_loss
+
+    def _minmax_grad(self,
+                     particles,
+                     loss_func,
+                     entropy_regularization,
+                     transform_func=None):
+        """
+        Compute particle gradients via minmax svgd (Fisher Neural Sampler). 
+        """
+        if transform_func is not None:
+            aug_particles, extra_particles = transform_func(particles)
+        else:
+            aug_particles = particles
+
+        for i in range(self._critic_iter_num):
+            critic_inputs = aug_particles.detach().clone()
+            critic_inputs.requires_grad = True
+
+            critic_loss = self._critic_train_step(critic_inputs, loss_func,
+                                                  entropy_regularization)
+            self._critic.update_with_gradient(LossInfo(loss=critic_loss))
+        
+        loss_inputs = aug_particles
+        loss = loss_func(loss_inputs.detach())
+        critic_outputs = self._critic.predict_step(aug_particles.detach()).output
+        loss_propagated = torch.sum(-critic_outputs.detach() * aug_particles, dim=-1)
 
         return loss, loss_propagated

@@ -34,15 +34,13 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import AlgStep, Experience
 from alf.data_structures import TimeStep, namedtuple
 from alf.utils import math_ops
-from alf.tensor_specs import TensorSpec
 
 AgentState = namedtuple(
-    "AgentState", ["obs_trans", "rl", "irm", "goal_generator", "repr", "rw"],
+    "AgentState", ["obs_trans", "rl", "irm", "goal_generator", "repr"],
     default_value=())
 
 AgentInfo = namedtuple(
-    "AgentInfo",
-    ["rl", "irm", "goal_generator", "entropy_target", "repr", "rw"],
+    "AgentInfo", ["rl", "irm", "goal_generator", "entropy_target", "repr"],
     default_value=())
 
 
@@ -54,11 +52,9 @@ class Agent(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
                  rl_algorithm_cls=ActorCriticAlgorithm,
-                 reward_weight_algorithm_cls=None,
                  representation_learner_cls=None,
                  goal_generator=None,
                  intrinsic_reward_module=None,
@@ -73,8 +69,6 @@ class Agent(OnPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
@@ -85,10 +79,6 @@ class Agent(OnPolicyAlgorithm):
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
-            reward_weight_algorithm_cls (type): The algorithm class for adjusting
-                reward weights when multi-dim rewards are used. If provided, the
-                the default ``reward_weights`` of ``rl_algorithm`` will be
-                overwritten by this algorithm.
             representation_learner_cls (type): The algorithm class for learning
                 the representation. If provided, the constructed learner will
                 calculate the representation from the original observation as
@@ -108,7 +98,7 @@ class Agent(OnPolicyAlgorithm):
                 needs to contain ``action_distribution``.
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
-            optimizer (optimizer): The optimizer for training
+            optimizer (tf.optimizers.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
@@ -137,7 +127,6 @@ class Agent(OnPolicyAlgorithm):
         rl_algorithm = rl_algorithm_cls(
             observation_spec=rl_observation_spec,
             action_spec=action_spec,
-            reward_spec=reward_spec,
             debug_summaries=debug_summaries)
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
@@ -165,17 +154,9 @@ class Agent(OnPolicyAlgorithm):
             agent_helper.register_algorithm(entropy_target_algorithm,
                                             "entropy_target")
 
-        # 5. reward weight algorithm
-        reward_weight_algorithm = None
-        if reward_weight_algorithm_cls is not None:
-            reward_weight_algorithm = reward_weight_algorithm_cls(
-                reward_spec=reward_spec, debug_summaries=debug_summaries)
-            agent_helper.register_algorithm(reward_weight_algorithm, "rw")
-
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            reward_spec=reward_spec,
             optimizer=optimizer,
             env=env,
             config=config,
@@ -185,7 +166,6 @@ class Agent(OnPolicyAlgorithm):
 
         self._representation_learner = representation_learner
         self._rl_algorithm = rl_algorithm
-        self._reward_weight_algorithm = reward_weight_algorithm
         self._entropy_target_algorithm = entropy_target_algorithm
         self._intrinsic_reward_coef = intrinsic_reward_coef
         self._extrinsic_reward_coef = extrinsic_reward_coef
@@ -272,11 +252,6 @@ class Agent(OnPolicyAlgorithm):
                 step_type=time_step.step_type,
                 on_policy_training=self.is_on_policy())
             info = info._replace(entropy_target=et_step.info)
-
-        if self._reward_weight_algorithm:
-            rw_step = self._reward_weight_algorithm.rollout_step(
-                time_step, state.rw)
-            info = info._replace(rw=rw_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
 
@@ -381,14 +356,10 @@ class Agent(OnPolicyAlgorithm):
         """
         algorithms = [
             self._rl_algorithm, self._representation_learner,
-            self._goal_generator, self._reward_weight_algorithm
+            self._goal_generator
         ]
         algorithms = list(filter(lambda a: a is not None, algorithms))
         self._agent_helper.after_train_iter(algorithms, experience, train_info)
-
-        if self._reward_weight_algorithm:
-            self._rl_algorithm.set_reward_weights(
-                self._reward_weight_algorithm.reward_weights)
 
     def preprocess_experience(self, exp: Experience):
         """Add intrinsic rewards to extrinsic rewards if there is an intrinsic

@@ -189,7 +189,6 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discount: float,
             is_two_player_game: bool,
             visit_softmax_temperature_fn: Callable,
-            reward_spec=TensorSpec(()),
             known_value_bounds=None,
             unexpanded_value_score=0.5,
             act_with_exploration_policy=False,
@@ -231,8 +230,6 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 where ``steps`` is a vector representing the number of steps in
                 the games. And it is expected to return a float vector of the same
                 shape as ``steps``.
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             known_value_bounds (tuple|None): known bound of the values.
             unexpanded_value_score (float|str): The value score for an unexpanded
                 child. If 'max'/'min'/'mean', will use the maximum/minimum/mean
@@ -271,7 +268,6 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
-            reward_spec=reward_spec,
             train_state_spec=MCTSState(
                 steps=alf.TensorSpec((), dtype=torch.int64)),
             debug_summaries=debug_summaries)

@@ -35,7 +35,6 @@ from alf.networks.action_encoder import SimpleActionEncoder
 from alf.networks.memory import MemoryWithUsage
 from alf.nest import flatten, map_structure
 from alf.utils import common, dist_utils, math_ops
-from alf.tensor_specs import TensorSpec
 
 MBPState = namedtuple(
     "MBPState",
@@ -241,7 +240,6 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  observation_spec,
                  action_spec,
                  memory: MemoryWithUsage,
-                 reward_spec=TensorSpec(()),
                  num_read_keys=1,
                  lstm_size=(256, 256),
                  latent_dim=200,
@@ -252,11 +250,8 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  name="mba"):
         """
         Args:
-            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             memory (MemoryWithUsage): the memory module from ``MemoryBasedPredictor``
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             num_read_keys (int): number of keys for reading memory.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers
@@ -286,7 +281,6 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         super(MemoryBasedActor, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            reward_spec=reward_spec,
             train_state_spec=rnn.state_spec,
             name=name)
 
@@ -377,7 +371,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  action_spec,
                  encoders,
                  decoders,
-                 reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
                  latent_dim=200,
@@ -392,8 +385,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
@@ -433,7 +424,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         super(MerlinAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            reward_spec=reward_spec,
             train_state_spec=MerlinState(
                 mbp_state=mbp.train_state_spec,
                 mba_state=mba.train_state_spec),

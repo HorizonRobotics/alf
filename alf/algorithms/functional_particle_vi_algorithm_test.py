@@ -56,8 +56,12 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd'), ('gfsf', True),
-                              ('svgd', True))
+    @parameterized.parameters(
+        ('svgd', False),
+        ('gfsf', False),
+        ('svgd', True),
+        ('gfsf', True),
+        ('minmax', False),)
     def test_functional_par_vi_algorithm(self,
                                          par_vi='svgd',
                                          function_vi=False,

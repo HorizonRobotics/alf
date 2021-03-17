@@ -23,7 +23,6 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import Experience, namedtuple, StepType, TimeStep
 from alf.optimizers.trusted_updater import TrustedUpdater
 from alf.utils import common, dist_utils, math_ops
-from alf.tensor_specs import TensorSpec
 
 nest_map = alf.nest.map_structure
 
@@ -62,7 +61,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 reward_spec=TensorSpec(()),
                  env=None,
                  config=None,
                  ac_algorithm_cls=ActorCriticAlgorithm,
@@ -90,7 +88,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            reward_spec=reward_spec,
             env=env,
             config=config,
             train_state_spec=ac_algorithm.train_state_spec,

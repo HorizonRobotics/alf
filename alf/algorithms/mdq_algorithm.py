@@ -57,7 +57,6 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             observation_spec,
             action_spec: BoundedTensorSpec,
             critic_network: MdqCriticNetwork,
-            reward_spec=TensorSpec(()),
             env=None,
             config: TrainerConfig = None,
             critic_loss_ctor=None,
@@ -75,8 +74,6 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             critic_network (MdqCriticNetwork): an instance of MdqCriticNetwork
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -118,7 +115,6 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
-            reward_spec=reward_spec,
             train_state_spec=train_state_spec,
             env=env,
             config=config,

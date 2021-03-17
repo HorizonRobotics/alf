@@ -22,16 +22,16 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
-from alf.networks import Network, EncodingNetwork, ReluMLP
+from alf.networks import Network, EncodingNetwork, ReluMLP, PinverseNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
-                               ["generator", "mi_estimator"])
+                               ["generator", "mi_estimator", "pinverse"])
 
 
-@alf.configurable
+@gin.configurable
 class CriticAlgorithm(Algorithm):
     """
     Wrap a critic network as an Algorithm for flexible gradient updates
@@ -46,12 +46,13 @@ class CriticAlgorithm(Algorithm):
                  net: Network = None,
                  use_relu_mlp=False,
                  use_bn=True,
+                 force_fullrank=False,
+                 fullrank_diag_weight=1.0,
                  optimizer=None,
                  name="CriticAlgorithm"):
         """Create a CriticAlgorithm.
-
         Args:
-            input_tensor_spec (TensorSpec): spec of inputs.
+            input_tensor_spec (TensorSpec): spec of inputs. 
             output_dim (int): dimension of output, default value is input_dim.
             hidden_layers (tuple): size of hidden layers.
             activation (nn.functional): activation used for all critic layers.
@@ -60,6 +61,10 @@ class CriticAlgorithm(Algorithm):
             use_relu_mlp (bool): whether use ReluMLP as default net constrctor.
                 Diagonals of Jacobian can be explicitly computed for ReluMLP.
             use_bn (bool): whether use batch norm for each critic layers.
+            force_fullrank (bool): forces the input-output jacobian of the 
+                critic to be square.
+            fullrank_diag_weight (float): weight of the identity matrix added
+                to the critic when ensuring a full rank jacobian. 
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this CriticAlgorithm.
         """
@@ -68,14 +73,17 @@ class CriticAlgorithm(Algorithm):
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
 
         self._use_relu_mlp = use_relu_mlp
+        self._force_fullrank = force_fullrank
+        self._fullrank_diag_weight = fullrank_diag_weight
+        self._input_dim = input_tensor_spec.shape[0]
         self._output_dim = output_dim
         if output_dim is None:
             self._output_dim = input_tensor_spec.shape[0]
         if net is None:
-
             if use_relu_mlp:
                 net = ReluMLP(
                     input_tensor_spec=input_tensor_spec,
+                    output_size=self._output_dim,
                     hidden_layers=hidden_layers,
                     activation=activation)
             else:
@@ -94,29 +102,131 @@ class CriticAlgorithm(Algorithm):
         for fc in self._net._fc_layers:
             fc.reset_parameters()
 
-    def predict_step(self, inputs, state=None, requires_jac_diag=False):
+    def predict_step(self,
+                     inputs,
+                     vector=None,
+                     state=None,
+                     requires_jac_diag=False,
+                     requires_jac=False):
         """Predict for one step of inputs.
-
         Args:
-            inputs (Tensor): inputs for prediction.
+            inputs (torch.Tensor): inputs for prediction.
+            vector (torch.Tensor): used for vector-jacobian product, default 
+                value is None, i.e., no vjp computation.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
-
         Returns:
             AlgStep:
-            - output (Tensor): predictions or (predictions, diag_jacobian)
+            - output (torch.Tensor): predictions or (predictions, diag_jacobian)
                 if requires_jac_diag is True.
             - state: not used.
         """
         if self._use_relu_mlp:
-            outputs = self._net(inputs, requires_jac_diag=requires_jac_diag)[0]
+            if vector is not None:
+                input_dim = inputs.shape[-1]
+                if self._force_fullrank:
+                    assert input_dim == self._output_dim
+                    vjp, outputs = self._net.compute_vjp(
+                        inputs[:, :self._input_dim], vector)
+                    outputs += self._fullrank_diag_weight * inputs
+                    vjp = torch.cat(
+                        (vjp,
+                         torch.zeros(vjp.shape[0],
+                                     self._output_dim - self._input_dim)),
+                        dim=-1)
+                    vjp += self._fullrank_diag_weight * inputs  # [N2*N, D]
+                else:
+                    assert input_dim == self._input_dim
+                    vjp, outputs = self._net.compute_vjp(inputs, vector)
+                outputs = (outputs, vjp)
+            else:
+                outputs = self._net(
+                    inputs,
+                    requires_jac_diag=requires_jac_diag,
+                    requires_jac=requires_jac)[0]
         else:
             outputs = self._net(inputs)[0]
 
         return AlgStep(output=outputs, state=(), info=())
 
 
-@alf.configurable
+@gin.configurable
+class PinverseAlgorithm(Algorithm):
+    r"""PinverseNet Algorithm
+        
+    Simple MLP network used with the functional gradient par_vi methods
+    It is used to predict :math:`x=J^{-1}*eps` given eps for the purpose of 
+    optimizing a downstream objective Jx - eps = 0. 
+    
+    If using ``svgd3``, then the eps quantity represents the kernel grad
+        :math:`\nabla_{z'}k(z', z)`
+    if using ``minmax``, the eps quantity represents the critic 
+        input-output jacobian :math:`\frac{\partial \phi}{\partial z}`
+    """
+
+    def __init__(self,
+                 input_dim,
+                 output_dim,
+                 eps_dim=None,
+                 hidden_size=500,
+                 net: Network = None,
+                 optimizer=None,
+                 name="PinverseAlgorithm"):
+        r"""Create a PinverseAlgorithm.
+        Args:
+            input_dim (int): dimension of input noise vector z, if equals to 
+                output_dim, use fullsize of z, otherwise, input the first 
+                input_dim dim of z, and add a direct link of z to the output.
+            output_dim (int): total output dimension of the pinverse net, will differ
+                between ``svgd3`` and ``minmax`` methods
+            hidden_size (tuple(int,)): base hidden width for pinverse net
+            net (Network): network for predicting outputs from inputs.
+                If None, a default ReluMLP with hidden_layers will be created
+            optimizer (torch.optim.Optimizer): (optional) optimizer for training.
+            name (str): name of this CriticAlgorithm.
+            eps_shape (list or None): shape of eps to estimate. In general ``svgd3``
+                takes an eps input of shape [B', B, k]. ``minmax`` takes an eps
+                of shape [B, k, d]. 
+                if ``eps_shape`` is None, then only :math:'J^{-1}' is estimated, 
+                and eps is not an input to the forward pass
+        """
+        if optimizer is None:
+            optimizer = alf.optimizers.Adam(lr=1e-3)
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+
+        self._output_dim = output_dim
+        if net is None:
+            z_spec = TensorSpec(shape=(input_dim, ))
+            if eps_dim is None:
+                input_tensor_spec = z_spec
+            else:
+                eps_spec = TensorSpec(shape=(eps_dim, ))
+                input_tensor_spec = (z_spec, eps_spec)
+            net = PinverseNetwork(
+                input_tensor_spec,
+                output_dim,
+                hidden_size,
+                name='PinverseNetwork')
+        self._net = net
+
+    def predict_step(self, inputs, state=None):
+        """Predict for one step of inputs.
+        Args:
+            inputs (tuple of Tensors): inputs (z, eps) for prediction.
+            state: not used.
+            
+        Returns:
+            AlgStep:
+            - output (torch.Tensor): predictions
+                if requires_jac_diag is True.
+            - state: not used.
+        """
+        outputs = self._net(inputs)[0]
+
+        return AlgStep(output=outputs, state=(), info=())
+
+
+@gin.configurable
 class Generator(Algorithm):
     r"""Generator
 
@@ -183,6 +293,11 @@ class Generator(Algorithm):
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
                  par_vi=None,
+                 functional_gradient=None,
+                 force_fullrank=True,
+                 fullrank_diag_weight=1.0,
+                 pinverse_solve_iters=1,
+                 pinverse_hidden_size=100,
                  critic_input_dim=None,
                  critic_hidden_layers=(100, 100),
                  critic_l2_weight=10.,
@@ -191,6 +306,7 @@ class Generator(Algorithm):
                  critic_use_bn=True,
                  minmax_resample=True,
                  critic_optimizer=None,
+                 pinverse_optimizer=None,
                  optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
@@ -232,6 +348,14 @@ class Generator(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
+            functional_gradient (bool): whether or not to use GPVI.
+            force_fullrank (bool): when ``functional_gradient`` is ``True``, 
+                this option forces the dimension of the jacobian of the
+                generator to be square. 
+            pinverse_solve_iters (int): number of iterations of pinverse
+                network training per single iteration of generator training.
+            pinverse_hidden_size (int): width of hidden layers in pinverse
+                network. 
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
@@ -247,6 +371,9 @@ class Generator(Algorithm):
                 critic update, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
+            pinverse_optimizer (torch.optim.Optimizer): Optimizer for training
+                the pinverse network, used when ``functional_gradient`` is 
+                ``True``.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -255,6 +382,7 @@ class Generator(Algorithm):
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
         self._par_vi = par_vi
+        self._functional_gradient = functional_gradient
         if entropy_regularization == 0:
             self._grad_func = self._ml_grad
         else:
@@ -282,6 +410,55 @@ class Generator(Algorithm):
                     optimizer=critic_optimizer)
             else:
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
+
+            if functional_gradient is not None:
+                if functional_gradient == 'rkhs':
+                    self._grad_func = self._rkhs_func_grad
+                    if force_fullrank:
+                        self._eps_dim = output_dim
+                    else:
+                        self._eps_dim = noise_dim
+                elif functional_gradient == 'minmax':
+                    assert force_fullrank is True, (
+                        "set force fullrank when using minmax functional" \
+                            " gradient!")
+                    self._grad_func = self._minmax_func_grad
+                    self._eps_dim = None
+                    self._critic_iter_num = critic_iter_num
+                    self._critic_l2_weight = critic_l2_weight
+                    self._minmax_resample = minmax_resample
+                    if critic_optimizer is None:
+                        critic_optimizer = alf.optimizers.Adam(lr=1e-3)
+                    self._critic = CriticAlgorithm(
+                        TensorSpec(shape=(noise_dim, )),
+                        output_dim=output_dim,
+                        hidden_layers=critic_hidden_layers,
+                        use_relu_mlp=True,
+                        use_bn=critic_use_bn,
+                        force_fullrank=force_fullrank,
+                        optimizer=critic_optimizer)
+                else:
+                    raise ValueError(
+                        'functional gradient only supports ``rkhs`` and' \
+                            '``minmax``'
+                    )
+
+                if noise_dim == output_dim:
+                    force_fullrank = False
+                self._force_fullrank = force_fullrank
+                self._fullrank_diag_weight = fullrank_diag_weight
+                self._pinverse_solve_iters = pinverse_solve_iters
+
+                if pinverse_optimizer is None:
+                    pinverse_optimizer = alf.optimizers.Adam(
+                        lr=1e-4, weight_decay=1e-5)
+
+                self._pinverse = PinverseAlgorithm(
+                    noise_dim,
+                    output_dim,
+                    eps_dim=self._eps_dim,
+                    hidden_size=pinverse_hidden_size,
+                    optimizer=pinverse_optimizer)
 
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=()))
@@ -313,7 +490,7 @@ class Generator(Algorithm):
         self._predict_net = None
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
-            self._predict_net = net.copy(name="Genrator_average")
+            self._predict_net = net.copy(name="Generator_average")
             self._predict_net_updater = common.get_target_updater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
@@ -344,7 +521,15 @@ class Generator(Algorithm):
         if self._predict_net and not training:
             outputs = self._predict_net(gen_inputs)[0]
         else:
-            outputs = self._net(gen_inputs)[0]
+            if self._functional_gradient is not None:
+                outputs = self._net(gen_inputs)[0]
+                if self._force_fullrank:
+                    extra_noise = torch.randn(
+                        noise.shape[0], self._output_dim - self._noise_dim)
+                    gen_inputs = torch.cat((gen_inputs, extra_noise), dim=-1)
+                    outputs += self._fullrank_diag_weight * gen_inputs
+            else:
+                outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
     def predict_step(self,
@@ -365,9 +550,7 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgStep:
-            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
-            - state: not used.
+            AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
         outputs, _ = self._predict(
             inputs=inputs,
@@ -430,11 +613,13 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgStep:
-            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
-            - info (LossInfo): loss
+            AlgorithmStep:
+                outputs: Tensor with shape (batch_size, dim)
+                info: LossInfo
         """
         outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
+        if self._functional_gradient:
+            outputs = (outputs, gen_inputs)
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
         loss, loss_propagated = self._grad_func(
@@ -444,13 +629,20 @@ class Generator(Algorithm):
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
             mi_loss = mi_step.info.loss
             loss_propagated = loss_propagated + self._mi_weight * mi_loss
+        if self._functional_gradient:
+            loss, pinverse_loss = loss
+        else:
+            pinverse_loss = ()
 
         return AlgStep(
             output=outputs,
             state=(),
             info=LossInfo(
                 loss=loss_propagated,
-                extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
+                extra=GeneratorLossInfo(
+                    generator=loss,
+                    mi_estimator=mi_loss,
+                    pinverse=pinverse_loss)))
 
     def _ml_grad(self,
                  inputs,
@@ -476,11 +668,12 @@ class Generator(Algorithm):
         width, _ = torch.median(dist, dim=0)
         width = width / np.log(len(dist))
         self._kernel_width_averager.update(width)
-
         return self._kernel_width_averager.get()
+        #return width
+
 
     def _rbf_func(self, x, y):
-        """Compute RBF kernel, used by svgd_grad. """
+        """Compute RGF kernel, used by svgd_grad. """
         d = (x - y)**2
         d = torch.sum(d, -1)
         h = self._kernel_width(d)
@@ -543,8 +736,7 @@ class Generator(Algorithm):
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
-        kappa_grad = kappa_grad.sum(0)  # [N, D]
+        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
 
         return -kappa_inv @ kappa_grad
 
@@ -671,6 +863,212 @@ class Generator(Algorithm):
         loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
 
         return loss, loss_propagated
+
+    def _pinverse_train_step(self, z, eps=None):
+        r"""Compute the loss for pinverse training. 
+        self._pinverse solves an inverse problem for the amortized 
+        functional gradient vi methods ``rkhs`` and ``minmax``. 
+        For ``rkhs``, it takes z' and :math:'\nabla_{z'}k(z', z)' as input 
+        and outputs
+        :math:`(\partial f / \partial z')^{-1} * \nabla_{z'}k(z', z)`.
+        The training loss is given by
+        :math:'\|()\partical f / \partial z')^T y - \nabla_{z'}k(z',z)',
+        where y denotes the output of self._pinverse.
+        The first term is computed by vector-jacobian product between the
+        generator f and output y.
+    
+        Args: 
+            z (torch.tensor): of size [N2, K], representing z'
+            eps (torch.tensor): of size [N2, N, D or K], representing
+                :math:'\nabla_{z'}k(z', z)', last dimension is D when 
+                self._force_fullrank is True, K otherwise. In general,
+                K is much less than D.
+        Returns:
+            pinverse_loss (float)
+        """
+        assert z.ndim == 2
+        assert z.shape[-1] == self._noise_dim or z.shape[-1] == self._output_dim
+        z_inputs = z[:, :self._noise_dim]
+
+        if self._functional_gradient == 'rkhs':
+            assert eps.ndim == 3
+            assert z.shape[0] == eps.shape[0]
+            assert eps.shape[-1] == self._eps_dim
+            z_inputs = torch.repeat_interleave(
+                z_inputs, eps.shape[1], dim=0)  # [N2*N, K]
+            eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1],
+                                     -1)  # [N2*N, D or K]
+            y = self._pinverse.predict_step((z_inputs, eps_inputs)).output
+            # [N2*N, D]
+            jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
+            if self._force_fullrank:
+                jac_y = torch.cat(
+                    (jac_y,
+                     torch.zeros(jac_y.shape[0],
+                                 self._output_dim - self._noise_dim)),
+                    dim=-1)
+                jac_y += self._fullrank_diag_weight * y  # [N2*N, D]
+            jac_y = jac_y.reshape(z.shape[0], eps.shape[1],
+                                  -1)  # [N2, N, D or K]
+            loss = torch.nn.functional.mse_loss(jac_y, eps)
+
+        elif self._functional_gradient == 'minmax':
+            assert eps is None
+            assert z.shape[-1] == self._output_dim
+            y = self._pinverse.predict_step(z_inputs).output  # [N2, D]
+            jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2, K]
+            if self._force_fullrank:
+                jac_y = torch.cat(
+                    (jac_y,
+                     torch.zeros(jac_y.shape[0],
+                                 self._output_dim - self._noise_dim)),
+                    dim=-1)
+                jac_y += self._fullrank_diag_weight * y  # [N2, D]
+            loss = torch.nn.functional.mse_loss(jac_y, z.detach())
+        else:
+            raise ValueError('pinverse only supports ``rkhs`` and ``minmax``')
+
+        return loss
+
+    def _rkhs_func_grad(self,
+                        inputs,
+                        outputs,
+                        loss_func,
+                        entropy_regularization,
+                        transform_func=None):
+        """
+        Compute the amortized functional gradient of generator, functional gradient
+        represented in an RKHS. Empirical expectation evaluated by a resampling
+        from the z space of the same batch size. 
+        Args:
+            inputs: None
+            outputs (tuple of Tensors): (outputs, gen_inputs) of size [N, D] and
+                [N, K] respectively, where N being the sample size, D being the 
+                output dim of ReluMLP and K being the input dim of the generator.
+            loss_func (callable)
+            entropy_regularization (float): tradeoff parameter
+            transform_func (not used)
+        """
+        assert inputs is None, (
+            '``rkhs`` does not support conditional generator')
+        outputs, gen_inputs = outputs  # [N, D], [N, D, K]
+        num_particles = outputs.shape[0]
+        outputs2, gen_inputs2 = self._predict(
+            batch_size=num_particles)  # [N2, D]
+
+        # [N2, N], [N2, N, D]
+        kernel_weight, kernel_grad = self._rbf_func2(gen_inputs2, gen_inputs)
+
+        # train pinverse
+        for _ in range(self._pinverse_solve_iters):
+            pinverse_loss = self._pinverse_train_step(gen_inputs2.detach(),
+                                                      kernel_grad.detach())
+            self._pinverse.update_with_gradient(LossInfo(loss=pinverse_loss))
+
+        # construct functional gradient via pinverse
+        gen_inputs2_batch = torch.repeat_interleave(
+            gen_inputs2, num_particles, dim=0).detach()
+        kernel_grad_batch = kernel_grad.reshape(num_particles * num_particles,
+                                                -1).detach()
+        J_inv_kernel_grad = self._pinverse.predict_step(
+            (gen_inputs2_batch, kernel_grad_batch)).output  # [N2*N, D]
+        J_inv_kernel_grad = J_inv_kernel_grad.reshape(
+            num_particles, num_particles, -1)  # [N2, N, D]
+
+        loss = loss_func(outputs2)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), outputs2)[0]  # [N2, D]
+        kernel_logp = torch.matmul(kernel_weight.t(),
+                                   loss_grad) / num_particles  # [N, D]
+
+        grad = kernel_logp - entropy_regularization * J_inv_kernel_grad.mean(0)
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=1)
+
+        return (loss, pinverse_loss), loss_propagated
+
+    def _func_critic_train_step(self, inputs, gen_outputs, loss_func):
+        """
+        Compute the loss for critic training.
+        """
+        assert inputs.shape[-1] == self._critic._output_dim
+        loss = loss_func(gen_outputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(),
+                                        gen_outputs)[0]  # [N, D]
+        critic_inputs = inputs[:, :self._critic._input_dim]
+        J_inv_z = self._pinverse.predict_step(critic_inputs).output
+        critic_outputs, vjp_critic = self._critic.predict_step(
+            inputs, J_inv_z).output  # [N, D], [N, D]
+        tr_critic_J = torch.einsum('bi,bi->b', vjp_critic, inputs)  # [N]
+
+        critic_loss_grad = (loss_grad * critic_outputs).sum(-1)  # [N]
+
+        l2_penalty = (critic_outputs * critic_outputs).sum(-1).mean()
+        l2_penalty = l2_penalty * self._critic_l2_weight
+
+        critic_loss = critic_loss_grad - tr_critic_J + l2_penalty
+
+        return critic_loss
+
+    def _minmax_func_grad(self,
+                          inputs,
+                          outputs,
+                          loss_func,
+                          entropy_regularization,
+                          transform_func=None):
+        """
+        Compute the amortized functional gradient of generator, functional gradient
+        represented in an L2, which involves a minmax optimization procedure similar
+        as the Fisher Neural Sampler. 
+        Args:
+            inputs: None
+            outputs (tuple of Tensors): (outputs, gen_inputs) of size [N, D] and
+                [N, K] respectively, where N being the sample size, D being the 
+                output dim of ReluMLP and K being the input dim of the generator.
+            loss_func (callable)
+            entropy_regularization (float): tradeoff parameter
+            transform_func (not used)
+        """
+        assert inputs is None, (
+            '``rkhs`` does not support conditional generator')
+        outputs, gen_inputs = outputs  # [N, D], [N, D or K]
+        num_particles = outputs.shape[0]
+
+        # train pinverse
+        for _ in range(self._pinverse_solve_iters):
+            # p_inputs = torch.randn_like(gen_inputs)
+            p_inputs = outputs.detach().clone()
+            p_inputs.requires_grad = True
+            pinverse_loss = self._pinverse_train_step(p_inputs)
+            self._pinverse.update_with_gradient(LossInfo(loss=pinverse_loss))
+
+        # optimize critic
+        for i in range(self._critic_iter_num):
+            if self._minmax_resample:
+                f_outputs, z_inputs = self._predict(
+                    batch_size=num_particles)
+            else:
+                z_inputs = gen_inputs.detach().clone()
+                z_inputs.requires_grad = True
+                f_outputs = outputs.detach().clone()
+                f_outputs.requires_grad = True
+            critic_loss = self._func_critic_train_step(z_inputs, f_outputs,
+                                                       loss_func)
+            self._critic.update_with_gradient(LossInfo(loss=critic_loss))
+
+        # construct functional gradient
+        loss = loss_func(outputs.detach())
+        critic_outputs = self._critic.predict_step(
+            gen_inputs[:, :self._noise_dim].detach()).output
+        loss_propagated = torch.sum(-critic_outputs.detach() * outputs, dim=-1)
+
+        return (loss, pinverse_loss), loss_propagated
 
     def _gfsf_grad(self,
                    inputs,

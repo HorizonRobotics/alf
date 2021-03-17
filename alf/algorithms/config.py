@@ -38,6 +38,9 @@ class TrainerConfig(object):
                  eval_interval=10,
                  epsilon_greedy=0.,
                  eval_uncertainty=False,
+                 hold_out_dataset=None,
+                 train_classes=None,
+                 hold_out_classes=None,
                  num_eval_episodes=10,
                  summary_interval=50,
                  update_counter_every_mini_batch=False,
@@ -122,7 +125,10 @@ class TrainerConfig(object):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
-            eval_uncertainty (bool): whether to evluate uncertainty after training
+            eval_uncertainty (bool): whether to evluate uncertainty after training.
+            hold_out_dataset (str): name of hold out dataset.
+            train_classes (list[int]): class indices to use for training.
+            hold_out_classes (list[int]): class indices to exclude from training.
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
             update_counter_every_mini_batch (bool): whether to update counter
@@ -200,6 +206,9 @@ class TrainerConfig(object):
             eval_interval=eval_interval,
             epsilon_greedy=epsilon_greedy,
             eval_uncertainty=eval_uncertainty,
+            hold_out_dataset=hold_out_dataset,
+            train_classes=train_classes,
+            hold_out_classes=hold_out_classes,
             num_eval_episodes=num_eval_episodes,
             summary_interval=summary_interval,
             update_counter_every_mini_batch=update_counter_every_mini_batch,

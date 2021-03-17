@@ -58,7 +58,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
@@ -82,8 +81,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
-                the reward(s).
             actor_network_ctor (Callable): Function to construct the actor network.
                 ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
                 ``action_spec`` as its arguments and return an actor network.
@@ -132,8 +129,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         """
 
         critic_network = critic_network_ctor(
-            input_tensor_spec=(observation_spec, action_spec),
-            output_tensor_spec=reward_spec)
+            input_tensor_spec=(observation_spec, action_spec))
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         if use_parallel_network:
@@ -153,11 +149,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_critics=critic_networks.state_spec))
 
         super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
+            observation_spec,
+            action_spec,
             train_state_spec=train_state_spec,
-            reward_weights=reward_weights,
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -171,6 +165,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
+
+        self._reward_weights = None
+        if reward_weights:
+            self._reward_weights = torch.tensor(
+                reward_weights, dtype=torch.float32)
 
         self._target_actor_network = actor_network.copy(
             name='target_actor_networks')
@@ -253,11 +252,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         target_q_values, target_critic_states = self._target_critic_networks(
             (exp.observation, target_action), state=state.target_critics)
 
-        if self.has_multidim_reward():
-            sign = self.reward_weights.sign()
-            target_q_values = (target_q_values * sign).min(dim=1)[0] * sign
-        else:
+        if self._num_critic_replicas > 1:
             target_q_values = target_q_values.min(dim=1)[0]
+        else:
+            target_q_values = target_q_values.squeeze(dim=1)
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
@@ -278,13 +276,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
-        if self.has_multidim_reward():
-            # Multidimensional reward: [B, replicas, reward_dim]
-            q_values = q_values * self.reward_weights
-        # min over replicas
-        q_value = q_values.min(dim=1)[0]
+        if q_values.ndim == 3:
+            # Multidimensional reward: [B, num_criric_replicas, reward_dim]
+            if self._reward_weights is None:
+                q_values = q_values.sum(dim=2)
+            else:
+                q_values = torch.tensordot(
+                    q_values, self._reward_weights, dims=1)
 
-        # This sum() will reduce all dims so q_value can be any rank
+        if self._num_critic_replicas > 1:
+            q_value = q_values.min(dim=1)[0]
+        else:
+            q_value = q_values.squeeze(dim=1)
+
         dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
