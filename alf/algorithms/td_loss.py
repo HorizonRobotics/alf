@@ -97,12 +97,10 @@ class TDLoss(nn.Module):
             LossInfo: with the ``extra`` field same as ``loss``.
         """
         if experience.reward.ndim == 3:
-            gamma = self._gamma
-            if gamma.ndim == 0:  # scalar
-                gamma = gamma.unsqueeze(0)
-            discounts = torch.ger(experience.discount.reshape(-1), gamma)
-            discounts = discounts.reshape(experience.discount.shape + (-1, ))
+            # [T, B, D] or [T, B, 1]
+            discounts = experience.discount.unsqueeze(-1) * self._gamma
         else:
+            # [T, B]
             discounts = experience.discount * self._gamma
 
         if self._lambda == 1.0:
