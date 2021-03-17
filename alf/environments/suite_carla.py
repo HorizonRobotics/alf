@@ -51,6 +51,10 @@ import torch
 
 try:
     import carla
+    from .carla_sensors import (
+        CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
+        LaneInvasionSensor, NavigationSensor, RadarSensor, World,
+        get_scaled_image_size, MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 except ImportError:
     carla = None
 
@@ -59,10 +63,6 @@ import alf.data_structures as ds
 from alf.utils import common
 from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
-from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
-                            IMUSensor, LaneInvasionSensor, NavigationSensor,
-                            RadarSensor, World, get_scaled_image_size,
-                            MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 
 def is_available():
