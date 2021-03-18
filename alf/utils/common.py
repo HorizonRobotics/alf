@@ -17,6 +17,7 @@ from absl import flags
 from absl import logging
 import collections
 from collections import OrderedDict
+import copy
 import functools
 from functools import wraps
 import gin
@@ -445,8 +446,8 @@ def get_conf_file():
     Returns:
         str: the name of the conf file. None if there is no conf file
     """
-    if not hasattr(flags.FLAGS, "conf") or not hasattr(flags.FLAGS,
-                                                       "gin_file"):
+    if not hasattr(flags.FLAGS, "conf") and not hasattr(
+            flags.FLAGS, "gin_file"):
         return None
 
     conf_file = getattr(flags.FLAGS, 'conf', None)
@@ -505,7 +506,7 @@ def summarize_config():
     inoperative_configs = alf.get_inoperative_configs()
     alf.summary.text('config/operative_config', _format(operative_configs))
     if inoperative_configs:
-        alf.summary.text('config/inoperative_config',
+        alf.summary.text('gin/inoperative_config',
                          _format(inoperative_configs))
 
 
@@ -1089,3 +1090,33 @@ def generate_alf_root_snapshot(alf_root, dest_path):
     alf_dirname = os.path.basename(alf_root)
     if alf_dirname != "alf":
         os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
+
+
+def get_alf_snapshot_env_vars(root_dir):
+    """Given a ``root_dir``, return modified env variable dict so that ``PYTHONPATH``
+    points to the ALF snapshot under this directory.
+    """
+    alf_repo = os.path.join(root_dir, "alf")
+    alf_cnest = os.path.join(alf_repo,
+                             "alf/nest/cnest")  # path to archived cnest.so
+    python_path = os.environ.get("PYTHONPATH", "")
+    python_path = ":".join([alf_repo, alf_cnest, python_path])
+    env_vars = copy.copy(os.environ)
+    env_vars.update({"PYTHONPATH": python_path})
+    return env_vars
+
+
+def format_specified_flags():
+    """Format all user specified FLAGS into a string."""
+    opts = []
+    for attr, flag in flags.FLAGS.__flags.items():
+        if not flag.using_default_value:
+            if flag.boolean:  # do not accept argument
+                if flag.value:
+                    option = '--' + attr
+                else:
+                    option = '--no' + attr
+            else:
+                option = '--%s=%s' % (attr, flag.value)
+            opts.append(option)
+    return opts

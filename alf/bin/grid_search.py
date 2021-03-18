@@ -25,12 +25,15 @@ To run grid search on DDPG for training gym `Pendulum`:
     --gin_param='create_environment.num_parallel_environments=8' \
     --alsologtostderr
 
+For using ALF conf, replace "--gin_file" with "--conf" and "--gin_param" with
+"--conf_param".
 """
 
 from absl import app
 from absl import flags
 from absl import logging
 from collections import Iterable
+import copy
 import gin
 import itertools
 import json
@@ -39,10 +42,13 @@ import os
 # `pathos.multiprocessing` provides a consistent interface with std lib `multiprocessing`
 # and it's more flexible
 from pathos import multiprocessing
+import pathlib
 import random
 import time
 import torch
 import traceback
+import subprocess
+import sys
 
 import alf
 from alf.bin.train import train_eval
@@ -50,6 +56,10 @@ from alf.utils import common
 
 flags.DEFINE_string('search_config', None,
                     'Path to the grid search config file.')
+flags.DEFINE_bool(
+    'snapshot_gridsearch_activated', False,
+    'Whether a snapshot has been generated for grid search. (ONLY '
+    'change this flag manually if you know what you are doing!')
 
 FLAGS = flags.FLAGS
 
@@ -89,10 +99,10 @@ class GridSearchConfig(object):
         repeats (int): each parameter combination will be repeated for so many
             times, with different random seeds.
         parameters (dict): a ``dict(param_name=param_value,)`` of the configured
-            search space. Each key ``param_name`` is a gin configurable argument
+            search space. Each key ``param_name`` is a gin/alf configurable argument
             string and the paired ``param_value`` must be an iterable python object
             or a ``str`` that can be evaluated to an iterable object. When
-            ``parameters`` is empty, the original gin conf won't be changed.
+            ``parameters`` is empty, the original conf file won't be changed.
 
     See ``alf/examples/ddpg_grid_search.json`` for an example.
     """
@@ -196,8 +206,8 @@ class GridSearch(object):
                            token_len=20,
                            max_len=255):
         """Generate a run name by writing abbr parameter key-value pairs in it,
-        for an easy curve comparison between different search runs without going
-        into the gin texts.
+        for an easy comparison between different search runs without going
+        into Tensorboard 'text' for run details.
 
         Args:
             parameters (dict): a dictionary of parameter configurations
@@ -258,10 +268,8 @@ class GridSearch(object):
         the configured space.
         """
 
-        # parsing gin configuration here to make all jobs have same copy
-        #   of base configuration (gin file may be changed occasionally)
-        gin_file = common.get_gin_file()
-        gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+        # This ``conf_file`` will be retrieved from ``root_dir``
+        assert FLAGS.conf is None and FLAGS.gin_file is None
 
         param_keys = self._conf.param_keys
         param_values = self._conf.param_values
@@ -291,6 +299,13 @@ class GridSearch(object):
         try:
             time.sleep(random.uniform(0, 3))
 
+            conf_file = common.get_conf_file()
+            # This is the snapshot stored in grid-search root dir
+            alf_repo = os.path.join(FLAGS.root_dir, "alf")
+            # We still need to generate a snapshot of ALF repo as ``<root_dir>/alf``
+            # for playing individual searching job later
+            common.generate_alf_root_snapshot(alf_repo, root_dir)
+
             device = device_queue.get()
             if self._conf.use_gpu:
                 os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
@@ -302,11 +317,26 @@ class GridSearch(object):
             logging.set_verbosity(logging.INFO)
 
             logging.info("Search parameters %s" % parameters)
-            with gin.unlock_config():
-                gin.parse_config(
-                    ['%s=%s' % (k, v) for k, v in parameters.items()])
-                gin.parse_config(
-                    "TrainerConfig.confirm_checkpoint_upon_crash=False")
+
+            if conf_file.endswith('.gin'):
+                common.parse_conf_file(conf_file)
+                # re-bind gin conf params
+                with gin.unlock_config():
+                    gin.parse_config(
+                        ['%s=%s' % (k, v) for k, v in parameters.items()])
+                    gin.parse_config(
+                        "TrainerConfig.confirm_checkpoint_upon_crash=False")
+            else:
+                # need to first pre_config before parsing the conf file
+                confs = copy.copy(parameters)
+                confs.update({
+                    'TrainerConfig.confirm_checkpoint_upon_crash': False
+                })
+                alf.pre_config(confs)
+                common.parse_conf_file(conf_file)
+
+            # init env random seed differently for each worker
+            alf.get_env()
             train_eval(FLAGS.ml_type, root_dir)
 
             device_queue.put(device)
@@ -315,9 +345,58 @@ class GridSearch(object):
             raise e
 
 
-def main(_):
+def search():
     FLAGS.alsologtostderr = True
     GridSearch(FLAGS.search_config).run()
+
+
+def launch_snapshot_gridsearch():
+    """This gridsearch function uses a cached ALF snapshot to generate grid-search
+    runs. Because some search jobs might stay in the queue until resources are
+    available, the cache is used to make sure that when a search job is launched,
+    it's actually using the right ALF version.
+    """
+    root_dir = os.path.expanduser(FLAGS.root_dir)
+    alf_repo = os.path.join(root_dir, "alf")
+
+    # write the current conf file as
+    # ``<root_dir>/alf_config.py`` or ``<root_dir>/configured.gin``
+    common.write_config(root_dir)
+
+    # generate a snapshot of ALF repo as ``<root_dir>/alf``
+    # ../<ALF_REPO>/alf/bin/grid_search.py
+    alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+    common.generate_alf_root_snapshot(alf_root, root_dir)
+
+    # point the grid search to the snapshot paths
+    env_vars = common.get_alf_snapshot_env_vars(root_dir)
+
+    flags = common.format_specified_flags()
+    # remove the conf file option since we will retrieve it from ``root_dir``
+    flags = [f for f in flags if not ('--conf=' in f or '--gin_file' in f)]
+    flags.append('--snapshot_gridsearch_activated')
+
+    args = ['python', '-m', 'alf.bin.grid_search'] + flags
+
+    try:
+        print(
+            "=== Grid searching using an ALF snapshot at '%s' ===" % alf_repo)
+        subprocess.check_call(
+            " ".join(args),
+            env=env_vars,
+            stdout=sys.stdout,
+            stderr=sys.stdout,
+            shell=True)
+    except subprocess.CalledProcessError as e:
+        # No need to output anything
+        pass
+
+
+def main(_):
+    if FLAGS.snapshot_gridsearch_activated:
+        search()
+    else:
+        launch_snapshot_gridsearch()
 
 
 if __name__ == '__main__':

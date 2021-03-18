@@ -156,24 +156,10 @@ def launch_snapshot_play():
     """
     root_dir = os.path.expanduser(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
-    alf_cnest = os.path.join(alf_repo,
-                             "alf/nest/cnest")  # path to archived cnest.so
-    python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_cnest, python_path])
-    env_vars = copy.copy(os.environ)
-    env_vars.update({"PYTHONPATH": python_path})
 
-    flags = []
-    for attr, flag in FLAGS.__flags.items():
-        if not flag.using_default_value:
-            if flag.boolean:  # do not accept argument
-                if flag.value:
-                    option = '--' + attr
-                else:
-                    option = '--no' + attr
-            else:
-                option = '--%s=%s' % (attr, flag.value)
-            flags.append(option)
+    env_vars = common.get_alf_snapshot_env_vars(root_dir)
+
+    flags = common.format_specified_flags()
     flags.append('--snapshot_play_activated')
 
     args = ['python', '-m', 'alf.bin.play'] + flags

@@ -473,7 +473,7 @@ def _make_wrapper(fn, configs, signature, has_self):
                 continue
             elif param.kind == Parameter.POSITIONAL_ONLY:
                 if config.is_configured():
-                    unspecified_positional_args.append(config.get_value)
+                    unspecified_positional_args.append(config.get_value())
                     config.set_used()
             elif name not in kwargs and param.kind in (
                     Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY):
@@ -661,7 +661,7 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
 
 
 def define_config(name, default_value):
-    """Define a configurable value with givien ``default_value``.
+    """Define a configurable value with given ``default_value``.
 
     Its value can be retrieved by ``get_config_value()``.
 
