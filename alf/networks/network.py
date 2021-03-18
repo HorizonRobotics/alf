@@ -98,11 +98,13 @@ class Network(nn.Module):
     Base extension to nn.Module to simplify copy operations.
     """
 
-    def __init__(self, input_tensor_spec, name="Network"):
+    def __init__(self, input_tensor_spec, state_spec=(), name="Network"):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input.
+            state_spec (nested TensorSpec): the (nested) tensor spec of the state
+                of the network.
             name (str):
         """
         super(Network, self).__init__()
@@ -115,6 +117,7 @@ class Network(nn.Module):
         # Default value is ``False`` and can be changed by calling the
         # ``singleton`` method
         self._singleton_instance = False
+        self._state_spec = state_spec
 
     def _test_forward(self):
         """Generate a dummy input according to `nested_input_tensor_spec` and
@@ -201,7 +204,7 @@ class Network(nn.Module):
 
         Subclass should override this to return the correct ``state_spec``.
         """
-        return ()
+        return self._state_spec
 
     @property
     def is_distribution_output(self):

@@ -47,15 +47,13 @@ class LSTMCell(Network):
             input_size (int): The number of expected features in the input `x`
             hidden_size (int): The number of features in the hidden state `h`
         """
-        super().__init__(input_tensor_spec=alf.TensorSpec((input_size, )))
+        state_spec = (alf.TensorSpec((hidden_size, )),
+                      alf.TensorSpec((hidden_size, )))
+        super().__init__(
+            input_tensor_spec=alf.TensorSpec((input_size, )),
+            state_spec=state_spec)
         self._cell = nn.LSTMCell(
             input_size=input_size, hidden_size=hidden_size)
-        self._state_spec = (alf.TensorSpec((hidden_size, )),
-                            alf.TensorSpec((hidden_size, )))
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
     def forward(self, input, state):
         h_state, c_state = self._cell(input, state)
@@ -83,13 +81,10 @@ class GRUCell(Network):
             input_size (int): The number of expected features in the input `x`
             hidden_size (int): The number of features in the hidden state `h`
         """
-        super().__init__(input_tensor_spec=alf.TensorSpec((input_size, )))
+        super().__init__(
+            input_tensor_spec=alf.TensorSpec((input_size, )),
+            state_spec=alf.TensorSpec((hidden_size, )))
         self._cell = nn.GRUCell(input_size, hidden_size)
-        self._state_spec = alf.TensorSpec((hidden_size, ))
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
     def forward(self, input, state):
         h = self._cell(input, state)
@@ -199,11 +194,9 @@ class TemporalPool(Network):
             input_size = (input_size, )
         shape = (stack_size, ) + input_size
         input_tensor_spec = alf.TensorSpec(input_size, dtype=dtype)
-        super().__init__(input_tensor_spec)
         self._pooling_size = pooling_size
         if pooling_size == 1:
-            self._state_spec = alf.TensorSpec((stack_size - 1, ) + input_size,
-                                              dtype)
+            state_spec = alf.TensorSpec((stack_size - 1, ) + input_size, dtype)
         elif mode == 'skip':
             self._pool_func = self._skip_pool
             pool_state_spec = ()
@@ -220,13 +213,10 @@ class TemporalPool(Network):
             raise ValueError("Unknown mode '%s'" % mode)
 
         if pooling_size > 1:
-            self._state_spec = (alf.TensorSpec(shape, input_tensor_spec.dtype),
-                                pool_state_spec,
-                                alf.TensorSpec((), dtype=torch.int64))
-
-    @property
-    def state_spec(self):
-        return self._state_spec
+            state_spec = (alf.TensorSpec(shape, input_tensor_spec.dtype),
+                          pool_state_spec, alf.TensorSpec((),
+                                                          dtype=torch.int64))
+        super().__init__(input_tensor_spec, state_spec=state_spec)
 
     def forward(self, x, state):
         if self._pooling_size == 1:

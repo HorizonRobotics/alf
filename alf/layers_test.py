@@ -626,6 +626,23 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         # right by one step
         self.assertTensorClose(out[..., 1:], signal[..., :-1], epsilon=1e-6)
 
+    def test_sequential(self):
+        net = alf.layers.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 12),
+            c=(('a', 'b'), alf.layers.NestConcat()))
+
+        batch_size = 24
+        x = torch.randn((batch_size, 4))
+        y = net(x)
+
+        x1 = net[0](x)
+        x2 = net[1](x1)
+        x3 = net[2](x2)
+        x4 = net[3]((x2, x3))
+        self.assertEqual(x4, y)
+
 
 if __name__ == "__main__":
     alf.test.main()

@@ -67,7 +67,7 @@ class EmbeddingPreprocessor(Network):
                 used by default.
             name (str):
         """
-        super().__init__(input_tensor_spec, name)
+        super().__init__(input_tensor_spec, name=name)
         if input_tensor_spec.is_discrete:
             assert isinstance(input_tensor_spec, BoundedTensorSpec)
             N = input_tensor_spec.maximum - input_tensor_spec.minimum + 1
