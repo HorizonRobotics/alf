@@ -503,7 +503,7 @@ def summarize_config():
     inoperative_configs = alf.get_inoperative_configs()
     alf.summary.text('config/operative_config', _format(operative_configs))
     if inoperative_configs:
-        alf.summary.text('gin/inoperative_config',
+        alf.summary.text('config/inoperative_config',
                          _format(inoperative_configs))
 
 
