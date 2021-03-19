@@ -202,16 +202,13 @@ def _tokenize(s):
         return ""
     s = s.replace("--gin_param=", "")
     s = s.replace("/home/lezhao/tmp/", "")
-    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.num_subgoals=",
-                  "numsg_")
+    s = s.replace("SubgoalPlanningGoalGenerator.num_subgoals=", "numsg_")
     s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.plan_cost_ln_norm=",
                   "sglnnorm_")
     s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.sg_leng_penalty=",
                   "sglpenal_")
     s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.max_replan_steps=",
                   "mps_")
-    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.infer_yaw=True",
-                  "inferyaw")
     s = s.replace("suite_socialbot.load.max_episode_steps=", "mes_")
     s = s.replace("CEMOptimizer.iterations=", "cemiters_")
     s = s.replace("GoalTask.min_distance=", "mindist_")

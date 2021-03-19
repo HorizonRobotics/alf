@@ -15,6 +15,7 @@
 from absl import logging
 import copy
 import gin
+import math
 import numpy as np
 import functools
 
@@ -381,6 +382,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  use_cvae=False,
                  use_projection_net=False,
                  vae_weight=0.,
+                 vae_weight_adaptive=False,
                  vae_penalize_above=-1.e8,
                  vae_threshold_adaptive=False,
                  vae_bias=0.,
@@ -443,6 +445,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             use_cvae (bool): whether to use conditional VAE to predict goal given obs.
             use_projection_net (bool): whether to use projection network after VAE.
             vae_weight (float): weight of vae cost in trajectory cost.
+            vae_weight_adaptive (bool): if True, use log(her value mean) and her_vae_loss
+                to compute a weight for combining vae loss with log(value).
             vae_penalize_above (float): penalize vae_cost only if above this threshold.
             vae_threshold_adaptive (bool): adaptive threshold based on mean + 3 * std of
                 vae loss distribution.
@@ -579,6 +583,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if bound_goals:
             assert normalize_goals
         self._vae = vae
+        self._vae_weight_adaptive = vae_weight_adaptive
+        self._her_value_normalizer = None
+        if vae and vae_weight_adaptive:
+            assert vae_threshold_adaptive, "this requires vae_loss_normalizer."
+            self._her_value_normalizer = \
+                alf.utils.normalizers.ScalarWindowNormalizer(
+                    name="planner/her_value_normalizer")
         self._vae_threshold_adaptive = vae_threshold_adaptive
         self._vae_loss_normalizer = None
         if vae and vae_threshold_adaptive:
@@ -725,9 +736,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 and self._vae_loss_normalizer._mean_averager._buf.current_size
                 > 0):
             mean = self._vae_loss_normalizer._mean_averager.get()
-            # mean + 3 * stddev as the adaptive threshold.
-            self._vae_penalize_above = (mean + 3. * torch.sqrt(
-                self._vae_loss_normalizer._m2_averager.get() - mean**2))
+            stddev = torch.sqrt(self._vae_loss_normalizer._m2_averager.get() -
+                                mean**2)
+            # mean + 1.5 * stddev as the adaptive threshold.
+            if self._vae_threshold_adaptive:
+                self._vae_penalize_above = (mean + 1.5 * stddev)
+            if self._her_value_normalizer:
+                her_mean = self._her_value_normalizer._mean_averager.get()
+                self._vae_weight = 0.2 * math.log(her_mean) / math.log(
+                    0.99) / stddev
+
         loss += torch.where(loss > self._vae_penalize_above,
                             torch.ones(1) * self._vae_bias, torch.zeros(1))
         loss = torch.max(self._vae_penalize_above, loss)
@@ -1297,7 +1315,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             elif curr_goal_skipped & advanced_goal:
                 logging.info("Skipped Goal (%s):%d in %d steps at\nachv: %s",
                              stage, current_subgoal_index, sg_steps, ach_str)
-            elif ~goal_achieved & (
+            elif ~goal_achieved & ~curr_goal_skipped & (
                     current_subgoal_index == self._num_subgoals + 1):
                 logging.info("Exiting Final Goal (%s) at\nachv: %s", stage,
                              ach_str)
@@ -1420,6 +1438,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self._vae_loss_normalizer:
             alf.summary.scalar("planner/vae_thd_adaptive",
                                self._vae_penalize_above)
+        if self._her_value_normalizer:
+            alf.summary.scalar("planner/vae_weight_adaptive", self._vae_weight)
         if not hasattr(
                 experience.state,
                 "goal_generator") or experience.state.goal_generator is ():

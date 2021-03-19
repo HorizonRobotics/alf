@@ -25,29 +25,33 @@ import alf.algorithms.vae
 encoding_dim=10
 
 vae/EncodingNetwork.input_tensor_spec=@vae_output_spec(%observation_spec)
+vae/EncodingNetwork.preprocessing_combiner=@alf.nest.utils.NestConcat()
 vae/EncodingNetwork.activation=torch.tanh_
 vae/EncodingNetwork.last_layer_size=%encoding_dim
 vae/EncodingNetwork.last_activation=@identity
 VariationalAutoEncoder.z_dim=%encoding_dim
-#VariationalAutoEncoder.preprocess_network=@vae/EncodingNetwork()  # Commented out for CVAE
+# VariationalAutoEncoder.preprocess_network=@vae/EncodingNetwork()  # Comment out for CVAE
 vae/EncodingNetwork.name="vae.encoding_net"
 
 # additional setup for conditional VAE:
 vae_output_dims.include_obs_dims=False
 vae_output_spec.include_obs_dims=False
 pr/EncodingNetwork.input_tensor_spec=@cvae_prior_spec(%observation_spec)
+pr/EncodingNetwork.preprocessing_combiner=@alf.nest.utils.NestConcat()
 pr/EncodingNetwork.activation=torch.tanh_
 pr/EncodingNetwork.last_layer_size=@cvae_output_dims(%encoding_dim)
 pr/EncodingNetwork.last_activation=@identity
 pr/EncodingNetwork.name="z_prior.encoding_net"
 z_net=@pr/EncodingNetwork()
-VariationalAutoEncoder.z_prior_network=%z_net
 
 cvae/EncodingNetwork.input_tensor_spec=@cvae_input_spec(%observation_spec, %z_net)
+cvae/EncodingNetwork.preprocessing_combiner=@alf.nest.utils.NestConcat()
 cvae/EncodingNetwork.activation=torch.tanh_
 cvae/EncodingNetwork.last_layer_size=%encoding_dim
 cvae/EncodingNetwork.last_activation=@identity
 cvae/EncodingNetwork.name="c_vae.encoding_net"
+
+VariationalAutoEncoder.z_prior_network=%z_net
 VariationalAutoEncoder.preprocess_network=@cvae/EncodingNetwork()
 
 

@@ -424,6 +424,18 @@ class Agent(OnPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: AgentInfo):
         """Calculate loss."""
+        if self._goal_generator and hasattr(
+                self._goal_generator, '_her_value_normalizer'
+        ) and self._goal_generator._her_value_normalizer and isinstance(
+                self._rl_algorithm,
+                alf.algorithms.ddpg_algorithm.DdpgAlgorithm):
+            q_values = train_info.rl.critic.q_values
+            if self._rl_algorithm._num_critic_replicas > 1:
+                q_value = q_values.min(dim=2)[0]
+            else:
+                q_value = q_values.squeeze(dim=2)
+            self._goal_generator._her_value_normalizer.update(
+                q_value[:-1, experience.batch_info.her])
         if experience.rollout_info == ():
             experience = experience._replace(
                 reward=self.calc_training_reward(experience.reward,
