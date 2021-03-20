@@ -18,7 +18,6 @@ You can visualize playing of the trained model by running:
 cd ${PROJECT}/alf/examples;
 python -m alf.bin.play \
   --root_dir=~/tmp/cart_pole \
-  --gin_file=ac_cart_pole.gin \
   --alsologtostderr
 ```
 
@@ -27,12 +26,14 @@ python -m alf.bin.play \
 from absl import app
 from absl import flags
 from absl import logging
+import copy
 import gin
 import os
+import subprocess
+import sys
 
 import torch
 
-from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.trainers import policy_trainer
@@ -88,6 +89,7 @@ def main(_):
     alf.config('create_environment', nonparallel=True)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
+    assert conf_file is not None, "Conf file not found! Check your root_dir"
     try:
         common.parse_conf_file(conf_file)
     except Exception as e:
@@ -133,9 +135,57 @@ def main(_):
         alf.close_env()
 
 
+def launch_snapshot_play(_):
+    """This play function uses historical ALF snapshot for playing a trained
+    model, inconsistent with the code snapshot that trains the model.
+
+    In the newer version of ``train.py``, a ALF snapshot is saved to ``root_dir``
+    right before the training begins. So this function prepends ``root_dir`` to
+    ``PYTHONPATH`` to allow using the snapshot ALF repo in that place.
+
+    Note that for any old training ``root_dir``, this won't change the ALF repo
+    version play uses, and also doesn't break anything.
+    """
+    root_dir = os.path.expanduser(FLAGS.root_dir)
+    alf_repo = os.path.join(root_dir, "alf")
+    python_path = os.environ.get("PYTHONPATH", "")
+    python_path = ":".join([alf_repo, python_path])
+    env_vars = copy.copy(os.environ)
+    env_vars.update({"PYTHONPATH": python_path, "ALF_SNAPSHOT_RUN": "1"})
+
+    flags = []
+    for attr, flag in FLAGS.__flags.items():
+        if not flag.using_default_value:
+            if flag.boolean:  # do not accept argument
+                if flag.value:
+                    option = '--' + attr
+                else:
+                    option = '--no' + attr
+            else:
+                option = '--%s=%s' % (attr, flag.value)
+            flags.append(option)
+
+    args = ['python', '-m', 'alf.bin.play'] + flags
+    print("<======== Entering ALF snapshot play ========>")
+    try:
+        subprocess.check_call(
+            " ".join(args),
+            env=env_vars,
+            stdout=sys.stdout,
+            stderr=sys.stdout,
+            shell=True)
+    except subprocess.CalledProcessError as e:
+        # No need to output anything
+        pass
+
+
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
-    if torch.cuda.is_available():
-        alf.set_default_device("cuda")
-    app.run(main)
+    snapshot_play = int(os.environ.get("ALF_SNAPSHOT_RUN", "0"))
+    if not snapshot_play:
+        app.run(launch_snapshot_play)
+    else:
+        logging.set_verbosity(logging.INFO)
+        if torch.cuda.is_available():
+            alf.set_default_device("cuda")
+        app.run(main)
