@@ -137,7 +137,7 @@ def main(_):
 
 def launch_snapshot_play(_):
     """This play function uses historical ALF snapshot for playing a trained
-    model, inconsistent with the code snapshot that trains the model.
+    model, consistent with the code snapshot that trains the model.
 
     In the newer version of ``train.py``, a ALF snapshot is saved to ``root_dir``
     right before the training begins. So this function prepends ``root_dir`` to
