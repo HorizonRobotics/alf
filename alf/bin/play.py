@@ -166,7 +166,7 @@ def launch_snapshot_play(_):
             flags.append(option)
 
     args = ['python', '-m', 'alf.bin.play'] + flags
-    print("<======== Entering ALF snapshot play ========>")
+    print("vvvvvvvvv Beginning of ALF snapshot play vvvvvvvvvv")
     try:
         subprocess.check_call(
             " ".join(args),
@@ -177,12 +177,13 @@ def launch_snapshot_play(_):
     except subprocess.CalledProcessError as e:
         # No need to output anything
         pass
+    print("^^^^^^^^^ End of ALF snapshot play ^^^^^^^^^^^")
 
 
 if __name__ == '__main__':
     flags.mark_flag_as_required('root_dir')
-    snapshot_play = int(os.environ.get("ALF_SNAPSHOT_RUN", "0"))
-    if not snapshot_play:
+    snapshot_play_activated = int(os.environ.get("ALF_SNAPSHOT_RUN", "0"))
+    if not snapshot_play_activated:
         app.run(launch_snapshot_play)
     else:
         logging.set_verbosity(logging.INFO)

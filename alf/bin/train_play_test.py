@@ -297,6 +297,7 @@ class TrainPlayTest(alf.test.TestCase):
             'python3',
             '-m',
             'alf.bin.train',
+            '--nostore_snapshot',
             '--root_dir=%s' % root_dir,
             '--conf_param=TrainerConfig.random_seed=1',
             '--gin_param=TrainerConfig.random_seed=1'  # TODO: remove --gin_param
