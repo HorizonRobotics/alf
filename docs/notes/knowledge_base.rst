@@ -17,11 +17,11 @@ Besides calling ``RLAlgorithm.train_iter()``, it also takes care of things like
 checkpointing, etc.
 
 So if you want to get a good understanding of ALF, you can go directly to
-read the source code of `train_iter() <../api/alf.algorithms.html#alf.algorithms.rl_algorithm>`_.
+read the source code of `train_iter() <../api/alf.algorithms.html#alf.algorithms.rl_algorithm.RLAlgorithm.train_iter>`_.
 Depending on whether the algorithm is on-policy or off-policy, ``train_iter()``
 calls ``_train_iter_on_policy()`` or ``_train_iter_off_policy()`` respectively. Each of these
-is implemented in `OnPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.on_policy_algorithm>`_
-and `OffPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.off_policy_algorithm>`_.
+is implemented in `OnPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.on_policy_algorithm.OnPolicyAlgorithm>`_
+and `OffPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.off_policy_algorithm.OffPolicyAlgorithm>`_.
 
 
 Debugging using VScode
@@ -219,17 +219,17 @@ which converts image with channel-last format to channel-first format. ALF
 uses channel-first format for its convolution layers.
 
 3. Wrap the gym environment as a non-batched ``AlfEnvironment`` using
-`AlfGymWrapper <../api/alf.environments.html#alf.environments.alf_gym_wrappers.AlfGymWrapper>`_.
+`AlfGymWrapper <../api/alf.environments.html#alf.environments.alf_gym_wrapper.AlfGymWrapper>`_.
 All of its inputs/outputs are ``numpy.ndarray``.
 
-4. Apply a series of `ALF environment wrappers <../api/alf.environments.html#alf.environments.alf_wrappers>`_.
+4. Apply a series of `ALF environment wrappers <../api/alf.environments.html#module-alf.environments.alf_wrappers>`_.
 All of its inputs/outputs are ``numpy.ndarray``.
 
 5. Wrap the non-batched ALF environmnet with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
 It provides an interface using CPU torch.Tensor and interacts with the underline
 ``AlfEnvironment`` using ``numpy.ndarray``.
 
-6. Use `ParallelEnvironment <../api/alf.environments.html#alf.environments.parallel_environment.ParallelEnvironment>`_
+6. Use `ParallelAlfEnvironment <../api/alf.environments.html#alf.environments.parallel_environment.ParallelAlfEnvironment>`_
 to manage a set of ``ProcessEnvironment``s and obtain a batched ``ALfEnvironmnet``.
 During ``step()``, ``ParallelEnvironment`` unstacks the action to get individual
 actions and call ``step()`` of each ``ProcessEnvironment``. After obtaining all
@@ -238,13 +238,13 @@ batched ``TimeStep`` and converts it to the default device. The inter-process
 communication takes place inside ``ProcessEnvironment``.
 
 The ``load()`` function from various envrinment suites such as `suite_gym <../api/alf.environments.html#alf.environments.suite_gym.load>`_
-or `suite_gym <../api/alf.environments.html#alf.environments.suite_socialbot.load>`_
+or `suite_socialbot <../api/alf.environments.html#alf.environments.suite_socialbot.load>`_
 handles steps 1-4 for each of these environment suites. `alf.environments.utils.create_environment <../api/alf.environments.html#alf.environments.utils.create_environment>`_
 handles all the above steps by creating ``ParallelEnvironment`` using the ``load()``
 function.
 
 It is possible to directly implement a batched ``AlfEnvironment`` without following
-the above steps. `suite_carla <../api/alf.environments.html#alf.environments.suite_carla>`_
+the above steps. `suite_carla <../api/alf.environments.html#module-alf.environments.suite_carla>`_
 is such an example.
 
 
