@@ -2216,14 +2216,20 @@ class GFT(nn.Module):
 class GetFields(nn.Module):
     """Get the fields from a nested input."""
 
-    def __init__(self, fields):
+    def __init__(self, field_nest=None, **fields):
         """
         Args
-            fields (nested str): the path of the fields to be retrieved. Each str
+            field_nest (nested str): the path of the fields to be retrieved. Each str
                 in ``fields`` represents a path to the field with '.' separating
                 the field name at different level.
+            fields (str): A simpler way of specifying ``field_nest`` when it is
+                a dict. ``GetFields(a="field_a", b="field_b")`` is equivalent to
+                ``GetFields(dict(a="field_a", b="field_b"))``.
         """
         super().__init__()
+        if field_nest is not None:
+            assert not fields
+            fields = field_nest
         self._fields = fields
 
     def forward(self, input):
@@ -2300,12 +2306,18 @@ class Branch(nn.Module):
 
     """
 
-    def __init__(self, modules):
+    def __init__(self, module_nest=None, **modules):
         """
         Args:
-            modules (nested nn.Module): a nest of ``torch.nn.Module``
+            module_nest (nested nn.Module): a nest of ``torch.nn.Module``
+            modules (nn.Module | Callable): a simpler way of specifying ``module_nest``
+                when it is a dict. ``Branch(a=model_a, b=module_b)``
+                is equivalent to ``Branch(dict(a=module_a, b=module_b))``
         """
         super().__init__()
+        if module_nest is not None:
+            assert not modules
+            modules = module_nest
         has_network = any(
             alf.nest.flatten(
                 alf.nest.map_structure(

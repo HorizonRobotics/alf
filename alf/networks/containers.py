@@ -243,15 +243,25 @@ class Branch(Network):
 
     """
 
-    def __init__(self, modules, input_tensor_spec=None, name="Branch"):
+    def __init__(self,
+                 module_nest=None,
+                 input_tensor_spec=None,
+                 name="Branch",
+                 **modules):
         """
         Args:
-            modules (nested nn.Module | Callable): a nest of ``torch.nn.Module``
+            module_nest (nested nn.Module | Callable): a nest of ``torch.nn.Module``
                 ``alf.nn.Network`` or ``Callable``
+            modules (nn.Module | Callable): a simpler way of specifying ``module_nest``
+                when it is a dict. ``Branch(a=model_a, b=module_b)``
+                is equivalent to ``Branch(dict(a=module_a, b=module_b))``
             input_tensor_spec (nested TensorSpec): must be provided if it cannot
                 be inferred from any one of ``modules``
             name (str):
         """
+        if module_nest is not None:
+            assert not modules
+            modules = module_nest
         if input_tensor_spec is None:
             specs = list(map(get_input_tensor_spec, alf.nest.flatten(modules)))
             specs = list(filter(lambda s: s is not None, specs))
