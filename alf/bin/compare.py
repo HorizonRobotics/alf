@@ -90,12 +90,12 @@ def _play_cmd(root_dir, seed, mp4_f, gin):
 
 
 def _get_metric(pattern, buffer, log_file=None):
-    match = re.search(pattern, buffer)
+    matches = re.findall(pattern, buffer)
     if log_file:
-        assert match, "{} not found in {}, re-run?".format(pattern, log_file)
-    if not match:
+        assert matches, "{} not found in {}, re-run?".format(pattern, log_file)
+    if not matches:
         return None
-    return "{:.2f}".format(float(match.group(1)))
+    return "{:.2f}".format(float(matches[-1]))
 
 
 def _get_avg(data, metric, i):

@@ -586,16 +586,20 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._vae_weight_adaptive = vae_weight_adaptive
         self._her_value_normalizer = None
         if vae and vae_weight_adaptive:
-            assert vae_threshold_adaptive, "this requires vae_loss_normalizer."
             self._her_value_normalizer = \
                 alf.utils.normalizers.ScalarWindowNormalizer(
                     name="planner/her_value_normalizer")
+            if vae_weight == 0:
+                vae_weight = 1.
+        self._vae_weight = vae_weight
         self._vae_threshold_adaptive = vae_threshold_adaptive
         self._vae_loss_normalizer = None
-        if vae and vae_threshold_adaptive:
+        if vae and (vae_threshold_adaptive or vae_weight_adaptive):
             self._vae_loss_normalizer = \
                 alf.utils.normalizers.ScalarWindowNormalizer(
                     name="planner/vae_loss_normalizer")
+        self._vae_penalize_above = torch.tensor(
+            vae_penalize_above, dtype=torch.float32)
         self._use_cvae = use_cvae
         self._use_projection_net = use_projection_net
         self._projection_net = None
@@ -603,9 +607,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             input_dims = vae_output_dims(observation_spec, aux_dim)
             self._projection_net = StableNormalProjectionNetwork(
                 input_dims, TensorSpec((input_dims // 2, )), squash_mean=False)
-        self._vae_weight = vae_weight
-        self._vae_penalize_above = torch.tensor(
-            vae_penalize_above, dtype=torch.float32)
         self._vae_bias = vae_bias
         self._concat = alf.nest.utils.NestConcat()
         self._vae_samples = vae_samples
@@ -740,11 +741,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                 mean**2)
             # mean + 1.5 * stddev as the adaptive threshold.
             if self._vae_threshold_adaptive:
-                self._vae_penalize_above = (mean + 1.5 * stddev)
-            if self._her_value_normalizer:
+                self._vae_penalize_above = mean + 1.5 * stddev
+            if self._vae_weight_adaptive:
                 her_mean = self._her_value_normalizer._mean_averager.get()
-                self._vae_weight = 0.2 * math.log(her_mean) / math.log(
-                    0.99) / stddev
+                self._vae_weight = 0.1 * math.log(her_mean) / math.log(
+                    0.99) / (stddev + 1.)
 
         loss += torch.where(loss > self._vae_penalize_above,
                             torch.ones(1) * self._vae_bias, torch.zeros(1))
@@ -1315,7 +1316,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             elif curr_goal_skipped & advanced_goal:
                 logging.info("Skipped Goal (%s):%d in %d steps at\nachv: %s",
                              stage, current_subgoal_index, sg_steps, ach_str)
-            elif ~goal_achieved & ~curr_goal_skipped & (
+            elif ~goal_achieved & advanced_goal & ~curr_goal_skipped & (
                     current_subgoal_index == self._num_subgoals + 1):
                 logging.info("Exiting Final Goal (%s) at\nachv: %s", stage,
                              ach_str)
