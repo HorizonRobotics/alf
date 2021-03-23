@@ -114,7 +114,7 @@ We can also incorporate other features in a similar fashion (*e.g.*
 Description
 -----------------
 Inplace operator can be used in some cases to reduce memory usage.
-However, inpalce operator should be used with care as suggested in the `PyTorch
+However, inplace operator should be used with care as suggested in the `PyTorch
 Doc <https://pytorch.org/docs/master/notes/autograd.html#in-place-operations-with-autograd>`_.
 A common scenario that is relatively safe for using inplace operator is the
 activation functions.

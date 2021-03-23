@@ -26,6 +26,8 @@ from alf.utils.normalizers import AdaptiveNormalizer
 
 @alf.configurable
 class TDLoss(nn.Module):
+    """Temporal difference loss."""
+
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
@@ -33,19 +35,35 @@ class TDLoss(nn.Module):
                  normalize_target=False,
                  debug_summaries=False,
                  name="TDLoss"):
-        r"""Create a TDLoss object.
-
+        r"""
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
-            :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)`
+
+        .. math::
+
+          G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)
+
         If ``td_lambda`` = 1, the target for step t is :math:`G_{t:T}`.
+
         If ``td_lambda`` = 0, the target for step t is :math:`G_{t:t+1}`
+
         If 0 < ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
-            :math:`G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}`
+
+        .. math::
+
+            G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}
+
         There is a simple relationship between :math:`\lambda`-return and
         the generalized advantage estimation :math:`\hat{A}^{GAE}_t`:
-            :math:`G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)`
+
+        .. math::
+
+            G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)
+
         where the generalized advantage estimation is defined as:
-            :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
+
+        .. math::
+
+            \hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))
 
         References:
 

@@ -33,18 +33,18 @@ class ParVIAlgorithm(Algorithm):
     """ParVIAlgorithm
 
     ParVIAlgorithm maintains a set of particles that keep chasing some target
-    distribution. Two particle-based variational inference (par_vi) methods 
+    distribution. Two particle-based variational inference (par_vi) methods
     are implemented:
 
-        1. Stein Variational Gradient Descent (SVGD):
+    1. Stein Variational Gradient Descent (SVGD):
 
-           Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
-           A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+       Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent:
+       A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
-        2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
+    2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
 
-           Liu, Chang, et al. "Understanding and accelerating particle-based 
-           variational inference." International Conference on Machine Learning. 2019.
+       Liu, Chang, et al. "Understanding and accelerating particle-based
+       variational inference." International Conference on Machine Learning. 2019.
     """
 
     def __init__(self,
@@ -60,14 +60,14 @@ class ParVIAlgorithm(Algorithm):
         Args:
             particle_dim (int): dimension of the particles.
             num_particles (int): number of particles.
-            entropy_regularization (float): weight of the repulsive term in par_vi. 
+            entropy_regularization (float): weight of the repulsive term in par_vi.
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``, ``None``],
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
-                  the same batch of particles.   
-                * gfsf: wasserstein gradient flow with smoothed functions. It 
+                  the same batch of particles.
+                * gfsf: wasserstein gradient flow with smoothed functions. It
                   involves a kernel matrix inversion, so computationally more
-                  expensive, but in some cases the convergence seems faster 
+                  expensive, but in some cases the convergence seems faster
                   than svgd approaches.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
@@ -109,7 +109,7 @@ class ParVIAlgorithm(Algorithm):
             state: not used
 
         Returns:
-            AlgStep: 
+            AlgStep:
             - output (Tensor): shape is ``[num_particles, output_dim]``
             - state: not used
         """
@@ -123,11 +123,11 @@ class ParVIAlgorithm(Algorithm):
                    state=None):
         """
         Args:
-            loss_func (Callable): loss_func(loss_inputs) returns a Tensor or 
+            loss_func (Callable): loss_func(loss_inputs) returns a Tensor or
                 namedtuple of tensors with field `loss`, which is a Tensor of
                 shape [num_particles] a loss term for optimizing the generator.
-            transform_func (Callable): tranform functoin on particles. Used in 
-                function value based par_vi, where each particle represents 
+            transform_func (Callable): tranform functoin on particles. Used in
+                function value based par_vi, where each particle represents
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
 
@@ -135,7 +135,7 @@ class ParVIAlgorithm(Algorithm):
                   on predifined training batch.
                 * extra_outputs: outputs of network parameterized by particles
                   evaluated on additional sampled data.
-            entropy_regularization (float): weight of the repulsive term in par_vi. 
+            entropy_regularization (float): weight of the repulsive term in par_vi.
                 If None, use self._entropy_regularization.
             loss_mask (Tensor): mask indicating which samples are valid for loss
                 propagation.
@@ -172,19 +172,19 @@ class ParVIAlgorithm(Algorithm):
 
     def _rbf_func(self, x, y=None):
         r"""
-        Compute the rbf kernel and its gradient w.r.t. first entry 
+        Compute the rbf kernel and its gradient w.r.t. first entry
         :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad.
 
         Args:
-            x (Tensor): set of N particles, shape (Nx x W), where W is the 
+            x (Tensor): set of N particles, shape (Nx x W), where W is the
                 dimenseion of each particle
-            y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle. If y is None, treat y=x. 
+            y (Tensor): set of N particles, shape (Ny x W), where W is the
+                dimenseion of each particle. If y is None, treat y=x.
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
             :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x W)
-            
+
         """
         Nx, Dx = x.shape
         if y is None:
@@ -206,19 +206,19 @@ class ParVIAlgorithm(Algorithm):
 
     def _score_func(self, x, alpha=1e-5):
         r"""
-        Compute the stein estimator of the score function 
+        Compute the stein estimator of the score function
         :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
-        used by gfsf_grad. 
+        used by gfsf_grad.
 
         Args:
-            x (Tensor): set of N particles, shape (N x D), where D is the 
+            x (Tensor): set of N particles, shape (N x D), where D is the
                 dimenseion of each particle
             alpha (float): weight of regularization for inverse kernel
                 this parameter turns out to be crucial for convergence.
 
         Returns:
             :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
-            
+
         """
         N, D = x.shape
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -264,7 +264,7 @@ class ParVIAlgorithm(Algorithm):
                    transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated using the all particles. 
+        evaluated using the all particles.
         """
         if transform_func is not None:
             particles, extra_particles = transform_func(particles)
