@@ -89,6 +89,9 @@ FLAGS = flags.FLAGS
 
 
 def play():
+    if torch.cuda.is_available():
+        alf.set_default_device("cuda")
+
     seed = common.set_random_seed(FLAGS.random_seed)
     alf.config('create_environment', nonparallel=True)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
@@ -153,8 +156,10 @@ def launch_snapshot_play():
     """
     root_dir = os.path.expanduser(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
+    alf_cnest = os.path.join(alf_repo,
+                             "alf/nest/cnest")  # path to archived cnest.so
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, python_path])
+    python_path = ":".join([alf_repo, alf_cnest, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
 
@@ -192,8 +197,6 @@ def launch_snapshot_play():
 
 def main(_):
     if FLAGS.snapshot_play_activated:
-        if torch.cuda.is_available():
-            alf.set_default_device("cuda")
         play()
     else:
         launch_snapshot_play()
