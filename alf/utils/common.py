@@ -1082,7 +1082,7 @@ def generate_alf_root_snapshot(alf_root, dest_path):
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
     # these files are important for code status
-    includes = ["*.py", "*.gin", "*.so"]
+    includes = ["*.py", "*.gin", "*.so", "*.json"]
     rsync(alf_root, dest_path, includes)
 
     # rename ALF repo to a unified dir name 'alf'
