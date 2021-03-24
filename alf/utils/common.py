@@ -1059,22 +1059,17 @@ def get_all_parameters(obj):
     return all_parameters
 
 
-_alf_root = None
-
-
-def set_alf_root(alf_root):
-    """Set the local ALF root path."""
-    global _alf_root
-    _alf_root = alf_root
-
-
-def generate_alf_root_snapshot(dest_path):
+def generate_alf_root_snapshot(alf_root, dest_path):
     """Given a destination path, copy the local ALF root dir to the path. To
     save disk space, only ``*.py`` files will be copied.
 
     This function can be used to generate a snapshot of the repo so that the
     exactly same code status will be recovered when later playing a trained
     model or launching a grid-search job in the waiting queue.
+
+    Args:
+        alf_root (str): the path to the ALF repo
+        dest_path (str): the path to generate a snapshot of ALF repo
     """
 
     def rsync(src, target, includes):
@@ -1086,12 +1081,11 @@ def generate_alf_root_snapshot(dest_path):
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
-    assert _alf_root, "You should first set alf root!"
     # these files are important for code status
     includes = ["*.py", "*.gin", "*.so"]
-    rsync(_alf_root, dest_path, includes)
+    rsync(alf_root, dest_path, includes)
 
     # rename ALF repo to a unified dir name 'alf'
-    alf_dirname = os.path.basename(_alf_root)
+    alf_dirname = os.path.basename(alf_root)
     if alf_dirname != "alf":
         os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
