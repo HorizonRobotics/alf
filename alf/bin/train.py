@@ -50,6 +50,7 @@ from absl import flags
 from absl import logging
 import gin
 import os
+import pathlib
 import torch
 
 from alf.utils import common
@@ -63,6 +64,8 @@ flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string('conf', None, 'Path to the alf config file.')
 flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+flags.DEFINE_bool('store_snapshot', True,
+                  'Whether store an ALF snapshot before training')
 
 FLAGS = flags.FLAGS
 
@@ -91,6 +94,13 @@ def main(_):
     root_dir = os.path.expanduser(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
     logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
+
+    if FLAGS.store_snapshot:
+        # ../<ALF_REPO>/alf/bin/train.py
+        alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+        # generate a snapshot of ALF repo as ``<root_dir>/alf``
+        common.generate_alf_root_snapshot(alf_root, root_dir)
+
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)

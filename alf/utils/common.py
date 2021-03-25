@@ -27,6 +27,8 @@ import os
 import pprint
 import random
 import shutil
+import subprocess
+import sys
 import time
 import torch
 import torch.distributions as td
@@ -1055,3 +1057,35 @@ def get_all_parameters(obj):
             unprocessed.append((attr, path + name))
             memo.add(id(attr))
     return all_parameters
+
+
+def generate_alf_root_snapshot(alf_root, dest_path):
+    """Given a destination path, copy the local ALF root dir to the path. To
+    save disk space, only ``*.py`` files will be copied.
+
+    This function can be used to generate a snapshot of the repo so that the
+    exactly same code status will be recovered when later playing a trained
+    model or launching a grid-search job in the waiting queue.
+
+    Args:
+        alf_root (str): the path to the ALF repo
+        dest_path (str): the path to generate a snapshot of ALF repo
+    """
+
+    def rsync(src, target, includes):
+        args = ['rsync', '-rI', '--include=*/']
+        args += ['--include=%s' % i for i in includes]
+        args += ['--exclude=*']
+        args += [src, target]
+        # shell=True preserves string arguments
+        subprocess.check_call(
+            " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
+
+    # these files are important for code status
+    includes = ["*.py", "*.gin", "*.so", "*.json"]
+    rsync(alf_root, dest_path, includes)
+
+    # rename ALF repo to a unified dir name 'alf'
+    alf_dirname = os.path.basename(alf_root)
+    if alf_dirname != "alf":
+        os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
