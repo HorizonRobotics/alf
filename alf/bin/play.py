@@ -14,12 +14,13 @@
 r"""Play a trained model.
 
 You can visualize playing of the trained model by running:
-```bash
-cd ${PROJECT}/alf/examples;
-python -m alf.bin.play \
-  --root_dir=~/tmp/cart_pole \
-  --alsologtostderr
-```
+
+.. code-block:: bash
+
+    cd ${PROJECT}/alf/examples;
+    python -m alf.bin.play \
+    --root_dir=~/tmp/cart_pole \
+    --alsologtostderr
 
 """
 
@@ -31,7 +32,6 @@ import gin
 import os
 import subprocess
 import sys
-
 import torch
 
 from alf.algorithms.data_transformer import create_data_transformer
@@ -190,7 +190,7 @@ def launch_snapshot_play():
             stdout=sys.stdout,
             stderr=sys.stdout,
             shell=True)
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         # No need to output anything
         pass
 
