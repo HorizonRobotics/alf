@@ -831,8 +831,8 @@ class Player(object):
                                 if 'navigation' in obs.keys() else '',
             'Distance: %7.2f' % np.linalg.norm(obs['goal']) \
                                 if 'goal' in obs.keys() else '',
-            'Velocity: (%4.1f, %4.1f, %4.1f) km/h' % tuple(
-                    (3.6 * obs['velocity']).tolist()) \
+            'Velocity: (%4.1f, %4.1f, %4.1f) m/s' % tuple(
+                    obs['velocity'].tolist()) \
                                 if 'velocity' in obs.keys() else '',
             'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
                     obs['imu'][0:3].tolist()) \
