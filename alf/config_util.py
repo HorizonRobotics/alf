@@ -49,6 +49,7 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
             def __init__(self, job1=1, job2=2):
                 ...
 
+            @alf.configurable
             def func(self, a, b):
                 ...
 
@@ -56,12 +57,12 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
 
     .. code-block::
 
-        alf.config('cool_func', cool_arg2='new_value', cool_arg2='another_value')
+        alf.config('cool_func', cool_arg1='new_value', cool_arg2='another_value')
         alf.config('Worker.func', b=3)
         alf.config('func', b=3)     # 'Worker.func' can be uniquely identified by 'func'
         alf.config({
             'dumb_func.b': 3,
-            'Worker.job1': 2
+            'Worker.job1': 2        # now the default value of job1 for Worker() becomes 2.
         })
 
 
