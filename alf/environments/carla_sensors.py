@@ -629,7 +629,8 @@ class CameraSensor(SensorBase):
         """Render points with world coordinated onto the camera image.
 
         Args:
-            world_point (np.ndarray): point to be rendered in the camera image, represented in world coordinate. The shape is [N, 3]
+            world_point (np.ndarray): point to be rendered in the camera image,
+                represented in world coordinate. The shape is [N, 3]
             rgb_img (np.ndarray): with the meaning of axis as (y, x, c)
             color (tuple[int]): color values for the [R, G, B] channels
                 of the rendered points
@@ -669,6 +670,7 @@ class CameraSensor(SensorBase):
         """Project points in world coordinates to camera image plane.
 
         Adapted from https://github.com/carla-simulator/carla/blob/master/PythonAPI/examples/lidar_to_camera.py
+        Additional reference:
         https://web.stanford.edu/class/cs231a/course_notes/01-camera-models.pdf
 
         Args:
@@ -717,7 +719,7 @@ class CameraSensor(SensorBase):
         # use projection matrix K to do the mapping from 3D to 2D
         points_2d = np.dot(K, point_in_camera_coords)
 
-        # normalize the x, y values by the 3rd value
+        # normalize the x, y values by the third value
         points_2d = np.array([
             points_2d[0, :] / points_2d[2, :],
             points_2d[1, :] / points_2d[2, :], points_2d[2, :]

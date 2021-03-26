@@ -889,16 +889,17 @@ class Player(object):
         Args:
             ego_points (np.ndarray): [N, 3]
             rgb_img (np.ndarray): with the meaning of axis as (y, x, c)
+            camera_sensor (CameraSensor): the camera sensor
             color (tuple[int]): color values for the [R, G, B] channels
                 of the rendered points
             size (int): size of the rendered point in terms of pixels
             forward_shift_delta (int): the amount to be shifted for the points
                 along the forward axis. This might be useful in some cases
                 to shift the points to be within the camera's field of view
-            append_self (bool): whether append self location to the point set
             zero_world_z (bool): whether set the z values of the transformed
                 points in world coordinate to zero. This is useful to render
                 points on the ground plane
+            append_self (bool): whether append self location to the point set
             interp_num (int): the number of target elements to be obtained
                 by interpolation
         Returns:
