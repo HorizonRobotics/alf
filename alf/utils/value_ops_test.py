@@ -64,9 +64,9 @@ class DiscountedReturnTest(unittest.TestCase):
             StepType.MID
         ]],
                                   dtype=torch.int32)
-        expected = torch.tensor(
-            [[(1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2, 1, 1 * 0.9 + 2]],
-            dtype=torch.float32)
+        expected = torch.tensor([[(1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2,
+                                  (1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2]],
+                                dtype=torch.float32)
         self._check(
             rewards=rewards,
             values=values,
@@ -81,7 +81,8 @@ class DiscountedReturnTest(unittest.TestCase):
         ]],
                                   dtype=torch.int32)
         discounts = torch.tensor([[0.9, 0.9, 0.0, 0.9, 0.9]])
-        expected = torch.tensor([[(0 * 0.9 + 2) * 0.9 + 2, 2, 1, 1 * 0.9 + 2]],
+        expected = torch.tensor([[(0 * 0.9 + 2) * 0.9 + 2, 2,
+                                  (1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2]],
                                 dtype=torch.float32)
 
         self._check(

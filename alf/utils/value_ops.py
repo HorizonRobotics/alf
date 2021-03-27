@@ -107,9 +107,10 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
 def discounted_return(rewards, values, step_types, discounts, time_major=True):
     """Computes discounted return for the first T-1 steps.
 
-    The difference between this function and the one tf_agents.utils.value_ops
-    is that the accumulated_discounted_reward is replaced by value for is_last
-    steps in this function.
+    Same with ``tf_agents.utils.value_ops``, this function returns accumulated
+    discounted reward for steps that are ``StepType.LAST``. Usually these steps
+    will be masked out when computing the TD loss, so the returns don't matter.
+    But there are rare cases where these returns are indeed needed.
 
     ```
     Q_t = sum_{t'=t}^T gamma^(t'-t) * r_{t'} + gamma^(T-t+1)*final_value.
@@ -147,11 +148,13 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
 
     rets = torch.zeros_like(values)
     rets[-1] = values[-1]
+    acc_values = rets.clone()
 
     with torch.no_grad():
         for t in reversed(range(rewards.shape[0] - 1)):
-            acc_value = rets[t + 1] * discounts[t + 1] + rewards[t + 1]
-            rets[t] = is_lasts[t] * values[t] + (1 - is_lasts[t]) * acc_value
+            rets[t] = acc_values[t + 1] * discounts[t + 1] + rewards[t + 1]
+            acc_values[t] = is_lasts[t] * values[t] + (
+                1 - is_lasts[t]) * rets[t]
 
     rets = rets[:-1]
 
