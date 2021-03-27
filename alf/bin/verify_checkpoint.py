@@ -65,7 +65,7 @@ flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string('conf', None, 'Path to the alf config file.')
 flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
-flags.DEFINE_float('tolerance', 0., "Allowed difference between to runs")
+flags.DEFINE_float('tolerance', 0., "Allowed difference between two runs")
 
 FLAGS = flags.FLAGS
 
@@ -157,6 +157,10 @@ def main(_):
         ckpt_dir = os.path.join(root_dir, 'ckpt')
         algorithm1, env1 = _create_algorithm_and_env(root_dir)
         for i in range(FLAGS.num_train_iterations):
+            # The values of some checkpointed objects (e.g. Normalizer) are
+            # changed by training (i.e. not through random initialization), we
+            # neeed to run the training a few iterations to change those value.
+            # Otherwise they will remain zeros.
             logging.info("iter=%s" % i)
             algorithm1.train_iter()
         ckpt_mngr1 = ckpt_utils.Checkpointer(ckpt_dir, alg=algorithm1)
