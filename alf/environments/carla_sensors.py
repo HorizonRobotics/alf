@@ -678,7 +678,9 @@ class CameraSensor(SensorBase):
             image_width (int): the width of the image to be rendered on
             image_height (int): the height of the image to be rendered on
         Output:
-            np.ndarray: with the shape of [N, 3]
+            np.ndarray: representing the image plane coordinates for the set
+                of points that are visible in the camera. Its shape is [N', 3],
+                with N' <= N.
         """
 
         # Build the projection matrix K:
@@ -712,9 +714,14 @@ class CameraSensor(SensorBase):
 
         # change from UE4's left handed coordinate system to a typical
         # right handed camera coordinate system, which is equivalent to
-        # axis swapping: (x, y ,z) -> (y, -z, x)
+        # axis swapping: (x, y, z) -> (y, -z, x)
         point_in_camera_coords = np.array(
             [sensor_points[1], sensor_points[2] * -1, sensor_points[0]])
+
+        # remove points that are behind the camera as they are invisible
+        cam_z = point_in_camera_coords[2]
+        valid_ind = cam_z >= 0
+        point_in_camera_coords = point_in_camera_coords[:, valid_ind]
 
         # use projection matrix K to do the mapping from 3D to 2D
         points_2d = np.dot(K, point_in_camera_coords)
