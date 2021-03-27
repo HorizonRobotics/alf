@@ -254,14 +254,15 @@ class NaiveParallelNetwork(Network):
                 NaiveParallelNetwork instance. If ``None``, ``naive_parallel_``
                 followed by the ``network.name`` will be used by default.
         """
-        super().__init__(network.input_tensor_spec,
-                         name if name else 'naive_parallel_%s' % network.name)
+        state_spec = alf.nest.map_structure(
+            lambda spec: alf.TensorSpec((n, ) + spec.shape, spec.dtype),
+            network.state_spec)
+        name = name if name else 'naive_parallel_%s' % network.name
+        super().__init__(
+            network.input_tensor_spec, state_spec=state_spec, name=name)
         self._networks = nn.ModuleList(
             [network.copy(name=self.name + '_%d' % i) for i in range(n)])
         self._n = n
-        self._state_spec = alf.nest.map_structure(
-            lambda spec: alf.TensorSpec((n, ) + spec.shape, spec.dtype),
-            network.state_spec)
 
     def forward(self, inputs, state=()):
         """Compute the output and the next state.
@@ -302,10 +303,6 @@ class NaiveParallelNetwork(Network):
             output, new_state = output_states[0]
 
         return output, new_state
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
 
 class NetworkWrapper(Network):
