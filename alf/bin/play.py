@@ -179,9 +179,10 @@ def launch_snapshot_play():
     args = ['python', '-m', 'alf.bin.play'] + flags
     try:
         if os.path.isdir(alf_repo):
-            print("=== Using an ALF snapshot at '%s' ===" % alf_repo)
+            logging.info("=== Using an ALF snapshot at '%s' ===" % alf_repo)
         else:
-            print("=== Didn't find a snapshot; using update-to-date ALF ===")
+            logging.info(
+                "=== Didn't find a snapshot; using update-to-date ALF ===")
         subprocess.check_call(
             " ".join(args),
             env=env_vars,
