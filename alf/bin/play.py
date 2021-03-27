@@ -81,9 +81,9 @@ flags.DEFINE_string(
     "Comma separated strings to ingore the parameters whose name has one of "
     "these prefixes in the checkpoint.")
 flags.DEFINE_bool(
-    'snapshot_play_activated', False,
-    'Whether snapshot play has been activated (ONLY change this'
-    'flag manually if you know what you are doing!)')
+    'use_alf_snapshot', False,
+    'Whether to use ALF snapshot stored in the model dir (if any). You can set '
+    'this flag to play a model trained with legacy ALF code.')
 
 FLAGS = flags.FLAGS
 
@@ -174,16 +174,14 @@ def launch_snapshot_play():
             else:
                 option = '--%s=%s' % (attr, flag.value)
             flags.append(option)
-    flags.append('--snapshot_play_activated')
+    flags.append('--nouse_alf_snapshot')
 
     args = ['python', '-m', 'alf.bin.play'] + flags
     try:
         if os.path.isdir(alf_repo):
-            print(
-                "=== Playing the trained model using an ALF snapshot at '%s' ==="
-                % alf_repo)
+            print("=== Using an ALF snapshot at '%s' ===" % alf_repo)
         else:
-            print("=== Playing the trained model using update-to-date ALF ===")
+            print("=== Didn't find a snapshot; using update-to-date ALF ===")
         subprocess.check_call(
             " ".join(args),
             env=env_vars,
@@ -196,7 +194,7 @@ def launch_snapshot_play():
 
 
 def main(_):
-    if FLAGS.snapshot_play_activated:
+    if not FLAGS.use_alf_snapshot:
         play()
     else:
         launch_snapshot_play()
