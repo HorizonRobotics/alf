@@ -2431,7 +2431,7 @@ class Sequential(nn.Module):
         self._networks = []
         # pytorch nn.Moddule needs to use ModuleList to keep track of parameters
         self._nets = nn.ModuleList()
-        for i, (out, element) in enumerate(named_elemepnts):
+        for i, (out, element) in enumerate(named_elements):
             input = ''
             if isinstance(element, tuple) and len(element) == 2:
                 input, module = element
