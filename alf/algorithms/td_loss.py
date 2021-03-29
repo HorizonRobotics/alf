@@ -97,6 +97,10 @@ class TDLoss(nn.Module):
         self._normalize_target = normalize_target
         self._target_normalizer = None
 
+    @property
+    def gamma(self):
+        return self._gamma
+
     def forward(self, experience, value, target_value):
         """Cacluate the loss.
 
