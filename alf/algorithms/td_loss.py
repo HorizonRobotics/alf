@@ -99,7 +99,12 @@ class TDLoss(nn.Module):
 
     @property
     def gamma(self):
-        return self._gamma
+        """Return the :math:`\gamma` value for discounting future rewards.
+
+        Returns:
+            Tensor: a rank-0 or rank-1 (multi-dim reward) floating tensor.
+        """
+        return self._gamma.clone()
 
     def forward(self, experience, value, target_value):
         """Cacluate the loss.
