@@ -626,12 +626,12 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         # right by one step
         self.assertTensorClose(out[..., 1:], signal[..., :-1], epsilon=1e-6)
 
-    def test_sequential(self):
+    def test_sequential1(self):
         net = alf.layers.Sequential(
             alf.layers.FC(4, 6),
             a=alf.layers.FC(6, 8),
             b=alf.layers.FC(8, 12),
-            c=(('a', 'b'), alf.layers.NestConcat()))
+            c=(('a', 'b', 'input'), alf.layers.NestConcat()))
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
@@ -640,8 +640,59 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         x1 = net[0](x)
         x2 = net[1](x1)
         x3 = net[2](x2)
-        x4 = net[3]((x2, x3))
+        x4 = net[3]((x2, x3, x))
         self.assertEqual(x4, y)
+
+    def test_sequential2(self):
+        # test wrong field name
+        net = alf.layers.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            c=(('a', 'b', 'input'), alf.layers.NestConcat()),
+            b=alf.layers.FC(8, 12))
+
+        batch_size = 24
+        x = torch.randn((batch_size, 4))
+        self.assertRaises(KeyError, net, x)
+
+    def test_sequential3(self):
+        # test output
+        net = alf.layers.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 12),
+            c=(('a', 'b'), alf.layers.NestConcat()),
+            output=dict(a='a', b='b', c='c'))
+
+        batch_size = 24
+        x = torch.randn((batch_size, 4))
+        y = net(x)
+
+        x1 = net[0](x)
+        a = net[1](x1)
+        b = net[2](a)
+        c = net[3]((a, b))
+        self.assertEqual(y['a'], a)
+        self.assertEqual(y['b'], b)
+        self.assertEqual(y['c'], c)
+
+    def test_sequential4(self):
+        # test output
+        net = alf.layers.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 8),
+            c=(('a', 'b'), lambda x: x[0] + x[1]))
+
+        batch_size = 24
+        x = torch.randn((batch_size, 4))
+        y = net(x)
+
+        x1 = net[0](x)
+        a = net[1](x1)
+        b = net[2](a)
+        c = a + b
+        self.assertEqual(c, y)
 
 
 if __name__ == "__main__":

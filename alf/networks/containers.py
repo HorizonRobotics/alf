@@ -15,10 +15,12 @@
 
 import copy
 import torch.nn as nn
+from typing import Callable
 
 import alf
 from alf.nest import (flatten, flatten_up_to, get_field, map_structure,
                       map_structure_up_to, pack_sequence_as)
+from alf.nest.utils import get_nested_field
 from alf.utils.spec_utils import is_same_spec
 from .network import Network, get_input_tensor_spec, wrap_as_network
 
@@ -72,18 +74,20 @@ def Sequential(*modules,
 
 
         Args:
-            modules (nn.Module | (nested str, nn.Module)): ``torch.nn.Module``
-                or ``alf.nn.Network`` and optionally their input (which is the
-                first element of the tuple). If input is not provided, it is
+            modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
                 assumed to be the result of the previous module (or input to this
                 ``Sequential`` for the first module). If input is provided, it
                 should be a nested str. It will be used to retrieve results from
                 the dictionary of the current ``named_results``. For modules
                 specified by ``modules``, because no ``named_modules`` has been
                 invoked, ``named_results`` is ``{'input': input}``.
-            named_modules (nn.Module | (nested str, nn.Module)): ``torch.nn.Module``
-                or ``alf.nn.Network`` and optionally their input (which is the
-                first element of the tuple). If input is not provided, it is
+            named_modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
                 assumed to be the result of the previous module (or input to this
                 ``Sequential`` for the first module). If input is provided, it
                 should be a nested str. It will be used to retrieve results from
@@ -109,10 +113,6 @@ def Sequential(*modules,
         name=name)
 
 
-def _get_nested_field(nest, nest_fields):
-    return map_structure(lambda f: get_field(nest, f), nest_fields)
-
-
 class _Sequential(Network):
     def __init__(self, elements, element_dict, output, input_tensor_spec,
                  name):
@@ -131,10 +131,10 @@ class _Sequential(Network):
                 input, module = element
             else:
                 module = element
-            if not (isinstance(module, nn.Module) and is_nested_str(input)):
-                raise ValueError("Argument %s is not in the form of nn.Module "
-                                 "or (nested str, nn.Module): %s" %
-                                 (out or str(i), element))
+            if not (isinstance(module, Callable) and is_nested_str(input)):
+                raise ValueError(
+                    "Argument %s is not in the form of Callable "
+                    "or (nested str, Callable): %s" % (out or str(i), element))
             if isinstance(module, Network):
                 state_spec.append(module.state_spec)
             else:
@@ -155,7 +155,10 @@ class _Sequential(Network):
         assert input_tensor_spec is not None, (
             "input_tensor_spec needs to be provided")
         super().__init__(input_tensor_spec, state_spec=state_spec, name=name)
-        self._networks = nn.ModuleList(modules)
+        self._networks = modules
+        # pytorch nn.Moddule needs to use ModuleList to keep track of parameters
+        self._nets = nn.ModuleList(
+            filter(lambda m: isinstance(m, nn.Module), modules))
         if simple:
             self.forward = self._forward_simple
         else:
@@ -188,7 +191,7 @@ class _Sequential(Network):
         if self._state_spec == ():
             for i, net in enumerate(self._networks):
                 if self._inputs[i]:
-                    x = _get_nested_field(var_dict, self._inputs[i])
+                    x = get_nested_field(var_dict, self._inputs[i])
                 if isinstance(net, Network):
                     x = net(x)[0]
                 else:
@@ -200,7 +203,7 @@ class _Sequential(Network):
             new_state = [()] * len(self._networks)
             for i, net in enumerate(self._networks):
                 if self._inputs[i]:
-                    x = _get_nested_field(var_dict, self._inputs[i])
+                    x = get_nested_field(var_dict, self._inputs[i])
                 if isinstance(net, Network):
                     x, new_state[i] = net(x, state[i])
                 else:
@@ -208,7 +211,7 @@ class _Sequential(Network):
                 if self._outputs[i]:
                     var_dict[self._outputs[i]] = x
         if self._output:
-            x = _get_nested_field(var_dict, self._output)
+            x = get_nested_field(var_dict, self._output)
         return x, new_state
 
     def copy(self, name=None):
@@ -235,9 +238,11 @@ class _Sequential(Network):
                                     self._outputs):
             if isinstance(n, Network):
                 net = n.copy()
-            else:
+            elif isinstance(n, nn.Module):
                 net = copy.deepcopy(n)
                 alf.layers.reset_parameters(net)
+            else:
+                net = n
             if not output:
                 new_networks.append((input, net))
             else:

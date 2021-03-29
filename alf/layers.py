@@ -20,10 +20,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Callable
 
 import alf
 from alf.initializers import variance_scaling_init
-from alf.nest.utils import get_outer_rank, NestConcat, NestMultiply, NestSum
+from alf.nest.utils import (get_nested_field, get_outer_rank, NestConcat,
+                            NestMultiply, NestSum)
 from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
@@ -2344,15 +2346,11 @@ class Branch(nn.Module):
         alf.nest.map_structure(reset_parameters, self._networks)
 
 
-def _get_nested_field(nest, nest_fields):
-    return map_structure(lambda f: get_field(nest, f), nest_fields)
-
-
 class Sequential(nn.Module):
     """A more flexible Sequential than torch.nn.Sequential.
 
-    ``alf.layers.Sequentail`` is similar to ``alf.nn.Sequential``, but does not
-    accept ``alf.nn.Network`` as its elements.
+    ``alf.layers.Sequential`` is similar to ``alf.nn.Sequential``, but does not
+    accept stateful ``alf.nn.Network`` as its elements.
 
     All the modules provided through ``modules`` and ``named_modules`` are calculated
     sequentially in the same order as they appear in the call to ``Sequential``.
@@ -2397,18 +2395,20 @@ class Sequential(nn.Module):
     def __init__(self, *modules, output='', **named_modules):
         """
         Args:
-            modules (nn.Module | (nested str, nn.Module)): ``torch.nn.Module``
-                and optionally their input (which is the
-                first element of the tuple). If input is not provided, it is
+            modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, stateless ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
                 assumed to be the result of the previous module (or input to this
                 ``Sequential`` for the first module). If input is provided, it
                 should be a nested str. It will be used to retrieve results from
                 the dictionary of the current ``named_results``. For modules
                 specified by ``modules``, because no ``named_modules`` has been
                 invoked, ``named_results`` is ``{'input': input}``.
-            named_modules (nn.Module | (nested str, nn.Module)): ``torch.nn.Module``
-                and optionally their input (which is the
-                first element of the tuple). If input is not provided, it is
+            named_modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, stateless ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
                 assumed to be the result of the previous module (or input to this
                 ``Sequential`` for the first module). If input is provided, it
                 should be a nested str. It will be used to retrieve results from
@@ -2428,27 +2428,31 @@ class Sequential(nn.Module):
         simple = True
         is_nested_str = lambda s: all(
             map(lambda x: type(x) == str, alf.nest.flatten(s)))
-        for i, (out, element) in enumerate(named_elements):
+        self._networks = []
+        # pytorch nn.Moddule needs to use ModuleList to keep track of parameters
+        self._nets = nn.ModuleList()
+        for i, (out, element) in enumerate(named_elemepnts):
             input = ''
             if isinstance(element, tuple) and len(element) == 2:
                 input, module = element
             else:
                 module = element
-            if not (isinstance(module, nn.Module) and is_nested_str(input)):
-                raise ValueError("Argument %s is not in the form of nn.Module "
-                                 "or (nested str, nn.Module): %s" %
-                                 (out or str(i), element))
+            if not (isinstance(module, Callable) and is_nested_str(input)):
+                raise ValueError(
+                    "Argument %s is not in the form of Callable "
+                    "or (nested str, Callable): %s" % (out or str(i), element))
             if isinstance(module, alf.networks.Network):
                 assert not alf.nest.flatten(module.state_spec), (
                     "Network element of layers.Sequential should be stateless. "
                     "Use networks.Sequential instead")
             inputs.append(input)
             outputs.append(out)
-            modules.append(module)
+            self._networks.append(module)
+            if isinstance(module, nn.Module):
+                self._nets.append(module)
             if out or input:
                 simple = False
 
-        self._networks = nn.ModuleList(modules)
         if simple:
             self.forward = self._forward_simple
         else:
@@ -2469,7 +2473,7 @@ class Sequential(nn.Module):
         var_dict = {'input': input}
         for i, net in enumerate(self._networks):
             if self._inputs[i]:
-                input = _get_nested_field(var_dict, self._inputs[i])
+                input = get_nested_field(var_dict, self._inputs[i])
             if isinstance(net, alf.networks.Network):
                 input = net(input)[0]
             else:
@@ -2477,7 +2481,7 @@ class Sequential(nn.Module):
             if self._outputs[i]:
                 var_dict[self._outputs[i]] = input
         if self._output:
-            input = _get_nested_field(var_dict, self._output)
+            input = get_nested_field(var_dict, self._output)
         return input
 
     def reset_parameters(self):

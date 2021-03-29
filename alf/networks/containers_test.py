@@ -137,6 +137,30 @@ class ContainersTest(alf.test.TestCase):
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
 
+    def test_sequential_complex3(self):
+        net = alf.nn.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 8),
+            c=(('a', 'b'), lambda x: x[0] + x[1]))
+
+        self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
+        self.assertEqual(net.state_spec, ())
+
+        batch_size = 24
+        x = _randn_from_spec(net.input_tensor_spec, batch_size)
+        y, new_state = net(x)
+        self.assertEqual(new_state, ())
+
+        x1 = net[0](x)
+        x2 = net[1](x1)
+        x3 = net[2](x2)
+        x4 = x2 + x3
+        self.assertEqual(x4, y)
+
+        net_copy = net.copy()
+        self._verify_parameter_copy(net, net_copy)
+
     def test_parallel1(self):
         net = alf.nn.Parallel((alf.layers.FC(4, 6), alf.nn.GRUCell(6, 8),
                                alf.nn.GRUCell(8, 12)))
