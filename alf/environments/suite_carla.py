@@ -308,7 +308,8 @@ class Player(object):
                  with_gnss_sensor=True,
                  with_imu_sensor=True,
                  with_camera_sensor=True,
-                 with_radar_sensor=True):
+                 with_radar_sensor=True,
+                 render_waypoints=True):
         """
         Args:
             actor (carla.Actor): the carla actor object
@@ -357,10 +358,14 @@ class Player(object):
             with_imu_sensor (bool): whether to use ``IMUSensor``.
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
+            render_waypoints (bool): whether to render (interpolated) waypoints
+                in the generated video during rendering. Note that it is only
+                used for visualization and has no impacts on the perception data.
         """
         self._actor = actor
         self._alf_world = alf_world
         self._observation_sensors = {}
+        self._render_waypoints = render_waypoints
 
         self._collision_sensor = CollisionSensor(actor)
         self._observation_sensors['collision'] = self._collision_sensor
@@ -857,7 +862,7 @@ class Player(object):
             # (x, y, c) => (y, x, c)
             rgb_img = np.transpose(rgb_img, (1, 0, 2))
 
-            if 'navigation' in obs.keys():
+            if 'navigation' in obs.keys() and self._render_waypoints:
                 # index of waypoint to be rendered
                 waypoint_index = np.arange(2, 5)
                 nav_traj = obs['navigation'][waypoint_index]
