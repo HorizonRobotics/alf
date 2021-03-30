@@ -679,7 +679,7 @@ class CameraSensor(SensorBase):
             image_height (int): the height of the image to be rendered on
         Output:
             np.ndarray: representing the image plane coordinates for the set
-                of points that are visible in the camera. Its shape is [N', 3],
+                of points that are visible in the camera. Its shape is [N', 2],
                 with N' <= N.
         """
 
@@ -710,30 +710,28 @@ class CameraSensor(SensorBase):
         world_points = np.concatenate(
             (world_points, np.ones_like(world_points[0:1, ...])), axis=0)
 
-        sensor_points = np.dot(world_2_camera, world_points)
+        sensor_points = np.matmul(world_2_camera, world_points)
 
         # change from UE4's left handed coordinate system to a typical
         # right handed camera coordinate system, which is equivalent to
         # axis swapping: (x, y, z) -> (y, -z, x)
         point_in_camera_coords = np.array(
-            [sensor_points[1], sensor_points[2] * -1, sensor_points[0]])
+            [sensor_points[1], -sensor_points[2], sensor_points[0]])
 
         # remove points that are behind the camera as they are invisible
         cam_z = point_in_camera_coords[2]
         valid_ind = cam_z >= 0
         point_in_camera_coords = point_in_camera_coords[:, valid_ind]
 
-        # use projection matrix K to do the mapping from 3D to 2D
-        points_2d = np.dot(K, point_in_camera_coords)
+        # use projection matrix K to do the mapping from 3D to 2D in
+        # homogeneous coordinates
+        points_2d_homogeneous = np.matmul(K, point_in_camera_coords)
 
-        # normalize the x, y values by the third value
-        points_2d = np.array([
-            points_2d[0, :] / points_2d[2, :],
-            points_2d[1, :] / points_2d[2, :], points_2d[2, :]
-        ])
+        # normalize the x, y values by z value
+        points_2d = points_2d_homogeneous[:2, :] / points_2d_homogeneous[2, :]
 
-        # [3, N] -> [N, 3]
-        points_2d = np.transpose(points_2d, (1, 0))
+        # [2, N] -> [N, 2]
+        points_2d = points_2d.transpose()
         return points_2d
 
     @staticmethod
