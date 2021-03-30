@@ -97,6 +97,15 @@ class TDLoss(nn.Module):
         self._normalize_target = normalize_target
         self._target_normalizer = None
 
+    @property
+    def gamma(self):
+        """Return the :math:`\gamma` value for discounting future rewards.
+
+        Returns:
+            Tensor: a rank-0 or rank-1 (multi-dim reward) floating tensor.
+        """
+        return self._gamma.clone()
+
     def forward(self, experience, value, target_value):
         """Cacluate the loss.
 

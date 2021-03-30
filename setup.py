@@ -20,6 +20,7 @@ os.system("pip install -e ./alf/nest/cnest")
 setup(
     name='alf',
     version='0.0.1',
+    python_requires='>3.6.0',
     install_requires=[
         'atari_py == 0.1.7',
         'cpplint',

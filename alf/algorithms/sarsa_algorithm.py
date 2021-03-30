@@ -426,9 +426,11 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         step_type0 = torch.where(step_type0 == StepType.FIRST,
                                  torch.tensor(StepType.LAST), step_type0)
 
+        gamma = self._critic_losses[0].gamma
         reward = experience.reward
         if self._use_entropy_reward:
-            reward -= (self._log_alpha.exp() * info.neg_entropy).detach()
+            reward -= gamma * (
+                self._log_alpha.exp() * info.neg_entropy).detach()
         shifted_experience = experience._replace(
             discount=tensor_utils.tensor_prepend_zero(experience.discount),
             reward=tensor_utils.tensor_prepend_zero(reward),

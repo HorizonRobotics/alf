@@ -21,6 +21,7 @@ import torch.nn as nn
 
 import alf
 from . import nest
+from .nest import get_field, map_structure
 from alf.tensor_specs import TensorSpec
 
 
@@ -318,3 +319,22 @@ def make_nested_module(nested, ignore_non_module_element=True):
         elif not isinstance(nested, torch.nn.Module):
             module = None
     return module
+
+
+def get_nested_field(nested, nest_fields):
+    """Get nested fields from a nest.
+
+    Example:
+
+        x = get_nested_field(nest, ('a.b', 'c'))
+        y = (get_field(nest, 'a.b')), get_field(nest, 'c'))
+        # y and x are same
+
+    Args:
+        nested (nest): a nested structure
+        nest_fields (nested str): nested strings. Each string indicates a path
+            to retrieve the value from ``nest``
+    Returns:
+        a nest with same structure as ``nest_fields``.
+    """
+    return map_structure(lambda f: get_field(nested, f), nest_fields)

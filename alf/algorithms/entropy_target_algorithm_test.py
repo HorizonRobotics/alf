@@ -69,15 +69,13 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         alg = NestedEntropyTargetAlgorithm(
             action_spec=action_spec, target_entropy=dict(a=None, b=None))
         net = alf.nn.Branch(
-            dict(
-                a=NormalProjectionNetwork(
-                    self._input_tensor_spec.shape[0],
-                    action_spec['a'],
-                    projection_output_init_gain=1.0,
-                    squash_mean=True),
-                b=alf.nn.CategoricalProjectionNetwork(
-                    self._input_tensor_spec.shape[0], action_spec['b']),
-            ))
+            a=NormalProjectionNetwork(
+                self._input_tensor_spec.shape[0],
+                action_spec['a'],
+                projection_output_init_gain=1.0,
+                squash_mean=True),
+            b=alf.nn.CategoricalProjectionNetwork(
+                self._input_tensor_spec.shape[0], action_spec['b']))
         embedding = 10 * torch.rand(
             (100, ) + self._input_tensor_spec.shape, dtype=torch.float32)
 

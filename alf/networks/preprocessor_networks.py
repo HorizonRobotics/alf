@@ -66,7 +66,7 @@ class PreprocessorNetwork(Network):
                 gin file without changing the code.
             name (str): name of the network
         """
-        super().__init__(input_tensor_spec, name)
+        super().__init__(input_tensor_spec, name=name)
 
         # make sure the network holds the parameters of any trainable input
         # preprocessor
