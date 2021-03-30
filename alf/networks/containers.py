@@ -15,22 +15,35 @@
 
 import copy
 import torch.nn as nn
+from typing import Callable
 
 import alf
-from alf.nest import (flatten, flatten_up_to, map_structure,
+from alf.nest import (flatten, flatten_up_to, get_field, map_structure,
                       map_structure_up_to, pack_sequence_as)
+from alf.nest.utils import get_nested_field
 from alf.utils.spec_utils import is_same_spec
 from .network import Network, get_input_tensor_spec, wrap_as_network
 
 
-def Sequential(*modules, input_tensor_spec=None, name="Sequential"):
+def Sequential(*modules,
+               output='',
+               input_tensor_spec=None,
+               name="Sequential",
+               **named_modules):
     """Network composed of a sequence of torch.nn.Module or alf.nn.Network.
 
-    Example:
+    All the modules provided through ``modules`` and ``named_modules`` are calculated
+    sequentially in the same order as they appear in the call to ``Sequential``.
+    Typically, each module takes the result of the previous module as its input
+    (or the input to the Sequential if it is the first module), and the result of
+    the last module is the output of the Sequential. But we also allow more
+    flexibilities as shown in example 2.
+
+    Example 1:
 
     .. code-block:: python
 
-        net = Sequential((module1, module2))
+        net = Sequential(module1, module2)
         y, new_state = net(x, state)
 
     is equivalent to the following:
@@ -41,8 +54,49 @@ def Sequential(*modules, input_tensor_spec=None, name="Sequential"):
         y, new_state2 = module2(z, state[1])
         new_state = (new_state1, new_state2)
 
+    Example 2:
+
+    .. code-block:: python
+
+        net = Sequential(
+            module1, a=module2, b=(('input', 'a'), module3), output=('a', 'b'))
+        output, new_state = net(input, state)
+
+    is equivalent to the following:
+
+    .. code-block:: python
+
+        _, new_state1 = module1(input, state[0])
+        a, new_state2 = module2(_, state[1])
+        b, new_state3 = module3((input, a), state[2])
+        new_state = (new_state1, new_state2, new_state3)
+        output = (a, b)
+
+
         Args:
-            modules (nn.Module): list of ``torch.nn.Module`` or ``alf.nn.Network``.
+            modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
+                assumed to be the result of the previous module (or input to this
+                ``Sequential`` for the first module). If input is provided, it
+                should be a nested str. It will be used to retrieve results from
+                the dictionary of the current ``named_results``. For modules
+                specified by ``modules``, because no ``named_modules`` has been
+                invoked, ``named_results`` is ``{'input': input}``.
+            named_modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
+                assumed to be the result of the previous module (or input to this
+                ``Sequential`` for the first module). If input is provided, it
+                should be a nested str. It will be used to retrieve results from
+                the dictionary of the current ``named_results``. ``named_results``
+                is updated once the result of a named module is calculated.
+            output (nested str): if not provided, the result from the last module
+                will be used as output. Otherwise, it will be used to retrieve
+                results from ``named_results`` after the results of all modules
+                have been calculated.
             input_tensor_spec (TensorSpec): the tensor spec of the input. It must
                 be specified if it cannot be inferred from ``modules[0]``.
             name (str):
@@ -51,34 +105,69 @@ def Sequential(*modules, input_tensor_spec=None, name="Sequential"):
     # does not allow *args for __init__() (see _NetworkMeta.__new__()). And we
     # want to use *modules here to make the interface consistent with
     # torch.nn.Sequential and alf.layers.Sequential to avoid confusion.
-    return _Sequential(modules, input_tensor_spec=input_tensor_spec, name=name)
+    return _Sequential(
+        modules,
+        named_modules,
+        output=output,
+        input_tensor_spec=input_tensor_spec,
+        name=name)
 
 
 class _Sequential(Network):
-    def __init__(self, modules, input_tensor_spec, name):
-        state_spec = [()] * len(modules)
-        for i, module in enumerate(modules):
-            assert isinstance(
-                module, nn.Module), ("%s is not an nn.Module" % type(module))
+    def __init__(self, elements, element_dict, output, input_tensor_spec,
+                 name):
+        state_spec = []
+        modules = []
+        inputs = []
+        outputs = []
+        simple = True
+        named_elements = list(zip([''] * len(elements), elements)) + list(
+            element_dict.items())
+        is_nested_str = lambda s: all(
+            map(lambda x: type(x) == str, flatten(s)))
+        for i, (out, element) in enumerate(named_elements):
+            input = ''
+            if isinstance(element, tuple) and len(element) == 2:
+                input, module = element
+            else:
+                module = element
+            if not (isinstance(module, Callable) and is_nested_str(input)):
+                raise ValueError(
+                    "Argument %s is not in the form of Callable "
+                    "or (nested str, Callable): %s" % (out or str(i), element))
             if isinstance(module, Network):
-                state_spec[i] = module.state_spec
+                state_spec.append(module.state_spec)
+            else:
+                state_spec.append(())
+            inputs.append(input)
+            outputs.append(out)
+            modules.append(module)
+            if out or input:
+                simple = False
+        if output:
+            simple = False
+        assert is_nested_str(output), (
+            "output should be a nested str: %s" % output)
         if len(flatten(state_spec)) == 0:
             state_spec = ()
-        self._state_spec = state_spec
-        if input_tensor_spec is None:
+        if input_tensor_spec is None and not inputs[0]:
             input_tensor_spec = get_input_tensor_spec(modules[0])
-        if input_tensor_spec is None:
-            raise ValueError(
-                "input_tensor_spec needs to "
-                "be provided for modules[0] of type %s" % type(modules[0]))
-        super().__init__(input_tensor_spec, name)
-        self._networks = nn.ModuleList(modules)
+        assert input_tensor_spec is not None, (
+            "input_tensor_spec needs to be provided")
+        super().__init__(input_tensor_spec, state_spec=state_spec, name=name)
+        self._networks = modules
+        # pytorch nn.Moddule needs to use ModuleList to keep track of parameters
+        self._nets = nn.ModuleList(
+            filter(lambda m: isinstance(m, nn.Module), modules))
+        if simple:
+            self.forward = self._forward_simple
+        else:
+            self.forward = self._forward_complex
+        self._output = output
+        self._inputs = inputs
+        self._outputs = outputs
 
-    @property
-    def state_spec(self):
-        return self._state_spec
-
-    def forward(self, input, state=()):
+    def _forward_simple(self, input, state=()):
         x = input
         if self._state_spec == ():
             for net in self._networks:
@@ -95,6 +184,35 @@ class _Sequential(Network):
                 else:
                     x = net(x)
             return x, new_state
+
+    def _forward_complex(self, input, state=()):
+        x = input
+        var_dict = {'input': x}
+        if self._state_spec == ():
+            for i, net in enumerate(self._networks):
+                if self._inputs[i]:
+                    x = get_nested_field(var_dict, self._inputs[i])
+                if isinstance(net, Network):
+                    x = net(x)[0]
+                else:
+                    x = net(x)
+                if self._outputs[i]:
+                    var_dict[self._outputs[i]] = x
+            new_state = state
+        else:
+            new_state = [()] * len(self._networks)
+            for i, net in enumerate(self._networks):
+                if self._inputs[i]:
+                    x = get_nested_field(var_dict, self._inputs[i])
+                if isinstance(net, Network):
+                    x, new_state[i] = net(x, state[i])
+                else:
+                    x = net(x)
+                if self._outputs[i]:
+                    var_dict[self._outputs[i]] = x
+        if self._output:
+            x = get_nested_field(var_dict, self._output)
+        return x, new_state
 
     def copy(self, name=None):
         """Create a copy of this network or return the current instance.
@@ -115,14 +233,22 @@ class _Sequential(Network):
             name = self.name
 
         new_networks = []
-        for n in self._networks:
+        new_named_networks = {}
+        for n, input, output in zip(self._networks, self._inputs,
+                                    self._outputs):
             if isinstance(n, Network):
                 net = n.copy()
-            else:
+            elif isinstance(n, nn.Module):
                 net = copy.deepcopy(n)
                 alf.layers.reset_parameters(net)
-            new_networks.append(net)
-        return _Sequential(new_networks, self._input_tensor_spec, name)
+            else:
+                net = n
+            if not output:
+                new_networks.append((input, net))
+            else:
+                new_named_networks[output] = (input, net)
+        return _Sequential(new_networks, new_named_networks, self._output,
+                           self._input_tensor_spec, name)
 
     def __getitem__(self, i):
         return self._networks[i]
@@ -166,20 +292,16 @@ class Parallel(Network):
                 "to be specified if it cannot be infered from elements of "
                 "networks")
         alf.nest.assert_same_structure_up_to(modules, input_tensor_spec)
-        super().__init__(input_tensor_spec, name=name)
         networks = map_structure_up_to(modules, wrap_as_network, modules,
                                        input_tensor_spec)
-        self._state_spec = map_structure(lambda net: net.state_spec, networks)
-        if len(flatten(self._state_spec)) == 0:
-            self._state_spec = ()
+        state_spec = map_structure(lambda net: net.state_spec, networks)
+        if len(flatten(state_spec)) == 0:
+            state_spec = ()
+        super().__init__(input_tensor_spec, state_spec=state_spec, name=name)
         self._networks = networks
         if alf.nest.is_nested(networks):
             # make it a nn.Module so its parameters can be picked up by the framework
             self._nets = alf.nest.utils.make_nested_module(networks)
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
     def forward(self, inputs, state=()):
         if self._state_spec == ():
@@ -222,7 +344,7 @@ class Parallel(Network):
         return self._networks
 
 
-class Branch(Network):
+def Branch(*modules, input_tensor_spec=None, name="Branch", **named_modules):
     """Apply multiple networks on the same input.
 
     Example:
@@ -241,27 +363,35 @@ class Branch(Network):
         y = (y0, y1)
         new_state = (new_state0, new_state1)
 
+    Args:
+        modules (nested nn.Module | Callable): a nest of ``torch.nn.Module``
+            ``alf.nn.Network`` or ``Callable``. Note that ``Branch(module_a, module_b)``
+            is equivalent to ``Branch((module_a, module_b))``
+        named_modules (nn.Module | Callable): a simpler way of specifying
+            a dict of modules. ``Branch(a=model_a, b=module_b)``
+            is equivalent to ``Branch(dict(a=module_a, b=module_b))``
+        input_tensor_spec (nested TensorSpec): must be provided if it cannot
+            be inferred from any one of ``modules``
+        name (str):
     """
+    # The reason that we use a wrapper function for _Branch is that Network
+    # does not allow *args for __init__() (see _NetworkMeta.__new__()).
+    return _Branch(
+        modules, named_modules, input_tensor_spec=input_tensor_spec, name=name)
 
+
+class _Branch(Network):
     def __init__(self,
-                 module_nest=None,
+                 modules,
+                 named_modules,
                  input_tensor_spec=None,
-                 name="Branch",
-                 **modules):
-        """
-        Args:
-            module_nest (nested nn.Module | Callable): a nest of ``torch.nn.Module``
-                ``alf.nn.Network`` or ``Callable``
-            modules (nn.Module | Callable): a simpler way of specifying ``module_nest``
-                when it is a dict. ``Branch(a=model_a, b=module_b)``
-                is equivalent to ``Branch(dict(a=module_a, b=module_b))``
-            input_tensor_spec (nested TensorSpec): must be provided if it cannot
-                be inferred from any one of ``modules``
-            name (str):
-        """
-        if module_nest is not None:
-            assert not modules
-            modules = module_nest
+                 name="Branch"):
+        if modules:
+            assert not named_modules
+            if len(modules) == 1:
+                modules = modules[0]
+        else:
+            modules = named_modules
         if input_tensor_spec is None:
             specs = list(map(get_input_tensor_spec, alf.nest.flatten(modules)))
             specs = list(filter(lambda s: s is not None, specs))
@@ -272,21 +402,17 @@ class Branch(Network):
                     "modules have inconsistent input_tensor_spec: %s vs %s" %
                     (spec, specs[0]))
             input_tensor_spec = specs[0]
-        super().__init__(input_tensor_spec, name=name)
         networks = map_structure(
             lambda net: wrap_as_network(net, input_tensor_spec), modules)
-        self._state_spec = map_structure(lambda net: net.state_spec, networks)
-        if len(flatten(self._state_spec)) == 0:
-            self._state_spec = ()
+        state_spec = map_structure(lambda net: net.state_spec, networks)
+        if len(flatten(state_spec)) == 0:
+            state_spec = ()
+        super().__init__(input_tensor_spec, state_spec=state_spec, name=name)
         self._networks = networks
         self._networks_flattened = flatten(networks)
         if alf.nest.is_nested(networks):
             # make it a nn.Module so its parameters can be picked up by the framework
             self._nets = alf.nest.utils.make_nested_module(networks)
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
     def forward(self, inputs, state=()):
         if self._state_spec == ():
@@ -323,7 +449,8 @@ class Branch(Network):
             name = self.name
 
         networks = map_structure(lambda net: net.copy(), self._networks)
-        return Branch(networks, self._input_tensor_spec, name)
+        return Branch(
+            networks, input_tensor_spec=self._input_tensor_spec, name=name)
 
     @property
     def networks(self):
@@ -422,13 +549,10 @@ class Echo(Network):
                 "input_tensor_spec is not same as real_input_spec: %s vs. %s" %
                 (input_tensor_spec, real_input_spec))
 
-        super().__init__(input_tensor_spec=real_input_spec)
-        self._state_spec = (block.state_spec, echo_input_spec)
+        state_spec = (block.state_spec, echo_input_spec)
+        super().__init__(
+            input_tensor_spec=real_input_spec, state_spec=state_spec)
         self._block = block
-
-    @property
-    def state_spec(self):
-        return self._state_spec
 
     def forward(self, input, state):
         block_state, echo_state = state
