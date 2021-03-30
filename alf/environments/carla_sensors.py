@@ -705,7 +705,7 @@ class CameraSensor(SensorBase):
         # following several steps
 
         # [N, 3] -> [3, N]
-        world_points = np.transpose(world_points, (1, 0))
+        world_points = world_points.transpose()
         # [3, N] -> [4, N]
         world_points = np.concatenate(
             (world_points, np.ones_like(world_points[0:1, ...])), axis=0)
