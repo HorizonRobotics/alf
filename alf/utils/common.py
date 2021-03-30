@@ -1104,19 +1104,3 @@ def get_alf_snapshot_env_vars(root_dir):
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
-
-
-def format_specified_flags():
-    """Format all user specified FLAGS into a string."""
-    opts = []
-    for attr, flag in flags.FLAGS.__flags.items():
-        if not flag.using_default_value:
-            if flag.boolean:  # do not accept argument
-                if flag.value:
-                    option = '--' + attr
-                else:
-                    option = '--no' + attr
-            else:
-                option = '--%s=%s' % (attr, flag.value)
-            opts.append(option)
-    return opts

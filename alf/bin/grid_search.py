@@ -371,15 +371,25 @@ def launch_snapshot_gridsearch():
     # point the grid search to the snapshot paths
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
 
-    flags = common.format_specified_flags()
     # remove the conf file option since we will retrieve it from ``root_dir``
-    flags = [f for f in flags if not ('--conf=' in f or '--gin_file' in f)]
+    flags = []
+    skip_flag = False
+    for f in sys.argv[1:]:
+        if not skip_flag:
+            if f in ('--conf', '--gin_file'):
+                skip_flag = True  # skip the next flag which is the file path
+            elif f.startswith(('--conf=', '--gin_file=')):
+                pass
+            else:
+                flags.append(f)
+        else:
+            skip_flag = False
     flags.append('--snapshot_gridsearch_activated')
 
     args = ['python', '-m', 'alf.bin.grid_search'] + flags
 
     try:
-        print(
+        logging.info(
             "=== Grid searching using an ALF snapshot at '%s' ===" % alf_repo)
         subprocess.check_call(
             " ".join(args),

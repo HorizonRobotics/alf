@@ -159,7 +159,7 @@ def launch_snapshot_play():
 
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
 
-    flags = common.format_specified_flags()
+    flags = sys.argv[1:]
     flags.append('--nouse_alf_snapshot')
 
     args = ['python', '-m', 'alf.bin.play'] + flags
