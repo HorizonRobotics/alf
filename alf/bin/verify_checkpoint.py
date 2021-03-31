@@ -89,15 +89,19 @@ def _run_steps(algorithm, env, nsteps, time_steps=[]):
     If ``time_steps`` is provided, will use them as the input.
     Otherwise will obtain time steps through ``env``
     """
-    policy_state = algorithm.get_initial_predict_state(env.batch_size)
-    trans_state = algorithm.get_initial_transform_state(env.batch_size)
-    policy_steps = []
     run_env = not bool(time_steps)
     if run_env:
         time_step = common.get_initial_time_step(env)
         time_steps.append(time_step)
+        batch_size = env.batch_size
     else:
         time_step = time_steps[0]
+        batch_size = time_step.step_type.shape[0]
+
+    policy_state = algorithm.get_initial_predict_state(batch_size)
+    trans_state = algorithm.get_initial_transform_state(batch_size)
+    policy_steps = []
+
     for i in range(1, nsteps + 1):
         policy_step, trans_state = _step(
             algorithm,
@@ -182,10 +186,10 @@ def main(_):
         # policy_steps2 go through exactly same computation sequence so that
         # they can be compared with each other.
         common.set_random_seed(seed)
-        policy_steps1, _ = _run_steps(algorithm1, env1, FLAGS.num_test_steps,
+        policy_steps1, _ = _run_steps(algorithm1, None, FLAGS.num_test_steps,
                                       time_steps)
         common.set_random_seed(seed)
-        policy_steps2, _ = _run_steps(algorithm2, env2, FLAGS.num_test_steps,
+        policy_steps2, _ = _run_steps(algorithm2, None, FLAGS.num_test_steps,
                                       time_steps)
 
         def _compare(path, x1, x2):
