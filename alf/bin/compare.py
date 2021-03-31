@@ -14,13 +14,15 @@
 r"""Compare two algorithms on a set of fixed task initializations.
 
 Run:
-```bash
-python3 -m alf.bin.compare \
-  --root_dir1=~/tmp/ac_cart_pole \
-  --root_dir2=~/tmp/ddpg_cart_pole \
-  --alsologtostderr
-```
-Prefix with ```DISPLAY= vglrun -d :7 ``` if running remotely with virtual_gl.
+
+.. code-block:: bash
+
+    python3 -m alf.bin.compare \
+    --root_dir1=~/tmp/ac_cart_pole \
+    --root_dir2=~/tmp/ddpg_cart_pole \
+    --alsologtostderr
+
+Prefix with ``DISPLAY= vglrun -d :7 `` if running remotely with virtual_gl.
 The cleared DISPLAY env_var is so that gzclients are not created.
 gzclients are not being torn down after play and can occupy too many xserver
 connections.

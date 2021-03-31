@@ -22,7 +22,8 @@ from inspect import Parameter
 __all__ = [
     'config', 'config1', 'configurable', 'define_config',
     'get_all_config_names', 'get_config_value', 'get_operative_configs',
-    'get_inoperative_configs', 'pre_config', 'validate_pre_configs'
+    'get_inoperative_configs', 'pre_config', 'reset_configs',
+    'validate_pre_configs'
 ]
 
 
@@ -189,10 +190,52 @@ class _Config(object):
     def is_used(self):
         return self._used
 
+    def reset(self):
+        self._used = False
+        self._configured = False
+        self._mutable = True
+
 
 # _CONF_TREE is a suffix tree. For a name such as "abc.def.ghi", the corresponding
 # node can be found using _CONF_TREE['ghi']['def']['abc']
 _CONF_TREE = {}
+_PRE_CONFIGS = []
+_HANDLED_PRE_CONFIGS = []
+_DEFINED_CONFIGS = []
+
+
+def reset_configs():
+    """Reset all the configs to their initial states."""
+
+    def _reset_configs(tree):
+        for child in tree.values():
+            if isinstance(child, dict):
+                _reset_configs(child)
+            else:
+                child.reset()
+
+    _reset_configs(_CONF_TREE)
+    for name in _DEFINED_CONFIGS:
+        _remove_config_node(name)
+
+    _DEFINED_CONFIGS.clear()
+    _PRE_CONFIGS.clear()
+    _HANDLED_PRE_CONFIGS.clear()
+
+
+def _remove_config_node(config_name):
+    """Remove the _Config object corresponding to config_name."""
+    node = _CONF_TREE
+    path = config_name.split('.')
+    for name in reversed(path):
+        tree = node
+        if not isinstance(tree, dict) or name not in tree:
+            raise ValueError("Cannot find config name %s" % config_name)
+        node = tree[name]
+
+    assert isinstance(
+        node, _Config), "config_name is not a full path: %s" % config_name
+    del tree[name]
 
 
 def _get_config_node(config_name):
@@ -257,10 +300,6 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     else:
         config_node.set_value(value)
         config_node.set_mutable(mutable)
-
-
-_PRE_CONFIGS = []
-_HANDLED_PRE_CONFIGS = []
 
 
 def pre_config(configs):
@@ -672,3 +711,4 @@ def define_config(name, default_value):
     node = _Config()
     node.set_default_value(default_value)
     _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
+    _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
