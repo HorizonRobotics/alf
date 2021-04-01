@@ -32,7 +32,6 @@ For using ALF conf, replace "--gin_file" with "--conf" and "--gin_param" with
 from absl import app
 from absl import flags
 from absl import logging
-from collections import Iterable
 import copy
 import gin
 import itertools
@@ -44,22 +43,27 @@ import os
 from pathos import multiprocessing
 import pathlib
 import random
+import subprocess
+import sys
 import time
 import torch
 import traceback
-import subprocess
-import sys
+from typing import Iterable
 
 import alf
 from alf.bin.train import train_eval
 from alf.utils import common
 
-flags.DEFINE_string('search_config', None,
-                    'Path to the grid search config file.')
-flags.DEFINE_bool(
-    'snapshot_gridsearch_activated', False,
-    'Whether a snapshot has been generated for grid search. (ONLY '
-    'change this flag manually if you know what you are doing!')
+
+def _define_flags():
+    alf.bin.train._define_flags()
+    flags.DEFINE_string('search_config', None,
+                        'Path to the grid search config file.')
+    flags.DEFINE_bool(
+        'snapshot_gridsearch_activated', False,
+        'Whether a snapshot has been generated for grid search. (ONLY '
+        'change this flag manually if you know what you are doing!')
+
 
 FLAGS = flags.FLAGS
 
@@ -397,7 +401,7 @@ def launch_snapshot_gridsearch():
             stdout=sys.stdout,
             stderr=sys.stdout,
             shell=True)
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         # No need to output anything
         pass
 
@@ -410,6 +414,7 @@ def main(_):
 
 
 if __name__ == '__main__':
+    _define_flags()
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
     flags.mark_flag_as_required('search_config')

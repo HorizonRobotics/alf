@@ -54,18 +54,22 @@ from alf.trainers import policy_trainer
 from alf.utils import common, dist_utils
 import alf.utils.checkpoint_utils as ckpt_utils
 
-flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
-                    'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_float('epsilon_greedy', 1., "probability of sampling action.")
-flags.DEFINE_integer('random_seed', None, "random seed")
-flags.DEFINE_integer('num_train_iterations', 2,
-                     "number of training iterations")
-flags.DEFINE_integer('num_test_steps', 10, "number of test steps")
-flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
-flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-flags.DEFINE_string('conf', None, 'Path to the alf config file.')
-flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
-flags.DEFINE_float('tolerance', 0., "Allowed difference between two runs")
+
+def _define_flags():
+    flags.DEFINE_string(
+        'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
+        'Root directory for writing logs/summaries/checkpoints.')
+    flags.DEFINE_float('epsilon_greedy', 1., "probability of sampling action.")
+    flags.DEFINE_integer('random_seed', None, "random seed")
+    flags.DEFINE_integer('num_train_iterations', 2,
+                         "number of training iterations")
+    flags.DEFINE_integer('num_test_steps', 10, "number of test steps")
+    flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
+    flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+    flags.DEFINE_string('conf', None, 'Path to the alf config file.')
+    flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+    flags.DEFINE_float('tolerance', 0., "Allowed difference between two runs")
+
 
 FLAGS = flags.FLAGS
 
@@ -213,6 +217,7 @@ def main(_):
 
 
 if __name__ == '__main__':
+    _define_flags()
     logging.set_verbosity(logging.INFO)
     if torch.cuda.is_available():
         alf.set_default_device("cuda")

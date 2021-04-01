@@ -57,15 +57,19 @@ from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
 
-flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
-flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
-                    'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
-flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-flags.DEFINE_string('conf', None, 'Path to the alf config file.')
-flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
-flags.DEFINE_bool('store_snapshot', True,
-                  'Whether store an ALF snapshot before training')
+
+def _define_flags():
+    flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
+    flags.DEFINE_string(
+        'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
+        'Root directory for writing logs/summaries/checkpoints.')
+    flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
+    flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+    flags.DEFINE_string('conf', None, 'Path to the alf config file.')
+    flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+    flags.DEFINE_bool('store_snapshot', True,
+                      'Whether store an ALF snapshot before training')
+
 
 FLAGS = flags.FLAGS
 
@@ -110,6 +114,7 @@ def main(_):
 
 
 if __name__ == '__main__':
+    _define_flags()
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
     if torch.cuda.is_available():
