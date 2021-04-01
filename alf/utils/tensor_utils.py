@@ -22,19 +22,21 @@ from alf.utils import math_ops
 
 def tensor_extend_new_dim(x, dim, n):
     """Extending the tensor along a new dimension with a replica of n.
+
     Args:
         x (Tensor): tensor to be extended
         dim (int): the value indicating the position of the newly
             inserted dimension
         n (int): the number of replica along dim
     Returns:
-        the extended tensor. Its shape is (*x.shape[0:dim], n, *x.shape[dim:])
+        Tensor: the extended tensor. Its shape is ``(*x.shape[0:dim], n, *x.shape[dim:])``
     """
     return x.unsqueeze(dim).expand(*x.shape[0:dim], n, *x.shape[dim:])
 
 
 def reverse_cumsum(x, dim):
     """Perform cumsum in a reverse order along the dimension specified by dim.
+
     Args:
         x (Tensor): the tensor to compute the reverse cumsum on
         dim (int): the value indicating the dimension along which to calculate
@@ -47,6 +49,7 @@ def reverse_cumsum(x, dim):
 
 def reverse_cumprod(x, dim):
     """Perform cumprod in a reverse order along the dimension specified by dim.
+
     Args:
         x (Tensor): the tensor to compute the reverse cumprod on
         dim (int): the value indicating the dimension along which to calculate
@@ -58,14 +61,15 @@ def reverse_cumprod(x, dim):
 
 
 def tensor_extend(x, y):
-    """Extending tensor with new_slice.
+    """Extending tensor ``x`` with new_slice ``y``.
 
-    new_slice.shape should be same as tensor.shape[1:]
+    ``y.shape`` should be same as ``x.shape[1:]``
+
     Args:
         x (Tensor): tensor to be extended
         y (Tensor): the tensor which will be appended to `x`
     Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+        Tensor: the extended tensor. Its shape is ``(x.shape[0]+1, x.shape[1:])``
     """
     return torch.cat((x, y.unsqueeze(0)))
 
@@ -77,7 +81,7 @@ def tensor_extend_zero(x):
     Args:
         x (Tensor): tensor to be extended
     Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+        Tensor: the extended tensor. Its shape is ``(x.shape[0]+1, x.shape[1:])``
     """
     return torch.cat((x, torch.zeros(1, *x.shape[1:], dtype=x.dtype)))
 
@@ -90,7 +94,7 @@ def tensor_prepend(x, y):
         x (Tensor): tensor to be prepended
         y (Tensor): the tensor which will be appended to `x`
     Returns:
-        the prepended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+        Tensor: the prepended tensor. Its shape is ``(x.shape[0]+1, x.shape[1:])``
     """
     return torch.cat([y.unsqueeze(0), x])
 
@@ -112,9 +116,10 @@ def explained_variance(ypred, y, valid_mask=None):
     Adapted from baselines.ppo2 explained_variance()
 
     Interpretation:
-        ev=0  =>  might as well have predicted zero
-        ev=1  =>  perfect prediction
-        ev<0  =>  worse than just predicting zero
+
+        * ev=0:  might as well have predicted zero
+        * ev=1:  perfect prediction
+        * ev<0:  worse than just predicting zero
 
     Args:
         ypred (Tensor): prediction for y
@@ -162,14 +167,18 @@ def to_tensor(data, dtype=None):
 
 
 def global_norm(tensors):
-    """Adapted from TF's version.
-    Computes the global norm of a nest of tensors. Given a nest of tensors
-    `tensors`, this function returns the global norm of all tensors in `tensors`.
-    The global norm is computed as:
+    """Computes the global norm of a nest of tensors.
 
-        `global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))`
+    Adapted from TF's version.
 
-    Any entries in `tensors` that are of type None are ignored.
+    Given a nest of tensors ``tensors``, this function returns the global norm
+    of all tensors in ``tensors``. The global norm is computed as:
+
+    .. code-block:: python
+
+        global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))
+
+    Any entries in ``tensors`` that are of type ``None`` are ignored.
 
     Args:
         tensors (nested Tensor): a nest of tensors
@@ -189,25 +198,33 @@ def global_norm(tensors):
 
 
 def clip_by_global_norm(tensors, clip_norm, use_norm=None, in_place=False):
-    """Adapted from TF's version.
-    Clips values of multiple tensors by the ratio of `clip_norm` to the global
+    """Clips values of multiple tensors by the ratio of ``clip_norm`` to the global
     norm.
 
-    Given a nest of tensors `tensors`, and a clipping norm threshold `clip_norm`,
+    Adapted from TF's version.
+
+    Given a nest of tensors ``tensors``, and a clipping norm threshold ``clip_norm``,
     this function clips the tensors *in place* and returns the global norm
-    (`global_norm`) of all tensors in `tensors`. Optionally, if you've already
+    (``global_norm``) of all tensors in ``tensors``. Optionally, if you've already
     computed the global norm for `tensors`, you can specify the global norm with
-    `use_norm`.
+    ``use_norm``.
 
     To perform the clipping, each `tensor` are set to:
+
+    .. code-block:: python
+
         tensor * clip_norm / max(global_norm, clip_norm)
+
     where:
+
+    .. code-block:: python
+
         global_norm = sqrt(sum([l2norm(t)**2 for t in tensors]))
 
-    If `clip_norm > global_norm` then the entries in `tensors` remain as they are,
+    If ``clip_norm > global_norm`` then the entries in ``tensors`` remain as they are,
     otherwise they're all shrunk by the global ratio.
 
-    Any of the entries of `tensors` that are of type `None` are ignored.
+    Any of the entries of ``tensors`` that are of type `None` are ignored.
 
     Args:
         tensors (nested Tensor): a nest of tensors to be clipped
@@ -276,7 +293,7 @@ def cov(data, rowvar=False):
     """Estimate a covariance matrix given data.
 
     Args:
-        data (tensor): A 1-D or 2-D tensor containing multiple observations 
+        data (tensor): A 1-D or 2-D tensor containing multiple observations
             of multiple dimentions. Each row of ``mat`` represents a
             dimension of the observation, and each column a single
             observation.

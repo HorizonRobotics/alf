@@ -51,6 +51,14 @@ class Checkpointer(object):
     def __init__(self, ckpt_dir, **kwargs):
         """A class for making checkpoints.
 
+        Example usage:
+
+        .. code-block:: python
+
+            alg_root = MyAlg(params=[p1, p2], sub_algs=[a1, a2], optimizer=opt)
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir,
+                                alg=alg_root)
+
         Args:
             ckpt_dir: The directory to save checkpoints. Create ckpt_dir if
                 it doesn't exist.
@@ -60,12 +68,6 @@ class Checkpointer(object):
                 all the children modules and optimizers are automatically
                 extracted and checkpointed. If a child module is also passed
                 in, it will be treated as the root to be recursively processed.
-        Example usage:
-        ```python
-            alg_root = MyAlg(params=[p1, p2], sub_algs=[a1, a2], optimizer=opt)
-            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir,
-                                alg=alg_root)
-        ```
 
         """
 
@@ -266,6 +268,7 @@ class Checkpointer(object):
 
     def save(self, global_step):
         """Save states of all modules to checkpoint
+
         Args:
             global_step (int): the number of training steps corresponding to the
                 current state to be saved. It will be appended to the name of

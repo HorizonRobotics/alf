@@ -35,14 +35,16 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 the rollout.
             action (nested tf.distribution): possibly batched action tuple
                 taken during rollout.
-            clipping_mode (str): mode for clipping the importance ratio.
-                'double_sided': clips the range of importance ratio into
-                    [1-importance_ratio_clipping, 1+importance_ratio_clipping],
-                    which is used by PPOLoss.
-                'capping': clips the range of importance ratio into
-                    min(1+importance_ratio_clipping, importance_ratio),
-                    which is used by VTraceLoss, where c_bar or rho_bar =
-                    1+importance_ratio_clipping.
+            clipping_mode (str): mode for clipping the importance ratio:
+
+                * 'double_sided': clips the range of importance ratio into
+                  ``[1-importance_ratio_clipping, 1+importance_ratio_clipping]``,
+                  which is used by PPOLoss.
+                * 'capping': clips the range of importance ratio into
+                  ``min(1+importance_ratio_clipping, importance_ratio)``,
+                  which is used by VTraceLoss, where c_bar or rho_bar =
+                  1+importance_ratio_clipping.
+
             scope (name scope manager): returned by tf.name_scope(), set
                 outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
@@ -111,13 +113,15 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     is that the accumulated_discounted_reward is replaced by value for is_last
     steps in this function.
 
-    ```
-    Q_t = sum_{t'=t}^T gamma^(t'-t) * r_{t'} + gamma^(T-t+1)*final_value.
-    ```
+    .. math::
+
+        Q_t = \sum_{t'=t}^T \gamma^{t'-t} * r_{t'} + \gamma^{T-t+1}*final\_value.
+
 
     Define abbreviations:
-    (B) batch size representing number of trajectories
-    (T) number of steps per trajectory
+
+    - B: batch size representing number of trajectories
+    - T: number of steps per trajectory
 
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
@@ -208,8 +212,9 @@ def generalized_advantage_estimation(rewards,
     is that the accumulated_td is reset to 0 for is_last steps in this function.
 
     Define abbreviations:
-        (B) batch size representing number of trajectories
-        (T) number of steps per trajectory
+
+    - B: batch size representing number of trajectories
+    - T: number of steps per trajectory
 
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.

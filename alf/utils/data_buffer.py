@@ -366,7 +366,7 @@ class RingBuffer(nn.Module):
         """Clear the buffer.
 
         Args:
-            env_ids (tensor): optional list of environment ids to clear
+            env_ids (Tensor): optional list of environment ids to clear
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
@@ -382,8 +382,8 @@ class RingBuffer(nn.Module):
         Only checked in blocking mode of dequeue and enqueue.
 
         All blocking enqueue and dequeue calls that happen afterwards will
-           be skipped (return ``None`` for dequeue or ``False`` for enqueue),
-           unless the operation already started.
+        be skipped (return ``None`` for dequeue or ``False`` for enqueue),
+        unless the operation already started.
         """
         self._stop.set()
 
@@ -404,9 +404,9 @@ class RingBuffer(nn.Module):
         Args:
             env_ids (Tensor): int64 Tensor of environment ids
         Returns:
-            A tensor with the same shape as env_ids, whose each entry is the
-                earliest position that is still in the replay buffer for
-                corresponding environment.
+            Tensor with the same shape as ``env_ids``, whose each entry is the
+            earliest position that is still in the replay buffer for
+            corresponding environment.
         """
         return self._current_pos[env_ids] - self._current_size[env_ids]
 
