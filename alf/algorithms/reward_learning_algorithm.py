@@ -70,13 +70,15 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
     """
 
     def __init__(self, reward_func: Callable, name="FixedRewardFunction"):
-        """Create a FixedRewardFunction.
+        """
+
         Args:
             reward_func (Callable): a function for computing reward.
                 It takes as input:
+
                 (1) observation (Tensor of shape [batch_size, observation_dim])
                 (2) action (Tensor of shape [batch_size, num_actions])
-                and returns a reward Tensor of shape [batch_size]
+                    and returns a reward Tensor of shape [batch_size]
         """
         super().__init__(name=name)
         self._reward_func = reward_func

@@ -144,7 +144,7 @@ class TransformerNetwork(PreprocessorNetwork):
                     d_model=d_model,
                     num_heads=num_attention_heads,
                     memory_size=input_size + core_size,
-                    positional_encoding='abs'))
+                    positional_encoding='abs' if i == 0 else 'none'))
 
         for i in range(num_memory_layers):
             self._transformers.append(
@@ -152,7 +152,7 @@ class TransformerNetwork(PreprocessorNetwork):
                     d_model=d_model,
                     num_heads=num_attention_heads,
                     memory_size=memory_size + input_size + core_size,
-                    positional_encoding='abs'))
+                    positional_encoding='abs' if i == 0 else 'none'))
 
         self._return_core_only = return_core_only
 
