@@ -20,10 +20,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Callable
 
 import alf
 from alf.initializers import variance_scaling_init
-from alf.nest.utils import get_outer_rank, NestConcat, NestMultiply, NestSum
+from alf.nest.utils import (get_nested_field, get_outer_rank, NestConcat,
+                            NestMultiply, NestSum)
+from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
@@ -485,21 +488,21 @@ class FCBatchEnsemble(FC):
                 ``kernel_initializer`` is not None.
             bias_init_range (float): biases are initialized uniformly in
                 [-bias_init_range, bias_init_range]
-            ensemble_group (int): the extra attribute ``ensemble_group`` added 
-                to ``self._r``, ``self._s``, and ``self._ensemble_bias``, 
-                default value is 0. 
-                For alf.optimizers whose ``parvi`` is not ``None``, all parameters 
-                with the same ``ensemble_group`` will be updated by the 
+            ensemble_group (int): the extra attribute ``ensemble_group`` added
+                to ``self._r``, ``self._s``, and ``self._ensemble_bias``,
+                default value is 0.
+                For alf.optimizers whose ``parvi`` is not ``None``, all parameters
+                with the same ``ensemble_group`` will be updated by the
                 particle-based VI algorithm specified by ``parvi``, options are
                 [``svgd``, ``gfsf``],
 
                 * Stein Variational Gradient Descent (SVGD)
 
-                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent:
                   A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
                 * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
-                
+
                   Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML, 2019.
         """
@@ -2216,14 +2219,20 @@ class GFT(nn.Module):
 class GetFields(nn.Module):
     """Get the fields from a nested input."""
 
-    def __init__(self, fields):
+    def __init__(self, field_nest=None, **fields):
         """
         Args
-            fields (nested str): the path of the fields to be retrieved. Each str
+            field_nest (nested str): the path of the fields to be retrieved. Each str
                 in ``fields`` represents a path to the field with '.' separating
                 the field name at different level.
+            fields (str): A simpler way of specifying ``field_nest`` when it is
+                a dict. ``GetFields(a="field_a", b="field_b")`` is equivalent to
+                ``GetFields(dict(a="field_a", b="field_b"))``.
         """
         super().__init__()
+        if field_nest is not None:
+            assert not fields
+            fields = field_nest
         self._fields = fields
 
     def forward(self, input):
@@ -2300,12 +2309,23 @@ class Branch(nn.Module):
 
     """
 
-    def __init__(self, modules):
+    def __init__(self, *modules, **named_modules):
         """
         Args:
-            modules (nested nn.Module): a nest of ``torch.nn.Module``
+            modules (nested nn.Module): a nest of ``torch.nn.Module``. Note that
+                ``Branch(module_a, module_b)`` is equivalent to
+                ``Branch((module_a, module_b))``
+            named_modules (nn.Module | Callable): a simpler way of specifying
+                a dict of modules. ``Branch(a=model_a, b=module_b)``
+                is equivalent to ``Branch(dict(a=module_a, b=module_b))``
         """
         super().__init__()
+        if modules:
+            assert not named_modules
+            if len(modules) == 1:
+                modules = modules[0]
+        else:
+            modules = named_modules
         has_network = any(
             alf.nest.flatten(
                 alf.nest.map_structure(
@@ -2326,21 +2346,146 @@ class Branch(nn.Module):
         alf.nest.map_structure(reset_parameters, self._networks)
 
 
-class Sequential(nn.Sequential):
-    """A thin wrapper over nn.Sequential to allow stateless alf.networks.Network."""
+class Sequential(nn.Module):
+    """A more flexible Sequential than torch.nn.Sequential.
 
-    def __init__(self, *args):
-        super().__init__(*args)
-        for m in self:
-            if isinstance(m, alf.networks.Network):
-                assert not alf.nest.flatten(m.state_spec), (
+    ``alf.layers.Sequential`` is similar to ``alf.nn.Sequential``, but does not
+    accept stateful ``alf.nn.Network`` as its elements.
+
+    All the modules provided through ``modules`` and ``named_modules`` are calculated
+    sequentially in the same order as they appear in the call to ``Sequential``.
+    Typically, each module takes the result of the previous module as its input
+    (or the input to the Sequential if it is the first module), and the result of
+    the last module is the output of the Sequential. But we also allow more
+    flexibilities as shown in example 2.
+
+    Example 1:
+
+    .. code-block:: python
+
+        net = Sequential(module1, module2)
+        y = net(x)
+
+    is equivalent to the following:
+
+    .. code-block:: python
+
+        z = module1(x)
+        y = module2(z)
+
+    Example 2:
+
+    .. code-block:: python
+
+        net = Sequential(
+            module1, a=module2, b=(('input', 'a'), module3), output=('a', 'b'))
+        output = net(input, state)
+
+    is equivalent to the following:
+
+    .. code-block:: python
+
+        _ = module1(input)
+        a = module2(_)
+        b = module3((input, a))
+        output = (a, b)
+
+    """
+
+    def __init__(self, *modules, output='', **named_modules):
+        """
+        Args:
+            modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, stateless ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
+                assumed to be the result of the previous module (or input to this
+                ``Sequential`` for the first module). If input is provided, it
+                should be a nested str. It will be used to retrieve results from
+                the dictionary of the current ``named_results``. For modules
+                specified by ``modules``, because no ``named_modules`` has been
+                invoked, ``named_results`` is ``{'input': input}``.
+            named_modules (Callable | (nested str, Callable)):
+                The ``Callable`` can be a ``torch.nn.Module``, stateless ``alf.nn.Network``
+                or plain ``Callable``. Optionally, their inputs can be specified
+                by the first element of the tuple. If input is not provided, it is
+                assumed to be the result of the previous module (or input to this
+                ``Sequential`` for the first module). If input is provided, it
+                should be a nested str. It will be used to retrieve results from
+                the dictionary of the current ``named_results``. ``named_results``
+                is updated once the result of a named module is calculated.
+            output (nested str): if not provided, the result from the last module
+                will be used as output. Otherwise, it will be used to retrieve
+                results from ``named_results`` after the results of all modules
+                have been calculated.
+        """
+        super().__init__()
+        named_elements = list(zip([''] * len(modules), modules)) + list(
+            named_modules.items())
+        modules = []
+        inputs = []
+        outputs = []
+        simple = True
+        is_nested_str = lambda s: all(
+            map(lambda x: type(x) == str, alf.nest.flatten(s)))
+        self._networks = []
+        # pytorch nn.Moddule needs to use ModuleList to keep track of parameters
+        self._nets = nn.ModuleList()
+        for i, (out, element) in enumerate(named_elements):
+            input = ''
+            if isinstance(element, tuple) and len(element) == 2:
+                input, module = element
+            else:
+                module = element
+            if not (isinstance(module, Callable) and is_nested_str(input)):
+                raise ValueError(
+                    "Argument %s is not in the form of Callable "
+                    "or (nested str, Callable): %s" % (out or str(i), element))
+            if isinstance(module, alf.networks.Network):
+                assert not alf.nest.flatten(module.state_spec), (
                     "Network element of layers.Sequential should be stateless. "
                     "Use networks.Sequential instead")
+            inputs.append(input)
+            outputs.append(out)
+            self._networks.append(module)
+            if isinstance(module, nn.Module):
+                self._nets.append(module)
+            if out or input:
+                simple = False
 
-    def forward(self, input):
-        for module in self:
+        if simple:
+            self.forward = self._forward_simple
+        else:
+            self.forward = self._forward_complex
+        self._output = output
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def _forward_simple(self, input):
+        for module in self._networks:
             if isinstance(module, alf.networks.Network):
                 input = module(input)[0]
             else:
                 input = module(input)
         return input
+
+    def _forward_complex(self, input):
+        var_dict = {'input': input}
+        for i, net in enumerate(self._networks):
+            if self._inputs[i]:
+                input = get_nested_field(var_dict, self._inputs[i])
+            if isinstance(net, alf.networks.Network):
+                input = net(input)[0]
+            else:
+                input = net(input)
+            if self._outputs[i]:
+                var_dict[self._outputs[i]] = input
+        if self._output:
+            input = get_nested_field(var_dict, self._output)
+        return input
+
+    def reset_parameters(self):
+        alf.nest.map_structure(reset_parameters, self._networks)
+
+    def __getitem__(self, i):
+        return self._networks[i]

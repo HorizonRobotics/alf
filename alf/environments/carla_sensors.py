@@ -18,13 +18,15 @@ import math
 import numpy as np
 import weakref
 import threading
+from unittest.mock import Mock
 
 try:
     import carla
 except ImportError:
-    carla = None
+    # create 'carla' as a mock to not break python argument type hints
+    carla = Mock()
 
-if carla is not None:
+if not isinstance(carla, Mock):
     try:
         from agents.navigation.global_route_planner import GlobalRoutePlanner
         from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
@@ -32,7 +34,7 @@ if carla is not None:
     except ImportError:
         logging.fatal("Cannot import carla agents package. Please add "
                       "$CARLA_ROOT/PythonAPI/carla to your PYTHONPATH")
-        carla = None
+        carla = Mock()
 
 import alf
 from alf.data_structures import namedtuple
@@ -590,6 +592,7 @@ class CameraSensor(SensorBase):
         self._frame = 0
         self._image = np.zeros([num_channels, image_size_y, image_size_x],
                                dtype=np.uint8)
+        self._fov = fov
 
     def render(self, display):
         """Render the camera image to a pygame display.
@@ -601,6 +604,7 @@ class CameraSensor(SensorBase):
             import cv2
             import pygame
             height, width = self._image.shape[1:3]
+            # (c, y, x) => (x, y, c)
             image = np.transpose(self._image, (2, 1, 0))
 
             if self._sensor_type.startswith(
@@ -614,9 +618,121 @@ class CameraSensor(SensorBase):
                     image,
                     dsize=(scaled_height, scaled_width),
                     interpolation=cv2.INTER_NEAREST)
-
             surface = pygame.surfarray.make_surface(image)
             display.blit(surface, (0, 0))
+
+    def _draw_world_points_on_image(self,
+                                    world_point,
+                                    rgb_img,
+                                    color=(255, 0, 0),
+                                    size=3):
+        """Render points with world coordinated onto the camera image.
+
+        Args:
+            world_point (np.ndarray): point to be rendered in the camera image,
+                represented in world coordinate. The shape is [N, 3]
+            rgb_img (np.ndarray): with the meaning of axis as (y, x, c)
+            color (tuple[int]): color values for the [R, G, B] channels
+                of the rendered points
+            size (int): size of the rendered point in terms of pixels
+        """
+
+        assert len(color) == 3, ("the color code should contain values for "
+                                 "[R, G, B] channels respectively")
+
+        point_cam = self._world_to_camera_image(world_point, rgb_img.shape[1],
+                                                rgb_img.shape[0])
+
+        half_size = size // 2
+        for i in range(point_cam.shape[0]):
+            pt = point_cam[i]
+
+            xi = int(np.asscalar(pt[0]))
+            yi = int(np.asscalar(pt[1]))
+
+            if xi >= 0 and xi < rgb_img.shape[
+                    1] and yi >= 0 and yi < rgb_img.shape[0]:
+
+                xst = xi - half_size
+                yst = yi - half_size
+
+                xed = xst + size
+                yed = yst + size
+
+                xst = np.clip(xst, 0, rgb_img.shape[1])
+                xed = np.clip(xed, 0, rgb_img.shape[1])
+                yst = np.clip(yst, 0, rgb_img.shape[0])
+                yed = np.clip(yed, 0, rgb_img.shape[0])
+
+                rgb_img[yst:yed, xst:xed] = color
+
+    def _world_to_camera_image(self, world_points, image_width, image_height):
+        """Project points in world coordinates to camera image plane.
+
+        Adapted from https://github.com/carla-simulator/carla/blob/master/PythonAPI/examples/lidar_to_camera.py
+        Additional reference:
+        https://web.stanford.edu/class/cs231a/course_notes/01-camera-models.pdf
+
+        Args:
+            world_points (np.ndarray): [N, 3] in world coordinate
+            image_width (int): the width of the image to be rendered on
+            image_height (int): the height of the image to be rendered on
+        Output:
+            np.ndarray: representing the image plane coordinates for the set
+                of points that are visible in the camera. Its shape is [N', 2],
+                with N' <= N.
+        """
+
+        # Build the projection matrix K:
+        # K = [[Fx,  0, image_w/2],
+        #      [ 0, Fy, image_h/2],
+        #      [ 0,  0,         1]]
+
+        focal = image_width / (2.0 * np.tan(self._fov * np.pi / 360.0))
+
+        # In this case Fx and Fy are the same since the pixel aspect
+        # ratio is 1
+        K = np.identity(3)
+        K[0, 0] = K[1, 1] = focal
+        K[0, 2] = image_width / 2.0
+        K[1, 2] = image_height / 2.0
+
+        # [4, 4]
+        world_2_camera = np.linalg.inv(
+            _get_transform_matrix(self._sensor.get_transform()))
+
+        # transform the points from world space to camera space through the
+        # following several steps
+
+        # [N, 3] -> [3, N]
+        world_points = world_points.transpose()
+        # [3, N] -> [4, N]
+        world_points = np.concatenate(
+            (world_points, np.ones_like(world_points[0:1, ...])), axis=0)
+
+        sensor_points = np.matmul(world_2_camera, world_points)
+
+        # change from UE4's left handed coordinate system to a typical
+        # right handed camera coordinate system, which is equivalent to
+        # axis swapping: (x, y, z) -> (y, -z, x)
+        point_in_camera_coords = np.array(
+            [sensor_points[1], -sensor_points[2], sensor_points[0]])
+
+        # remove points that are behind the camera as they are invisible
+        cam_z = point_in_camera_coords[2]
+        valid_ind = cam_z >= 0
+        point_in_camera_coords = point_in_camera_coords[:, valid_ind]
+
+        # use projection matrix K to do the mapping from 3D to 2D in
+        # homogeneous coordinates
+        points_2d_homogeneous = np.matmul(K, point_in_camera_coords)
+
+        # normalize the x, y values by z value
+        points_2d = points_2d_homogeneous[:2, :] / points_2d_homogeneous[2, :]
+
+        # [2, N] -> [N, 2]
+        points_2d = points_2d.transpose()
+        return points_2d
 
     @staticmethod
     def _parse_image(weak_self, image):
@@ -736,6 +852,37 @@ def _to_numpy_waypoint(wp: carla.Waypoint):
         lane_type=np.int(wp.lane_type),
         right_lane_marking=_to_numpy_lane_marking(wp.right_lane_marking),
         left_lane_marking=_to_numpy_lane_marking(wp.left_lane_marking))
+
+
+def _get_transform_matrix(transform):
+    """Computes the 4 by 4 transformation matrix representation of the
+    3D transform using homogeneous coordinates.
+
+    Adapted from Math::GetMatrix() in https://github.com/carla-simulator/carla/blob/5bd3dab1013df554c0198662e0ceb50b7857feba/LibCarla/source/carla/geom/Transform.h
+
+    Args:
+        ransform (carla.Transform):
+    Returns:
+        np.ndarray: with the shape of [4, 4]
+    """
+    loc = transform.location
+
+    yaw = math.radians(transform.rotation.yaw)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+
+    roll = math.radians(transform.rotation.roll)
+    cr, sr = np.cos(roll), np.sin(roll)
+
+    pitch = math.radians(transform.rotation.pitch)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+
+    x, y, z = loc.x, loc.y, loc.z
+
+    mat = np.array(
+        [[cp * cy, cy * sp * sr - sy * cr, -cy * sp * cr - sy * sr, x],
+         [cp * sy, sy * sp * sr + cy * cr, -sy * sp * cr + cy * sr, y],
+         [sp, -cp * sr, cp * cr, z], [0., 0., 0., 1.]])
+    return mat
 
 
 def _get_forward_vector(rotation):

@@ -44,15 +44,18 @@ import math
 import numpy as np
 import os
 import random
+import scipy.interpolate
 import subprocess
 import sys
 import time
 import torch
+from unittest.mock import Mock
 
 try:
     import carla
 except ImportError:
-    carla = None
+    # create 'carla' as a mock to not break python argument type hints
+    carla = Mock()
 
 import alf
 import alf.data_structures as ds
@@ -66,7 +69,7 @@ from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
 
 
 def is_available():
-    return carla is not None
+    return not isinstance(carla, Mock)
 
 
 def geo_distance(loc1, loc2):
@@ -305,7 +308,8 @@ class Player(object):
                  with_gnss_sensor=True,
                  with_imu_sensor=True,
                  with_camera_sensor=True,
-                 with_radar_sensor=True):
+                 with_radar_sensor=True,
+                 render_waypoints=True):
         """
         Args:
             actor (carla.Actor): the carla actor object
@@ -354,10 +358,14 @@ class Player(object):
             with_imu_sensor (bool): whether to use ``IMUSensor``.
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
+            render_waypoints (bool): whether to render (interpolated) waypoints
+                in the generated video during rendering. Note that it is only
+                used for visualization and has no impacts on the perception data.
         """
         self._actor = actor
         self._alf_world = alf_world
         self._observation_sensors = {}
+        self._render_waypoints = render_waypoints
 
         self._collision_sensor = CollisionSensor(actor)
         self._observation_sensors['collision'] = self._collision_sensor
@@ -828,8 +836,8 @@ class Player(object):
                                 if 'navigation' in obs.keys() else '',
             'Distance: %7.2f' % np.linalg.norm(obs['goal']) \
                                 if 'goal' in obs.keys() else '',
-            'Velocity: (%4.1f, %4.1f, %4.1f) km/h' % tuple(
-                    (3.6 * obs['velocity']).tolist()) \
+            'Velocity: (%4.1f, %4.1f, %4.1f) m/s' % tuple(
+                    obs['velocity'].tolist()) \
                                 if 'velocity' in obs.keys() else '',
             'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
                     obs['imu'][0:3].tolist()) \
@@ -849,11 +857,126 @@ class Player(object):
         if mode == 'human':
             pygame.display.flip()
         elif mode == 'rgb_array':
+            rgb_img = pygame.surfarray.array3d(self._surface)
+
             # (x, y, c) => (y, x, c)
-            return np.transpose(
-                pygame.surfarray.array3d(self._surface), (1, 0, 2))
+            rgb_img = np.transpose(rgb_img, (1, 0, 2))
+
+            if 'navigation' in obs.keys() and self._render_waypoints:
+                # index of waypoint to be rendered
+                waypoint_index = np.arange(2, 5)
+                nav_traj = obs['navigation'][waypoint_index]
+                self._draw_ego_traj_on_image(
+                    nav_traj,
+                    rgb_img,
+                    camera_sensor=self._camera_sensor,
+                    color=(0, 255, 0),
+                    size=5,
+                    zero_world_z=True,
+                    interp_num=500)
+
+            return rgb_img
         else:
             raise ValueError("Unsupported render mode: %s" % mode)
+
+    def _draw_ego_traj_on_image(self,
+                                ego_points,
+                                rgb_img,
+                                camera_sensor,
+                                color=(255, 0, 0),
+                                size=3,
+                                forward_shift_delta=0,
+                                zero_world_z=False,
+                                append_self=False,
+                                interp_num=200):
+        """Render points in ego coordinates on camera image.
+
+        Args:
+            ego_points (np.ndarray): [N, 3]
+            rgb_img (np.ndarray): with the meaning of axis as (y, x, c)
+            camera_sensor (CameraSensor): the camera sensor
+            color (tuple[int]): color values for the [R, G, B] channels
+                of the rendered points
+            size (int): size of the rendered point in terms of pixels
+            forward_shift_delta (int): the amount to be shifted for the points
+                along the forward axis. This might be useful in some cases
+                to shift the points to be within the camera's field of view
+            zero_world_z (bool): whether set the z values of the transformed
+                points in world coordinate to zero. This is useful to render
+                points on the ground plane
+            append_self (bool): whether append self location to the point set
+            interp_num (int): the number of target elements to be obtained
+                by interpolation
+        Returns:
+            np.ndarray: interpolated ego points or input ego points if no
+                interpolation is applied
+        """
+
+        # [N, 3] -> [3, N]
+        ego_points = np.transpose(ego_points)
+
+        if interp_num >= ego_points.shape[1]:
+            time_index = np.linspace(0, 1, ego_points.shape[1])
+
+            interp_func = scipy.interpolate.interp1d(
+                x=time_index, y=ego_points, axis=1)
+            ego_interp = interp_func(
+                np.linspace(time_index[0], time_index[-1], 100))
+        else:
+            if interp_num > 0:
+                common.warning_once(
+                    ("the specified number of elements after "
+                     "interpolation is smaller than the number of elements "
+                     "in the original trajectory; skipping interpolation"))
+            ego_interp = ego_points
+
+        # [3, N] -> [N, 3]
+        ego_interp = np.transpose(ego_interp)
+
+        nav_world = self._ego_to_world_position(
+            ego_interp,
+            append_self=append_self,
+            forward_shift_delta=forward_shift_delta)
+        if zero_world_z:
+            nav_world[:, 2] = 0
+
+        camera_sensor._draw_world_points_on_image(nav_world, rgb_img, color,
+                                                  size)
+
+        return ego_interp
+
+    def _ego_to_world_position(self,
+                               ego_points,
+                               append_self=False,
+                               forward_shift_delta=0):
+        """
+        Args:
+            ego_points (np.ndarray): [N, 3]
+            forward_shift_delta (int): the amount to be shifted for the points
+                along the forward axis. This might be useful in some cases
+                to shift the points to be within the camera's field of view
+        Returns:
+            np.ndarray: shape [N, 3]
+        """
+
+        trans = self._actor.get_transform()
+        self_loc = trans.location
+        yaw = math.radians(trans.rotation.yaw)
+
+        self_loc = np.array([self_loc.x, self_loc.y, self_loc.z])
+        self_loc = np.expand_dims(self_loc, axis=0)
+        cos, sin = np.cos(yaw), np.sin(yaw)
+        rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
+
+        # shift along forward axis
+        ego_points[:, 0] = ego_points[:, 0] + forward_shift_delta
+
+        ego_points = (
+            np.matmul(ego_points, np.linalg.inv(rot)) + self_loc).astype(
+                np.float32)
+        if append_self:
+            ego_points = np.concatenate([self_loc, ego_points], axis=0)
+        return ego_points
 
     def _draw_text(self, texts):
         import os

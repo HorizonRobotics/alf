@@ -24,8 +24,10 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.utils.normalizers import AdaptiveNormalizer
 
 
-@gin.configurable
+@alf.configurable
 class TDLoss(nn.Module):
+    """Temporal difference loss."""
+
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
@@ -33,19 +35,35 @@ class TDLoss(nn.Module):
                  normalize_target=False,
                  debug_summaries=False,
                  name="TDLoss"):
-        r"""Create a TDLoss object.
-
+        r"""
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
-            :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)`
+
+        .. math::
+
+          G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)
+
         If ``td_lambda`` = 1, the target for step t is :math:`G_{t:T}`.
+
         If ``td_lambda`` = 0, the target for step t is :math:`G_{t:t+1}`
+
         If 0 < ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
-            :math:`G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}`
+
+        .. math::
+
+            G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}
+
         There is a simple relationship between :math:`\lambda`-return and
         the generalized advantage estimation :math:`\hat{A}^{GAE}_t`:
-            :math:`G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)`
+
+        .. math::
+
+            G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)
+
         where the generalized advantage estimation is defined as:
-            :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
+
+        .. math::
+
+            \hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))
 
         References:
 
@@ -56,7 +74,9 @@ class TDLoss(nn.Module):
         <http://incompleteideas.net/book/the-book.html>`_, Chapter 12, 2018
 
         Args:
-            gamma (float): A discount factor for future rewards.
+            gamma (float|list[float]): A discount factor for future rewards. For
+                multi-dim reward, this can also be a list of discounts, each
+                discount applies to a reward dim.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
@@ -70,12 +90,21 @@ class TDLoss(nn.Module):
         super().__init__()
 
         self._name = name
-        self._gamma = gamma
+        self._gamma = torch.tensor(gamma)
         self._td_error_loss_fn = td_error_loss_fn
         self._lambda = td_lambda
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
+
+    @property
+    def gamma(self):
+        """Return the :math:`\gamma` value for discounting future rewards.
+
+        Returns:
+            Tensor: a rank-0 or rank-1 (multi-dim reward) floating tensor.
+        """
+        return self._gamma.clone()
 
     def forward(self, experience, value, target_value):
         """Cacluate the loss.
@@ -94,24 +123,31 @@ class TDLoss(nn.Module):
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
+        if experience.reward.ndim == 3:
+            # [T, B, D] or [T, B, 1]
+            discounts = experience.discount.unsqueeze(-1) * self._gamma
+        else:
+            # [T, B]
+            discounts = experience.discount * self._gamma
+
         if self._lambda == 1.0:
             returns = value_ops.discounted_return(
                 rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
-                discounts=experience.discount * self._gamma)
+                discounts=discounts)
         elif self._lambda == 0.0:
             returns = value_ops.one_step_discounted_return(
                 rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
-                discounts=experience.discount * self._gamma)
+                discounts=discounts)
         else:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
-                discounts=experience.discount * self._gamma,
+                discounts=discounts,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
 

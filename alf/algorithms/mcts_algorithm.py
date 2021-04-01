@@ -204,16 +204,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 contained in the dictionary:
 
                 1. valid_action_mask: a bool Tensor to indicate which actions are
-                    allowed. It will be used to mask out invalid actions. If not
-                    provided, all possible actions are considered.
+                   allowed. It will be used to mask out invalid actions. If not
+                   provided, all possible actions are considered.
                 2. steps: int32 Tensor to indicate the number of steps since the
-                    beginning of the game. If not provided, an internal counter
-                    will be used. However, this internal count will not be
-                    correct if the algorithm is used to play against human because
-                    it is not used to generate all the moves of both players.
+                   beginning of the game. If not provided, an internal counter
+                   will be used. However, this internal count will not be
+                   correct if the algorithm is used to play against human because
+                   it is not used to generate all the moves of both players.
                 3. to_play: int8 Tensor whose elements are 0 or 1 to indicate who
-                    is the player to take the action. If not provided, steps % 2
-                    will be used as to_play.
+                   is the player to take the action. If not provided, steps % 2
+                   will be used as to_play.
             action_spec (nested BoundedTensorSpec): representing the actions.
             num_simulations (int): the number of simulations per search (calls to model)
             root_dirichlet_alpha (float): alpha of dirichlet prior for exploration

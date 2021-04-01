@@ -14,13 +14,15 @@
 r"""Compare two algorithms on a set of fixed task initializations.
 
 Run:
-```bash
-python3 -m alf.bin.compare \
-  --root_dir1=~/tmp/ac_cart_pole \
-  --root_dir2=~/tmp/ddpg_cart_pole \
-  --alsologtostderr
-```
-Prefix with ```DISPLAY= vglrun -d :7 ``` if running remotely with virtual_gl.
+
+.. code-block:: bash
+
+    python3 -m alf.bin.compare \
+    --root_dir1=~/tmp/ac_cart_pole \
+    --root_dir2=~/tmp/ddpg_cart_pole \
+    --alsologtostderr
+
+Prefix with ``DISPLAY= vglrun -d :7 `` if running remotely with virtual_gl.
 The cleared DISPLAY env_var is so that gzclients are not created.
 gzclients are not being torn down after play and can occupy too many xserver
 connections.
@@ -36,15 +38,18 @@ import numpy as np
 import os
 import re
 
-flags.DEFINE_string('root_dir1', None, 'Root directory for algorithm one.')
-flags.DEFINE_string('root_dir2', None, 'Root directory for algorithm two.')
-flags.DEFINE_string('output_file', None, 'output html file.')
-flags.DEFINE_integer('num_runs', 10, 'Compare on so many runs.')
-flags.DEFINE_integer('start_from', 0, 'Start random seeds from here.')
-flags.DEFINE_string(
-    'common_gin', '', 'Common config for the two sides, '
-    'e.g. "--gin_param=\'GoalTask.random_range=5\'"')
-flags.DEFINE_integer('overwrite', 0, 'Overwrite cached files.')
+
+def _define_flags():
+    flags.DEFINE_string('root_dir1', None, 'Root directory for algorithm one.')
+    flags.DEFINE_string('root_dir2', None, 'Root directory for algorithm two.')
+    flags.DEFINE_string('output_file', None, 'output html file.')
+    flags.DEFINE_integer('num_runs', 10, 'Compare on so many runs.')
+    flags.DEFINE_integer('start_from', 0, 'Start random seeds from here.')
+    flags.DEFINE_string(
+        'common_gin', '', 'Common config for the two sides, '
+        'e.g. "--gin_param=\'GoalTask.random_range=5\'"')
+    flags.DEFINE_integer('overwrite', 0, 'Overwrite cached files.')
+
 
 FLAGS = flags.FLAGS
 
@@ -265,6 +270,7 @@ def main(_):
 
 
 if __name__ == '__main__':
+    _define_flags()
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir1')
     flags.mark_flag_as_required('root_dir2')

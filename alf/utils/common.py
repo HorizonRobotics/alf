@@ -17,6 +17,7 @@ from absl import flags
 from absl import logging
 import collections
 from collections import OrderedDict
+import copy
 import functools
 from functools import wraps
 import gin
@@ -27,6 +28,8 @@ import os
 import pprint
 import random
 import shutil
+import subprocess
+import sys
 import time
 import torch
 import torch.distributions as td
@@ -211,11 +214,11 @@ def expand_dims_as(x, y):
         ``x`` with extra singular dimensions.
     """
     assert x.ndim <= y.ndim
-    assert x.shape == y.shape[:len(x.shape)]
     k = y.ndim - x.ndim
     if k == 0:
         return x
     else:
+        assert x.shape == y.shape[:len(x.shape)]
         return x.reshape(*x.shape, *([1] * k))
 
 
@@ -443,8 +446,8 @@ def get_conf_file():
     Returns:
         str: the name of the conf file. None if there is no conf file
     """
-    if not hasattr(flags.FLAGS, "conf") or not hasattr(flags.FLAGS,
-                                                       "gin_file"):
+    if not hasattr(flags.FLAGS, "conf") and not hasattr(
+            flags.FLAGS, "gin_file"):
         return None
 
     conf_file = getattr(flags.FLAGS, 'conf', None)
@@ -1055,3 +1058,49 @@ def get_all_parameters(obj):
             unprocessed.append((attr, path + name))
             memo.add(id(attr))
     return all_parameters
+
+
+def generate_alf_root_snapshot(alf_root, dest_path):
+    """Given a destination path, copy the local ALF root dir to the path. To
+    save disk space, only ``*.py`` files will be copied.
+
+    This function can be used to generate a snapshot of the repo so that the
+    exactly same code status will be recovered when later playing a trained
+    model or launching a grid-search job in the waiting queue.
+
+    Args:
+        alf_root (str): the path to the ALF repo
+        dest_path (str): the path to generate a snapshot of ALF repo
+    """
+
+    def rsync(src, target, includes):
+        args = ['rsync', '-rI', '--include=*/']
+        args += ['--include=%s' % i for i in includes]
+        args += ['--exclude=*']
+        args += [src, target]
+        # shell=True preserves string arguments
+        subprocess.check_call(
+            " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
+
+    # these files are important for code status
+    includes = ["*.py", "*.gin", "*.so", "*.json"]
+    rsync(alf_root, dest_path, includes)
+
+    # rename ALF repo to a unified dir name 'alf'
+    alf_dirname = os.path.basename(alf_root)
+    if alf_dirname != "alf":
+        os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
+
+
+def get_alf_snapshot_env_vars(root_dir):
+    """Given a ``root_dir``, return modified env variable dict so that ``PYTHONPATH``
+    points to the ALF snapshot under this directory.
+    """
+    alf_repo = os.path.join(root_dir, "alf")
+    alf_cnest = os.path.join(alf_repo,
+                             "alf/nest/cnest")  # path to archived cnest.so
+    python_path = os.environ.get("PYTHONPATH", "")
+    python_path = ":".join([alf_repo, alf_cnest, python_path])
+    env_vars = copy.copy(os.environ)
+    env_vars.update({"PYTHONPATH": python_path})
+    return env_vars

@@ -64,17 +64,17 @@ def _expand_to_replica(inputs, replicas, spec):
 
 @alf.configurable
 class FuncParVIAlgorithm(ParVIAlgorithm):
-    """Functional ParVI Algorithm 
+    """Functional ParVI Algorithm
 
-    Functional ParVI algorithm maintains a set of functional particles, 
+    Functional ParVI algorithm maintains a set of functional particles,
     where each particle is a neural network. All particles are updated
     using particle-based VI approaches.
 
-    There are two ways of treating a neural network as a particle: 
+    There are two ways of treating a neural network as a particle:
 
     * All the weights of the neural network as a particle.
 
-    * Outputs of the neural network for an input mini-batch as a particle.  
+    * Outputs of the neural network for an input mini-batch as a particle.
 
     """
 
@@ -115,18 +115,18 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 None.
             param_net (ParamNetwork): input parametric network.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (Callable): activation used for all the layers but
                 the last layer.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (Callable): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
@@ -134,13 +134,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 specified explicitly.
 
             num_particles (int): number of sampling particles
-            entropy_regularization (float): weight of the repulsive term in par_vi. 
+            entropy_regularization (float): weight of the repulsive term in par_vi.
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
-            function_bs (int): mini batch size for par_vi training. 
-                Needed for critic initialization when function_vi is True. 
-            function_extra_bs_ratio (float): ratio of extra sampled batch size 
+            function_bs (int): mini batch size for par_vi training.
+                Needed for critic initialization when function_vi is True.
+            function_extra_bs_ratio (float): ratio of extra sampled batch size
                 w.r.t. the function_bs.
             function_extra_bs_sampler (str): type of sampling method for extra
                 training batch, types are [``uniform``, ``normal``].
@@ -166,14 +166,11 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 types are [``svgd``, ``gfsf``, ``minmax``]
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
-                    the same batch of particles.   
-                * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally more
-                    expensive, but in some cases the convergence seems faster 
-                    than svgd approaches.
-                * minmax: Fisher Neural Sampler, optimal descent direction of
-                  the Stein discrepancy is solved by an inner optimization
-                  procedure in the space of L2 neural networks.
+                  the same batch of particles.
+                * gfsf: wasserstein gradient flow with smoothed functions. It
+                  involves a kernel matrix inversion, so computationally more
+                  expensive, but in some cases the convergence seems faster
+                  than svgd approaches.
             function_vi (bool): whether to use function value based par_vi.
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
@@ -282,8 +279,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             state (None): not used.
 
         Returns:
-            AlgStep: 
-            - output (Tensor): predictions with shape 
+            AlgStep:
+            - output (Tensor): predictions with shape
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
             - state (None): not used
         """
@@ -295,7 +292,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
     def train_iter(self, state=None):
         """Perform one epoch (iteration) of training.
-        
+
         Args:
             state (None): not used
 
@@ -336,10 +333,10 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         """Perform one batch of training computation.
 
         Args:
-            inputs (nested Tensor): input training data. 
-            entropy_regularization (float): weight of the repulsive term in par_vi. 
+            inputs (nested Tensor): input training data.
+            entropy_regularization (float): weight of the repulsive term in par_vi.
                 If None, use self._entropy_regularization.
-            loss_mask (Tensor): mask indicating which samples are valid for 
+            loss_mask (Tensor): mask indicating which samples are valid for
                 loss propagation.
             state (None): not used
 

@@ -42,7 +42,7 @@ You can visualize playing of the trained model by running:
     --alsologtostderr
 
 If instead of Gin configuration file, you want to use ALF python conf file, then
-replace the "--gin_file" option with "--conf".
+replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_param".
 """
 
 from absl import app
@@ -50,19 +50,26 @@ from absl import flags
 from absl import logging
 import gin
 import os
+import pathlib
 import torch
 
 from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
 
-flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
-flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
-                    'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
-flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-flags.DEFINE_string('conf', None, 'Path to the alf config file.')
-flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+
+def _define_flags():
+    flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
+    flags.DEFINE_string(
+        'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
+        'Root directory for writing logs/summaries/checkpoints.')
+    flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
+    flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+    flags.DEFINE_string('conf', None, 'Path to the alf config file.')
+    flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+    flags.DEFINE_bool('store_snapshot', True,
+                      'Whether store an ALF snapshot before training')
+
 
 FLAGS = flags.FLAGS
 
@@ -91,6 +98,13 @@ def main(_):
     root_dir = os.path.expanduser(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
     logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
+
+    if FLAGS.store_snapshot:
+        # ../<ALF_REPO>/alf/bin/train.py
+        alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+        # generate a snapshot of ALF repo as ``<root_dir>/alf``
+        common.generate_alf_root_snapshot(alf_root, root_dir)
+
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)
@@ -100,6 +114,7 @@ def main(_):
 
 
 if __name__ == '__main__':
+    _define_flags()
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
     if torch.cuda.is_available():

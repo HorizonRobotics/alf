@@ -27,8 +27,8 @@ from .config import TrainerConfig
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
 
-ActorCriticInfo = namedtuple("ActorCriticInfo",
-                             ["action_distribution", "value"])
+ActorCriticInfo = namedtuple(
+    "ActorCriticInfo", ["action_distribution", "value"], default_value=())
 
 
 @alf.configurable

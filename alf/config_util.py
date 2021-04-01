@@ -22,7 +22,8 @@ from inspect import Parameter
 __all__ = [
     'config', 'config1', 'configurable', 'define_config',
     'get_all_config_names', 'get_config_value', 'get_operative_configs',
-    'get_inoperative_configs', 'pre_config', 'validate_pre_configs'
+    'get_inoperative_configs', 'pre_config', 'reset_configs',
+    'validate_pre_configs'
 ]
 
 
@@ -48,6 +49,7 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
             def __init__(self, job1=1, job2=2):
                 ...
 
+            @alf.configurable
             def func(self, a, b):
                 ...
 
@@ -55,12 +57,12 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
 
     .. code-block::
 
-        alf.config('cool_func', cool_arg2='new_value', cool_arg2='another_value')
+        alf.config('cool_func', cool_arg1='new_value', cool_arg2='another_value')
         alf.config('Worker.func', b=3)
         alf.config('func', b=3)     # 'Worker.func' can be uniquely identified by 'func'
         alf.config({
             'dumb_func.b': 3,
-            'Worker.job1': 2
+            'Worker.job1': 2        # now the default value of job1 for Worker() becomes 2.
         })
 
 
@@ -189,10 +191,52 @@ class _Config(object):
     def is_used(self):
         return self._used
 
+    def reset(self):
+        self._used = False
+        self._configured = False
+        self._mutable = True
+
 
 # _CONF_TREE is a suffix tree. For a name such as "abc.def.ghi", the corresponding
 # node can be found using _CONF_TREE['ghi']['def']['abc']
 _CONF_TREE = {}
+_PRE_CONFIGS = []
+_HANDLED_PRE_CONFIGS = []
+_DEFINED_CONFIGS = []
+
+
+def reset_configs():
+    """Reset all the configs to their initial states."""
+
+    def _reset_configs(tree):
+        for child in tree.values():
+            if isinstance(child, dict):
+                _reset_configs(child)
+            else:
+                child.reset()
+
+    _reset_configs(_CONF_TREE)
+    for name in _DEFINED_CONFIGS:
+        _remove_config_node(name)
+
+    _DEFINED_CONFIGS.clear()
+    _PRE_CONFIGS.clear()
+    _HANDLED_PRE_CONFIGS.clear()
+
+
+def _remove_config_node(config_name):
+    """Remove the _Config object corresponding to config_name."""
+    node = _CONF_TREE
+    path = config_name.split('.')
+    for name in reversed(path):
+        tree = node
+        if not isinstance(tree, dict) or name not in tree:
+            raise ValueError("Cannot find config name %s" % config_name)
+        node = tree[name]
+
+    assert isinstance(
+        node, _Config), "config_name is not a full path: %s" % config_name
+    del tree[name]
 
 
 def _get_config_node(config_name):
@@ -250,10 +294,6 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
             config_node.set_value(value)
             config_node.set_mutable(mutable)
         else:
-            if not mutable:
-                raise ValueError(
-                    "The config '%s' has been configured to an immutable value "
-                    "of %s. You cannot change it to a new immutable value")
             logging.warning(
                 "The config '%s' has been configured to an immutable value "
                 "of %s. The new value %s will be ignored" %
@@ -261,10 +301,6 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     else:
         config_node.set_value(value)
         config_node.set_mutable(mutable)
-
-
-_PRE_CONFIGS = []
-_HANDLED_PRE_CONFIGS = []
 
 
 def pre_config(configs):
@@ -311,7 +347,11 @@ def validate_pre_configs():
     """Validate that all the configs set through ``pre_config()`` are correctly bound."""
 
     if _PRE_CONFIGS:
-        raise ValueError("Cannot find config name %s" % _PRE_CONFIGS[0][0])
+        raise ValueError((
+            "A pre-config '%s' was not handled, either because its config name "
+            +
+            "was not found, or there was some error when calling pre_config()")
+                         % _PRE_CONFIGS[0][0])
 
     for config_name in _HANDLED_PRE_CONFIGS:
         _get_config_node(config_name)
@@ -473,7 +513,7 @@ def _make_wrapper(fn, configs, signature, has_self):
                 continue
             elif param.kind == Parameter.POSITIONAL_ONLY:
                 if config.is_configured():
-                    unspecified_positional_args.append(config.get_value)
+                    unspecified_positional_args.append(config.get_value())
                     config.set_used()
             elif name not in kwargs and param.kind in (
                     Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY):
@@ -661,7 +701,7 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
 
 
 def define_config(name, default_value):
-    """Define a configurable value with givien ``default_value``.
+    """Define a configurable value with given ``default_value``.
 
     Its value can be retrieved by ``get_config_value()``.
 
@@ -672,3 +712,4 @@ def define_config(name, default_value):
     node = _Config()
     node.set_default_value(default_value)
     _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
+    _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)

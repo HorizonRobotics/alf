@@ -29,7 +29,7 @@ from alf.data_structures import time_step_spec
 class AlfEnvironment(object):
     """Abstract base class for ALF RL environments.
 
-    Observations and valid actions are described with ``TensorSpec``s, defined in
+    Observations and valid actions are described with ``TensorSpec``, defined in
     the ``specs`` module.
 
     The ``current_time_step()`` method returns current ``time_step``, resetting the
@@ -61,7 +61,7 @@ class AlfEnvironment(object):
         time_step = env.reset()
         while not time_step.is_last():
             action_step = policy.action(time_step)
-            time_step = tf_env.step(action_step.action)
+            time_step = env.step(action_step.action)
     """
 
     def __init__(self):
@@ -126,7 +126,7 @@ class AlfEnvironment(object):
         as min and max bounds on the values.
 
         Returns:
-            An ``TensorSpec``, or a nested ``dict``, list or tuple of ``TensorSpec``s.
+            nested TensorSpec
         """
 
     @abc.abstractmethod
@@ -137,7 +137,7 @@ class AlfEnvironment(object):
         as min and max bounds on the values.
 
         Returns:
-            An ``TensorSpec``, or a nested dict, list or tuple of ``TensorSpec``s.
+            nested TensorSpec
         """
 
     def reward_spec(self):
@@ -159,7 +159,7 @@ class AlfEnvironment(object):
         tensor-valued rewards.
 
         Returns:
-            A ``TimeStep`` namedtuple containing (possibly nested) ``TensorSpec``s defining
+            A ``TimeStep`` namedtuple containing (possibly nested) ``TensorSpec`` defining
             the step_type, reward, discount, observation, prev_action, and end_id.
         """
         return time_step_spec(self.observation_spec(), self.action_spec(),

@@ -25,6 +25,7 @@ def _randn_from_spec(specs, batch_size):
 
 class ContainersTest(alf.test.TestCase):
     def _verify_parameter_copy(self, src, copy):
+        """net.copy() only copy the structure, not the values of parameters."""
         for s, c in zip(src.parameters(), copy.parameters()):
             if (s == 0).all():
                 self.assertTrue((c == 0).all())
@@ -59,6 +60,39 @@ class ContainersTest(alf.test.TestCase):
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
 
+    def test_sequential_complex1(self):
+        net = alf.nn.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.nn.GRUCell(6, 8),
+            b=alf.nn.GRUCell(8, 12),
+            c=('a', alf.nn.GRUCell(8, 16)),
+            output=('b', 'c'))
+        self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
+        self.assertTrue(
+            alf.utils.spec_utils.is_same_spec(net.state_spec,
+                                              [(),
+                                               alf.TensorSpec((8, )),
+                                               alf.TensorSpec((12, )),
+                                               alf.TensorSpec((16, ))]))
+
+        batch_size = 24
+        x = _randn_from_spec(net.input_tensor_spec, batch_size)
+        state = _randn_from_spec(net.state_spec, batch_size)
+        y, new_state = net(x, state)
+
+        x1 = net[0](x)
+        a, s1 = net[1](x1, state[1])
+        b, s2 = net[2](a, state[2])
+        c, s3 = net[3](a, state[3])
+        self.assertEqual(len(y), 2)
+        self.assertEqual(type(y), tuple)
+        self.assertEqual(b, y[0])
+        self.assertEqual(c, y[1])
+        self.assertEqual((), new_state[0])
+        self.assertEqual(s1, new_state[1])
+        self.assertEqual(s2, new_state[2])
+        self.assertEqual(s3, new_state[3])
+
     def test_sequential2(self):
         net = alf.nn.Sequential(
             alf.layers.FC(4, 6), alf.layers.FC(6, 8), alf.layers.FC(8, 12))
@@ -75,6 +109,54 @@ class ContainersTest(alf.test.TestCase):
         x2 = net[1](x1)
         x3 = net[2](x2)
         self.assertEqual(x3, y)
+
+        net_copy = net.copy()
+        self._verify_parameter_copy(net, net_copy)
+
+    def test_sequential_complex2(self):
+        net = alf.nn.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 12),
+            c=(('a', 'b'), alf.layers.NestConcat()))
+
+        self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
+        self.assertEqual(net.state_spec, ())
+
+        batch_size = 24
+        x = _randn_from_spec(net.input_tensor_spec, batch_size)
+        y, new_state = net(x)
+        self.assertEqual(new_state, ())
+
+        x1 = net[0](x)
+        x2 = net[1](x1)
+        x3 = net[2](x2)
+        x4 = net[3]((x2, x3))
+        self.assertEqual(x4, y)
+
+        net_copy = net.copy()
+        self._verify_parameter_copy(net, net_copy)
+
+    def test_sequential_complex3(self):
+        net = alf.nn.Sequential(
+            alf.layers.FC(4, 6),
+            a=alf.layers.FC(6, 8),
+            b=alf.layers.FC(8, 8),
+            c=(('a', 'b'), lambda x: x[0] + x[1]))
+
+        self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
+        self.assertEqual(net.state_spec, ())
+
+        batch_size = 24
+        x = _randn_from_spec(net.input_tensor_spec, batch_size)
+        y, new_state = net(x)
+        self.assertEqual(new_state, ())
+
+        x1 = net[0](x)
+        x2 = net[1](x1)
+        x3 = net[2](x2)
+        x4 = x2 + x3
+        self.assertEqual(x4, y)
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)

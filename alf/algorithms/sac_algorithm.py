@@ -53,7 +53,7 @@ SacActorInfo = namedtuple(
     "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
-    "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
+    "SacInfo", ["action_distribution", "actor", "critic", "alpha", "log_pi"],
     default_value=())
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
@@ -650,11 +650,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 discrete_act_dist.probs * target_critics, dim=-1)
 
         target_critic = target_critics.reshape(exp.reward.shape)
-        if self._use_entropy_reward:
-            entropy_reward = nest.map_structure(
-                lambda la, lp: -torch.exp(la) * lp, self._log_alpha, log_pi)
-            entropy_reward = sum(nest.flatten(entropy_reward))
-            target_critic = target_critic + entropy_reward
 
         target_critic = target_critic.detach()
 
@@ -703,7 +698,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,
-            alpha=alpha_loss)
+            alpha=alpha_loss,
+            log_pi=log_pi)
         return AlgStep(action, state, info)
 
     def after_update(self, experience, train_info: SacInfo):
@@ -738,8 +734,21 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 alpha=alpha_loss))
 
     def _calc_critic_loss(self, experience, train_info: SacInfo):
-        critic_info = train_info.critic
+        # We need to put entropy reward in ``experience.reward`` instead of
+        # ``target_critics`` because in the case of multi-step TD learning,
+        # the entropy should also appear in intermediate steps!
+        # This doesn't affect one-step TD loss, however.
+        if self._use_entropy_reward:
+            with torch.no_grad():
+                entropy_reward = nest.map_structure(
+                    lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
+                    train_info.log_pi)
+                entropy_reward = sum(nest.flatten(entropy_reward))
+                gamma = self._critic_losses[0].gamma
+                experience = experience._replace(
+                    reward=experience.reward + entropy_reward * gamma)
 
+        critic_info = train_info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
             critic_losses.append(

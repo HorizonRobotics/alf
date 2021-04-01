@@ -24,7 +24,8 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.agent_helpers import AgentHelper
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
+from alf.algorithms.entropy_target_algorithm import (
+    EntropyTargetAlgorithm, NestedEntropyTargetAlgorithm)
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.mbrl_algorithm import LatentMbrlAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -98,13 +99,13 @@ class Agent(OnPolicyAlgorithm):
             goal_generator (Algorithm): an algorithm with output a goal vector
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
             extrinsic_reward_coef (float): Coefficient for extrinsic reward
-            enforce_entropy_target (bool): If True, use ``EntropyTargetAlgorithm``
+            enforce_entropy_target (bool): If True, use ``(Nested)EntropyTargetAlgorithm``
                 to dynamically adjust entropy regularization so that entropy is
                 not smaller than ``entropy_target`` supplied for constructing
-                ``EntropyTargetAlgorithm``. If this is enabled, make sure you don't
+                ``(Nested)EntropyTargetAlgorithm``. If this is enabled, make sure you don't
                 use ``entropy_regularization`` for loss (see ``ActorCriticLoss`` or
-                ``PPOLoss``). In order to use this, The ``PolicyStep.info`` from
-                ``rl_algorithm_cls.train_step()`` and ``rl_algorithm_cls.rollout()``
+                ``PPOLoss``). In order to use this, The ``AlgStep.info`` from
+                ``rl_algorithm_cls.train_step()`` and ``rl_algorithm_cls.rollout_step()``
                 needs to contain ``action_distribution``.
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
@@ -159,7 +160,10 @@ class Agent(OnPolicyAlgorithm):
         entropy_target_algorithm = None
         if entropy_target_cls or enforce_entropy_target:
             if entropy_target_cls is None:
-                entropy_target_cls = EntropyTargetAlgorithm
+                if alf.nest.is_nested(action_spec):
+                    entropy_target_cls = NestedEntropyTargetAlgorithm
+                else:
+                    entropy_target_cls = EntropyTargetAlgorithm
             entropy_target_algorithm = entropy_target_cls(
                 action_spec, debug_summaries=debug_summaries)
             agent_helper.register_algorithm(entropy_target_algorithm,
@@ -171,6 +175,9 @@ class Agent(OnPolicyAlgorithm):
             reward_weight_algorithm = reward_weight_algorithm_cls(
                 reward_spec=reward_spec, debug_summaries=debug_summaries)
             agent_helper.register_algorithm(reward_weight_algorithm, "rw")
+            # Initialize the reward weights of the rl algorithm
+            rl_algorithm.set_reward_weights(
+                reward_weight_algorithm.reward_weights)
 
         super().__init__(
             observation_spec=observation_spec,
