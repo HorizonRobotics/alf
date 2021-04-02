@@ -492,8 +492,10 @@ def compute_log_probability(distributions, actions):
 
 
 def rsample_action_distribution(nested_distributions):
-    """Sample actions from distributions with reparameterization-based sampling
-        (rsample) to enable backpropagation.
+    """Sample actions from distributions with reparameterization-based sampling.
+
+    It uses ``Distribution.rsample()`` to do the sampling to enable backpropagation.
+
     Args:
         nested_distributions (nested Distribution): action distributions.
     Returns:
@@ -519,6 +521,7 @@ def sample_action_distribution(nested_distributions):
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):
     """Generate greedy sample that maximizes the probability.
+
     Args:
         nested_distributions (nested Distribution): distribution to sample from
         eps (float): a floating value in :math:`[0,1]`, representing the chance of
@@ -713,7 +716,8 @@ def entropy_with_fallback(distributions, return_sum=True):
 
 @alf.configurable
 def calc_default_target_entropy(spec, min_prob=0.1):
-    """Calc default target entropy.
+    """Calculate default target entropy.
+
     Args:
         spec (TensorSpec): action spec
         min_prob (float): If continuous spec, we suppose the prob concentrates on

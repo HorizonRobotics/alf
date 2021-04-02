@@ -30,6 +30,7 @@ def torch_dtype_to_str(dtype):
 @gin.configurable
 class TensorSpec(object):
     """Describes a torch.Tensor.
+
     A TensorSpec allows an API to describe the Tensors that it accepts or
     returns, before that Tensor exists. This allows dynamic and flexible graph
     construction and configuration.
@@ -38,7 +39,7 @@ class TensorSpec(object):
     __slots__ = ["_shape", "_dtype"]
 
     def __init__(self, shape, dtype=torch.float32):
-        """Creates a TensorSpec.
+        """
         Args:
             shape (tuple[int]): The shape of the tensor.
             dtype (str or torch.dtype): The type of the tensor values,
@@ -223,23 +224,28 @@ class TensorSpec(object):
 class BoundedTensorSpec(TensorSpec):
     """A `TensorSpec` that specifies minimum and maximum values.
     Example usage:
-    ```python
-    spec = BoundedTensorSpec((1, 2, 3), torch.float32, 0, (5, 5, 5))
-    torch_minimum = torch.as_tensor(spec.minimum, dtype=spec.dtype)
-    torch_maximum = torch.as_tensor(spec.maximum, dtype=spec.dtype)
-    ```
+
+    .. code-block:: python
+
+        spec = BoundedTensorSpec((1, 2, 3), torch.float32, 0, (5, 5, 5))
+        torch_minimum = torch.as_tensor(spec.minimum, dtype=spec.dtype)
+        torch_maximum = torch.as_tensor(spec.maximum, dtype=spec.dtype)
+
     Bounds are meant to be inclusive. This is especially important for
     integer types. The following spec will be satisfied by tensors
     with values in the set {0, 1, 2}:
-    ```python
-    spec = BoundedTensorSpec((3, 5), torch.int32, 0, 2)
-    ```
+
+    .. code-block:: python
+
+        spec = BoundedTensorSpec((3, 5), torch.int32, 0, 2)
+
     """
 
     __slots__ = ("_minimum", "_maximum")
 
     def __init__(self, shape, dtype=torch.float32, minimum=0, maximum=1):
-        """Initializes a new `BoundedTensorSpec`.
+        """
+
         Args:
             shape (tuple[int]): The shape of the tensor.
             dtype (str or torch.dtype): The type of the tensor values,

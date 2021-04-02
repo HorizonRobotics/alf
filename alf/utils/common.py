@@ -552,6 +552,7 @@ def write_config(root_dir):
 def get_initial_policy_state(batch_size, policy_state_spec):
     """
     Return zero tensors as the initial policy states.
+
     Args:
         batch_size (int): number of policy states created
         policy_state_spec (nested structure): each item is a tensor spec for
@@ -566,6 +567,7 @@ def get_initial_policy_state(batch_size, policy_state_spec):
 
 def get_initial_time_step(env, first_env_id=0):
     """Return the initial time step.
+
     Args:
         env (AlfEnvironment):
         first_env_id (int): the environment ID for the first sample in this
@@ -724,9 +726,11 @@ def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
 def write_gin_configs(root_dir, gin_file):
     """
     Write a gin configration to a file. Because the user can
+
     1) manually change the gin confs after loading a conf file into the code, or
     2) include a gin file in another gin file while only the latter might be
        copied to ``root_dir``.
+
     So here we just dump the actual used gin conf string to a file.
 
     Args:

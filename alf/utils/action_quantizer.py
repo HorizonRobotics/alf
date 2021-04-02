@@ -32,13 +32,15 @@ class ActionQuantizer(object):
 
         Args:
             action_spec (BoundedTensorSpec): action spec
-            sampling_method(str): sampling space, uniform or log space
+            sampling_method (str): sampling space, uniform or log space：
+
                 - "uniform": the original space
                 - "log": the logarithm space
+
             action_bins (int): number of bins used for discretization
             rep_mode (str): the mode of representation for quantization:
-                - "center": linspace(lb + bin-size/2,
-                                     ub - bin_size/2, bin_num)
+
+                - "center": linspace(lb + bin-size/2, ub - bin_size/2, bin_num)
                 - "boundary": linspace(lower_bound, upper_bound, bin_num)
         """
         super().__init__()

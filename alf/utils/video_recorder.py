@@ -102,7 +102,8 @@ class RecorderBuffer(object):
     """
 
     def __init__(self, buffer_fields):
-        """The init function of RecorderBuffer.
+        """
+
         Args:
             buffer_fields (str|list[str]): the names used for representing
                 the corresponding fields of the buffer.
@@ -119,6 +120,7 @@ class RecorderBuffer(object):
 
     def get_buffer(self, field):
         """Get the corresponding buffer specified by field.
+
         Args:
             field (str): the name representing the field of the buffer to be
                 retrived.
@@ -127,6 +129,7 @@ class RecorderBuffer(object):
 
     def pop_fields(self, fields):
         """Pop elements from buffers specified by the names in fields.
+
         Args:
             fields (str|list[str]): the names used for representing
                 the corresponding fields of the buffer.
@@ -136,6 +139,7 @@ class RecorderBuffer(object):
 
     def append_fields(self, fields, elements):
         """Append items from elements to buffers specified by the names in fields.
+
         Args:
             fields (str|list[str]): the names used for representing
                 the corresponding fields of the buffer.
@@ -146,6 +150,7 @@ class RecorderBuffer(object):
 
     def popn_fields(self, fields, n):
         """Pop n elements from buffers for each field specified by fields.
+
         Args:
             fields (str|list[str]): the names used for representing
                 the corresponding fields of the buffer.
