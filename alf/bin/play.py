@@ -74,9 +74,9 @@ def _define_flags():
     flags.DEFINE_bool(
         'render', True,
         "Whether render ('human'|'rgb_array') the frames or not")
-    # use '--render_prediction' to enable pred info rendering
-    flags.DEFINE_bool('render_prediction', False,
-                      "Whether render prediction info at every frame or not")
+    # use '--alg_render' to enable algorithm specific rendering
+    flags.DEFINE_bool('alg_render', False,
+                      "Whether enable algorithm specific rendering")
     flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
     flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
@@ -97,6 +97,8 @@ FLAGS = flags.FLAGS
 def play():
     if torch.cuda.is_available():
         alf.set_default_device("cuda")
+
+    alf.summary.render.enable_rendering(FLAGS.alg_render)
 
     seed = common.set_random_seed(FLAGS.random_seed)
     alf.config('create_environment', nonparallel=True)
@@ -141,7 +143,6 @@ def play():
             future_steps=FLAGS.future_steps,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
-            render_prediction=FLAGS.render_prediction,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:

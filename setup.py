@@ -29,7 +29,7 @@ setup(
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
         'pyglet == 1.3.2',  # higher version breaks classic control rendering
-        'matplotlib',
+        'matplotlib==3.4.1',
         'numpy',
         'opencv-python >=4.0, <=4.2',
         'pathos == 0.2.4',
