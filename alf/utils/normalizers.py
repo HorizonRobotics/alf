@@ -43,33 +43,34 @@ class Normalizer(nn.Module):
 
         .. math::
 
-            \begin{array}{ll}
-            m   & = \sum_i w_i * x_i     (first moment)
-            m2  & = \sum_i w_i * x_i^2   (second moment)
+            \begin{array}{lll}
+            m   & = \sum_i w_i * x_i    \; & \mbox{(first moment)} \\
+            m2  & = \sum_i w_i * x_i^2  \; & \mbox{(second moment)}
+            \end{array}
 
         then
 
         .. math::
 
             \begin{array}{ll}
-            var & = \sum_i w_i * (x_i - m)^2
-                & = \sum_i w_i * (x_i^2 + m^2 - 2*x_i*m)
-                & = m2 + m^2 - 2m^2
+            var & = \sum_i w_i * (x_i - m)^2 \\
+                & = \sum_i w_i * (x_i^2 + m^2 - 2*x_i*m) \\
+                & = m2 + m^2 - 2m^2 \\
                 & = m2 - m^2
             \end{array}
 
         which is the same result with the case when :math:`w_1=w_2=...=w_n=(1/n)`
 
         NOTE: tf_agents' normalizer maintains a running average of variance which
-            is not correct mathematically, because the estimated variance contains
-            early components that don't measure all the current samples.
+        is not correct mathematically, because the estimated variance contains
+        early components that don't measure all the current samples.
 
         Args:
             tensor_spec (nested TensorSpec): specs of the mean of tensors to be
               normalized.
             auto_update (bool): If True, automatically update mean and variance
-              for each call to `normalize()`. Otherwise, the user needs to call
-              `update()`
+              for each call to ``normalize()``. Otherwise, the user needs to call
+              ``update()``
             zero_mean (bool): whether to make the normalized value be zero-mean
             unit_std (bool): whether assume a unit std or not when normalizaing.
                 If True, then the rewards are just subtracted by the mean.

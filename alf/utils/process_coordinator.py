@@ -43,14 +43,16 @@ import time
 
 class Coordinator(object):
     """A coordinator for processes.
+
     This class implements a simple mechanism to coordinate the termination of a
     set of processes.
 
-    ```python
-    with coord.stop_on_exception():
-        while not coord.should_stop():
-            ...do some work...
-    ```
+    .. code-block:: python
+
+        with coord.stop_on_exception():
+            while not coord.should_stop():
+                ...do some work...
+
     """
 
     def __init__(self):
@@ -74,10 +76,12 @@ class Coordinator(object):
 
     def request_stop(self, ex=None):
         """Request that the processes stop.
-        After this is called, calls to `should_stop()` will return `True`.
+
+        After this is called, calls to ``should_stop()`` will return ``True``.
         Note: If an exception is being passed in, in must be in the context of
-        handling the exception (i.e. `try: ... except Exception as ex: ...`) and not
+        handling the exception (i.e. ``try: ... except Exception as ex: ...``) and not
         a newly created one.
+
         Args:
             ex (Exception or exc_info tuple): Optional `Exception`, or
             Python `exc_info` tuple as returned by `sys.exc_info()`.
@@ -130,7 +134,7 @@ class Coordinator(object):
 
     def clear_stop(self):
         """Clears the stop flag.
-        After this is called, calls to `should_stop()` will return `False`.
+        After this is called, calls to ``should_stop()`` will return ``False``.
         """
         with self._lock:
             self._joined.value = 0
@@ -149,26 +153,30 @@ class Coordinator(object):
     def stop_on_exception(self):
         """Context manager to request stop when an Exception is raised.
         Code that uses a coordinator must catch exceptions and pass
-        them to the `request_stop()` method to stop the other processes
+        them to the ``request_stop()`` method to stop the other processes
         managed by the coordinator.
         This context handler simplifies the exception handling.
         Use it as follows:
-        ```python
-        with coord.stop_on_exception():
-            # Any exception raised in the body of the with
-            # clause is reported to the coordinator before terminating
-            # the execution of the body.
-            ...body...
-        ```
+
+        .. code-block:: python
+
+            with coord.stop_on_exception():
+                # Any exception raised in the body of the with
+                # clause is reported to the coordinator before terminating
+                # the execution of the body.
+                ...body...
+
         This is completely equivalent to the slightly longer code:
-        ```python
-        try:
-            ...body...
-        except:
-            coord.request_stop(sys.exc_info())
-        ```
+
+        .. code-block:: python
+
+            try:
+                ...body...
+            except:
+                coord.request_stop(sys.exc_info())
+
         Yields:
-        nothing.
+            nothing.
         """
         try:
             yield

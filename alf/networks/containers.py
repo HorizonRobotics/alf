@@ -73,33 +73,33 @@ def Sequential(*modules,
         output = (a, b)
 
 
-        Args:
-            modules (Callable | (nested str, Callable)):
-                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
-                or plain ``Callable``. Optionally, their inputs can be specified
-                by the first element of the tuple. If input is not provided, it is
-                assumed to be the result of the previous module (or input to this
-                ``Sequential`` for the first module). If input is provided, it
-                should be a nested str. It will be used to retrieve results from
-                the dictionary of the current ``named_results``. For modules
-                specified by ``modules``, because no ``named_modules`` has been
-                invoked, ``named_results`` is ``{'input': input}``.
-            named_modules (Callable | (nested str, Callable)):
-                The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
-                or plain ``Callable``. Optionally, their inputs can be specified
-                by the first element of the tuple. If input is not provided, it is
-                assumed to be the result of the previous module (or input to this
-                ``Sequential`` for the first module). If input is provided, it
-                should be a nested str. It will be used to retrieve results from
-                the dictionary of the current ``named_results``. ``named_results``
-                is updated once the result of a named module is calculated.
-            output (nested str): if not provided, the result from the last module
-                will be used as output. Otherwise, it will be used to retrieve
-                results from ``named_results`` after the results of all modules
-                have been calculated.
-            input_tensor_spec (TensorSpec): the tensor spec of the input. It must
-                be specified if it cannot be inferred from ``modules[0]``.
-            name (str):
+    Args:
+        modules (Callable | (nested str, Callable)):
+            The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+            or plain ``Callable``. Optionally, their inputs can be specified
+            by the first element of the tuple. If input is not provided, it is
+            assumed to be the result of the previous module (or input to this
+            ``Sequential`` for the first module). If input is provided, it
+            should be a nested str. It will be used to retrieve results from
+            the dictionary of the current ``named_results``. For modules
+            specified by ``modules``, because no ``named_modules`` has been
+            invoked, ``named_results`` is ``{'input': input}``.
+        named_modules (Callable | (nested str, Callable)):
+            The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+            or plain ``Callable``. Optionally, their inputs can be specified
+            by the first element of the tuple. If input is not provided, it is
+            assumed to be the result of the previous module (or input to this
+            ``Sequential`` for the first module). If input is provided, it
+            should be a nested str. It will be used to retrieve results from
+            the dictionary of the current ``named_results``. ``named_results``
+            is updated once the result of a named module is calculated.
+        output (nested str): if not provided, the result from the last module
+            will be used as output. Otherwise, it will be used to retrieve
+            results from ``named_results`` after the results of all modules
+            have been calculated.
+        input_tensor_spec (TensorSpec): the tensor spec of the input. It must
+            be specified if it cannot be inferred from ``modules[0]``.
+        name (str):
     """
     # The reason that we use a wrapper function for _Sequential is that Network
     # does not allow *args for __init__() (see _NetworkMeta.__new__()). And we

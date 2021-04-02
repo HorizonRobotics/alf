@@ -1452,22 +1452,25 @@ class ParamFC(nn.Module):
 
         Args:
             inputs (torch.Tensor): with shape ``[B, D] (groups=1)``
-                                        or ``[B, n, D] (groups=n)``
+                or ``[B, n, D] (groups=n)``
                 where the meaning of the symbols are:
-                - ``B``: batch size
-                - ``n``: number of replicas
-                - ``D``: input dimension
+
+                - B: batch size
+                - n: number of replicas
+                - D: input dimension
+
                 When the shape of inputs is ``[B, D]``, all the n linear
                 operations will take inputs as the same shared inputs.
                 When the shape of inputs is ``[B, n, D]``, each linear operator
                 will have its own input data by slicing inputs.
 
         Returns:
-            torch.Tensor with shape ``[B, n, D]`` or ``[B, D]``
+            torch.Tensor: with shape ``[B, n, D]`` or ``[B, D]``
                 where the meaning of the symbols are:
-                - ``B``: batch
-                - ``n``: number of replicas
-                - ``D'``: output dimension
+
+                - B: batch
+                - n: number of replicas
+                - D: output dimension
         """
 
         if inputs.ndim == 2:
@@ -1759,6 +1762,7 @@ class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
 
     We allow two slightly different architectures:
+
     * v1: Placing the stride at the first 1x1 convolution as described in the
       original ResNet paper `Deep residual learning for image recognition
       <https://arxiv.org/abs/1512.03385>`_.
@@ -2005,6 +2009,7 @@ class TransformerBlock(nn.Module):
         """Forward computation.
 
         Notation: B: batch_size, N: length of ``memory``, M: length of ``query``
+
         Args:
             memory (Tensor): The shape is [B, N, d_model]
             query (Tensor): The shape [B, d_model] or [B, M, d_model]. If None,
