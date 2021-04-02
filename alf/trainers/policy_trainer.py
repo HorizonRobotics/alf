@@ -731,14 +731,17 @@ def play(root_dir,
                                                max_episode_length > 0)
 
         if recorder:
+            # Note that because we capture the frame *after* calling ``env.step()``
+            # so the ``policy_step`` here contains prediction info of the frame
+            # *before* the currently rendered frame by the side. (i.e., pred info is
+            # always delayed by one frame).
             recorder.capture_frame(time_step, policy_step, is_last_step)
         elif render:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
 
-        time_step_reward = time_step.reward.view(-1).float().cpu().numpy()
-
-        episode_reward += time_step_reward
+        reward = time_step.reward.view(-1).float().cpu().numpy()
+        episode_reward += reward
 
         if is_last_step:
             logging.info("episode_length=%s episode_reward=%s" %

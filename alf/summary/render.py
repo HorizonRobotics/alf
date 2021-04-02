@@ -19,6 +19,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
 plt.style.use('seaborn-dark')
+import rpack
 
 import cv2
 
@@ -133,39 +134,40 @@ class Image(object):
         return cls(img)
 
     @classmethod
-    def from_image_nest(cls, imgs, cols=None, rows=None):
-        """Given a nest of images, concat them into an image matrix that has ``cols``
-        columns. Each matrix slot corresponds to an image in the list.
+    def from_image_nest(cls, imgs):
+        """Given a nest of images, pack them into a larger image so that it has
+        an area as small as possible. This problem is generally known as
+        "rectangle packing" and its optimal solution is
+        `NP-complete <https://en.wikipedia.org/wiki/Rectangle_packing>`_.
+
+        Here we just rely on a third-party lib `rpack <https://pypi.org/project/rectangle-packer/>`_
+        that is used for building CSS sprites, for an approximate solution.
 
         Args:
             imgs (nested Image): a nest of ``Image`` instances images
-            cols (int): number of columns
-            rows (int): number of rows
 
         Returns:
             Image: the big mosaic image
         """
         imgs = nest.flatten(imgs)
-        H, W = 0, 0
-        for img in imgs:
-            assert isinstance(img, Image), "Each img must be type Image!"
-            H = max(H, img.shape[0])
-            W = max(W, img.shape[1])
-        if H == 0:
+        if len(imgs) == 0:
             return
 
-        assert not (cols is None and rows is None)
-        if cols is not None:
-            rows = (len(imgs) + cols - 1) // cols
-        else:
-            cols = (len(imgs) + rows - 1) // rows
+        # first get all images' sizes (w,h)
+        sizes = [(i.shape[1], i.shape[0]) for i in imgs]
+        # call rpack for an approximate solution: [(x,y),...] positions
+        positions = rpack.pack(sizes)
+        # compute the height and width of the enclosing rectangle
+        H, W = 0, 0
+        for size, pos in zip(sizes, positions):
+            H = max(H, pos[1] + size[1])
+            W = max(W, pos[0] + size[0])
 
-        mosaic = np.ones((H * rows, W * cols, 3), dtype=np.uint8) * 255
-        for i, im in enumerate(imgs):
-            r, c = i // cols, i % cols
-            mosaic[r * H:r * H + im.shape[0], c * W:c * W +
-                   im.shape[1], :] = im.data
-        return cls(mosaic)
+        packed_img = np.ones((H, W, 3), dtype=np.uint8) * 255
+        for pos, img in zip(positions, imgs):
+            packed_img[pos[1]:pos[1] + img.shape[0], pos[0]:pos[0] +
+                       img.shape[1], :] = img.data
+        return cls(packed_img)
 
 
 _rendering_enabled = False
@@ -362,9 +364,10 @@ def render_heatmap(name,
         col_labels (list[str]): A list of length ``W`` with the labels for
             the columns.
         cbar_kw (dict): A dictionary with arguments to ``matplotlib.Figure.colorbar``.
-        annotate_format (str): The format of the annotations inside the heatmap.
+        annotate_format (str): The format of the annotations on the heatmap.
             This should either use the string format method, e.g. "%.2f",
-            or be a ``matplotlib.ticker.Formatter``.
+            or be a ``matplotlib.ticker.Formatter``. No annotation on the heatmap
+            if this argument is ''.
         font_size (int): the font size of annotation on the heatmap
         img_height (int): height of the output image
         img_width (int): width of the output image
@@ -394,7 +397,8 @@ def render_heatmap(name,
         cbar_kw=cbar_kw,
         cbarlabel=val_label,
         **kwargs)
-    _annotate_heatmap(im, valfmt=annotate_format, size=font_size)
+    if annotate_format != '':
+        _annotate_heatmap(im, valfmt=annotate_format, size=font_size)
     return _convert_to_image(name, fig, dpi, img_height, img_width)
 
 

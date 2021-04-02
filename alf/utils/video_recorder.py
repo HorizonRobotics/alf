@@ -418,11 +418,10 @@ class VideoRecorder(GymVideoRecorder):
             i for i in alf.nest.flatten(pred_info)
             if isinstance(i, render.Image)
         ]
-
-        info_img = render.Image.from_image_nest(imgs, cols=1)
         frame = render.Image(env_frame)
-        if info_img is not None:
-            frame = render.Image.from_image_nest([frame, info_img], rows=1)
+        if imgs:
+            info_img = render.Image.from_image_nest(imgs)
+            frame = render.Image.from_image_nest([frame, info_img])
         if frame.shape[1] > self._frame_width:
             frame.resize(width=self._frame_width)
         return frame.data
