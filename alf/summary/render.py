@@ -19,7 +19,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
 plt.style.use('seaborn-dark')
-import rpack
+try:
+    import rpack
+except ImportError:
+    rpack = None
 
 import cv2
 
@@ -149,6 +152,8 @@ class Image(object):
         Returns:
             Image: the big mosaic image
         """
+        assert rpack is not None, "You need to install rectangle-packer first!"
+
         imgs = nest.flatten(imgs)
         if len(imgs) == 0:
             return
