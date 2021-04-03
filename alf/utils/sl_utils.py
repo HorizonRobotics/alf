@@ -14,6 +14,7 @@
 """Supervised learning utilities."""
 
 import alf
+import absl
 import torch
 import numpy as np
 import torch.nn.functional as F
@@ -93,7 +94,12 @@ def auc_score(inliers, outliers):
     outliers = outliers.detach().cpu().numpy()
     y_true = np.array([0] * len(inliers) + [1] * len(outliers))
     y_score = np.concatenate([inliers, outliers])
-    return roc_auc_score(y_true, y_score)
+    try:
+        auc_score = roc_auc_score(y_true, y_score)
+    except NameError:
+        absl.logging.info('roc_auc_score function not defined')
+        auc_score = 0.5
+    return auc_score
 
 
 def predict_dataset(model, testset):

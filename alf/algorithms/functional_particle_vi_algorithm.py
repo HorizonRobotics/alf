@@ -25,10 +25,6 @@ from typing import Callable
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.hypernetwork_algorithm import classification_loss
-from alf.algorithms.hypernetwork_algorithm import regression_loss
-from alf.algorithms.hypernetwork_algorithm import auc_score
-from alf.algorithms.hypernetwork_algorithm import predict_dataset
 from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.networks import EncodingNetwork, ParamNetwork
@@ -36,10 +32,8 @@ from alf.tensor_specs import TensorSpec
 from alf.nest.utils import get_outer_rank
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
-try:
-    from sklean.metrics import roc_auc_score
-except:
-    pass
+from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
+from alf.utils.sl_utils import predict_dataset
 
 
 def _expand_to_replica(inputs, replicas, spec):

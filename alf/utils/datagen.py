@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Set of methods for loading datasets for supervised learning.
-Adapted from the following:
-
-https://github.com/neale/HyperGAN/blob/master/datagen.py
 """
 
 import torch
@@ -192,7 +189,11 @@ def get_classes(target, labels):
     return label_indices
 
 
-def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
+def load_mnist(label_idx=None,
+               train_bs=100,
+               test_bs=100,
+               num_workers=0,
+               small_subset=False):
     """ Loads the MNIST dataset. 
     
     Args:
@@ -200,6 +201,7 @@ def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
         train_bs (int): training batch size.
         test_bs (int): testing batch size. 
         num_workers (int): number of processes to allocate for loading data.
+        small_subset (bool): load a small subset of 50 images for testing. 
         
     Returns:
         train_loader (torch.utils.data.DataLoader): training data loader.
@@ -211,7 +213,10 @@ def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
         'pin_memory': False,
         'drop_last': False
     }
-    path = 'data_m/'
+    if small_subset:
+        path = 'alf/utils/data_mnist_sample'
+    else:
+        path = 'data_m/'
 
     data_transform = transforms.Compose(
         [transforms.ToTensor(),
