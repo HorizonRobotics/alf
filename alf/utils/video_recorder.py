@@ -121,8 +121,8 @@ class VideoRecorder(GymVideoRecorder):
         """
         Args:
             env (Gym.env):
-            frame_width (int): the max width of a video frame. Scale if the original
-                width is bigger than this.
+            frame_max_width (int): the max width of a video frame. Scale if the
+                original width is bigger than this.
             frames_per_sec (fps): if None, use fps from the env
             future_steps (int): whether to encode some information from future
                 steps into the current frame. If future_steps is larger than

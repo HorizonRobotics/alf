@@ -147,7 +147,7 @@ class Image(object):
         that is used for building CSS sprites, for an approximate solution.
 
         Args:
-            imgs (nested Image): a nest of ``Image`` instances images
+            imgs (nested Image): a nest of ``Image`` instances
 
         Returns:
             Image: the big mosaic image
@@ -197,13 +197,6 @@ def _rendering_wrapper(rendering_func):
     """A wrapper function to gate the rendering function based on if rendering
     is enabled, and if yes generate a scoped rendering identifier before
     calling the rendering function. It re-uses the scope stack in ``alf.summary.summary_ops.py``.
-
-    Example:
-
-    .. code-block:: python
-
-        with alf.summary.scope("root"):
-            render_heatmap("val", ...)  # tag is "root/val"
     """
 
     @functools.wraps(rendering_func)
@@ -369,9 +362,10 @@ def render_heatmap(name,
         col_labels (list[str]): A list of length ``W`` with the labels for
             the columns.
         cbar_kw (dict): A dictionary with arguments to ``matplotlib.Figure.colorbar``.
-        annotate_format (str): The format of the annotations on the heatmap.
-            This should either use the string format method, e.g. "%.2f",
-            or be a ``matplotlib.ticker.Formatter``. No annotation on the heatmap
+        annotate_format (str): The format of the annotations on the heatmap to
+            show the actual value represented by each heatmap cell. This should
+            either use the string format method, e.g. "%.2f", or be a
+            ``matplotlib.ticker.Formatter``. No annotation on the heatmap
             if this argument is ''.
         font_size (int): the font size of annotation on the heatmap
         img_height (int): height of the output image
@@ -512,9 +506,10 @@ def render_bar(name,
         legends (list[str]): label for each curve. No legends are shown if
             None.
         legend_kwargs (dict): optional legend kwargs
-        annotate_format (str): The format of the annotations inside the heatmap.
-            This should either use the string format method, e.g. "%.2f",
-            or be a ``matplotlib.ticker.Formatter``.
+        annotate_format (str): The format of the annotations on the bars to show
+            the actual value represented by each bar. This should either use
+            the string format method, e.g. "%.2f", or be a
+            ``matplotlib.ticker.Formatter``.
         img_height (int): height of the output image
         img_width (int): width of the output image
         dpi (int): resolution of each rendered image

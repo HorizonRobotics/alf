@@ -602,8 +602,16 @@ class SLTrainer(Trainer):
 
 
 @torch.no_grad()
-def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
-          metrics):
+def _step(algorithm,
+          env,
+          time_step,
+          policy_state,
+          trans_state,
+          epsilon_greedy,
+          metrics,
+          render=False,
+          recorder=None,
+          sleep_time_per_step=0):
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
@@ -611,6 +619,13 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
         time_step, trans_state)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
+
+    if recorder:
+        recorder.capture_frame(time_step, policy_step, time_step.is_last())
+    elif render:
+        env.render(mode='human')
+        time.sleep(sleep_time_per_step)
+
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
@@ -624,7 +639,6 @@ def play(root_dir,
          checkpoint_step="latest",
          epsilon_greedy=0.,
          num_episodes=10,
-         max_episode_length=0,
          sleep_time_per_step=0.01,
          record_file=None,
          future_steps=0,
@@ -653,8 +667,6 @@ def play(root_dir,
             help prevent a dead loop in some deterministic environment like
             Breakout.
         num_episodes (int): number of episodes to play
-        max_episode_length (int): if >0, each episode is limited to so many
-            steps.
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
@@ -716,47 +728,31 @@ def play(root_dir,
         alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
     ]
     while episodes < num_episodes:
-        time_step, policy_step, trans_state = _step(
+        next_time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
             policy_state=policy_state,
             trans_state=trans_state,
             epsilon_greedy=epsilon_greedy,
-            metrics=metrics)
-        policy_state = policy_step.state
-        episode_length += 1
+            metrics=metrics,
+            render=render,
+            recorder=recorder,
+            sleep_time_per_step=sleep_time_per_step)
 
-        is_last_step = time_step.is_last() or (episode_length >=
-                                               max_episode_length > 0)
+        if not time_step.is_first():
+            episode_length += 1
+            episode_reward += time_step.reward.view(-1).float().cpu().numpy()
 
-        if recorder:
-            # Note that because we capture the frame *after* calling ``env.step()``
-            # so the ``policy_step`` here contains prediction info of the frame
-            # *before* the currently rendered frame by the side. (i.e., pred info is
-            # always delayed by one frame).
-            recorder.capture_frame(time_step, policy_step, is_last_step)
-        elif render:
-            env.render(mode='human')
-            time.sleep(sleep_time_per_step)
-
-        reward = time_step.reward.view(-1).float().cpu().numpy()
-        episode_reward += reward
-
-        if is_last_step:
+        if time_step.is_last():
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
             episode_reward = 0.
-            episode_length = 0.
+            episode_length = 0
             episodes += 1
-            # change the step_type to LAST before being observed by metrics
-            # to ensure the episodic information will be updated correctly
-            time_step = time_step._replace(
-                step_type=torch.full_like(time_step.step_type, StepType.LAST))
-            # observe the last step
-            for m in metrics:
-                m(time_step.cpu())
-            time_step = env.reset()
+
+        policy_state = policy_step.state
+        time_step = next_time_step
 
     for m in metrics:
         logging.info(
