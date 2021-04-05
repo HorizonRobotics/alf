@@ -1272,7 +1272,8 @@ class NavigationSensor(SensorBase):
         Args:
             destination (carla.Location):
         Returns:
-            The total length of the route in meters
+            The total length of the route in meters, starting from the current
+            vehicle location to the destination.
         """
         start = self._alf_world.get_actor_location(self._parent.id)
         self._route = self._alf_world.trace_route(start, destination)
@@ -1283,7 +1284,13 @@ class NavigationSensor(SensorBase):
         self._road_option = np.array(
             [road_option for _, road_option in self._route])
         self._nearest_index = 0
-        d = self._waypoints[:-1] - self._waypoints[1:]
+        waypoints_with_start_end = np.concatenate((
+            np.array([[start.x, start.y, start.z]]),
+            self._waypoints,
+            np.array([[destination.x, destination.y, destination.z]]),
+        ),
+                                                  axis=0)
+        d = waypoints_with_start_end[:-1] - waypoints_with_start_end[1:]
         self._num_waypoints = self._waypoints.shape[0]
         return np.sum(np.sqrt(d * d))
 
