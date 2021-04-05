@@ -1060,7 +1060,7 @@ class World(object):
         return loc
 
     def get_waypoints(self):
-        """Get the coordinates of way points
+        """Get the coordinates of waypoints
 
         Returns:
             list[carla.Waypoint]:

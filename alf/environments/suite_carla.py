@@ -510,8 +510,8 @@ class Player(object):
         self._route_length = self._navigation.set_destination(goal_loc)
 
         self._prev_collision = False  # whether there is collision in the previous frame
-        self._collision = False  # whether there is colliion in the current frame
-        self._collision_loc = None  # the location of the car when it starts to have collition
+        self._collision = False  # whether there is collision in the current frame
+        self._collision_loc = None  # the location of the car when it starts to have collision
 
         self._prev_violated_red_light_id = None
 
