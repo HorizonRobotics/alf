@@ -1009,6 +1009,7 @@ class World(object):
         self._global_route_planner = GlobalRoutePlanner(dao)
         self._global_route_planner.setup()
         self._prepare_traffic_light_data()
+        self._prepare_speed_limit_data()
 
     @property
     def route_resolution(self):
@@ -1075,6 +1076,49 @@ class World(object):
         """
         loc = self._map.transform_to_geolocation(location)
         return np.array([loc.latitude, loc.longitude, loc.altitude])
+
+    def _prepare_speed_limit_data(self):
+        actor_list = self._world.get_actors()
+        speed_limit_locations = []
+        speed_limit_values = []
+        for speed_limit in actor_list.filter('traffic.speed_limit.*'):
+            loc = _to_numpy_loc(speed_limit.get_location())
+            value = float(speed_limit.type_id.split('.')[-1]) / 3.6
+            speed_limit_locations.append(loc)
+            speed_limit_values.append(value)
+
+        self._speed_limit_locations = np.stack(speed_limit_locations)
+        self._speed_limit_values = np.stack(speed_limit_values)
+
+        logging.info(
+            "Found %d speed limit signs" % len(self._speed_limit_locations))
+
+    def get_active_speed_limit(self, actor, dis_threshold=1.0):
+        """Get active speed limit for the actor.
+
+        Args:
+            actor (carla.Actor): the vehicle actor
+            dis_threshold (float): the distance within which to consider the
+                speed limit sign as active. The one closest to the actor in the
+                active set will be used as the current speed limit.
+                If a negative value is provided, all speed limit signs are
+                taken into considerations for determining the closest one.
+        Returns:
+            - the value of the speed limit in m/s is there is a speed limit sign
+                within the distance of ``dis_threshold``
+            - None if there is no active speed limit sign
+        """
+
+        veh_transform = actor.get_transform()
+        veh_location = veh_transform.location
+        dist = self._speed_limit_locations - _to_numpy_loc(veh_location)
+        dist = np.linalg.norm(dist, axis=-1)
+        min_ind = np.argmin(dist)
+        min_dis = dist[min_ind]
+        if min_dis <= dis_threshold or dis_threshold < 0:
+            return self._speed_limit_values[min_ind]
+        else:
+            return None
 
     def _prepare_traffic_light_data(self):
         # Adapted from RunningRedLightTest.__init__() in
