@@ -53,9 +53,6 @@ def _define_flags():
     flags.DEFINE_float('epsilon_greedy', 0., "probability of sampling action.")
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
-    flags.DEFINE_integer('max_episode_length', 0,
-                         "If >0,  each episode is limited "
-                         "to so many steps")
     flags.DEFINE_integer(
         'future_steps', 0, "If >0, display information from so many "
         "number of future steps in addition to the current step "
@@ -74,9 +71,9 @@ def _define_flags():
     flags.DEFINE_bool(
         'render', True,
         "Whether render ('human'|'rgb_array') the frames or not")
-    # use '--render_prediction' to enable pred info rendering
-    flags.DEFINE_bool('render_prediction', False,
-                      "Whether render prediction info at every frame or not")
+    # use '--alg_render' to enable algorithm specific rendering
+    flags.DEFINE_bool('alg_render', False,
+                      "Whether enable algorithm specific rendering")
     flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
     flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
@@ -97,6 +94,8 @@ FLAGS = flags.FLAGS
 def play():
     if torch.cuda.is_available():
         alf.set_default_device("cuda")
+
+    alf.summary.render.enable_rendering(FLAGS.alg_render)
 
     seed = common.set_random_seed(FLAGS.random_seed)
     alf.config('create_environment', nonparallel=True)
@@ -135,13 +134,11 @@ def play():
             checkpoint_step=FLAGS.checkpoint_step or "latest",
             epsilon_greedy=FLAGS.epsilon_greedy,
             num_episodes=FLAGS.num_episodes,
-            max_episode_length=FLAGS.max_episode_length,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
             future_steps=FLAGS.future_steps,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
-            render_prediction=FLAGS.render_prediction,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
