@@ -29,13 +29,14 @@ setup(
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
         'pyglet == 1.3.2',  # higher version breaks classic control rendering
-        'matplotlib',
+        'matplotlib==3.4.1',
         'numpy',
         'opencv-python >=4.0, <=4.2',
         'pathos == 0.2.4',
         'pillow',
         'psutil',
         'pybullet == 2.5.0',
+        'rectangle-packer==2.0.0',
         'sphinx==2.4.4',
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
