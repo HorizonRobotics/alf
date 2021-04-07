@@ -343,8 +343,11 @@ class Player(object):
                 Note that this reward is only given once at the first step of
                 contiguous red light violation.
             overspeed_penalty_weight (float): if > 0, a penalty propotional to
-                the overspeed magnitude will be applied, multiplied by the weight
-                of ``overspeed_penalty_weight``. A negative value is the same as 0.
+                the overspeed magnitude will be applied, multiplied by the step
+                time (seconds each step of simulation represents) to make the
+                penalty invariant to it, and then multiplied by the weight
+                of ``overspeed_penalty_weight``.
+                A negative value is the same as 0.
             sparse_reward (bool): If False, the distance reward is given at every
                 step based on how much it moves along the navigation route. If
                 True, the distance reward is only given after moving ``sparse_reward_distance``.
@@ -626,14 +629,14 @@ class Player(object):
         return _calculate_relative_position(self._actor.get_transform(),
                                             self._goal_location)
 
-    def update_speed_limit(self, dis_threshold=1.0):
+    def update_speed_limit(self, dis_threshold=10):
         """Update the speed limit of the actor according to the active speed
         limit sign. The speed limit is updated when passing by a speed limit sign.
 
         Args:
-            dis_threshold (float): the distance within which to consider the
-                speed limit sign as active. The one closest to the actor in the
-                active set will be used as the current speed limit.
+            dis_threshold (float): the distance in meter within which to consider
+                the speed limit sign as active. The one closest to the actor in
+                the active set will be used as the current speed limit.
                 If a negative value is provided, all speed limit signs are
                 taken into considerations for determining the closest one.
         Returns:
@@ -798,7 +801,7 @@ class Player(object):
                                                           current_frame))
             reward_vector[Player.REWARD_OVERSPEED] = 1.
             info['overspeed'] = np.float32(1.0)
-            reward -= self._overspeed_penalty_weight * overspeed
+            reward -= self._overspeed_penalty_weight * overspeed * self._delta_seconds
 
         obs['navigation'] = _calculate_relative_position(
             self._actor.get_transform(), obs['navigation'])
