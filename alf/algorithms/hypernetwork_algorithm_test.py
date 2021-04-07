@@ -23,7 +23,8 @@ import alf
 from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
-from alf.utils.datagen import TestDataSet, load_mnist
+from alf.utils.datagen import TestDataSet
+from torch.utils.data import TensorDataset, DataLoader
 
 
 class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
@@ -192,13 +193,26 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                       num_particles=10):
 
         input_spec = TensorSpec((1, 28, 28), torch.float32)
-        batch_size = 10
         noise_dim = 128
 
-        train_loader, test_loader = load_mnist(
-            train_bs=batch_size, test_bs=batch_size, small_subset=True)
-        outlier_train_loader, outlier_test_loader = load_mnist(
-            train_bs=batch_size, test_bs=batch_size, small_subset=True)
+        trainset = TensorDataset(
+            torch.randn(100, 1, 28, 28), torch.randint(0, 9, (100, )))
+        testset = TensorDataset(
+            torch.randn(50, 1, 28, 28), torch.randint(0, 9, (50, )))
+        outlier_trainset = TensorDataset(
+            torch.randn(100, 1, 28, 28), torch.randint(0, 9, (100, )))
+        outlier_testset = TensorDataset(
+            torch.randn(50, 1, 28, 28), torch.randint(0, 9, (50, )))
+
+        trainset.classes = torch.arange(10)
+        testset.classes = torch.arange(10)
+        outlier_trainset.classes = torch.arange(10)
+        outlier_testset.classes = torch.arange(10)
+
+        train_loader = DataLoader(trainset, train_batch_size)
+        test_loader = DataLoader(testset, train_batch_size)
+        outlier_train_loader = DataLoader(trainset, train_batch_size)
+        outlier_test_loader = DataLoader(trainset, train_batch_size)
 
         conv_layer_params = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
         fc_layer_params = ((84, True), )
@@ -222,7 +236,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             train_loader,
             test_loader=test_loader,
             outlier_data_loaders=(outlier_train_loader, outlier_test_loader),
-            entropy_regularization=batch_size / 5e4)
+            entropy_regularization=train_batch_size / 100)
 
         def _test(sampled_predictive=False):
             print("-" * 68)

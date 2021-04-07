@@ -556,6 +556,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         logging.info("AUROC score (variance): {}".format(auroc_variance))
         alf.summary.scalar(name='eval/auroc_entropy', data=auroc_entropy)
         alf.summary.scalar(name='eval/auroc_variance', data=auroc_variance)
+        return auroc_entropy, auroc_variance
 
     def summarize_train(self, loss_info, params, cum_loss=None, avg_acc=None):
         """Generate summaries for training & loss info after each gradient update.

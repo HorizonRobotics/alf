@@ -189,11 +189,7 @@ def get_classes(target, labels):
     return label_indices
 
 
-def load_mnist(label_idx=None,
-               train_bs=100,
-               test_bs=100,
-               num_workers=0,
-               small_subset=False):
+def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
     """ Loads the MNIST dataset. 
     
     Args:
@@ -213,10 +209,7 @@ def load_mnist(label_idx=None,
         'pin_memory': False,
         'drop_last': False
     }
-    if small_subset:
-        path = 'alf/utils/data_mnist_sample'
-    else:
-        path = 'data_m/'
+    path = 'data_m/'
 
     data_transform = transforms.Compose(
         [transforms.ToTensor(),
