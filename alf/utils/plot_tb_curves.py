@@ -21,8 +21,6 @@ from scipy.signal import savgol_filter
 
 import matplotlib
 import matplotlib.pyplot as plt
-# Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
-plt.style.use('seaborn-dark')
 
 import alf.nest as nest
 from alf.data_structures import namedtuple
@@ -211,6 +209,11 @@ class MeanCurveReader(object):
             tuple: the first is the adjusted x values and the second is the
                 interpolated and smoothed y values.
         """
+        # a rouch check to make sure the job didn't crash
+        assert abs(steps[-1] - output_x[-1]) / output_x[-1] < 0.1, (
+            "Inconsistent final steps! actual %d output %d" % (steps[-1],
+                                                               output_x[-1]))
+
         func = interp1d(steps, values, kind=kind, fill_value='extrapolate')
         new_values = func(output_x)
 
@@ -412,6 +415,7 @@ class CurvesPlotter(object):
 
     def __init__(self,
                  mean_curves,
+                 ax=None,
                  y_clipping=None,
                  x_range=None,
                  y_range=None,
@@ -419,13 +423,14 @@ class CurvesPlotter(object):
                  x_label=None,
                  y_label=None,
                  x_scaled_and_aligned=False,
-                 figsize=(4, 4),
+                 figsize=(3, 3),
                  dpi=100,
                  linestyle='-',
                  linewidth=2,
                  std_alpha=0.3,
-                 bg_color=None,
-                 grid_color=None,
+                 bg_color='white',
+                 grid_color='#e6e5e3',
+                 border_color=None,
                  plot_mean_only=False,
                  legend_kwargs=dict(loc="best"),
                  title=None):
@@ -433,6 +438,8 @@ class CurvesPlotter(object):
         Args:
             mean_curves (MeanCurve|list[MeanCurve]): each ``MeanCurve`` should
                 correspond to a different method.
+            ax (pyplot.axes): an optional ax to plot on. If None, then a new
+                ax will be created.
             x_range (tuple[float]): a tuple of ``(min_x, max_x)`` for showing on
                 the figure. If None, then ``(0, 1)`` will be used. This argument is
                 only used when ``x_scaled_and_aligned==True``.
@@ -463,13 +470,17 @@ class CurvesPlotter(object):
                 a curve.
             bg_color (str): the background color of the figure
             grid_color (str): color of the dashed grid lines
+            border_color (str): color of the canvas border
             plot_mean_only (bool): Whether only plot the mean curve without
                 shaded regions.
             legend_kwargs (dict): kwargs for plotting the legend. If None, then
                 no legend will be plotted.
             title (str): title of the figure
         """
-        self._fig, ax = plt.subplots(1, figsize=figsize, dpi=dpi)
+        if ax is None:
+            self._fig, ax = plt.subplots(1, figsize=figsize, dpi=dpi)
+        else:
+            self._fig = None
 
         if not isinstance(mean_curves, list):
             mean_curves = [mean_curves]
@@ -526,9 +537,15 @@ class CurvesPlotter(object):
             ax.grid(linestyle='--', color=grid_color)
         else:
             ax.grid(linestyle='-')
+        if border_color:
+            ax.spines['top'].set_color(border_color)
+            ax.spines['right'].set_color(border_color)
+            ax.spines['bottom'].set_color(border_color)
+            ax.spines['left'].set_color(border_color)
+
         if x_ticks is not None:
             ax.set_xticks(x_ticks)
-        ax.ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
+        #ax.ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
 
         if y_range:
             ax.set_ylim(y_range)
@@ -538,6 +555,12 @@ class CurvesPlotter(object):
             ax.set_ylabel(y_label)
         if title:
             ax.set_title(title)
+
+        self._ax = ax
+
+    @property
+    def ax(self):
+        return self._ax
 
     def plot(self, output_path, dpi=200, transparent=False, close_fig=True):
         """Plot curves and save the figure to disk.
@@ -551,6 +574,7 @@ class CurvesPlotter(object):
             close_fig (bool): whether to close/release this figure after plotting.
                 If ``False``, the user has to close it manually.
         """
+        assert self._fig, "Cannot save the figure if ax is provided!"
         self._fig.savefig(
             output_path, dpi=dpi, transparent=transparent, bbox_inches='tight')
         if close_fig:

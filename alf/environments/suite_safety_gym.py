@@ -24,9 +24,9 @@ https://github.com/openai/mujoco-py
 
 Several general facts about the provided benchmark environments:
 
-1. All have distance-based dense rewards
+1. All have distance-based dense rewards (can be customized to be sparse).
 2. All have continual goals: after reaching a goal, the goal is reset but the
-   layout keeps the same until timeout.
+   layout keeps the same until timeout (can be customized to not reset goals).
 3. Layouts are randomized before episodes begin
 4. Costs are indicator binaries (0 or 1). Every positive cost will be binarized
    to 1. Thus the total cost will be 1 if any component cost is positive.
@@ -55,6 +55,44 @@ from alf.environments import suite_gym
 def is_available():
     """Check if both ``mujoco_py`` and ``safety_gym`` have been installed."""
     return (mujoco_py is not None and safety_gym is not None)
+
+
+class VisionObservationWrapper(gym.ObservationWrapper):
+    """If the observation is a dict and it contains a key 'vision',
+    return an uint8 RGB image in [0,255] every step."""
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._vision = False
+        if (isinstance(self.observation_space, gym.spaces.Dict)
+                and 'vision' in self.observation_space.spaces):
+            self._vision = True
+            observation_space = {}
+            observation_space['vision'] = self.observation_space['vision']
+            self.obs_flat_size = sum([
+                np.prod(i.shape)
+                for (k, i) in self.observation_space.spaces.items()
+                if k != 'vision'
+            ])
+            observation_space['robot'] = gym.spaces.Box(
+                -np.inf, np.inf, (self.obs_flat_size, ), dtype=np.float32)
+            self.observation_space = gym.spaces.Dict(observation_space)
+
+    def observation(self, observation):
+        if self._vision:
+            obs = {"vision": observation["vision"]}
+
+            flat_obs = np.zeros(self.obs_flat_size)
+            offset = 0
+            for k in sorted(observation.keys()):
+                if k == 'vision':
+                    continue
+                k_size = np.prod(observation[k].shape)
+                flat_obs[offset:offset + k_size] = observation[k].flat
+                offset += k_size
+            obs['robot'] = flat_obs
+            return obs
+        return observation
 
 
 class CompleteEnvInfo(gym.Wrapper):
@@ -122,14 +160,15 @@ class VectorReward(gym.Wrapper):
     All rewards are the higher the better.
     """
 
-    REWARD_DIMENSION = 3
+    REWARD_DIMENSION = 2
 
-    def __init__(self, env):
+    def __init__(self, env, sparse_reward):
         super().__init__(env)
         self._reward_space = gym.spaces.Box(
             low=-float('inf'),
             high=float('inf'),
             shape=[self.REWARD_DIMENSION])
+        self._sparse_reward = sparse_reward
 
     def step(self, action):
         """Take one step through the environment and obtains several rewards.
@@ -150,7 +189,9 @@ class VectorReward(gym.Wrapper):
         # Get the second and third reward from ``info``
         cost_reward = -info["cost"]
         success_reward = float(info["goal_met"])
-        return obs, np.array([reward, cost_reward, success_reward],
+        if self._sparse_reward:
+            reward = success_reward
+        return obs, np.array([reward, cost_reward],
                              dtype=np.float32), done, info
 
     @property
@@ -170,12 +211,12 @@ class RGBRenderWrapper(gym.Wrapper):
     """
     _metadata = {'render.modes': ["rgb_array", "human"]}
 
-    def __init__(self, env, width=None, height=None, camera_mode="fixedfar"):
+    def __init__(self, env, width=800, height=800, camera_mode="fixedfar"):
         """
         Args:
             width (int): the width of rgb image
             height (int): the height of rbg image
-            camera_mode (str): one of ('fixednear', 'fixedfar', 'vision', 'track')
+            camera_mode (str): one of ('fixednear', 'fixedfar', 'fixedtop', 'vision', 'track', 'top')
         """
         super().__init__(env)
         # self.metadata will first inherit subclass's metadata
@@ -195,11 +236,30 @@ class RGBRenderWrapper(gym.Wrapper):
 
 
 @alf.configurable
+class EpisodicWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        if info["goal_met"]:
+            done = True
+        #print("xy: [%s,%s]" % (info['xy'][0], info['xy'][1]))
+        return obs, reward, done, info
+
+    def reset(self):
+        #print("xy: reset")
+        return self.env.reset()
+
+
+@alf.configurable
 def load(environment_name,
          env_id=None,
          discount=1.0,
          max_episode_steps=None,
          unconstrained=False,
+         sparse_reward=False,
+         episodic=False,
          gym_env_wrappers=(),
          alf_env_wrappers=()):
     """Loads the selected environment and wraps it with the specified wrappers.
@@ -217,6 +277,7 @@ def load(environment_name,
         unconstrained (bool): if True, the suite will be used just as an
             unconstrained environment. The reward will always be scalar without
             including constraints.
+        episodic (bool): whether terminate the episode when a goal is achieved.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         alf_env_wrappers: Iterable with references to wrapper classes to use on
@@ -237,9 +298,14 @@ def load(environment_name,
 
     # make vector reward
     if not unconstrained:
-        env = VectorReward(env)
+        env = VectorReward(env, sparse_reward)
 
     env = RGBRenderWrapper(env)
+
+    if episodic:
+        env = EpisodicWrapper(env)
+
+    env = VisionObservationWrapper(env)
 
     # Have to -1 on top of the original env max steps here, because the
     # underlying gym env will output ``done=True`` when reaching the time limit

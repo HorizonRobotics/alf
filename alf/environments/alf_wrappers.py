@@ -438,6 +438,58 @@ class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
                 prev_action=time_step.prev_action))
 
 
+@alf.configurable(whitelist=[])
+class RewardObservationWrapper(AlfEnvironmentBaseWrapper):
+    def __init__(self, env):
+        """Add previous reward to observation. The previous reward is informative
+        for the current-step agent's decision if reward is dense. For example,
+        distance shaped reward tells the agent whether it's approaching the goal
+        or not, when goal is not observed; constraint reward reveals if certain
+        constraints were violated in the previous step.
+
+        .. note::
+
+            To allow the reward guide policy decision, the agent must have the info
+            of what (short) history leads to the reward. Thus it is suggested that
+            this wrapper is used in conjunction with ``ActionObservationWrapper``
+            (observing previous action), ``FrameStacker`` (observing previous frames),
+            and/or an RNN core (trajectory memory).
+
+        The new observation is:
+
+        .. code-block:: python
+
+            {
+                'observation': original_observation,
+                'prev_reward': prev_reward
+            }
+
+        Args:
+            env (AlfEnvironment): An AlfEnvironment isinstance to wrap.
+        """
+        super().__init__(env)
+        self._time_step_spec = self._add_reward(env.time_step_spec())
+        self._observation_spec = self._time_step_spec.observation
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _reset(self):
+        return self._add_reward(self._env.reset())
+
+    def _step(self, action):
+        return self._add_reward(self._env.step(action))
+
+    def _add_reward(self, time_step):
+        return time_step._replace(
+            observation=dict(
+                observation=time_step.observation,
+                prev_reward=time_step.reward))
+
+
 @alf.configurable
 class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
     """A wrapper that converts a vector reward to a scalar reward by averaging

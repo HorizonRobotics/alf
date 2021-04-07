@@ -50,7 +50,8 @@ SacState = namedtuple(
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
 SacActorInfo = namedtuple(
-    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
+    "SacActorInfo", ["actor_loss", "neg_entropy", "dqda_cos"],
+    default_value=())
 
 SacInfo = namedtuple(
     "SacInfo", [
@@ -515,10 +516,75 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
+
+        info = dict(info=SacInfo(action_distribution=action_dist))
+        import alf.summary.render as render
+        import itertools
+        if render.is_rendering_enabled():
+            # Sample an action 2D grid and compute a Q value grid
+            a = np.arange(-1, 1.1, 0.2)
+            acts = torch.tensor(list(itertools.product(a,
+                                                       a)))  # # 11x11 actions
+
+            q, _ = self._compute_critics(
+                self._critic_networks,
+                # [1, N] -> [111, N]
+                time_step.observation.expand(acts.shape[0], -1),
+                acts,  # [111, 2]
+                state)
+
+            if self.has_multidim_reward():
+                # Multidimensional reward: [B, replicas, reward_dim]
+                q = q * self.reward_weights
+            # min over replicas and sum
+            q = q.min(dim=1)[0].sum(dim=-1)
+
+            with alf.summary.scope(self._name):
+                labels = list(map(lambda x: "%.1f" % x, a))
+                q_img = render.render_heatmap(
+                    name="Q_grid2d",
+                    data=q.reshape(len(a), -1),
+                    row_labels=labels,
+                    col_labels=labels,
+                    img_height=1024,
+                    img_width=1024,
+                    figsize=(4, 4),
+                    cmap="magma_r",
+                    annotate_format="",
+                    val_label="Q_sa")
+                q_contour_img = render.render_contour(
+                    name="Q_contour",
+                    data=q.reshape(len(a), -1),
+                    x_ticks=a,
+                    y_ticks=a,
+                    x_label="action dim 1",
+                    y_label="action dim 0",
+                    img_height=1024,
+                    img_width=1024,
+                    levels=10,
+                    figsize=(4, 4))
+                action_img = render.render_action(
+                    name="action",
+                    action=action,
+                    action_spec=self._action_spec)
+                action_dist_img = render.render_action_distribution(
+                    name="action_dist",
+                    act_dist=action_dist,
+                    action_spec=self._action_spec)
+
+                info.update({
+                    "q_img": q_img,
+                    "q_contour_img": q_contour_img,
+                    "action_img": action_img,
+                    "action_dist_img": action_dist_img
+                })
+
+            # DEBUG: select action according to the Q table
+            #maxq_idx = torch.argmax(q)
+            #action = acts[maxq_idx].unsqueeze(0)
+
         return AlgStep(
-            output=action,
-            state=SacState(action=action_state),
-            info=SacInfo(action_distribution=action_dist))
+            output=action, state=SacState(action=action_state), info=info)
 
     def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -601,8 +667,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
-        # This sum() will reduce all dims so q_value can be any rank
-        dqda = nest_utils.grad(action, q_value.sum())
+        if False:
+            # This sum() will reduce all dims so q_value can be any rank
+            dqda = nest_utils.grad(action, q_value.sum())
+        else:
+            # separately compute dqda for different Q values and see how much their
+            # directions differ
+            dqda1 = nest_utils.grad(
+                action, q_value[..., 0].sum(), retain_graph=True)
+            dqda2 = nest_utils.grad(action, q_value[..., 1].sum())
+            cos = torch.nn.CosineSimilarity(dim=-1)
+            dqda_cos = cos(dqda1, dqda2)
+            dqda = dqda1 + dqda2
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -616,7 +692,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
         actor_info = LossInfo(
             loss=actor_loss + cont_alpha * continuous_log_pi,
-            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
+            extra=SacActorInfo(
+                actor_loss=actor_loss,
+                neg_entropy=neg_entropy,
+                dqda_cos=dqda_cos))
         return critics_state, actor_info
 
     def _select_q_value(self, action, q_values):

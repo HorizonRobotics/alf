@@ -413,6 +413,7 @@ class Beta(td.Beta):
         """
         self._concentration1 = concentration1
         self._concentration0 = concentration0
+        self._eps = eps
         super().__init__(concentration1, concentration0, validate_args)
         if eps is None:
             self._eps = torch.finfo(self._dirichlet.concentration.dtype).eps

@@ -29,13 +29,15 @@ from alf.data_structures import LossInfo, namedtuple, TimeStep
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorDistributionNetwork, CriticNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork, NaiveParallelNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, dist_utils, losses, math_ops, tensor_utils
 from alf.utils.conditional_ops import conditional_update
 from alf.utils.summary_utils import safe_mean_hist_summary
 
+import itertools
+import alf.summary.render as render
 Tau = namedtuple(
     "Tau",
     [
@@ -664,10 +666,90 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             state,
             epsilon_greedy=self._epsilon_greedy,
             mode=Mode.predict)
+
+        q_img = None
+        q_contour_img = None
+        action_img = None
+        action1_img = None
+        action_dist_img = None
+        beta_dist_img = None
+        q_values2_img = None
+
+        # Sample an action 2D grid and compute a Q value grid
+        a = np.arange(-1, 1.1, 0.2).astype(np.float32)
+        acts = torch.tensor(list(itertools.product(a, a)))  # # 11x11 actions
+        q = self._compute_critics(
+            self._critic_networks,
+            # [1, N] -> [111, N]
+            inputs.observation.expand(acts.shape[0], -1),
+            acts)  # [111, 2]
+
+        if render.is_rendering_enabled():
+
+            with alf.summary.scope(self._name):
+                labels = list(map(lambda x: "%.1f" % x, a))
+                q_img = render.render_heatmap(
+                    name="Q_grid2d",
+                    data=q.reshape(len(a), -1),
+                    row_labels=labels,
+                    col_labels=labels,
+                    img_height=512,
+                    img_width=512,
+                    figsize=(4, 4),
+                    cmap="magma_r",
+                    annotate_format="",
+                    val_label="Q_sa")
+                q_contour_img = render.render_contour(
+                    name="Q_contour",
+                    data=q.reshape(len(a), -1),
+                    x_ticks=a,
+                    y_ticks=a,
+                    x_label="action dim 1",
+                    y_label="action dim 0",
+                    img_height=512,
+                    img_width=512,
+                    levels=10,
+                    figsize=(4, 4))
+                action_img = render.render_action(
+                    name="action",
+                    action=new_state.tau.a,
+                    action_spec=self._action_spec)
+                action1_img = render.render_action(
+                    name="b1_a",
+                    action=ap_out.actor_a,
+                    action_spec=self._action_spec)
+                action_dist_img = render.render_action_distribution(
+                    name="b1_a_dist",
+                    act_dist=ap_out.dists.b1_a_dist,
+                    action_spec=self._action_spec)
+                beta_dist_img = render.render_action_distribution(
+                    name="beta_dist",
+                    act_dist=ap_out.dists.beta_dist,
+                    action_spec=self._b_spec)
+                q_values2_img = render.render_bar(
+                    name="q_values2",
+                    data=ap_out.q_values2,
+                    annotate_format="%0.2f")
+
+        # DEBUG: select action according to the Q table
+        #maxq_idx = torch.argmax(q)
+        #new_action = acts[maxq_idx].unsqueeze(0)
+
         return AlgStep(
             output=new_state.tau.a,
             state=new_state,
-            info=TaacInfo(action_distribution=ap_out.dists, b=ap_out.b))
+            info=dict(
+                q_img=q_img,
+                q_contour_img=q_contour_img,
+                action_img=action_img,
+                action1_img=action1_img,
+                act_dist_img=action_dist_img,
+                beta_dist_img=beta_dist_img,
+                q_values2_img=q_values2_img,
+                info=TaacInfo(
+                    action_distribution=ap_out.dists,
+                    b=ap_out.b,
+                    actor_a=ap_out.actor_a)))
 
     def rollout_step(self, inputs: TimeStep, state):
         if self._randomize_first_state_tau:

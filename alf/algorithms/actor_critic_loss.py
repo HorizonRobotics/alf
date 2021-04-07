@@ -146,6 +146,9 @@ class ActorCriticLoss(Loss):
                         _summarize(value[..., i], returns[..., i],
                                    advantages[..., i], suffix)
 
+        if info.reward_weights != ():
+            advantages = (advantages * info.reward_weights).sum(-1)
+
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages)
 
@@ -153,8 +156,6 @@ class ActorCriticLoss(Loss):
             advantages = torch.clamp(advantages, -self._advantage_clip,
                                      self._advantage_clip)
 
-        if info.reward_weights != ():
-            advantages = (advantages * info.reward_weights).sum(-1)
         pg_loss = self._pg_loss(info, advantages.detach())
 
         td_loss = self._td_error_loss_fn(returns.detach(), value)

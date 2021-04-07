@@ -1,0 +1,21 @@
+{
+  "desc": [],
+  "use_gpu": true,
+  "gpus": [
+    0,
+    1,
+    2
+  ],
+  "max_worker_num": 6,
+  "repeats": 1,
+  "parameters": {
+    "create_environment.env_name": [
+      "SafeAnt-v3",
+      "SafeHalfCheetah-v3",
+      "SafeHopper-v3",
+      "SafeHumanoid-v3",
+      "SafeSwimmer-v3",
+      "SafeWalker2d-v3"
+    ]
+  }
+}

@@ -234,6 +234,10 @@ class Agent(RLAlgorithm):
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
+        if self._reward_weight_algorithm:
+            rw_step = self._reward_weight_algorithm.predict_step(time_step)
+            info = info._replace(rw=rw_step.info)
+
         return AlgStep(output=rl_step.output, state=new_state, info=info)
 
     def rollout_step(self, time_step: TimeStep, state: AgentState):
@@ -292,8 +296,7 @@ class Agent(RLAlgorithm):
             info = info._replace(entropy_target=et_step.info)
 
         if self._reward_weight_algorithm:
-            rw_step = self._reward_weight_algorithm.rollout_step(
-                time_step, state.rw)
+            rw_step = self._reward_weight_algorithm.rollout_step(time_step)
             info = info._replace(rw=rw_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
