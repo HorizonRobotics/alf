@@ -325,7 +325,8 @@ def vae_output_spec(observation_spec, include_obs_dims=True):
     if not include_obs_dims:
         res.clear()
         res['desired_goal'] = observation_spec['desired_goal']
-    res["aux_desired"] = observation_spec["aux_achieved"]
+    if "aux_achieved" in observation_spec:
+        res["aux_desired"] = observation_spec["aux_achieved"]
     return res
 
 
@@ -635,7 +636,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             goal.clear()
             prior = _remove_goal_keys(prior)
             goal['desired_goal'] = inputs['desired_goal']
-            goal['aux_desired'] = inputs['aux_desired']
+            if "aux_desired" in inputs:
+                goal['aux_desired'] = inputs['aux_desired']
             inputs = (prior, goal)
         z, kld_loss = self._vae._sampling_forward(inputs, n_samples=n_samples)
         flat_z = z
@@ -903,9 +905,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                     samples_masked[aux_index] = aux_ach_1[batch_mask]
                 samples[batch_mask] = samples_masked
 
-            sg_mask = (torch.arange(n_goals).reshape(1, 1, -1) <
+            mask_len = n_goals
+            if self._speed_goal:
+                mask_len -= 1
+            sg_mask = (torch.arange(mask_len).reshape(1, 1, -1) <
                        sg_index.reshape(-1, 1, 1) - 1).expand(
-                           batch_size, pop_size, n_goals)
+                           batch_size, pop_size, mask_len)
             samples[sg_mask] = 0
         stack_obs = time_step.observation.copy()
         stack_obs["observation"] = time_step.observation[
@@ -1029,7 +1034,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if not self.control_aux:
             # leave out the real goal from samples (subgoals)
             old_samples = old_samples[:, :-1, :]
-        old_costs = opt.cost_function(ts, state, old_samples.unsqueeze(1))
+        old_costs = self._costs_agg_dist(ts, state, old_samples.unsqueeze(1))
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
         if alf.summary.should_record_summaries():
