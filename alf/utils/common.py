@@ -1103,8 +1103,9 @@ def get_alf_snapshot_env_vars(root_dir):
     alf_repo = os.path.join(root_dir, "alf")
     alf_cnest = os.path.join(alf_repo,
                              "alf/nest/cnest")  # path to archived cnest.so
+    alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_cnest, python_path])
+    python_path = ":".join([alf_repo, alf_cnest, alf_examples, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
