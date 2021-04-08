@@ -32,8 +32,18 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo", ["env_ids", "positions", "importance_weights", "her"],
+    "BatchInfo",
+    ["env_ids", "positions", "importance_weights", "her", "full_her_data"],
     default_value=())
+# positions (Tensor): of shape (batch_size, batch_length), the absolute positions
+#   of the sampled transitions inside the replay buffer before modular buffer_size.
+# her (Tensor): of shape (batch_size, ) indicating which transitions are relabeled
+#   with hindsight.
+# full_her_data (dict): "desired_goal": Tensor of shape (batch_size, goal_dim),
+#   "aux_desired": Tensor of shape (batch_size, aux_dim).  These are the future states
+#   for all the transitions sampled during replay (her or not).
+#   The full data used to relabel the her slice of the replayed data.  This can be
+#   useful for e.g. training c-VAE in the goal_generator.
 
 
 @gin.configurable
@@ -779,12 +789,12 @@ def hindsight_relabel_fn(buffer,
 
     # relabel only these sampled indices
     her_cond = torch.rand(batch_size) < her_proportion
-    info = info._replace(her=her_cond)
     non_her_cond = ~her_cond
     (her_indices, ) = torch.where(her_cond)
+    has_her = torch.any(her_cond)
 
-    last_step_pos = start_pos[her_indices] + batch_length - 1
-    last_env_ids = env_ids[her_indices]
+    last_step_pos = start_pos + batch_length - 1
+    last_env_ids = env_ids
     # Get x, y indices of LAST steps
     dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
     if alf.summary.should_record_summaries():
@@ -803,13 +813,19 @@ def hindsight_relabel_fn(buffer,
     relabeled_goal = result_desired_goal.clone()
     her_batch_index_tuple = (her_indices.unsqueeze(1),
                              torch.arange(batch_length).unsqueeze(0))
-    relabeled_goal[her_batch_index_tuple] = future_ag
+    if has_her:
+        relabeled_goal[her_batch_index_tuple] = future_ag[her_indices]
+    full_her_data = {}
+    full_her_data["desired_goal"] = future_ag
     if control_aux:
         relabeled_aux = alf.nest.get_field(result, aux_desired_field).clone()
         result_achaux = alf.nest.get_field(result, aux_achieved_field)
         achieved_aux = alf.nest.get_field(buffer._buffer, aux_achieved_field)
         future_aux = achieved_aux[(last_env_ids, future_idx)].unsqueeze(1)
-        relabeled_aux[her_batch_index_tuple] = future_aux
+        if has_her:
+            relabeled_aux[her_batch_index_tuple] = future_aux[her_indices]
+        full_her_data["aux_desired"] = future_aux
+    info = info._replace(her=her_cond, full_her_data=full_her_data)
 
     # recompute rewards
     result_ag = alf.nest.get_field(result, achieved_goal_field)
@@ -902,6 +918,8 @@ def hindsight_relabel_fn(buffer,
         orig_reward_cond = non_her_cond
 
     def _summary(res_reward, i=None):
+        if not has_her:
+            return
         if i is not None:
             i_str = "/" + str(i)
         else:
@@ -911,9 +929,10 @@ def hindsight_relabel_fn(buffer,
             i_str, torch.mean(res_reward[her_indices][:, 1:]))
 
     if alf.summary.should_record_summaries():
-        alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
-            torch.mean(relabeled_rewards[her_indices][:, 1:]))
+        if has_her:
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
+                torch.mean(relabeled_rewards[her_indices][:, 1:]))
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",

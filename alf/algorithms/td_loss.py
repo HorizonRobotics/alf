@@ -146,6 +146,8 @@ class TDLoss(nn.Module):
                                        returns[..., i][non_her],
                                        td[..., i][non_her], suffix + "/nonher",
                                        mask[non_her])
+                        else:
+                            non_her = torch.tensor([True])
                         if isinstance(
                                 experience.observation, dict
                         ) and "final_goal" in experience.observation:

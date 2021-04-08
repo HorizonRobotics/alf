@@ -668,7 +668,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self._vae is None:
             return LossInfo()
         self._loss_iter += 1
-        orig_exp = experience.observation
+        orig_exp = experience.observation.copy()
+        assert experience.batch_info.full_her_data
+        shape_dg = orig_exp["desired_goal"].shape
+        orig_exp["desired_goal"] = experience.batch_info.full_her_data[
+            "desired_goal"].transpose(0, 1).expand(shape_dg)
+        if self.control_aux:
+            shape_ad = orig_exp["aux_desired"].shape
+            orig_exp["aux_desired"] = experience.batch_info.full_her_data[
+                "aux_desired"].transpose(0, 1).expand(shape_ad)
         # Flatten batch_length and batch_size into one dimension.
         exp = alf.nest.map_structure(
             lambda x: x.reshape((x.shape[0] * x.shape[1], x.shape[2])),
@@ -686,34 +694,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             "vae_decode_loss": torch.mean(decode_loss),
             "vae_full_loss": torch.mean(loss)
         }
-        her_cond = experience.batch_info.her
-        b_len = orig_exp["achieved_goal"].shape[0]
-        b_size = orig_exp["achieved_goal"].shape[1]
-        her_cond = her_cond.unsqueeze(0).expand(
-            (b_len, b_size)).reshape(b_len * b_size)
-        assert her_cond != (), "Only supports VAE training on HER experience."
-        unreal = self._unreal_batch(
-            torch.cat((exp["desired_goal"], exp["aux_desired"]), dim=1))
-        for nx, x in {"her": her_cond, "nonher": ~her_cond}.items():
-            if nx == "nonher":
-                for ny, y in {"real": ~unreal, "unreal": unreal}.items():
-                    for nl, l in losses.items():
-                        _loss = l[x][y[x]]
-                        if np.prod(_loss.size()) > 0:
-                            name = "{}_{}_{}".format(ny, nx, nl)
-                            extra[name] = torch.mean(_loss)
-                            if self._loss_iter % 40 == 0:
-                                alf.summary.histogram("loss/" + name, _loss)
-            else:
-                for nl, l in losses.items():
-                    _loss = l[x]
-                    if np.prod(_loss.size()) > 0:
-                        name = nx + "_" + nl
-                        extra[name] = torch.mean(_loss)
-                        if self._loss_iter % 40 == 0:
-                            alf.summary.histogram("loss/" + name, _loss)
-        # Only use losses on HER exp to train the VAE
-        loss = loss[her_cond]
+        for nl, l in losses.items():
+            _loss = l
+            if np.prod(_loss.size()) > 0:
+                name = "her_" + nl
+                extra[name] = torch.mean(_loss)
+                if self._loss_iter % 40 == 0:
+                    alf.summary.histogram("loss/" + name, _loss)
         if self._vae_loss_normalizer:
             self._vae_loss_normalizer.update(loss)
         loss = torch.mean(loss) if np.prod(loss.size()) > 0 else ()
@@ -746,6 +733,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 her_mean = self._her_value_normalizer._mean_averager.get()
                 self._vae_weight = 0.1 * math.log(her_mean) / math.log(
                     0.99) / (stddev + 1.)
+                # maybe use this: self._vae_weight = 0.4 / max(0.1, mean)
 
         loss += torch.where(loss > self._vae_penalize_above,
                             torch.ones(1) * self._vae_bias, torch.zeros(1))
