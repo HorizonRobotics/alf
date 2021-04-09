@@ -206,6 +206,8 @@ class HyperNetwork(Algorithm):
             assert input_tensor_spec is not None and output_dim is not None, (
                 "input_tensor_spec and output_dim needs to be provided if "
                 "data_creator is not provided")
+            self._train_loader = None
+            self._test_loader = None
 
         last_layer_param = (output_dim, use_bias_for_last_layer)
 
@@ -271,8 +273,6 @@ class HyperNetwork(Algorithm):
         self._param_net = param_net
         self._num_particles = num_particles
         self._entropy_regularization = entropy_regularization
-        self._train_loader = None
-        self._test_loader = None
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
