@@ -85,6 +85,9 @@ class scope(object):
         _scope_stack.pop()
 
 
+_SUMMARY_DATA_BUFFER = {}
+
+
 def _summary_wrapper(summary_func):
     """Summary wrapper
 
@@ -92,17 +95,37 @@ def _summary_wrapper(summary_func):
     """
 
     @functools.wraps(summary_func)
-    def wrapper(name, data, step=None, **kwargs):
-        if should_record_summaries():
+    def wrapper(name, data, average_over_interval=False, step=None, **kwargs):
+        if average_over_interval:
             if isinstance(data, torch.Tensor):
                 data = data.detach()
-            if step is None:
-                step = _global_counter
             if name.startswith('/'):
                 name = name[1:]
             else:
                 name = _scope_stack[-1] + name
-            summary_func(name, data, step, **kwargs)
+            if name in _SUMMARY_DATA_BUFFER:
+                data_sum, counter = _SUMMARY_DATA_BUFFER[name]
+                _SUMMARY_DATA_BUFFER[name] = data_sum + data, counter + 1
+            else:
+                _SUMMARY_DATA_BUFFER[name] = data, 1
+            if should_record_summaries():
+                data_sum, counter = _SUMMARY_DATA_BUFFER[name]
+                del _SUMMARY_DATA_BUFFER[name]
+                data = data_sum / counter
+                if step is None:
+                    step = _global_counter
+                summary_func(name, data, step, **kwargs)
+        else:
+            if should_record_summaries():
+                if isinstance(data, torch.Tensor):
+                    data = data.detach()
+                if step is None:
+                    step = _global_counter
+                if name.startswith('/'):
+                    name = name[1:]
+                else:
+                    name = _scope_stack[-1] + name
+                summary_func(name, data, step, **kwargs)
 
     return wrapper
 

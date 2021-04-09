@@ -351,12 +351,18 @@ class RLAlgorithm(Algorithm):
                 "The shape of rewards should be [T, B] or [T, B, k]")
             if rewards.ndim == 2:
                 alf.summary.histogram(name + "/value", rewards)
-                alf.summary.scalar(name + "/mean", torch.mean(rewards))
+                alf.summary.scalar(
+                    name + "/mean",
+                    torch.mean(rewards),
+                    average_over_interval=True)
             else:
                 for i in range(rewards.shape[2]):
                     r = rewards[..., i]
                     alf.summary.histogram('%s/%s/value' % (name, i), r)
-                    alf.summary.scalar('%s/%s/mean' % (name, i), torch.mean(r))
+                    alf.summary.scalar(
+                        '%s/%s/mean' % (name, i),
+                        torch.mean(r),
+                        average_over_interval=True)
 
     def summarize_rollout(self, experience):
         """Generate summaries for rollout.
