@@ -59,7 +59,6 @@ from alf.trainers import policy_trainer
 
 
 def _define_flags():
-    flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
     flags.DEFINE_string(
         'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
         'Root directory for writing logs/summaries/checkpoints.')
@@ -75,7 +74,7 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(ml_type, root_dir):
+def train_eval(root_dir):
     """Train and evaluate algorithm
 
     Args:
@@ -83,9 +82,9 @@ def train_eval(ml_type, root_dir):
         root_dir (str): directory for saving summary and checkpoints
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-    if ml_type == 'rl':
+    if trainer_conf.ml_type == 'rl':
         trainer = policy_trainer.RLTrainer(trainer_conf)
-    elif ml_type == 'sl':
+    elif trainer_conf.ml_type == 'sl':
         trainer = policy_trainer.SLTrainer(trainer_conf)
     else:
         raise ValueError("Unsupported ml_type: %s" % ml_type)
@@ -108,7 +107,7 @@ def main(_):
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)
-        train_eval(FLAGS.ml_type, FLAGS.root_dir)
+        train_eval(FLAGS.root_dir)
     finally:
         alf.close_env()
 

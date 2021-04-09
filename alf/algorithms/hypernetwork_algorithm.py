@@ -61,15 +61,15 @@ def regression_loss(output, target):
 
 @alf.configurable
 class HyperNetwork(Algorithm):
-    """HyperNetwork 
+    """HyperNetwork
 
-    HyperNetwork algorithm maintains a generator that generates a set of 
-    parameters for a predefined neural network from a random noise input. 
+    HyperNetwork algorithm maintains a generator that generates a set of
+    parameters for a predefined neural network from a random noise input.
     It is based on the following work:
 
     https://github.com/neale/HyperGAN
 
-    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, 
+    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse,
     Performant Neural Networks." International Conference on Machine Learning. 2019.
 
     Major differences versus the original paper are:
@@ -78,18 +78,17 @@ class HyperNetwork(Algorithm):
 
     * Remove the mixer and the discriminator.
 
-    * The generator is trained with Amortized particle-based variational 
+    * The generator is trained with Amortized particle-based variational
       inference (ParVI) methods, please refer to generator.py for details.
 
     """
 
     def __init__(self,
-                 input_tensor_spec,
+                 data_creator,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
-                 last_layer_param=None,
-                 last_activation=None,
+                 last_activation=alf.math.identity,
                  noise_dim=32,
                  hidden_layers=(64, 64),
                  use_fc_bn=False,
@@ -113,22 +112,24 @@ class HyperNetwork(Algorithm):
                  name="HyperNetwork"):
         """
         Args:
+            data_creator (Callable): called as ``data_creator()`` to get a tuple
+                of ``(train_dataloader, test_dataloader)``
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
@@ -142,13 +143,13 @@ class HyperNetwork(Algorithm):
             entropy_regularization (float): weight of entropy regularization
 
             critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
-            critic_hidden_layers (tuple): sizes of critic hidden layeres. 
+            critic_hidden_layers (tuple): sizes of critic hidden layeres.
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
-            function_bs (int): mini batch size for par_vi training. 
-                Needed for critic initialization when function_vi is True. 
-            function_extra_bs_ratio (float): ratio of extra sampled batch size 
+            function_bs (int): mini batch size for par_vi training.
+                Needed for critic initialization when function_vi is True.
+            function_extra_bs_ratio (float): ratio of extra sampled batch size
                 w.r.t. the function_bs.
             function_extra_bs_sampler (str): type of sampling method for extra
                 training batch, types are [``uniform``, ``normal``].
@@ -162,19 +163,19 @@ class HyperNetwork(Algorithm):
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
-                * svgd: empirical expectation of SVGD is evaluated by a single 
-                  resampled particle. The main benefit of this choice is it 
+                * svgd: empirical expectation of SVGD is evaluated by a single
+                  resampled particle. The main benefit of this choice is it
                   supports conditional case, while all other options do not.
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
-                  half of the sampled batch. It is a trade-off between 
+                  half of the sampled batch. It is a trade-off between
                   computational efficiency and convergence speed.
-                * svgd3: empirical expectation of SVGD is evaluated by 
+                * svgd3: empirical expectation of SVGD is evaluated by
                   resampled particles of the same batch size. It has better
                   convergence but involves resampling, so less efficient
                   computaionally comparing with svgd2.
-                * gfsf: wasserstein gradient flow with smoothed functions. It 
+                * gfsf: wasserstein gradient flow with smoothed functions. It
                   involves a kernel matrix inversion, so computationally most
-                  expensive, but in some case the convergence seems faster 
+                  expensive, but in some case the convergence seems faster
                   than svgd approaches.
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
@@ -186,7 +187,16 @@ class HyperNetwork(Algorithm):
             config (TrainerConfig): configuration for training
             name (str):
         """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        super().__init__(optimizer=optimizer, name=name)
+        trainset, testset = data_creator()
+        self.set_data_loader(trainset, testset)
+        input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
+        if hasattr(trainset.dataset, 'classes'):
+            output_dim = len(trainset.dataset.classes)
+        else:
+            output_dim = len(trainset.dataset[0][1])
+        input_tensor_spec = input_tensor_spec
+        last_layer_param = (output_dim, True)
 
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
@@ -292,13 +302,13 @@ class HyperNetwork(Algorithm):
         return self._num_particles
 
     def sample_parameters(self, noise=None, num_particles=None, training=True):
-        """Sample parameters for an ensemble of networks. 
+        """Sample parameters for an ensemble of networks.
 
         Args:
             noise (Tensor): input noise to self._generator. Default is None.
             num_particles (int): number of sampled particles. Default is None.
                 If both noise and num_particles are None, num_particles
-                provided to the constructor will be used as batch_size for 
+                provided to the constructor will be used as batch_size for
                 self._generator.
             training (bool): whether or not training self._generator
 
@@ -323,8 +333,8 @@ class HyperNetwork(Algorithm):
             state: not used.
 
         Returns:
-            AlgStep: 
-            - output (Tensor): shape is 
+            AlgStep:
+            - output (Tensor): shape is
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
             - state: not used
         """
@@ -380,7 +390,7 @@ class HyperNetwork(Algorithm):
         """Perform one batch of training computation.
 
         Args:
-            inputs (nested Tensor): input training data. 
+            inputs (nested Tensor): input training data.
             num_particles (int): number of sampled particles. Default is None,
                 in which case self._num_particles will be used for batch_size
                 of self._generator.
@@ -421,7 +431,7 @@ class HyperNetwork(Algorithm):
         Args:
             data (Tensor): training batch input.
             params: tensor params or tuple of tensors (params, extra_samples)
-                - params: of shape ``[D]`` or ``[B, D]``, sampled outputs 
+                - params: of shape ``[D]`` or ``[B, D]``, sampled outputs
                     from the generator
                 - extra_samples: sampled extra data
 
@@ -497,7 +507,7 @@ class HyperNetwork(Algorithm):
         return self._loss_func(output, target)
 
     def evaluate(self, num_particles=None):
-        """Evaluate on a randomly drawn ensemble. 
+        """Evaluate on a randomly drawn ensemble.
 
         Args:
             num_particles (int): number of sampled particles. Default is None.

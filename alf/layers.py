@@ -1872,6 +1872,7 @@ def _masked_softmax(logits, mask, dim=-1):
     return nn.functional.softmax(logits, dim=dim)
 
 
+@alf.configurable
 class TransformerBlock(nn.Module):
     """Transformer residue block.
 
@@ -1923,6 +1924,7 @@ class TransformerBlock(nn.Module):
             d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
             dropout (float): the dropout ratio. Note the [1] uses 0.1 for dropout.
             activation (Callable): the activiation for the hidden layer of the MLP.
+                relu and gelu are two popular choices.
             positional_encoding (str): One of ['none', 'abs', 'rel']. If 'none',
                 no position encoding will be used. If 'abs', use absolute positional
                 encoding depending on the absolute position in the memory sequence,

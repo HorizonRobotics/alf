@@ -15,10 +15,13 @@
 
 https://github.com/neale/HyperGAN/blob/master/datagen.py
 """
+from collections import Counter
 
 import torch
 import torchvision
 from torchvision import datasets, transforms
+
+import alf
 
 
 class TestDataSet(torch.utils.data.Dataset):
@@ -62,6 +65,7 @@ def load_test(train_bs=50, test_bs=10, num_workers=0):
     return train_loader, test_loader
 
 
+@alf.configurable
 def load_mnist(train_bs=100, test_bs=100, num_workers=0):
     kwargs = {
         'num_workers': num_workers,
@@ -95,6 +99,7 @@ def load_mnist(train_bs=100, test_bs=100, num_workers=0):
     return train_loader, test_loader
 
 
+@alf.configurable
 def load_notmnist(train_bs=100, test_bs=100, num_workers=0):
     kwargs = {
         'num_workers': num_workers,
@@ -127,6 +132,7 @@ def load_notmnist(train_bs=100, test_bs=100, num_workers=0):
     return train_loader, test_loader
 
 
+@alf.configurable
 def load_cifar(train_bs=32, test_bs=100):
     path = 'data_c/'
     kwargs = {'num_workers': 1, 'pin_memory': False, 'drop_last': True}
@@ -151,6 +157,7 @@ def load_cifar(train_bs=32, test_bs=100):
     return trainloader, testloader
 
 
+@alf.configurable
 def load_cifar_hidden(train_bs=32, test_bs=100, c_idx=[0, 1, 2, 3, 4]):
     path = './data_c'
     kwargs = {'num_workers': 2, 'pin_memory': False, 'drop_last': True}
@@ -185,3 +192,92 @@ def load_cifar_hidden(train_bs=32, test_bs=100, c_idx=[0, 1, 2, 3, 4]):
     testloader = torch.utils.data.DataLoader(
         test_hidden, batch_size=test_bs, shuffle=False, **kwargs)
     return trainloader, testloader
+
+
+def _load_textdata(load_fn, train_bs, test_bs, max_vocab_size=None):
+    """Load text data.
+
+    Args:
+        load_fn (Callable): For example: ``torchtext.datasets.wikitext2.WikiText2``
+        train_bs (int): training batch size
+        test_bs (int): validation/test batch size
+        max_vocab_size (int): maximal vocabulary size.
+    Returns:
+        tuple:
+        - Tensor: train_data, int64 Tensor of shape [?, tran_bs]
+        - Tensor: val_data, int64 Tensor of shape [?, test_bs]
+        - Tensor: test_data, int64 Tensor of shape [?, test_bs]
+        - Vacob: vocab
+    """
+    from torchtext.data.utils import get_tokenizer
+    from torchtext.vocab import Vocab
+
+    train_iter = load_fn(split='train')
+    tokenizer = get_tokenizer('basic_english')
+    counter = Counter()
+    for line in train_iter:
+        counter.update(tokenizer(line))
+    vocab = Vocab(counter, max_size=max_vocab_size)
+
+    def _data_process(raw_text_iter):
+        data = [
+            torch.tensor([vocab[token] for token in tokenizer(item)],
+                         dtype=torch.int64) for item in raw_text_iter
+        ]
+        return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
+
+    def _batchify(data, bsz):
+        # Divide the dataset into bsz parts.
+        nbatch = data.size(0) // bsz
+        # Trim off any extra elements that wouldn't cleanly fit (remainders).
+        data = data.narrow(0, 0, nbatch * bsz)
+        # Evenly divide the data across the bsz batches.
+        data = data.view(bsz, -1).t().contiguous()
+        return data
+
+    train_iter, val_iter, test_iter = load_fn()
+    train_data = _data_process(train_iter)
+    val_data = _data_process(val_iter)
+    test_data = _data_process(test_iter)
+    train_data = _batchify(train_data, train_bs)
+    val_data = _batchify(val_data, test_bs)
+    test_data = _batchify(test_data, test_bs)
+    return train_data, val_data, test_data, vocab
+
+
+@alf.configurable
+def load_wikitext2(train_bs, test_bs):
+    """Load WikiText2 data.
+
+    Args:
+        train_bs (int): training batch size
+        test_bs (int): validation/test batch size
+    Returns:
+        tuple:
+        - torch.Tensor: train_data, int64 Tensor of shape [?, tran_bs]
+        - torch.Tensor: val_data, int64 Tensor of shape [?, test_bs]
+        - torch.Tensor: test_data, int64 Tensor of shape [?, test_bs]
+        - torchtext.vocab.Vacob: vocab
+    """
+    from torchtext.datasets import WikiText2
+    return _load_textdata(WikiText2, train_bs, test_bs)
+
+
+@alf.configurable
+def load_wikitext103(train_bs, test_bs, max_vocab_size=32768):
+    """Load WikiText103 data.
+
+    Args:
+        train_bs (int): training batch size
+        test_bs (int): validation/test batch size
+        max_vocab_size (int): maximal vocabulary size.
+    Returns:
+        tuple:
+        - torch.Tensor: train_data, int64 Tensor of shape [?, tran_bs]
+        - torch.Tensor: val_data, int64 Tensor of shape [?, test_bs]
+        - torch.Tensor: test_data, int64 Tensor of shape [?, test_bs]
+        - torchtext.vocab.Vacob: vocab
+    """
+    from torchtext.datasets import WikiText103
+    return _load_textdata(
+        WikiText103, train_bs, test_bs, max_vocab_size=max_vocab_size)

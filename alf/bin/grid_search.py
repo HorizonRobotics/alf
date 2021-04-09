@@ -341,7 +341,7 @@ class GridSearch(object):
 
             # init env random seed differently for each worker
             alf.get_env()
-            train_eval(FLAGS.ml_type, root_dir)
+            train_eval(root_dir)
 
             device_queue.put(device)
         except Exception as e:
