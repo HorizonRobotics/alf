@@ -1085,10 +1085,10 @@ class Conv2DBatchEnsemble(Conv2D):
                 should be [batch_size], and all elements should be in [0, ensemble_size).
         Returns:
             tuple if ``output_ensemble_ids`` is True,
-            - Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
+            - Tensor: with shape ``[B, C_out, H_out, W_out]``
             - LongTensor: if enseble_ids is provided, this is same as ``ensemble_ids``,
                 otherwise a randomly generated ensemble_ids is returned
-            Tensor if ``output_ensemble_ids`` is False. The result of FC.
+            Tensor if ``output_ensemble_ids`` is False. The result of Conv2D.
         """
         if type(inputs) == tuple:
             inputs, ensemble_ids = inputs
