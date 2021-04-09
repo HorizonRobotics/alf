@@ -64,7 +64,7 @@ class MyAlg(OnPolicyAlgorithm):
             state=time_step.observation,
             info=dict(dist=dist, action=action, reward=time_step.reward))
 
-    def train_step(self, time_step: TimeStep, state, rollout_info, batch_info):
+    def train_step(self, time_step: TimeStep, state, rollout_info):
         dist, _ = self._proj_net(time_step.observation)
         return AlgStep(
             output=dist.sample(),

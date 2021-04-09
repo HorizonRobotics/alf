@@ -53,7 +53,7 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
     # Implement train_step() to allow off-policy training for an
     # OnPolicyAlgorithm
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         return self.rollout_step(inputs, state)
 
     def _train_iter_on_policy(self):

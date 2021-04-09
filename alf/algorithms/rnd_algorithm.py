@@ -154,9 +154,7 @@ class RNDAlgorithm(Algorithm):
                     intrinsic_reward, clip_value=self._reward_clip_value)
 
         return AlgStep(
-            output=(),
-            state=(),
-            info=ICMInfo(reward=intrinsic_reward, loss=LossInfo(loss=loss)))
+            output=intrinsic_reward, info=ICMInfo(loss=LossInfo(loss=loss)))
 
     def rollout_step(self, time_step: TimeStep, state):
         return self._step(time_step, state)
@@ -164,5 +162,5 @@ class RNDAlgorithm(Algorithm):
     def train_step(self, time_step: TimeStep, state):
         return self._step(time_step, state, calc_rewards=False)
 
-    def calc_loss(self, experience, info: ICMInfo):
+    def calc_loss(self, info: ICMInfo):
         return LossInfo(scalar_loss=torch.mean(info.loss.loss))

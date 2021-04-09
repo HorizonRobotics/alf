@@ -18,14 +18,14 @@ import torch
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import TimeStep, namedtuple, AlgStep, LossInfo
+from alf.data_structures import TimeStep, namedtuple, AlgStep, LossInfo, StepType
 from alf.networks import EncodingNetwork
 from alf.nest.utils import NestConcat
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer, AdaptiveNormalizer
 
-ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
+ICMInfo = namedtuple("ICMInfo", ["step_type", "forward_loss", "inverse_loss"])
 
 
 @gin.configurable
@@ -204,15 +204,12 @@ class ICMAlgorithm(Algorithm):
                 intrinsic_reward)
 
         return AlgStep(
-            output=(),
+            output=intrinsic_reward,
             state=feature,
             info=ICMInfo(
-                reward=intrinsic_reward,
-                loss=LossInfo(
-                    loss=forward_loss + inverse_loss,
-                    extra=dict(
-                        forward_loss=forward_loss,
-                        inverse_loss=inverse_loss))))
+                step_type=time_step.step_type,
+                forward_loss=forward_loss,
+                inverse_loss=inverse_loss))
 
     def rollout_step(self, time_step: TimeStep, state):
         return self._step(time_step, state)
@@ -220,6 +217,10 @@ class ICMAlgorithm(Algorithm):
     def train_step(self, time_step: TimeStep, state):
         return self._step(time_step, state, calc_rewards=False)
 
-    def calc_loss(self, experience, info: ICMInfo):
-        loss = alf.nest.map_structure(torch.mean, info.loss)
-        return LossInfo(scalar_loss=loss.loss, extra=loss.extra)
+    def calc_loss(self, info: ICMInfo):
+        mask = (info.step_type != StepType.FIRST).to(torch.float32)
+        forward_loss = (info.forward_loss * mask).mean()
+        inverse_loss = (info.inverse_loss * mask).mean()
+        return LossInfo(
+            scalar_loss=forward_loss + inverse_loss,
+            extra=dict(forward_loss=forward_loss, inverse_loss=inverse_loss))

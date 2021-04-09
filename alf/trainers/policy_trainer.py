@@ -579,8 +579,7 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
-    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
-                                         epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
         recorder.capture_frame(policy_step.info, time_step.is_last())

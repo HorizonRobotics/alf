@@ -16,13 +16,11 @@ import torch.nn as nn
 from typing import Callable
 
 import alf
-from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
-from alf.nest import (flatten, flatten_up_to, get_field, map_structure,
-                      map_structure_up_to, pack_sequence_as)
+from alf.data_structures import AlgStep, LossInfo, TimeStep
+from alf.nest import flatten
 from alf.nest.utils import get_nested_field
 from alf.networks import Network
 from alf.utils.math_ops import add_ignore_empty
-from alf.utils.spec_utils import is_same_spec
 
 from .algorithm import Algorithm
 from .config import TrainerConfig
@@ -47,26 +45,43 @@ class AlgorithmContainer(Algorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """
-        is_on_policy = False
-        rl_algs = list(
-            filter(lambda alg: isinstance(alg, RLAlgorithm), algs.values()))
-        if rl_algs:
-            is_on_policy = all(alg.is_on_policy() for alg in rl_algs)
-            is_off_policy = all(not alg.is_on_policy() for alg in rl_algs)
-            assert is_on_policy ^ is_off_policy
-        self._is_on_policy = is_on_policy
+        is_on_policy = None
+        on_policy_algs = [
+            alg for alg in algs.values() if alg.is_on_policy() == True
+        ]
+        off_policy_algs = [
+            alg for alg in algs.values() if alg.is_on_policy() == False
+        ]
+        if on_policy_algs and off_policy_algs:
+            raise ValueError("%s is on-policy, but %s is off-policy." %
+                             (on_policy_algs[0].name, off_policy_algs[0].name))
+        if on_policy_algs or off_policy_algs:
+            is_on_policy = bool(on_policy_algs)
+            for alg in algs.values():
+                alg.set_on_policy(is_on_policy)
 
         super().__init__(
             train_state_spec=train_state_spec,
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
+            is_on_policy=is_on_policy,
             debug_summaries=debug_summaries,
             name=name)
 
         self._algs = algs
 
-    def is_on_policy(self):
-        return self._is_on_policy
+    def set_on_policy(self, is_on_policy):
+        super().set_on_policy(is_on_policy)
+        for alg in self._algs.values():
+            alg.set_on_policy(is_on_policy)
+
+    def set_path(self, path):
+        super().set_path(path)
+        prefix = path
+        if path:
+            prefix = prefix + '.'
+        for name, alg in self._algs.items():
+            alg.set_path(path + name)
 
     def calc_loss(self, info):
         extra = {}
@@ -230,7 +245,7 @@ class _SequentialAlg(AlgorithmContainer):
             x = get_nested_field(var_dict, self._output)
         return AlgStep(output=x, state=new_state, info=info)
 
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         info_dict = {}
         state_dict = {}
         var_dict = {'input': inputs, 'info': info_dict, 'state': state_dict}
@@ -242,8 +257,7 @@ class _SequentialAlg(AlgorithmContainer):
             if self._inputs[i]:
                 x = get_nested_field(var_dict, self._inputs[i])
             if isinstance(net, Algorithm):
-                alg_step = net.train_step(x, state[i], rollout_info[net.name],
-                                          batch_info)
+                alg_step = net.train_step(x, state[i], rollout_info[net.name])
                 x = alg_step.output
                 new_state[i] = alg_step.state
                 info[net.name] = alg_step.info
@@ -260,7 +274,7 @@ class _SequentialAlg(AlgorithmContainer):
 
 
 class EchoAlg(Algorithm):
-    def __init__(self, echo_spec, alg, debug_summaries=False, name='EchoAlg'):
+    def __init__(self, alg, echo_spec, debug_summaries=False, name='EchoAlg'):
         """
         Args:
             alg (Algorithm): the module for performing the actual computation
@@ -270,19 +284,19 @@ class EchoAlg(Algorithm):
             "block must be an instance of "
             "alf.algorithms.algorithm.Algorithm. Got %s" % type(alg))
 
-        self._is_on_policy = alg.is_on_policy()
-
         super().__init__(
             train_state_spec=(alg.train_state_spec, echo_spec),
             rollout_state_spec=(alg.rollout_state_spec, echo_spec),
             predict_state_spec=(alg.predict_state_spec, echo_spec),
+            is_on_policy=alg.is_on_policy(),
             debug_summaries=debug_summaries,
             name=name)
 
         self._alg = alg
 
-    def is_on_policy(self):
-        return self._is_on_policy
+    def set_on_policy(self, is_on_policy):
+        super().set_on_policy(is_on_policy)
+        self._alg.set_on_policy(is_on_policy)
 
     def predict_step(self, inputs, state):
         block_state, echo_state = state
@@ -292,7 +306,7 @@ class EchoAlg(Algorithm):
         echo_output = alg_step.output['echo']
         return AlgStep(
             output=real_output,
-            state=(block_state, echo_output),
+            state=(alg_step.state, echo_output),
             info=alg_step.info)
 
     def rollout_step(self, inputs, state):
@@ -303,19 +317,18 @@ class EchoAlg(Algorithm):
         echo_output = alg_step.output['echo']
         return AlgStep(
             output=real_output,
-            state=(block_state, echo_output),
+            state=(alg_step.state, echo_output),
             info=alg_step.info)
 
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         block_state, echo_state = state
         block_input = dict(input=inputs, echo=echo_state)
-        alg_step = self._alg.train_step(block_input, block_state, rollout_info,
-                                        batch_info)
+        alg_step = self._alg.train_step(block_input, block_state, rollout_info)
         real_output = alg_step.output['output']
         echo_output = alg_step.output['echo']
         return AlgStep(
             output=real_output,
-            state=(block_state, echo_output),
+            state=(alg_step.state, echo_output),
             info=alg_step.info)
 
     def calc_loss(self, info):
@@ -332,7 +345,7 @@ class RLAlgWrapper(OnPolicyAlgorithm):
                  observation_spec,
                  action_spec,
                  algorithm,
-                 env,
+                 env=None,
                  reward_spec=alf.TensorSpec(()),
                  reward_weights=None,
                  config: TrainerConfig = None,
@@ -359,12 +372,15 @@ class RLAlgWrapper(OnPolicyAlgorithm):
     def is_on_policy(self):
         return self._is_on_policy
 
+    def set_on_policy(self, is_on_policy):
+        super().set_on_policy(is_on_policy)
+        self._algorithm.set_on_policy()
+
     def rollout_step(self, inputs: TimeStep, state):
         return self._algorithm.rollout_step(inputs, state)
 
-    def train_step(self, inputs: TimeStep, state, rollout_info, batch_info):
-        return self._algorithm.train_step(inputs, state, rollout_info,
-                                          batch_info)
+    def train_step(self, inputs: TimeStep, state, rollout_info):
+        return self._algorithm.train_step(inputs, state, rollout_info)
 
     def calc_loss(self, info):
         return self._algorithm.calc_loss(info)
@@ -380,9 +396,12 @@ class LossAlg(Algorithm):
         self._loss_weight = loss_weight
 
     def rollout_step(self, inputs, state):
-        return AlgStep(info=inputs)
+        if self.is_on_policy():
+            return AlgStep(info=inputs)
+        else:
+            return AlgStep()
 
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         return AlgStep(info=inputs)
 
     def calc_loss(self, info):

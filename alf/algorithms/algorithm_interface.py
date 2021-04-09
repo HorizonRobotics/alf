@@ -55,6 +55,10 @@ class AlgorithmInterface(nn.Module):
         For off-policy training, ``train_step()`` will be called with the experience
         from replay buffer. And ``info`` passed to ``calc_loss()`` is info collected
         from ``train_step``.
+
+        Returns:
+            bool | None: True if on-policy training, False if off-policy training,
+                None if not set.
         """
 
     def predict_step(self, inputs, state):
@@ -85,7 +89,7 @@ class AlgorithmInterface(nn.Module):
               ``rollout_info`` for train_step().
         """
 
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         """Perform one step of training computation.
 
         It is called to generate actions for every environment step.

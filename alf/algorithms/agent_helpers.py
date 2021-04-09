@@ -104,7 +104,7 @@ class AgentHelper(object):
             summarize_fn(os.path.join(summary_prefix, "overall"), reward)
         return reward
 
-    def accumulate_loss_info(self, algorithms, experience, train_info):
+    def accumulate_loss_info(self, algorithms, train_info):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -123,8 +123,7 @@ class AgentHelper(object):
 
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
-            exp = _make_alg_experience(experience, name)
-            new_loss_info = algorithm.calc_loss(exp, info)
+            new_loss_info = algorithm.calc_loss(info)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})

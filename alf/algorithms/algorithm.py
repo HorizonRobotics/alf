@@ -108,6 +108,7 @@ class Algorithm(AlgorithmInterface):
                  train_state_spec=(),
                  rollout_state_spec=None,
                  predict_state_spec=None,
+                 is_on_policy=None,
                  optimizer=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
@@ -131,6 +132,7 @@ class Algorithm(AlgorithmInterface):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
+            is_on_policy (None|bool):
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             config (TrainerConfig): config for training. ``config`` only needs to
@@ -193,6 +195,7 @@ class Algorithm(AlgorithmInterface):
         self._path = ''
         if optimizer:
             self._optimizers.append(optimizer)
+        self._is_on_policy = is_on_policy
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -220,6 +223,12 @@ class Algorithm(AlgorithmInterface):
     @property
     def path(self):
         return self._path
+
+    def is_on_policy(self):
+        return self._is_on_policy
+
+    def set_on_policy(self, is_on_policy):
+        self._is_on_policy = is_on_policy
 
     def is_rl(self):
         """Always returns False for non-RL algorithms."""
@@ -1397,7 +1406,7 @@ class Algorithm(AlgorithmInterface):
                 prev_action=exp.prev_action,
                 env_id=exp.env_id)
             policy_step = self.train_step(time_step, policy_state,
-                                          exp.rollout_info, exp.batch_info)
+                                          exp.rollout_info)
             if self._train_info_spec is None:
                 self._train_info_spec = dist_utils.extract_spec(
                     policy_step.info)
@@ -1432,7 +1441,7 @@ class Algorithm(AlgorithmInterface):
             prev_action=exp.prev_action,
             env_id=exp.env_id)
         policy_step = self.train_step(time_step, policy_state,
-                                      exp.rollout_info, exp.batch_info)
+                                      exp.rollout_info)
 
         if self._train_info_spec is None:
             self._train_info_spec = dist_utils.extract_spec(policy_step.info)

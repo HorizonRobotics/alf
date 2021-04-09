@@ -45,7 +45,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
-                 epsilon_greedy=0.1,
+                 epsilon_greedy=0.0,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,

@@ -44,7 +44,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     def is_on_policy(self):
         return False
 
-    def train_step(self, inputs, state, rollout_info, batch_info):
+    def train_step(self, inputs, state, rollout_info):
         alg_step = self._rollout_step(inputs, state)
         return alg_step._replace(
             info=rollout_info._replace(

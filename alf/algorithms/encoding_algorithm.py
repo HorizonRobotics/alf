@@ -33,7 +33,9 @@ class EncodingAlgorithm(Algorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 reward_spec=alf.TensorSpec(()),
                  encoder_cls=EncodingNetwork,
+                 time_step_as_input=False,
                  output_fields=None,
                  loss_fields=None,
                  loss_weights=None,
@@ -47,6 +49,7 @@ class EncodingAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): not used
             encoder_cls (type): The class or function to create the encoder. It
                 can be called using ``encoder_cls(input_tensor_spec)``.
+            time_step_as_input (bool):
             output_fields (None | nested str): if None, all the output from the
                 encoder will be used as the output. Otherwise, ``output_fields``
                 will be used to retrieve the fields from the encoder output.
@@ -62,13 +65,19 @@ class EncodingAlgorithm(Algorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
-        encoder = encoder_cls(input_tensor_spec=observation_spec)
+        if time_step_as_input:
+            time_step_spec = alf.data_structures.time_step_spec(
+                observation_spec, action_spec, reward_spec)
+            encoder = encoder_cls(input_tensor_spec=time_step_spec)
+        else:
+            encoder = encoder_cls(input_tensor_spec=observation_spec)
         super().__init__(
             train_state_spec=encoder.state_spec,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
 
+        self._time_step_as_input = time_step_as_input
         self._encoder = encoder
         output_spec = encoder.output_spec
         if output_fields is not None:
@@ -90,8 +99,37 @@ class EncodingAlgorithm(Algorithm):
     def output_spec(self):
         return self._output_spec
 
-    def _step(self, time_step, state=()):
-        output, state = self._encoder(time_step.observation, state=state)
+    def predict_step(self, time_step: TimeStep, state):
+        if self._time_step_as_input:
+            output, state = self._encoder(time_step, state=state)
+        else:
+            output, state = self._encoder(time_step.observation, state=state)
+        if self._output_fields is not None:
+            output = get_nested_field(output, self._output_fields)
+        return AlgStep(output=output, state=state)
+
+    def rollout_step(self, time_step, state):
+        """Train one step.
+
+        Args:
+            time_step (TimeStep|Experience): time step structure
+            state (nested Tensor): network state for ``encoder``
+        Returns:
+            AlgStep:
+            - output: encoding result
+            - state: rnn state from ``encoder``
+            - info: LossInfo
+        """
+        if self.is_on_policy():
+            return self.predict_step(time_step, state)
+        else:
+            return self.train_step(time_step, state, None)
+
+    def train_step(self, time_step: TimeStep, state, rollout_info):
+        if self._time_step_as_input:
+            output, state = self._encoder(time_step, state=state)
+        else:
+            output, state = self._encoder(time_step.observation, state=state)
         if self._loss_fields is not None:
             losses = get_nested_field(output, self._loss_fields)
             if self._loss_weights is not None:
@@ -107,23 +145,3 @@ class EncodingAlgorithm(Algorithm):
         if self._output_fields is not None:
             output = get_nested_field(output, self._output_fields)
         return AlgStep(output=output, state=state, info=info)
-
-    def predict_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state)
-
-    def rollout_step(self, time_step, state=()):
-        """Train one step.
-
-        Args:
-            time_step (TimeStep|Experience): time step structure
-            state (nested Tensor): network state for ``encoder``
-        Returns:
-            AlgStep:
-            - output: encoding result
-            - state: rnn state from ``encoder``
-            - info: LossInfo
-        """
-        return self._step(time_step, state)
-
-    def train_step(self, exp: Experience, state):
-        return self._step(exp, state)
