@@ -84,7 +84,10 @@ class HyperNetwork(Algorithm):
     """
 
     def __init__(self,
-                 data_creator,
+                 data_creator=None,
+                 input_tensor_spec=None,
+                 output_dim=None,
+                 use_bias_for_last_layer=True,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
@@ -117,6 +120,8 @@ class HyperNetwork(Algorithm):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
+            output_dim (int): dimension of the output
+            use_bias_for_last_layer (bool): whether use bias for the last layer
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
@@ -188,15 +193,21 @@ class HyperNetwork(Algorithm):
             name (str):
         """
         super().__init__(optimizer=optimizer, name=name)
-        trainset, testset = data_creator()
-        self.set_data_loader(trainset, testset)
-        input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
-        if hasattr(trainset.dataset, 'classes'):
-            output_dim = len(trainset.dataset.classes)
+        if data_creator is not None:
+            trainset, testset = data_creator()
+            self.set_data_loader(trainset, testset)
+            input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
+            if hasattr(trainset.dataset, 'classes'):
+                output_dim = len(trainset.dataset.classes)
+            else:
+                output_dim = len(trainset.dataset[0][1])
+            input_tensor_spec = input_tensor_spec
         else:
-            output_dim = len(trainset.dataset[0][1])
-        input_tensor_spec = input_tensor_spec
-        last_layer_param = (output_dim, True)
+            assert input_tensor_spec is not None and output_dim is not None, (
+                "input_tensor_spec and output_dim needs to be provided if "
+                "data_creator is not provided")
+
+        last_layer_param = (output_dim, use_bias_for_last_layer)
 
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
