@@ -784,11 +784,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def set_value_fn(self, value_fn):
         self._value_fn = value_fn
 
-    def _wrapped_value_fn(self, obs, state):
+    def _wrapped_value_fn(self, obs, state, use_target_networks=False):
         # input tensors can be 2 (batch_size, batch_length) or 3 dimensional
         # (batch_size, population, plan_horizon).
         # This function consolidates multi dim value functions into a single dimension.
-        values, state = self._value_fn(obs, state)
+        values, state = self._value_fn(
+            obs, state, use_target_networks=use_target_networks)
         obs_dim = len(alf.nest.get_nest_shape(obs))
         mdim = obs_dim <= values.ndim
         if self.sparse_reward:
@@ -817,7 +818,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if mdim and self._plan_with_goal_value_only:
                 values = values[..., :-1]
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
-        if self._vae:
+        # use_target_networks is called from ddpg_algorithm, and should ignore vae value.
+        if self._vae and not use_target_networks:
             values -= self.vae_cost(obs)
         return values, state
 
@@ -831,7 +833,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                     "{}_{}_var.{}".format(name, i, common.exe_mode_name()),
                     torch.var(t[:, i]))
 
-    def _costs_agg_dist(self, time_step, state, samples, info=None):
+    def _costs_agg_dist(self,
+                        time_step,
+                        state,
+                        samples,
+                        info=None,
+                        use_target_networks=False):
         # This function can alter the values of ``samples`` when only planning
         # remaining subgoals.
         assert self._value_fn, "no value function provided."
@@ -944,7 +951,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                         batch_size * pop_size * n_goals, self._aux_dim)
         if self._value_state_spec != ():
             raise NotImplementedError()
-        values, _unused_value_state = self._wrapped_value_fn(stack_obs, ())
+        values, _unused_value_state = self._wrapped_value_fn(
+            stack_obs, (), use_target_networks=use_target_networks)
         dists = -values.reshape(batch_size, pop_size, n_goals, -1)
         if info is not None:
             info["all_population_costs"] = dists
@@ -976,6 +984,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             # part of last subgoal is used to generate final goal state's aux_achieved
             plan_horizon = self._num_subgoals + 1
         return plan_horizon
+
+    def _assess_plan_value(self, ts, state, plan, use_target_networks=False):
+        samples = plan.clone()
+        if not self.control_aux:
+            # leave out the real goal from samples (subgoals)
+            samples = samples[:, :-1, :]
+        return self._costs_agg_dist(
+            ts,
+            state,
+            samples.unsqueeze(1),
+            use_target_networks=use_target_networks)
 
     def generate_goal(self, observation, state, new_goal_mask):
         """Generate new goals.
@@ -1030,11 +1049,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
         old_plan = state.full_plan
-        old_samples = state.full_plan.clone()
-        if not self.control_aux:
-            # leave out the real goal from samples (subgoals)
-            old_samples = old_samples[:, :-1, :]
-        old_costs = self._costs_agg_dist(ts, state, old_samples.unsqueeze(1))
+        old_costs = self._assess_plan_value(ts, state, old_plan)
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
         if alf.summary.should_record_summaries():

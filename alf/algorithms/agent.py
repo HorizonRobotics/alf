@@ -148,7 +148,7 @@ class Agent(OnPolicyAlgorithm):
         if goal_generator is not None and isinstance(
                 goal_generator, SubgoalPlanningGoalGenerator):
 
-            def _value(obs, states=()):
+            def _value(obs, states=(), use_target_networks=False):
                 # Input obs can have 3 dims (batch, population, observation_dim) in CEM,
                 # or 2 dims (batch, observation_dim) as well.
                 if hasattr(rl_algorithm, "_goal_net_position_only"
@@ -177,8 +177,12 @@ class Agent(OnPolicyAlgorithm):
                     if (not non_her_critic
                             or goal_generator._combine_her_nonher_value_weight
                             > 0):
-                        hv, s = rl_algorithm._critic_networks((obs, act),
-                                                              state=())
+                        if not use_target_networks:
+                            hv, s = rl_algorithm._critic_networks((obs, act),
+                                                                  state=())
+                        else:
+                            hv, s = rl_algorithm._target_critic_networks(
+                                (obs, act), state=())
                         v = hv
                     if (non_her_critic
                             and goal_generator._combine_her_nonher_value_weight
@@ -191,6 +195,7 @@ class Agent(OnPolicyAlgorithm):
                 return v, s
 
             goal_generator.set_value_fn(_value)
+            rl_algorithm._goal_generator = goal_generator
 
         ## 3. intrinsic motivation module
         if intrinsic_reward_module is not None:
@@ -331,6 +336,10 @@ class Agent(OnPolicyAlgorithm):
             time_step._replace(observation=observation), state.rl)
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
+
+        if self._goal_generator is not None:
+            info = info._replace(
+                rl=rl_step.info._replace(full_plan=goal_step.state.full_plan))
 
         if self._irm is not None:
             irm_step = self._irm.rollout_step(

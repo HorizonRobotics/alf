@@ -24,6 +24,7 @@ from typing import Callable
 
 import alf
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.goal_generator import GoalState
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -50,7 +51,7 @@ DdpgCriticInfo = namedtuple(
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
-    "DdpgInfo", ["action_distribution", "actor_loss", "critic"],
+    "DdpgInfo", ["action_distribution", "actor_loss", "critic", "full_plan"],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
@@ -91,6 +92,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  action_l2=0,
                  actor_optimizer=None,
                  critic_optimizer=None,
+                 bump_target_value=False,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -148,6 +150,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             action_l2 (float): weight of squared action l2-norm on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
+            bump_target_value (bool): whether to use goal plan value to improve
+                target_value (Q_{s+1}).
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -274,6 +278,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
+        self._goal_generator = None
+        self._bump_target_value = bump_target_value
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
@@ -322,6 +328,20 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                pred_step.output)
         return pred_step
 
+    def _assess_plan_value(self, exp, plan):
+        # Assess value of a plan using goal_generator._costs_agg_dist, ignoring
+        # vae cost in the plan value.
+        batch_size = exp.reward.shape[0]
+        state = GoalState(
+            subgoals_index=torch.zeros(batch_size, dtype=torch.int32))
+        return self._goal_generator._assess_plan_value(
+            exp, state, plan, use_target_networks=True)
+
+    def _reuse_plan_value(self, exp: Experience, state: DdpgCriticState):
+        # get old full_plan from exp
+        old_full_plan = exp.rollout_info.full_plan
+        return self._assess_plan_value(exp, old_full_plan)
+
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(
             exp.observation, state=state.target_actor)
@@ -336,6 +356,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             target_q_values = target_q_values.min(dim=1)[0]
         else:
             target_q_values = target_q_values.squeeze(dim=1)
+
+        if self._bump_target_value:
+            target_q_values = torch.max(target_q_values,
+                                        self._reuse_plan_value(exp, state))
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
