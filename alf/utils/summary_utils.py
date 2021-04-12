@@ -14,7 +14,6 @@
 """Utility functions for generate summary."""
 from absl import logging
 import functools
-import gin
 import numpy as np
 from tensorboard.plugins.histogram import metadata
 import time
@@ -103,7 +102,7 @@ def histogram_continuous(name,
 
 
 @_summary_wrapper
-@gin.configurable
+@alf.configurable
 def summarize_variables(name_and_params, with_histogram=True):
     """Add summaries for variables.
 
@@ -123,7 +122,7 @@ def summarize_variables(name_and_params, with_histogram=True):
 
 
 @_summary_wrapper
-@gin.configurable
+@alf.configurable
 def summarize_gradients(name_and_params, with_histogram=True):
     """Add summaries for gradients.
 
