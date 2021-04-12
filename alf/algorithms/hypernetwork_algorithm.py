@@ -119,8 +119,9 @@ class HyperNetwork(Algorithm):
                 of ``(train_dataloader, test_dataloader)``
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
-                None.
-            output_dim (int): dimension of the output
+                None. It must be provided if ``data_creator`` is not provided.
+            output_dim (int): dimension of the output of the generated network.
+                It must be provided if ``data_creator`` is not provided.
             use_bias_for_last_layer (bool): whether use bias for the last layer
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
@@ -131,16 +132,7 @@ class HyperNetwork(Algorithm):
                 ``use_bias`` is optional.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
-            last_layer_param (tuple): an optional tuple of the format
-                ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end.
-                Note that if ``last_activation`` is specified,
-                ``last_layer_param`` has to be specified explicitly.
-            last_activation (nn.functional): activation function of the
-                additional layer specified by ``last_layer_param``. Note that if
-                ``last_layer_param`` is not None, ``last_activation`` has to be
-                specified explicitly.
-
+            last_activation (nn.functional): activation function of the last layer.
             noise_dim (int): dimension of noise
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.

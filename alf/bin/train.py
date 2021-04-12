@@ -78,7 +78,6 @@ def train_eval(root_dir):
     """Train and evaluate algorithm
 
     Args:
-        ml_type (str): type of machine learning task, 'rl' or 'sl'
         root_dir (str): directory for saving summary and checkpoints
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
