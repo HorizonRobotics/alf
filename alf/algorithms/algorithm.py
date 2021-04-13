@@ -20,6 +20,7 @@ from functools import wraps
 import itertools
 import json
 import os
+import psutil
 import six
 import torch
 import torch.nn as nn
@@ -143,6 +144,7 @@ class Algorithm(nn.Module):
 
         self._name = name
         self._config = config
+        self._proc = psutil.Process(os.getpid())
 
         self._train_state_spec = train_state_spec
         if rollout_state_spec is not None:
@@ -384,7 +386,23 @@ class Algorithm(nn.Module):
             summary_utils.summarize_gradients(params)
         if self._debug_summaries:
             summary_utils.summarize_loss(loss_info)
-            summary_utils.summarize_nest("observation", experience.observation)
+            obs = alf.nest.find_field(experience, "observation")
+            if len(obs) == 1:
+                summary_utils.summarize_nest("observation", obs[0])
+
+        mem = self._proc.memory_info().rss // 1e6
+        alf.summary.scalar(name='memory/cpu', data=mem)
+        if torch.cuda.is_available():
+            mem = torch.cuda.memory_allocated() // 1e6
+            alf.summary.scalar(name='memory/gpu_allocated', data=mem)
+            mem = torch.cuda.memory_reserved() // 1e6
+            alf.summary.scalar(name='memory/gpu_reserved', data=mem)
+            mem = torch.cuda.max_memory_allocated() // 1e6
+            alf.summary.scalar(name='memory/max_gpu_allocated', data=mem)
+            mem = torch.cuda.max_memory_reserved() // 1e6
+            alf.summary.scalar(name='memory/max_gpu_reserved', data=mem)
+            torch.cuda.reset_max_memory_allocated()
+            # TODO: consider using torch.cuda.empty_cache() to save memory.
 
     def add_optimizer(self, optimizer: torch.optim.Optimizer,
                       modules_and_params):

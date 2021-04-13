@@ -15,7 +15,6 @@
 
 from abc import abstractmethod
 import os
-import psutil
 import time
 import torch
 from typing import Callable
@@ -143,8 +142,6 @@ class RLAlgorithm(Algorithm):
         else:
             assert reward_weights is None, (
                 "reward_weights cannot be used for one dimensional reward")
-
-        self._proc = psutil.Process(os.getpid())
 
         self._rollout_info_spec = None
 
@@ -341,20 +338,6 @@ class RLAlgorithm(Algorithm):
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     step_metrics=self._metrics[:2])
-
-        mem = self._proc.memory_info().rss // 1e6
-        alf.summary.scalar(name='memory/cpu', data=mem)
-        if torch.cuda.is_available():
-            mem = torch.cuda.memory_allocated() // 1e6
-            alf.summary.scalar(name='memory/gpu_allocated', data=mem)
-            mem = torch.cuda.memory_reserved() // 1e6
-            alf.summary.scalar(name='memory/gpu_reserved', data=mem)
-            mem = torch.cuda.max_memory_allocated() // 1e6
-            alf.summary.scalar(name='memory/max_gpu_allocated', data=mem)
-            mem = torch.cuda.max_memory_reserved() // 1e6
-            alf.summary.scalar(name='memory/max_gpu_reserved', data=mem)
-            torch.cuda.reset_max_memory_allocated()
-            # TODO: consider using torch.cuda.empty_cache() to save memory.
 
     # Subclass may override predict_step() to allow more efficient implementation
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):

@@ -2031,6 +2031,7 @@ def _masked_softmax(logits, mask, dim=-1):
     return nn.functional.softmax(logits, dim=dim)
 
 
+@alf.configurable
 class TransformerBlock(nn.Module):
     """Transformer residue block.
 
@@ -2050,8 +2051,8 @@ class TransformerBlock(nn.Module):
     [1]. Ashish Vaswani et. al. Attention Is All You Need
 
     This implementation is a variation which places layer norm at a different
-    location, which is proposed in:
-    [2]. Ruibin XiongOn et. al. Layer Normalization in the Transformer Architecture
+    location, which is described in:
+    [2]. Ruibin Xiong et. al. On Layer Normalization in the Transformer Architecture
 
     We also support the relative positional encoding proposed in
     [3] Zihang Dai et. al. Transformer-XL: Attentive language models beyond a fixed-length context.
@@ -2067,6 +2068,8 @@ class TransformerBlock(nn.Module):
                  d_k=None,
                  d_v=None,
                  d_ff=None,
+                 dropout=0.0,
+                 activation=torch.relu_,
                  positional_encoding='abs',
                  add_positional_encoding=True,
                  scale_attention_score=True):
@@ -2078,6 +2081,9 @@ class TransformerBlock(nn.Module):
             d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model // num_heads``
             d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model // num_heads``
             d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
+            dropout (float): the dropout ratio. Note the [1] uses 0.1 for dropout.
+            activation (Callable): the activiation for the hidden layer of the MLP.
+                relu and gelu are two popular choices.
             positional_encoding (str): One of ['none', 'abs', 'rel']. If 'none',
                 no position encoding will be used. If 'abs', use absolute positional
                 encoding depending on the absolute position in the memory sequence,
@@ -2088,7 +2094,7 @@ class TransformerBlock(nn.Module):
                 is also concatenated to the attention result so that the attention
                 result can keep the location information better. Note that using
                 this option will increase the number of parameters by about 25%.
-                This option cannot be used if positional_encoding is 'none'.
+                This option is ignored if ``positional_encoding`` is 'none'.
             scale_attention_score (bool): If True, scale the attention score by
                 ``d_k ** -0.5`` as suggested in [1]. However, this may not always
                 be better since it slows the unittest in layers_test.py
@@ -2104,10 +2110,9 @@ class TransformerBlock(nn.Module):
         self._k_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
         self._v_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_v))
         d_a = d_v
+        if positional_encoding == 'none':
+            add_positional_encoding = False
         if add_positional_encoding:
-            assert positional_encoding != 'none', (
-                "positional_encoding cannot be 'none' for "
-                "add_positional_encoding=True")
             d_a = d_v + d_k
         self._o_proj = nn.Parameter(torch.Tensor(num_heads * d_a, d_model))
 
@@ -2121,8 +2126,16 @@ class TransformerBlock(nn.Module):
         self._add_positional_encoding = add_positional_encoding
 
         self._attention_scale = d_k**-0.5 if scale_attention_score else 1.
-        self._mlp = torch.nn.Sequential(
-            FC(d_model, d_ff, torch.relu_), FC(d_ff, d_model))
+        mlp = [FC(d_model, d_ff, activation)]
+        if dropout > 0:
+            mlp.append(torch.nn.Dropout(dropout))
+        mlp.append(FC(d_ff, d_model))
+        if dropout > 0:
+            mlp.append(torch.nn.Dropout(dropout))
+            self._dropout = torch.nn.Dropout(dropout)
+        else:
+            self._dropout = Identity()
+        self._mlp = torch.nn.Sequential(*mlp)
         self._norm1 = torch.nn.LayerNorm(d_model)
         self._norm2 = torch.nn.LayerNorm(d_model)
 
@@ -2148,7 +2161,8 @@ class TransformerBlock(nn.Module):
         if self._positional_encoding is not None:
             nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
         for l in self._mlp:
-            l.reset_parameters()
+            if hasattr(l, 'reset_parameters'):
+                l.reset_parameters()
 
     @staticmethod
     def _shift(x, m):
@@ -2304,6 +2318,7 @@ class TransformerBlock(nn.Module):
 
         # [B, M, H * d_a]
         att_result = att_result.reshape(batch_size, m, num_heads * d_a)
+        att_result = self._dropout(att_result)
         # [B, M, d_model]
         x = original_query + torch.matmul(att_result, self._o_proj)
         # [B, M, d_model]

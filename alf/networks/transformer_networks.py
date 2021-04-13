@@ -59,6 +59,7 @@ class TransformerNetwork(PreprocessorNetwork):
                  num_attention_heads,
                  d_ff,
                  core_size=1,
+                 use_core_embedding=True,
                  memory_size=0,
                  num_memory_layers=0,
                  return_core_only=True,
@@ -84,6 +85,10 @@ class TransformerNetwork(PreprocessorNetwork):
             return_core_only (bool): If True, only return the core embedding.
                 Otherwise, return all embeddings
             core_size (int): size of core (i.e. number of embeddings of core)
+            use_core_embedding (bool): whether to use learnable core embedding.
+                If True, will use additional learnable core embedding to augment
+                the input. If False, the first ``core_size`` embeddings of the
+                input are treated as core.
             centralized_memory (bool): if False, there will be a separate memory
                 for each memory layers. if True, there will be a single memory
                 for all the memroy layers and it is updated using the last core
@@ -128,9 +133,12 @@ class TransformerNetwork(PreprocessorNetwork):
         self._centralized_memory = centralized_memory
 
         self._core_size = core_size
-        self._core_embedding = nn.Parameter(
-            torch.Tensor(1, core_size, d_model))
-        nn.init.uniform_(self._core_embedding, -0.1, 0.1)
+        if use_core_embedding:
+            self._core_embedding = nn.Parameter(
+                torch.Tensor(1, core_size, d_model))
+            nn.init.uniform_(self._core_embedding, -0.1, 0.1)
+        else:
+            self._core_embedding = None
 
         self._state_spec = [mem.state_spec for mem in self._memories]
         self._num_memory_layers = num_memory_layers
@@ -144,7 +152,7 @@ class TransformerNetwork(PreprocessorNetwork):
                     d_model=d_model,
                     num_heads=num_attention_heads,
                     memory_size=input_size + core_size,
-                    positional_encoding='abs'))
+                    positional_encoding='abs' if i == 0 else 'none'))
 
         for i in range(num_memory_layers):
             self._transformers.append(
@@ -152,7 +160,7 @@ class TransformerNetwork(PreprocessorNetwork):
                     d_model=d_model,
                     num_heads=num_attention_heads,
                     memory_size=memory_size + input_size + core_size,
-                    positional_encoding='abs'))
+                    positional_encoding='abs' if i == 0 else 'none'))
 
         self._return_core_only = return_core_only
 
@@ -175,8 +183,11 @@ class TransformerNetwork(PreprocessorNetwork):
         """
         z, _ = super().forward(inputs, state)
         batch_size = z.shape[0]
-        core_embedding = self._core_embedding.expand(batch_size, -1, -1)
-        query = torch.cat([core_embedding, z], dim=-2)
+        if self._core_embedding is not None:
+            core_embedding = self._core_embedding.expand(batch_size, -1, -1)
+            query = torch.cat([core_embedding, z], dim=-2)
+        else:
+            query = z
         for i in range(self._num_prememory_layers):
             query = self._transformers[i].forward(query)
 

@@ -21,7 +21,7 @@ import alf
 from alf.utils.common import expand_dims_as
 from .network import Network, wrap_as_network
 
-__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalPool']
+__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay']
 
 
 class LSTMCell(Network):
@@ -246,3 +246,16 @@ class TemporalPool(Network):
         state = torch.where(
             expand_dims_as(step == 1, x), x, torch.max(x, state))
         return state, state
+
+
+class Delay(Network):
+    """The output is the input from the last step."""
+
+    def __init__(self, input_tensor_spec, name='Delay'):
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            state_spec=input_tensor_spec,
+            name=name)
+
+    def forward(self, input, state):
+        return state, input

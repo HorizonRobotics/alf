@@ -20,8 +20,8 @@ import alf
 from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.algorithms.rl_algorithm_test import MyEnv, MyAlg
 from alf.trainers.policy_trainer import RLTrainer, TrainerConfig, play
-from alf.trainers.policy_trainer import create_dataset, SLTrainer
-from alf.utils import common
+from alf.trainers.policy_trainer import SLTrainer
+from alf.utils import common, datagen
 
 
 def env_load(env_name, batch_size):
@@ -29,12 +29,6 @@ def env_load(env_name, batch_size):
 
 
 env_load.batched = True
-
-
-class MySLTrainer(SLTrainer):
-    def _create_dataset(self):
-        return create_dataset(
-            dataset_name='test', train_batch_size=50, test_batch_size=10)
 
 
 class TrainerTest(alf.test.TestCase):
@@ -85,6 +79,7 @@ class TrainerTest(alf.test.TestCase):
             conf = TrainerConfig(
                 algorithm_ctor=functools.partial(
                     HyperNetwork,
+                    data_creator=datagen.load_test,
                     hidden_layers=None,
                     loss_type='regression',
                     optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
@@ -95,7 +90,7 @@ class TrainerTest(alf.test.TestCase):
                 num_iterations=1)
 
             # test train
-            trainer = MySLTrainer(conf)
+            trainer = SLTrainer(conf)
             self.assertEqual(SLTrainer.progress(), 0)
             trainer.train()
             self.assertEqual(SLTrainer.progress(), 1)
@@ -104,6 +99,7 @@ class TrainerTest(alf.test.TestCase):
             conf2 = TrainerConfig(
                 algorithm_ctor=functools.partial(
                     HyperNetwork,
+                    data_creator=datagen.load_test,
                     hidden_layers=None,
                     loss_type='regression',
                     optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
@@ -113,7 +109,7 @@ class TrainerTest(alf.test.TestCase):
                 eval_interval=1,
                 num_iterations=2)
 
-            new_trainer = MySLTrainer(conf2)
+            new_trainer = SLTrainer(conf2)
             new_trainer._restore_checkpoint()
             self.assertEqual(SLTrainer.progress(), 0.5)
             new_trainer.train()

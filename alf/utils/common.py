@@ -484,8 +484,10 @@ def parse_conf_file(conf_file):
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
         gin.parse_config_files_and_bindings([conf_file], gin_params)
-        # Create the global environment and initialize random seed
-        alf.get_env()
+        ml_type = alf.get_config_value('TrainerConfig.ml_type')
+        if ml_type == 'rl':
+            # Create the global environment and initialize random seed
+            alf.get_env()
     else:
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
         alf.parse_config(conf_file, conf_params)
@@ -1016,6 +1018,8 @@ def get_all_parameters(obj):
             continue
         if isinstance(obj, nn.Parameter):
             all_parameters.append((path, obj))
+            continue
+        if isinstance(obj, torch.Tensor):
             continue
         if path:
             path += '.'
