@@ -672,7 +672,7 @@ def l2_dist_close_reward_fn(achieved_goal,
                             goal,
                             threshold=.05,
                             multi_dim_goal_reward=False,
-                            combine_position_speed_reward=False,
+                            combine_position_speed_reward=True,
                             device="cpu"):
     if goal.dim() == 2:  # when goals are 1-dimentional
         assert achieved_goal.dim() == goal.dim()
