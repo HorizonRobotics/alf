@@ -201,17 +201,16 @@ class TASACTDLoss(nn.Module):
             loss = loss.mean(dim=-1)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = experience.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
 
                 def _summarize(v, r, td, suffix):
                     alf.summary.scalar(
                         "explained_variance_of_return_by_value" + suffix,
-                        tensor_utils.explained_variance(v, r))
-                    safe_mean_hist_summary('values' + suffix, v)
-                    safe_mean_hist_summary('returns' + suffix, r)
-                    safe_mean_hist_summary("td_error" + suffix, td)
-                    safe_mean_hist_summary("abs_values_mean_centered" + suffix,
-                                           torch.abs(v - torch.mean(v)))
+                        tensor_utils.explained_variance(v, r, mask))
+                    safe_mean_hist_summary('values' + suffix, v, mask)
+                    safe_mean_hist_summary('returns' + suffix, r, mask)
+                    safe_mean_hist_summary("td_error" + suffix, td, mask)
 
                 td = returns - value
                 if value.ndim == 2:
