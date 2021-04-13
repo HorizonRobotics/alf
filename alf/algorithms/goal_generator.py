@@ -364,7 +364,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  action_dim,
                  action_bounds,
                  always_adopt_plan=False,
-                 next_goal_on_success=False,
+                 next_goal_on_success=True,
                  final_goal=False,
                  reward_fn=l2_dist_close_reward_fn,
                  sparse_reward=False,
@@ -376,15 +376,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  value_state_spec=(),
                  max_replan_steps=10,
                  plan_margin=0.,
-                 plan_with_goal_value_only=False,
+                 plan_with_goal_value_only=True,
                  plan_remaining_subgoals=True,
-                 plan_after_goal_achieved=False,
+                 plan_after_goal_achieved=True,
                  vae=None,
                  use_cvae=False,
                  use_projection_net=False,
                  vae_weight=0.,
                  vae_weight_adaptive=False,
-                 vae_penalize_above=-1.e8,
+                 vae_penalize_above=0.,
                  vae_threshold_adaptive=False,
                  vae_bias=0.,
                  vae_samples=1,
@@ -880,6 +880,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         else:
             pos_traj = torch.cat([start, end], dim=2)
         if self._plan_remaining_subgoals:
+            if state == ():
+                state = GoalState(
+                    subgoals_index=torch.zeros(batch_size, dtype=torch.int32))
             sg_index = torch.min(
                 torch.as_tensor(self._num_subgoals, dtype=torch.int32),
                 state.subgoals_index).long()
@@ -996,18 +999,25 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             samples.unsqueeze(1),
             use_target_networks=use_target_networks)
 
-    def generate_goal(self, observation, state, new_goal_mask):
-        """Generate new goals.
+    def get_goals_and_costs(self,
+                            observation,
+                            state=(),
+                            use_target_networks=False,
+                            info=None):
+        """Generate cem goals and associated costs.
 
         Args:
             observation (nested Tensor): the observation at the current time step.
             state (nested Tensor): state of this goal generator.
-            new_goal_mask (Tensor): the batch envs where new goals are requested.
+            use_target_networks (bool): whether to use target networks to compute plan value.
+            info (dict): populates debugging info, e.g. segment costs.
 
         Returns:
             a tuple
-                - goal (Tensor): a batch of one-hot goal tensors.
-                - new_state (nested Tensor): a potentially updated state.
+                - goals (Tensor): a batch of one-hot goal tensors.
+                - costs (nested Tensor): costs of the subgoal plans.
+                - ts (TimeStep): observation wrapped as a ``TimeStep``.
+
         """
         if common.is_rollout() and self._normalizer:
             self._normalizer.update(observation)
@@ -1022,7 +1032,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         opt = CEMOptimizer(
             planning_horizon=plan_horizon,
             action_dim=plan_dim,
-            bounds=self._action_bounds)
+            bounds=self._action_bounds,
+            use_target_networks=use_target_networks)
         opt.set_cost(self._costs_agg_dist)
         if self._normalizer:
             means = self._normalizer._mean_averager.get()
@@ -1035,8 +1046,24 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             opt.set_initial_distributions(mean, m2, self._bound_goals)
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
-        info = {}
         goals, costs = opt.obtain_solution(ts, state, info)
+        return goals, costs, ts
+
+    def generate_goal(self, observation, state, new_goal_mask):
+        """Generate new goals.
+
+        Args:
+            observation (nested Tensor): the observation at the current time step.
+            state (nested Tensor): state of this goal generator.
+            new_goal_mask (Tensor): the batch envs where new goals are requested.
+
+        Returns:
+            a tuple
+                - goal (Tensor): a batch of one-hot goal tensors.
+                - new_state (nested Tensor): a potentially updated state.
+        """
+        info = {}
+        goals, costs, ts = self.get_goals_and_costs(observation, state, info)
         batch_size = goals.shape[0]
         if new_goal_mask is None:
             new_goal_mask = torch.ones((batch_size, 1), dtype=torch.bool)

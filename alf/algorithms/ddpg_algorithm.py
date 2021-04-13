@@ -93,6 +93,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  bump_target_value=False,
+                 replan_target_value=False,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -152,6 +153,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             bump_target_value (bool): whether to use goal plan value to improve
                 target_value (Q_{s+1}).
+            replan_target_value (bool): whether to use replanned value to improve
+                target value.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -280,6 +283,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._goal_generator = None
         self._bump_target_value = bump_target_value
+        self._replan_target_value = replan_target_value
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
@@ -331,11 +335,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _assess_plan_value(self, exp, plan):
         # Assess value of a plan using goal_generator._costs_agg_dist, ignoring
         # vae cost in the plan value.
-        batch_size = exp.reward.shape[0]
-        state = GoalState(
-            subgoals_index=torch.zeros(batch_size, dtype=torch.int32))
         return self._goal_generator._assess_plan_value(
-            exp, state, plan, use_target_networks=True)
+            exp, (), plan, use_target_networks=True)
 
     def _reuse_plan_value(self, exp: Experience, state: DdpgCriticState):
         # get old full_plan from exp
@@ -357,9 +358,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         else:
             target_q_values = target_q_values.squeeze(dim=1)
 
-        if self._bump_target_value:
-            target_q_values = torch.max(target_q_values,
-                                        self._reuse_plan_value(exp, state))
+        if self._bump_target_value or self._replan_target_value:
+            if self._replan_target_value:
+                goals, costs, _ = self._goal_generator.get_goals_and_costs(
+                    exp.observation, (), use_target_networks=True)
+                plan_values = -costs
+            if self._bump_target_value:
+                old_plan_values = self._reuse_plan_value(exp, state)
+                if self._replan_target_value:
+                    plan_values = torch.max(plan_values, old_plan_values)
+                else:
+                    plan_values = old_plan_values
+            target_q_values = torch.max(target_q_values, plan_values)
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)

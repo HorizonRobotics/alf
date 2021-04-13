@@ -111,7 +111,8 @@ class CEMOptimizer(TrajOptimizer):
                  top_percent=0.1,
                  iterations=2,
                  init_mean=None,
-                 init_var=None):
+                 init_var=None,
+                 use_target_networks=False):
         """Cross Entropy Method Trajectory Optimizer
 
         This module conducts trajectory optimization via sampling from a number
@@ -130,6 +131,7 @@ class CEMOptimizer(TrajOptimizer):
             iterations (int): number of iterations to run CEM optimization
             init_mean (float|Tensor): mean to initialize the normal distributions
             init_var (float|Tensor): var to initialize the normal distributions
+            use_target_networks (bool): whether to use target networks to compute value
         """
         super().__init__()
         self._planning_horizon = planning_horizon
@@ -159,6 +161,7 @@ class CEMOptimizer(TrajOptimizer):
             if init_var.shape == ():
                 init_var = init_var.expand(action_dim)
         self._init_var = torch.as_tensor(init_var).reshape(1, 1, action_dim)
+        self._use_target_networks = use_target_networks
         self._bounds = (bounds[0].expand(1, 1, planning_horizon, action_dim),
                         bounds[1].expand(1, 1, planning_horizon, action_dim))
         assert self._top_percent * self._population_size > 1, "too few samples"
@@ -214,7 +217,12 @@ class CEMOptimizer(TrajOptimizer):
             samples = _clamp(
                 distr.sample((self._population_size, )),
                 *self._bounds).transpose(0, 1)
-            costs = self.cost_function(time_step, state, samples, info=info)
+            costs = self.cost_function(
+                time_step,
+                state,
+                samples,
+                info=info,
+                use_target_networks=self._use_target_networks)
             assert costs.shape == samples.shape[:2], "bad cost function"
             min_inds = torch.topk(
                 costs,
