@@ -163,9 +163,12 @@ class Agent(OnPolicyAlgorithm):
                     batch_size = alf.nest.get_nest_batch_size(obs)
                     # We are assuming full state observation, no policy state
                     state = rl_algorithm.get_initial_rollout_state(batch_size)
-                    policy_step = rl_algorithm.predict_step(
-                        ts, state=state, epsilon_greedy=0)
-                    act = policy_step.output
+                    if use_target_networks:
+                        act, _ = rl_algorithm._target_actor_network(obs, state)
+                    else:
+                        policy_step = rl_algorithm.predict_step(
+                            ts, state=state, epsilon_greedy=0)
+                        act = policy_step.output
                     non_her_critic = hasattr(
                         rl_algorithm,
                         "_non_her_critic") and rl_algorithm._non_her_critic
@@ -177,12 +180,12 @@ class Agent(OnPolicyAlgorithm):
                     if (not non_her_critic
                             or goal_generator._combine_her_nonher_value_weight
                             > 0):
-                        if not use_target_networks:
-                            hv, s = rl_algorithm._critic_networks((obs, act),
-                                                                  state=())
-                        else:
+                        if use_target_networks:
                             hv, s = rl_algorithm._target_critic_networks(
                                 (obs, act), state=())
+                        else:
+                            hv, s = rl_algorithm._critic_networks((obs, act),
+                                                                  state=())
                         v = hv
                     if (non_her_critic
                             and goal_generator._combine_her_nonher_value_weight
