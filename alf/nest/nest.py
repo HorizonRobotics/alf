@@ -697,6 +697,11 @@ def py_prune_nest_like(nest, slim_nest, value_to_match=None):
                 nest, slim_nest))
 
 
+def _get_all_paths(nested):
+    """Get all paths in nested."""
+    return flatten(py_map_structure_with_path(lambda path, x: path, nested))
+
+
 def get_field(nested, field):
     """Get the field from nested.
 
@@ -711,6 +716,8 @@ def get_field(nested, field):
             name at different level. ``None`` or '' means the whole nest.
     Returns:
         nest: value of the field corresponding to ``field``
+    Raises:
+        LookupError: if field cannot be found.
     """
 
     def _traverse(nested, levels):
@@ -721,10 +728,18 @@ def get_field(nested, field):
             return _traverse(nested=getattr(nested, level), levels=levels[1:])
         elif isinstance(nested, dict):
             return _traverse(nested=nested[level], levels=levels[1:])
-        else:
+        elif isinstance(nested, (tuple, list)):
             return _traverse(nested=nested[int(level)], levels=levels[1:])
+        else:
+            raise LookupError()
 
-    return _traverse(nested=nested, levels=field.split('.') if field else [])
+    try:
+        return _traverse(
+            nested=nested, levels=field.split('.') if field else [])
+    except (AttributeError, LookupError, ValueError):
+        raise LookupError(
+            "Cannot find path '%s' in nested. nested has paths: %s" %
+            (field, _get_all_paths(nested)))
 
 
 def transform_nest(nested, field, func):
