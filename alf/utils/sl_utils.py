@@ -26,13 +26,13 @@ except:
 
 
 def classification_loss(output, target):
-    """
-    Computes the cross entropy loss with respect to a batch of predictions and
-        targets.
+    """Computes the cross entropy loss with respect to a batch of predictions and
+    targets.
     
     Args:
-        output (Tensor): predictions of shape ``[B, D]`` or ``[N, B, D]`` 
-        target (Tensor): targets of shape ``[B, 1]`` or ``[B, N, 1]``
+        output (Tensor): predictions of shape ``[B, D]`` or ``[B, N, D]``.
+        target (Tensor): targets of shape ``[B]``, ``[B, 1]``, ``[B, N]``,
+            or ``[B, N, 1]``.
 
     Returns:
         LossInfo containing the computed cross entropy loss and the average
@@ -45,7 +45,7 @@ def classification_loss(output, target):
     target = target.squeeze(-1)
     acc = pred.eq(target).float().mean(0)
     avg_acc = acc.mean()
-    if output.dim == 3:
+    if output.ndim == 3:
         output = output.transpose(1, 2)
     else:
         output = output.reshape(output.shape[0] * target.shape[1], -1)
@@ -55,12 +55,11 @@ def classification_loss(output, target):
 
 
 def regression_loss(output, target):
-    """
-    Computes the MSE loss with respect to a batch of predictions and
-        targets.
+    """Computes the MSE loss with respect to a batch of predictions and
+    targets.
     
     Args:
-        output (Tensor): predictions of shape ``[B, 1]`` or ``[N, B, 1]`` 
+        output (Tensor): predictions of shape ``[B, 1]`` or ``[B, N, 1]`` 
         target (Tensor): targets of shape ``[B, 1]`` or ``[B, N, 1]``
 
     Returns:
@@ -78,10 +77,9 @@ def regression_loss(output, target):
 
 
 def auc_score(inliers, outliers):
-    """
-    Computes the AUROC score w.r.t network outputs on two distinct datasets.
-        Typically, one dataset is the main training/testing set, while the
-        second dataset represents a set of unseen outliers.
+    """Computes the AUROC score w.r.t network outputs on two distinct datasets.
+    Typically, one dataset is the main training/testing set, while the
+    second dataset represents a set of unseen outliers.
     
     Args: 
         inliers (torch.tensor): set of predictions on inlier data
@@ -103,8 +101,8 @@ def auc_score(inliers, outliers):
 
 
 def predict_dataset(model, testset):
-    """
-    Computes predictions for an input dataset. 
+    """Computes predictions for an input dataset. 
+    
     Args: 
         model (Callable): model with which to compute predictions.
         testset (torch.utils.data.DataLoader): dataset for which to compute
@@ -112,23 +110,20 @@ def predict_dataset(model, testset):
 
     Returns:
         model_outputs (torch.tensor): a tensor of shape [N, S, D] where
-        N refers to the number of predictors, S is the number of data
-        points, and D is the output dimensionality. 
+            N refers to the number of predictors, S is the number of data
+            points, and D is the output dimensionality. 
     """
     if hasattr(testset.dataset, 'dataset'):
         cls = len(testset.dataset.dataset.classes)
     else:
         cls = len(testset.dataset.classes)
     outputs = []
-    targets = []
     for batch, (data, target) in enumerate(testset):
         data = data.to(alf.get_default_device())
-        target = target.to(alf.get_default_device())
-        targets.append(target.view(-1))
         output, _ = model(data)
         if output.dim() == 2:
             output = output.unsqueeze(1)
         output = output.transpose(0, 1)
         outputs.append(output)
     model_outputs = torch.cat(outputs, dim=1)  # [N, B, D]
-    return model_outputs, torch.cat(targets, -1).view(-1)
+    return model_outputs

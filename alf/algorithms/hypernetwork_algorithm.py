@@ -61,6 +61,7 @@ class HyperNetwork(Algorithm):
 
     def __init__(self,
                  data_creator=None,
+                 data_creator_outlier=None,
                  input_tensor_spec=None,
                  output_dim=None,
                  use_bias_for_last_layer=True,
@@ -84,6 +85,7 @@ class HyperNetwork(Algorithm):
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
+                 num_train_classes=10,
                  critic_optimizer=None,
                  optimizer=None,
                  logging_network=False,
@@ -95,6 +97,8 @@ class HyperNetwork(Algorithm):
         Args:
             data_creator (Callable): called as ``data_creator()`` to get a tuple
                 of ``(train_dataloader, test_dataloader)``
+            data_creator_outlier (Callable): called as ``data_creator()`` to get
+                a tuple of ``(outlier_train_dataloader, outlier_test_dataloader)``
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None. It must be provided if ``data_creator`` is not provided.
@@ -155,6 +159,7 @@ class HyperNetwork(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
+            num_train_classes (int): number of classes in training set. 
             critic_optimizer (torch.optim.Optimizer): The optimizer for training
                 critic network
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
@@ -167,12 +172,16 @@ class HyperNetwork(Algorithm):
         super().__init__(optimizer=optimizer, name=name)
         if data_creator is not None:
             trainset, testset = data_creator()
-            self.set_data_loader(trainset, testset)
+            if data_creator_outlier is not None:
+                outlier_dataloaders = data_creator_outlier()
+            else:
+                outlier_dataloaders = None
+            self.set_data_loader(trainset, testset, outlier_dataloaders)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
                 output_dim = len(trainset.dataset.classes)
             else:
-                output_dim = len(trainset.dataset[0][1])
+                output_dim = num_train_classes
             input_tensor_spec = input_tensor_spec
         else:
             assert input_tensor_spec is not None and output_dim is not None, (
@@ -427,8 +436,7 @@ class HyperNetwork(Algorithm):
                 state=())
 
     def _function_transform(self, data, params):
-        """
-        Transform the generator outputs to its corresponding function values
+        """Transform the generator outputs to its corresponding function values
         evaluated on the training batch. Used when function_vi is True.
 
         Args:
@@ -473,8 +481,7 @@ class HyperNetwork(Algorithm):
         return outputs, density_outputs, extra_samples
 
     def _function_neglogprob(self, targets, outputs):
-        """
-        Function computing negative log_prob loss for function outputs.
+        """Function computing negative log_prob loss for function outputs.
         Used when function_vi is True.
 
         Args:
@@ -490,8 +497,7 @@ class HyperNetwork(Algorithm):
         return self._loss_func(outputs, targets)
 
     def _neglogprob(self, inputs, params):
-        """
-        Function computing negative log_prob loss for generator outputs.
+        """Function computing negative log_prob loss for generator outputs.
         Used when function_vi is False.
 
         Args:
@@ -548,7 +554,7 @@ class HyperNetwork(Algorithm):
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
     def _classification_vote(self, output, target):
-        """ensmeble the ooutputs from sampled classifiers."""
+        """Ensemble the ooutputs from sampled classifiers."""
         num_particles = output.shape[1]
         probs = F.softmax(output, dim=-1)  # [B, N, D]
         if self._voting == 'soft':
@@ -571,7 +577,7 @@ class HyperNetwork(Algorithm):
         return loss, correct
 
     def _regression_vote(self, output, target):
-        """ensemble the outputs for sampled regressors."""
+        """Ensemble the outputs for sampled regressors."""
         num_particles = output.shape[1]
         pred = output.mean(1)  # [B, D]
         loss = regression_loss(pred, target)
@@ -581,13 +587,13 @@ class HyperNetwork(Algorithm):
         return loss, total_loss
 
     def eval_uncertainty(self, num_particles=None):
-        """
-        Function to evaluate the epistemic uncertainty of a sampled ensemble.
-            This method computes the following metrics:
+        """Function to evaluate the epistemic uncertainty of a sampled ensemble.
+        This method computes the following metrics:
         
-            * AUROC (AUC): AUC is computed with respect to the entropy in the 
-                averaged softmax probabilities, as well as the sum of the
-                variance of the softmax probabilities over the ensemble. 
+        * AUROC (AUC): AUC is computed with respect to the entropy in the 
+          averaged softmax probabilities, as well as the sum of the
+          variance of the softmax probabilities over the ensemble. 
+
         Args:
             num_particles (int): number of sampled particles.
                 If None, then self.num_particles is used. 
@@ -599,19 +605,18 @@ class HyperNetwork(Algorithm):
         self._param_net.set_parameters(params)
 
         with torch.no_grad():
-            outputs, labels = predict_dataset(self._param_net,
-                                              self._test_loader)
-            outputs_outlier, _ = predict_dataset(self._param_net,
-                                                 self._outlier_test_loader)
-        mean_outputs = outputs.mean(0)
-        mean_outputs_outlier = outputs_outlier.mean(0)
+            outputs = predict_dataset(self._param_net, self._test_loader)
+            outputs_outlier = predict_dataset(self._param_net,
+                                              self._outlier_test_loader)
+        probs = F.softmax(outputs, -1)
+        probs_outlier = F.softmax(outputs_outlier, -1)
 
-        probs = F.softmax(mean_outputs, -1)
-        probs_outlier = F.softmax(mean_outputs_outlier, -1)
+        mean_probs = probs.mean(0)
+        mean_probs_outlier = probs_outlier.mean(0)
 
-        entropy = torch.distributions.Categorical(probs).entropy()
+        entropy = torch.distributions.Categorical(mean_probs).entropy()
         entropy_outlier = torch.distributions.Categorical(
-            probs_outlier).entropy()
+            mean_probs_outlier).entropy()
 
         variance = F.softmax(outputs, -1).var(0).sum(-1)
         variance_outlier = F.softmax(outputs_outlier, -1).var(0).sum(-1)

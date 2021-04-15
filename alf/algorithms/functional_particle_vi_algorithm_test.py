@@ -102,7 +102,8 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         algorithm = FuncParVIAlgorithm(
             input_tensor_spec=input_spec,
-            last_layer_param=(output_dim, False),
+            output_dim=output_dim,
+            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
             num_particles=num_particles,
             loss_type='regression',
@@ -201,9 +202,9 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         fc_layer_params = ((84, True), )
         algorithm = FuncParVIAlgorithm(
             input_tensor_spec=input_spec,
+            output_dim=10,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            last_layer_param=(10, True),
             num_particles=num_particles,
             last_activation=math_ops.identity,
             loss_type='classification',

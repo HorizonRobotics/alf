@@ -73,13 +73,16 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     """
 
     def __init__(self,
+                 data_creator=None,
+                 data_creator_outlier=None,
                  input_tensor_spec=None,
+                 output_dim=None,
+                 use_bias_for_last_layer=True,
                  param_net: ParamNetwork = None,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
-                 last_layer_param=None,
-                 last_activation=None,
+                 last_activation=math_ops.identity,
                  num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
@@ -94,6 +97,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  critic_iter_num=2,
                  critic_l2_weight=10.,
                  critic_use_bn=True,
+                 num_train_classes=10,
                  optimizer=None,
                  critic_optimizer=None,
                  logging_network=False,
@@ -104,9 +108,16 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  name="FuncParVIAlgorithm"):
         """
         Args:
+            data_creator (Callable): called as ``data_creator()`` to get a tuple
+                of ``(train_dataloader, test_dataloader)``
+            data_creator_outlier (Callable): called as ``data_creator()`` to get
+                a tuple of ``(outlier_train_dataloader, outlier_test_dataloader)``
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
-                None.
+                None. It must be provided if ``data_creator`` is not provided.
+            output_dim (int): dimension of the output of the generated network.
+                It must be provided if ``data_creator`` is not provided.
+            use_bias_for_last_layer (bool): whether use bias for the last layer
             param_net (ParamNetwork): input parametric network.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
@@ -117,11 +128,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 ``use_bias`` is optional.
             activation (Callable): activation used for all the layers but
                 the last layer.
-            last_layer_param (tuple): an optional tuple of the format
-                ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end.
-                Note that if ``last_activation`` is specified,
-                ``last_layer_param`` has to be specified explicitly.
             last_activation (Callable): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
                 ``last_layer_param`` is not None, ``last_activation`` has to be
@@ -166,6 +172,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                   expensive, but in some cases the convergence seems faster
                   than svgd approaches.
             function_vi (bool): whether to use function value based par_vi.
+            num_train_classes (int): number of classes in training set. 
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -173,6 +180,28 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             config (TrainerConfig): configuration for training
             name (str):
         """
+        if data_creator is not None:
+            trainset, testset = data_creator()
+            if data_creator_outlier is not None:
+                outlier_dataloaders = data_creator_outlier()
+            else:
+                outlier_dataloaders = None
+            self.set_data_loader(trainset, testset, outlier_dataloaders)
+            input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
+            if hasattr(trainset.dataset, 'classes'):
+                output_dim = len(trainset.dataset.classes)
+            else:
+                output_dim = num_train_classes
+            input_tensor_spec = input_tensor_spec
+        else:
+            assert input_tensor_spec is not None and output_dim is not None, (
+                "input_tensor_spec and output_dim need to be provided if "
+                "data_creator is not provided")
+            self._train_loader = None
+            self._test_loader = None
+
+        last_layer_param = (output_dim, use_bias_for_last_layer)
+
         if param_net is None:
             assert input_tensor_spec is not None
             param_net = ParamNetwork(
@@ -207,8 +236,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         self._param_net = param_net
         self._param_net.set_parameters(self.particles.data, reinitialize=True)
 
-        self._train_loader = None
-        self._test_loader = None
         self._loss_type = loss_type
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
@@ -401,8 +428,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         return outputs, density_outputs
 
     def _function_neglogprob(self, targets, outputs):
-        """
-        Function computing negative log_prob loss for function outputs.
+        """Function computing negative log_prob loss for function outputs.
         Used when function_vi is True.
 
         Args:
@@ -410,7 +436,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             outputs (Tensor): function outputs to evaluate the loss.
 
         Returns:
-            negative log_prob for outputs evaluated on current training batch.
+            Negative log_prob for outputs evaluated on current training batch.
         """
         num_particles = outputs.shape[0]
         if self._loss_type == 'regression':
@@ -431,8 +457,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         return self._loss_func(outputs, targets)
 
     def _neglogprob(self, inputs, params):
-        """
-        Function computing negative log_prob loss for generator outputs.
+        """Function computing negative log_prob loss for generator outputs.
         Used when function_vi is False.
 
         Args:
@@ -440,7 +465,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             params (Tensor): generator outputs to evaluate the loss.
 
         Returns:
-            negative log_prob for params evaluated on current training batch.
+            Negative log_prob for params evaluated on current training batch.
         """
         self._param_net.set_parameters(params)
         num_particles = params.shape[0]
@@ -458,9 +483,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         return self._loss_func(output, target)
 
     def evaluate(self):
-        """
-        Evaluatation of the ParVI ensemble on a test dataset
-        """
+        """Evaluatation of the ParVI ensemble on a test dataset."""
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin evaluating")
@@ -488,7 +511,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
     def _classification_vote(self, output, target):
-        """ensmeble the ooutputs from sampled classifiers."""
+        """Ensemble the outputs from sampled classifiers."""
         num_particles = output.shape[1]
         probs = F.softmax(output, dim=-1)  # [B, N, D]
         if self._voting == 'soft':
@@ -511,7 +534,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         return loss, correct
 
     def _regression_vote(self, output, target):
-        """ensemble the outputs for sampled regressors."""
+        """Ensemble the outputs for sampled regressors."""
         num_particles = output.shape[1]
         pred = output.mean(1)  # [B, D]
         loss = regression_loss(pred, target)
@@ -521,31 +544,29 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         return loss, total_loss
 
     def eval_uncertainty(self):
-        """
-        Function to evaluate the epistemic uncertainty of the ensemble.
-            This method computes the following metrics:
+        """Function to evaluate the epistemic uncertainty of the ensemble.
+        This method computes the following metrics:
         
-            * AUROC (AUC) evaluates the separability of model predictions with
-                respect to the training data and a prespecified outlier dataset.
-                AUC is computed with respect to the entropy in the averaged
-                softmax probabilities, as well as the sum of the variance of 
-                the softmax probabilities over the ensemble. 
+        * AUROC (AUC) evaluates the separability of model predictions with
+          respect to the training data and a prespecified outlier dataset.
+          AUC is computed with respect to the entropy in the averaged
+          softmax probabilities, as well as the sum of the variance of 
+          the softmax probabilities over the ensemble. 
         """
 
         with torch.no_grad():
-            outputs, labels = predict_dataset(self._param_net,
-                                              self._test_loader)
-            outputs_outlier, _ = predict_dataset(self._param_net,
-                                                 self._outlier_test_loader)
-        mean_outputs = outputs.mean(0)
-        mean_outputs_outlier = outputs_outlier.mean(0)
+            outputs = predict_dataset(self._param_net, self._test_loader)
+            outputs_outlier = predict_dataset(self._param_net,
+                                              self._outlier_test_loader)
+        probs = F.softmax(outputs, -1)
+        probs_outlier = F.softmax(outputs_outlier, -1)
 
-        probs = F.softmax(mean_outputs, -1)
-        probs_outlier = F.softmax(mean_outputs_outlier, -1)
+        mean_probs = probs.mean(0)
+        mean_probs_outlier = probs_outlier.mean(0)
 
-        entropy = torch.distributions.Categorical(probs).entropy()
+        entropy = torch.distributions.Categorical(mean_probs).entropy()
         entropy_outlier = torch.distributions.Categorical(
-            probs_outlier).entropy()
+            mean_probs_outlier).entropy()
 
         variance = F.softmax(outputs, -1).var(0).sum(-1)
         variance_outlier = F.softmax(outputs_outlier, -1).var(0).sum(-1)

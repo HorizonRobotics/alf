@@ -220,9 +220,9 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         hidden_layers = (noise_dim, 256)
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
+            output_dim=10,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            last_layer_param=(10, True),
             hidden_layers=hidden_layers,
             num_particles=num_particles,
             last_activation=math_ops.identity,
