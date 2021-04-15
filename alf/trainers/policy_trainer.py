@@ -42,32 +42,6 @@ from alf.utils.summary_utils import record_time
 from alf.utils.video_recorder import VideoRecorder
 
 
-@gin.configurable
-def create_dataset(dataset_name='mnist',
-                   dataset_loader=datagen,
-                   train_batch_size=100,
-                   test_batch_size=100):
-    """Create a pytorch data loaders.
-
-    Args:
-        dataset_name (str): dataset_name
-        dataset_loader (Callable) : callable that create pytorch data
-            loaders for both training and testing.
-        train_batch_size (int): batch_size for training.
-        test_batch_size (int): batch_size for testing.
-
-    Returns:
-        trainset (torch.utils.data.DataLoaderr):
-        testset (torch.utils.data.DataLoaderr):
-    """
-
-    trainset, testset = getattr(dataset_loader,
-                                'load_{}'.format(dataset_name))(
-                                    train_bs=train_batch_size,
-                                    test_bs=test_batch_size)
-    return trainset, testset
-
-
 class _TrainerProgress(nn.Module):
     def __init__(self):
         super(_TrainerProgress, self).__init__()
@@ -529,25 +503,7 @@ class SLTrainer(Trainer):
 
         self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
-
-        trainset, testset = self._create_dataset()
-        input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
-        if hasattr(trainset.dataset, 'classes'):
-            output_dim = len(trainset.dataset.classes)
-        else:
-            output_dim = len(trainset.dataset[0][1])
-
-        self._algorithm = config.algorithm_ctor(
-            input_tensor_spec=input_tensor_spec,
-            last_layer_param=(output_dim, True),
-            last_activation=math_ops.identity,
-            config=config)
-
-        self._algorithm.set_data_loader(trainset, testset)
-
-    def _create_dataset(self):
-        """Create data loaders."""
-        return create_dataset()
+        self._algorithm = config.algorithm_ctor(config=config)
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)

@@ -484,8 +484,10 @@ def parse_conf_file(conf_file):
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
         gin.parse_config_files_and_bindings([conf_file], gin_params)
-        # Create the global environment and initialize random seed
-        alf.get_env()
+        ml_type = alf.get_config_value('TrainerConfig.ml_type')
+        if ml_type == 'rl':
+            # Create the global environment and initialize random seed
+            alf.get_env()
     else:
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
         alf.parse_config(conf_file, conf_params)
@@ -1017,6 +1019,8 @@ def get_all_parameters(obj):
         if isinstance(obj, nn.Parameter):
             all_parameters.append((path, obj))
             continue
+        if isinstance(obj, torch.Tensor):
+            continue
         if path:
             path += '.'
         if nest.is_namedtuple(obj):
@@ -1103,8 +1107,9 @@ def get_alf_snapshot_env_vars(root_dir):
     alf_repo = os.path.join(root_dir, "alf")
     alf_cnest = os.path.join(alf_repo,
                              "alf/nest/cnest")  # path to archived cnest.so
+    alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_cnest, python_path])
+    python_path = ":".join([alf_repo, alf_cnest, alf_examples, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars

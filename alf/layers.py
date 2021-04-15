@@ -509,10 +509,10 @@ class FCBatchEnsemble(FC):
         nn.Module.__init__(self)
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
-        assert isinstance(ensemble_group,
-                          int), ("ensemble_group has to be an integer!")
         self._ensemble_bias = nn.Parameter(
             torch.Tensor(ensemble_size, output_size))
+        assert isinstance(ensemble_group,
+                          int), ("ensemble_group has to be an integer!")
         self._r.ensemble_group = ensemble_group
         self._s.ensemble_group = ensemble_group
         self._ensemble_bias.ensemble_group = ensemble_group
@@ -954,6 +954,165 @@ class Conv2D(nn.Module):
     @property
     def bias(self):
         return self._conv2d.bias
+
+
+@alf.configurable
+class Conv2DBatchEnsemble(Conv2D):
+    r"""The BatchEnsemble for 2D Conv layer.
+
+    BatchEnsemble is proposed in `Wen et. al. BatchEnsemble: An Alternative Approach
+    to Efficient Ensemble and Lifelong Learning <https://arxiv.org/abs/2002.06715>`_
+
+    In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
+    member k in addition to the conv2d kernel W of shape ``[C_out, C_in, K_h, K_w]``. 
+    For input x of shape ``[B, C, H, W]``, the result for ensemble member k is 
+    calculated as :math:`(W \circ (s_k r_k^T).unsqueeze(-1).unsqueeze(-1)) * x`.
+    This can be more efficiently calculated as 
+
+        :math:`(W*(x \circ r_k.unsqueeze(-1).unsqueeze(-1))) \circ s_k.unsqueeze(-1).unsqueeze(-1)`
+    
+    Note that for each sample in a batch, a random ensemble member will used for it
+    if ``ensemble_ids`` is not provided to ``forward()``.
+
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 ensemble_size,
+                 output_ensemble_ids=True,
+                 activation=torch.relu_,
+                 strides=1,
+                 padding=0,
+                 use_bias=None,
+                 use_bn=False,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_range=0.0,
+                 ensemble_group=0):
+        """
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            ensemble_size (int): ensemble size
+            output_ensemble_ids (bool): If True, the forward() function will return
+                a tuple of (result, ensemble_ids). If False, the forward() function
+                will return result only.
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            padding (int or tuple):
+            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
+            use_bn (bool): whether use batch normalization
+            kernel_initializer (Callable): initializer for the conv layer kernel.
+                If None is provided a variance_scaling_initializer with gain as
+                ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_range (float): biases are initialized uniformly in
+                [-bias_init_range, bias_init_range]
+            ensemble_group (int): the extra attribute ``ensemble_group`` added
+                to ``self._r``, ``self._s``, and ``self._ensemble_bias``,
+                default value is 0.
+                For alf.optimizers whose ``parvi`` is not ``None``, all parameters
+                with the same ``ensemble_group`` will be updated by the
+                particle-based VI algorithm specified by ``parvi``, options are
+                [``svgd``, ``gfsf``],
+
+                * Stein Variational Gradient Descent (SVGD)
+
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent:
+                  A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+
+                * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
+
+                  Liu, Chang, et al. "Understanding and accelerating particle-based
+                  variational inference." ICML, 2019.
+        """
+        nn.Module.__init__(self)
+        self._r = nn.Parameter(torch.Tensor(ensemble_size, in_channels))
+        self._s = nn.Parameter(torch.Tensor(ensemble_size, out_channels))
+        self._ensemble_bias = nn.Parameter(
+            torch.Tensor(ensemble_size, out_channels))
+        assert isinstance(ensemble_group,
+                          int), ("ensemble_group has to be an integer!")
+        self._r.ensemble_group = ensemble_group
+        self._s.ensemble_group = ensemble_group
+        self._ensemble_bias.ensemble_group = ensemble_group
+        self._use_ensemble_bias = use_bias
+        self._ensemble_size = ensemble_size
+        self._output_ensemble_ids = output_ensemble_ids
+        self._bias_init_range = bias_init_range
+        super().__init__(
+            in_channels,
+            out_channels,
+            kernel_size,
+            activation=activation,
+            use_bias=False,
+            use_bn=False,
+            kernel_initializer=kernel_initializer,
+            kernel_init_gain=kernel_init_gain)
+
+    def reset_parameters(self):
+        """Reinitialize the parameters."""
+        super().reset_parameters()
+        # Both r and s are initialized to +1/-1 according to Appendix B
+        torch.randint(
+            2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
+        torch.randint(
+            2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+        self._r.data.mul_(2)
+        self._r.data.sub_(1)
+        self._s.data.mul_(2)
+        self._s.data.sub_(1)
+        if self._use_ensemble_bias:
+            nn.init.uniform_(
+                self._ensemble_bias.data,
+                a=-self._bias_init_range,
+                b=self._bias_init_range)
+
+    def forward(self, inputs):
+        """Forward computation.
+
+        Args:
+            inputs (Tensor|tuple): if a Tensor, its shape should be ``[B, C, H, W]``.
+                And a random ensemble id will be generated for each sample in the batch. 
+                If a tuple, it should contain two tensors. The first one is the data 
+                tensor with shape ``[B, C, H, W]``. The second one is ensemble_ids 
+                indicating which ensemble member each sample should use. Its shape 
+                should be [batch_size], and all elements should be in [0, ensemble_size).
+        Returns:
+            tuple if ``output_ensemble_ids`` is True,
+            - Tensor: with shape ``[B, C_out, H_out, W_out]``
+            - LongTensor: if enseble_ids is provided, this is same as ``ensemble_ids``,
+                otherwise a randomly generated ensemble_ids is returned
+            Tensor if ``output_ensemble_ids`` is False. The result of Conv2D.
+        """
+        if type(inputs) == tuple:
+            inputs, ensemble_ids = inputs
+        else:
+            ensemble_ids = torch.randint(
+                self._ensemble_size, size=(inputs.shape[0], ))
+        batch_size = inputs.shape[0]
+        r = self._r[ensemble_ids].unsqueeze_(-1).unsqueeze_(
+            -1)  # [B, in_channels, 1, 1]
+        s = self._s[ensemble_ids].unsqueeze_(-1).unsqueeze_(
+            -1)  # [B, out_channels, 1, 1]
+        y = self._conv2d(inputs * r) * s
+        if self._use_ensemble_bias:
+            bias = self._ensemble_bias[ensemble_ids].unsqueeze_(-1).unsqueeze_(
+                -1)
+            y += bias
+        if self._bn is not None:
+            y = self._bn(y)
+
+        y = self._activation(y)
+        if self._output_ensemble_ids:
+            return y, ensemble_ids
+        else:
+            return y
 
 
 @alf.configurable
@@ -1872,6 +2031,7 @@ def _masked_softmax(logits, mask, dim=-1):
     return nn.functional.softmax(logits, dim=dim)
 
 
+@alf.configurable
 class TransformerBlock(nn.Module):
     """Transformer residue block.
 
@@ -1891,8 +2051,8 @@ class TransformerBlock(nn.Module):
     [1]. Ashish Vaswani et. al. Attention Is All You Need
 
     This implementation is a variation which places layer norm at a different
-    location, which is proposed in:
-    [2]. Ruibin XiongOn et. al. Layer Normalization in the Transformer Architecture
+    location, which is described in:
+    [2]. Ruibin Xiong et. al. On Layer Normalization in the Transformer Architecture
 
     We also support the relative positional encoding proposed in
     [3] Zihang Dai et. al. Transformer-XL: Attentive language models beyond a fixed-length context.
@@ -1908,6 +2068,8 @@ class TransformerBlock(nn.Module):
                  d_k=None,
                  d_v=None,
                  d_ff=None,
+                 dropout=0.0,
+                 activation=torch.relu_,
                  positional_encoding='abs',
                  add_positional_encoding=True,
                  scale_attention_score=True):
@@ -1919,6 +2081,9 @@ class TransformerBlock(nn.Module):
             d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model // num_heads``
             d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model // num_heads``
             d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
+            dropout (float): the dropout ratio. Note the [1] uses 0.1 for dropout.
+            activation (Callable): the activiation for the hidden layer of the MLP.
+                relu and gelu are two popular choices.
             positional_encoding (str): One of ['none', 'abs', 'rel']. If 'none',
                 no position encoding will be used. If 'abs', use absolute positional
                 encoding depending on the absolute position in the memory sequence,
@@ -1929,7 +2094,7 @@ class TransformerBlock(nn.Module):
                 is also concatenated to the attention result so that the attention
                 result can keep the location information better. Note that using
                 this option will increase the number of parameters by about 25%.
-                This option cannot be used if positional_encoding is 'none'.
+                This option is ignored if ``positional_encoding`` is 'none'.
             scale_attention_score (bool): If True, scale the attention score by
                 ``d_k ** -0.5`` as suggested in [1]. However, this may not always
                 be better since it slows the unittest in layers_test.py
@@ -1945,10 +2110,9 @@ class TransformerBlock(nn.Module):
         self._k_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
         self._v_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_v))
         d_a = d_v
+        if positional_encoding == 'none':
+            add_positional_encoding = False
         if add_positional_encoding:
-            assert positional_encoding != 'none', (
-                "positional_encoding cannot be 'none' for "
-                "add_positional_encoding=True")
             d_a = d_v + d_k
         self._o_proj = nn.Parameter(torch.Tensor(num_heads * d_a, d_model))
 
@@ -1962,8 +2126,16 @@ class TransformerBlock(nn.Module):
         self._add_positional_encoding = add_positional_encoding
 
         self._attention_scale = d_k**-0.5 if scale_attention_score else 1.
-        self._mlp = torch.nn.Sequential(
-            FC(d_model, d_ff, torch.relu_), FC(d_ff, d_model))
+        mlp = [FC(d_model, d_ff, activation)]
+        if dropout > 0:
+            mlp.append(torch.nn.Dropout(dropout))
+        mlp.append(FC(d_ff, d_model))
+        if dropout > 0:
+            mlp.append(torch.nn.Dropout(dropout))
+            self._dropout = torch.nn.Dropout(dropout)
+        else:
+            self._dropout = Identity()
+        self._mlp = torch.nn.Sequential(*mlp)
         self._norm1 = torch.nn.LayerNorm(d_model)
         self._norm2 = torch.nn.LayerNorm(d_model)
 
@@ -1989,7 +2161,8 @@ class TransformerBlock(nn.Module):
         if self._positional_encoding is not None:
             nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
         for l in self._mlp:
-            l.reset_parameters()
+            if hasattr(l, 'reset_parameters'):
+                l.reset_parameters()
 
     @staticmethod
     def _shift(x, m):
@@ -2145,6 +2318,7 @@ class TransformerBlock(nn.Module):
 
         # [B, M, H * d_a]
         att_result = att_result.reshape(batch_size, m, num_heads * d_a)
+        att_result = self._dropout(att_result)
         # [B, M, d_model]
         x = original_query + torch.matmul(att_result, self._o_proj)
         # [B, M, d_model]

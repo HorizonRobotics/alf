@@ -32,7 +32,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         """Estimate a covariance matrix given data.
 
         Args:
-            data (tensor): A 1-D or 2-D tensor containing multiple observations 
+            data (tensor): A 1-D or 2-D tensor containing multiple observations
                 of multiple dimentions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
@@ -68,15 +68,15 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                         num_particles=128):
         r"""
         The hypernetwork is trained to generate the parameter vector for a linear
-        regressor. The target linear regressor is :math:`y = X\beta + e`, where 
-        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
-        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        regressor. The target linear regressor is :math:`y = X\beta + e`, where
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix,
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
-        For a linear generator with weight W and bias b, and takes standard Gaussian 
-        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
+        For a linear generator with weight W and bias b, and takes standard Gaussian
+        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should
         match the posterior :math:`p(\beta|X,y)` for both ``svgd``, ``gfsf``, and
         ``minmax``.
-        
+
         """
         input_size = 3
         input_spec = TensorSpec((input_size, ), torch.float32)
@@ -94,7 +94,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
-            last_layer_param=(output_dim, False),
+            output_dim=output_dim,
+            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
             noise_dim=noise_dim,
             hidden_layers=None,

@@ -284,8 +284,12 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
                 the population falls below it, the CEM iteration will stop.
             tau (float): a value in (0, 1) for softly updating the population
                 mean and variance:
+
+                .. code_block:: python
+
                     mean = (1 - tau) * mean + tau * new_mean
                     var = (1 - tau) * var + tau * new_var
+
             scalar_var (None|float): the value that will be used to construct
                 the initial diagonal covariance matrix of the multi-dimensional
                 Gaussian used by the CEM optimizer. If value is None,

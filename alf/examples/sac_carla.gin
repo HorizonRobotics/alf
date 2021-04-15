@@ -35,7 +35,7 @@ SacAlgorithm.target_update_tau=0.005
 SacAlgorithm.critic_loss_ctor=@TDLoss
 SacAlgorithm.use_parallel_network=True
 SacAlgorithm.use_entropy_reward=False
-SacAlgorithm.reward_weights=[1, 0., 0., 0., 0.]
+SacAlgorithm.reward_weights=[1, 0., 0., 0., 0., 0.]
 
 # config EncodingAlgorithm
 encoder/EncodingNetwork.input_preprocessors=%input_preprocessors

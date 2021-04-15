@@ -284,8 +284,11 @@ class Player(object):
     # 0/1 valued indicating red light violation
     REWARD_RED_LIGHT = 4
 
+    # 0/1 valued indicating overspeed
+    REWARD_OVERSPEED = 5
+
     # dimension of the reward vector
-    REWARD_DIMENSION = 5
+    REWARD_DIMENSION = 6
 
     # See https://leaderboard.carla.org/#driving-score for reference
     PENALTY_RATE_COLLISION = 0.50
@@ -301,6 +304,7 @@ class Player(object):
                  max_stuck_at_collision_seconds=5.0,
                  stuck_at_collision_distance=1.0,
                  max_red_light_penalty=10.,
+                 overspeed_penalty_weight=0.,
                  sparse_reward=False,
                  sparse_reward_interval=10.,
                  allow_negative_distance_reward=True,
@@ -338,6 +342,12 @@ class Player(object):
                 reward. So the penalty is capped at ``Player.PENALTY_RATE_RED_LIGHT * max(0., episode_reward))``.
                 Note that this reward is only given once at the first step of
                 contiguous red light violation.
+            overspeed_penalty_weight (float): if > 0, a penalty propotional to
+                the overspeed magnitude will be applied, multiplied by the step
+                time (seconds each step of simulation represents) to make the
+                penalty invariant to it, and then multiplied by the weight
+                of ``overspeed_penalty_weight``.
+                A negative value is the same as 0.
             sparse_reward (bool): If False, the distance reward is given at every
                 step based on how much it moves along the navigation route. If
                 True, the distance reward is only given after moving ``sparse_reward_distance``.
@@ -409,6 +419,7 @@ class Player(object):
         self._stuck_at_collision_distance = stuck_at_collision_distance
 
         self._max_red_light_penalty = max_red_light_penalty
+        self._overspeed_penalty_weight = max(overspeed_penalty_weight, 0)
 
         self._sparse_reward = sparse_reward
         self._sparse_reward_index_interval = int(
@@ -525,6 +536,9 @@ class Player(object):
         self._episode_reward = 0.
         self._unrecorded_distance_reward = 0.
         self._is_first_step = True
+        self._speed_limit = None
+        # when resetting, use the globally closest speed limit sign for update
+        self.update_speed_limit(dis_threshold=-1)
 
         return commands
 
@@ -615,6 +629,41 @@ class Player(object):
         return _calculate_relative_position(self._actor.get_transform(),
                                             self._goal_location)
 
+    def update_speed_limit(self, dis_threshold=10):
+        """Update the speed limit of the actor according to the active speed
+        limit sign. The speed limit is updated when passing by a speed limit sign.
+
+        Args:
+            dis_threshold (float): the distance in meter within which to consider
+                the speed limit sign as active. The one closest to the actor in
+                the active set will be used as the current speed limit.
+                If a negative value is provided, all speed limit signs are
+                taken into considerations for determining the closest one.
+        Returns:
+            float: speed limit in m/s
+        """
+        updated_speed_limit = self._alf_world.get_active_speed_limit(
+            self._actor, dis_threshold)
+        if updated_speed_limit is not None:
+            self._speed_limit = updated_speed_limit
+
+    def get_overspeed_amount(self):
+        """Get the difference between the actor's speed and the speed limit,
+        lower bounded by 0.
+        Returns:
+            float:
+                - 0. if actor's ``_speed_limit`` is None or speed is lower than
+                    speed limit
+                - the amount of the actor's speed over the speed limit otherwise
+        """
+        v = self._actor.get_velocity()
+        speed = np.linalg.norm(np.array([v.x, v.y, v.z], dtype=np.float))
+
+        if self._speed_limit is None or speed < self._speed_limit:
+            return 0.
+        else:
+            return speed - self._speed_limit
+
     def get_current_time_step(self, current_frame):
         """Get the current time step for the player.
 
@@ -643,7 +692,8 @@ class Player(object):
         info = OrderedDict(
             success=np.float32(0.0),
             collision=np.float32(0.0),
-            red_light=np.float32(0.0))
+            red_light=np.float32(0.0),
+            overspeed=np.float32(0.0))
 
         # When the previous episode ends because of stucking at a collision with
         # another vehicle, it may get an additional collision event in the new frame
@@ -745,6 +795,14 @@ class Player(object):
                 Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
         self._prev_violated_red_light_id = red_light_id
 
+        overspeed = self.get_overspeed_amount()
+        if overspeed > 0:
+            logging.info("actor=%d frame=%d OVERSPEED" % (self._actor.id,
+                                                          current_frame))
+            reward_vector[Player.REWARD_OVERSPEED] = 1.
+            info['overspeed'] = np.float32(1.0)
+            reward -= self._overspeed_penalty_weight * overspeed * self._delta_seconds
+
         obs['navigation'] = _calculate_relative_position(
             self._actor.get_transform(), obs['navigation'])
 
@@ -785,6 +843,7 @@ class Player(object):
             self._control.brake = max(float(action[2]), 0.0)
             self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
+        self.update_speed_limit()
 
         return [carla.command.ApplyVehicleControl(self._actor, self._control)]
 
@@ -849,6 +908,8 @@ class Player(object):
             'Steer:    %4.2f' % self._control.steer,
             'Reverse:  %4s' % self._control.reverse,
             'Reward: (%s)' % self._current_time_step.reward,
+            'Route Length: %4.2f m' % self._route_length,
+            'Speed Limit: %4.2f m/s' % self._speed_limit
         ]
         info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)

@@ -571,6 +571,54 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         torch.set_num_threads(num_threads)
 
+    def test_conv2d_batch_ensemble(self):
+        num_threads = torch.get_num_threads()
+        # Use single thread to make the equality tests more robust. Different
+        # addition order from multi-thread may lead to slightly different result.
+        torch.set_num_threads(1)
+
+        batch_size = 256
+        x = torch.randn((batch_size, 3, 10, 10))
+        layer1 = alf.layers.Conv2DBatchEnsemble(
+            3, 16, 5, ensemble_size=8, use_bias=True)
+        layer2 = alf.layers.Conv2DBatchEnsemble(
+            16,
+            1,
+            3,
+            ensemble_size=8,
+            use_bias=False,
+            output_ensemble_ids=False)
+        y = layer1(x)
+        # Test correct output type and shape
+        self.assertEqual(type(y), tuple)
+        self.assertEqual(y[0].shape, (batch_size, 16, 6, 6))
+        self.assertEqual(y[1].shape, (batch_size, ))
+        z = layer2(y)
+        self.assertEqual(z.shape, (batch_size, 1, 4, 4))
+
+        x = torch.randn((8, 3, 10, 10))
+        x = torch.cat([x] * 32, dim=0)
+        ensemble_ids = torch.arange(8).unsqueeze(-1).expand(-1, 8).reshape(-1)
+        ensemble_ids = torch.cat([ensemble_ids] * 4, dim=0)
+        y = layer1((x, ensemble_ids))
+        z = layer2(y)
+        # test same ensemble id leads to same result
+        # different ensemble id leads to different result
+        self.assertTensorClose(z[0:64], z[64:128], epsilon=1e-6)
+        self.assertTensorClose(z[0:64], z[128:192], epsilon=1e-6)
+        self.assertTensorClose(z[0:64], z[192:256], epsilon=1e-6)
+
+        z = z.view(batch_size, -1)
+        self.assertTrue(((z[0:8] != z[8:16]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[16:24]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[24:32]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[32:40]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[40:48]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[48:56]).sum(-1) > 0).all())
+        self.assertTrue(((z[0:8] != z[56:64]).sum(-1) > 0).all())
+
+        torch.set_num_threads(num_threads)
+
     @parameterized.parameters((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3),
                               (3, 1), (3, 2), (3, 3))
     def test_causal_conv1d_shape(self,

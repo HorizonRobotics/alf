@@ -25,17 +25,17 @@ from . import adam_tf
 
 def _rbf_func(x):
     r"""
-    Compute the rbf kernel and its gradient w.r.t. first entry 
+    Compute the rbf kernel and its gradient w.r.t. first entry
     :math:`K(x, x), \nabla_x K(x, x)`, for computing ``svgd``_grad.
 
     Args:
-        x (Tensor): set of N particles, shape (N x D), where D is the 
+        x (Tensor): set of N particles, shape (N x D), where D is the
             dimenseion of each particle
 
     Returns:
         :math:`K(x, x)` (Tensor): the RBF kernel of shape (N x N)
         :math:`\nabla_x K(x, x)` (Tensor): the derivative of RBF kernel of shape (N x N x D)
-        
+
     """
     N, D = x.shape
     diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -97,6 +97,7 @@ def wrap_optimizer(cls):
 
     @common.add_method(NewCls)
     def __init__(self,
+                 *,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  parvi=None,
@@ -115,19 +116,19 @@ def wrap_optimizer(cls):
 
                 * Stein Variational Gradient Descent (SVGD)
 
-                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent:
                   A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
                 * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
-                
-                  Liu, Chang, et al. "Understanding and accelerating particle-based 
+
+                  Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML. 2019.
 
-                To work with the ``parvi`` option, the parameters added to the 
+                To work with the ``parvi`` option, the parameters added to the
                 optimizer (by ``add_param_group``) should have an (int) attribute
                 ``ensemble_group``. See ``FCBatchEnsemble`` as an example.
 
-            repulsive_weight (float): the weight of the repulsive gradient term 
+            repulsive_weight (float): the weight of the repulsive gradient term
                 for parameters with attribute ``ensemble_group``.
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
@@ -225,7 +226,7 @@ def wrap_optimizer(cls):
     @common.add_method(NewCls)
     def add_param_group(self, param_group):
         """This function first splits the input param_group into multiple
-        param_groups according to their ``ensemble_group`` attributes, then 
+        param_groups according to their ``ensemble_group`` attributes, then
         calls the parent's ``add_param_group()`` function to add each of
         them to the optimizer.
         """

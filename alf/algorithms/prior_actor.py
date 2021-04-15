@@ -120,12 +120,14 @@ class SameActionPriorActor(Algorithm):
         It encodes the prior intuition that the next action should be same as the
         previous action most of time. More specifically, the distribution for each
         action dimension is a mixture of two components:
+
         1. a flat ``TruncatedNormal`` with ``loc`` equal to the median of the
-            action range ``scale`` equal to the action range.
+           action range ``scale`` equal to the action range.
         2. a sharp ``TruncatedNormal`` with ``loc`` equal to the previous action
-            and scale equal to the action range multiplied by ``same_action_noise``.
+           and scale equal to the action range multiplied by ``same_action_noise``.
 
         The mixture weight depends on step_type:
+
         1. If the step_type is FIRST, the mixture weight is [1.0, 0]
         2. Otherwise the mixture weight is [1-same_actin_prob, same_actin_prob]
 

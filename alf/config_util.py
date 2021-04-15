@@ -18,6 +18,7 @@ import functools
 import gin
 import inspect
 from inspect import Parameter
+import os
 
 __all__ = [
     'config', 'config1', 'configurable', 'define_config',
@@ -575,8 +576,13 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     else:
         fn_or_cls = _make_wrapper(fn_or_cls, configs, signature, has_self=0)
 
-    return gin.configurable(
-        orig_name, whitelist=whitelist, blacklist=blacklist)(fn_or_cls)
+    if fn_or_cls.__module__ != '<run_path>':
+        # If a file is executed using runpy.run_path(), the module name is
+        # '<run_path>', which is not an acceptable name by gin.
+        return gin.configurable(
+            orig_name, whitelist=whitelist, blacklist=blacklist)(fn_or_cls)
+    else:
+        return fn_or_cls
 
 
 def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
