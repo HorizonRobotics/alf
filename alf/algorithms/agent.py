@@ -342,7 +342,9 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             info = info._replace(
-                rl=rl_step.info._replace(full_plan=goal_step.state.full_plan))
+                rl=rl_step.info._replace(
+                    full_plan=goal_step.state.full_plan,
+                    subgoals_index=goal_step.state.subgoals_index))
 
         if self._irm is not None:
             irm_step = self._irm.rollout_step(

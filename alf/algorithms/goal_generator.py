@@ -32,10 +32,21 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 import alf.utils.common as common
 
 GoalState = namedtuple(
-    "GoalState", [
-        "goal", "full_plan", "steps_since_last_plan", "subgoals_index",
-        "steps_since_last_goal", "final_goal", "replan", "switched_goal",
-        "retain_old", "advanced_goal", "prev_ext_goal", "prev_goal",
+    "GoalState",
+    [
+        "goal",
+        "full_plan",
+        "subgoals_index",
+        "steps_since_last_plan",
+        # NOTE: full_plan should always be used together with subgoals_index
+        "steps_since_last_goal",
+        "final_goal",
+        "replan",
+        "switched_goal",
+        "retain_old",
+        "advanced_goal",
+        "prev_ext_goal",
+        "prev_goal",
         "plan_success"
     ],
     default_value=())
@@ -373,6 +384,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  bound_goals=False,
                  value_fn=None,
                  combine_her_nonher_value_weight=0.,
+                 value_clipping=False,
                  value_state_spec=(),
                  max_replan_steps=10,
                  plan_margin=0.,
@@ -400,6 +412,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  use_aux_achieved=False,
                  aux_dim=0,
                  control_aux=False,
+                 use_vae_in_target=False,
                  gou_stddev=0.,
                  gou_damping=0.15,
                  multi_dim_goal_reward=False,
@@ -429,6 +442,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             bound_goals (bool): whether to use normalizer stats to bound planned goals.
             value_fn (Callable or None): value function to measure distance between states.
                 When value_fn is None, it can also be set via set_value_fn.
+            value_clipping (bool): whether to cap goal conditioned value to 1.
             value_state_spec (nested TensorSpec): spec of the state of value function.
             max_replan_steps (int): number of steps to execute a plan before
                 replanning.
@@ -471,6 +485,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 (of ``action_dim``) and ``aux_desired`` (of ``aux_dim``) to output
                 ``state.goal`` (``action_dim + aux_dim``). When ``control_aux`` is
                 ``False``, ``state.goal`` is of shape ``(batch_size, action_dim)``.
+            use_vae_in_target (bool): whether to include vae cost in final plan cost
+                during critic training.
             gou_stddev (float): if non-zero, stddev of the ou noise added to each
                 dim of output goal in the default collect policy.
             gou_damping (float): Damping factor for the OU noise added in the
@@ -486,6 +502,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._max_subgoal_steps = max_subgoal_steps
         self._action_dim = action_dim
         self._max_replan_steps = max_replan_steps
+        self._value_clipping = value_clipping
         self._plan_margin = plan_margin
         self._plan_with_goal_value_only = plan_with_goal_value_only
         self._plan_remaining_subgoals = plan_remaining_subgoals
@@ -613,6 +630,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._vae_samples = vae_samples
         self._vae_decoder = vae_decoder
         self._subtract_desired = subtract_desired
+        self._use_vae_in_target = use_vae_in_target
         self._ou_process = common.create_ou_process(goal_spec, gou_stddev,
                                                     gou_damping)
         self._gou_stddev = gou_stddev
@@ -739,7 +757,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
         loss += torch.where(loss > self._vae_penalize_above,
                             torch.ones(1) * self._vae_bias, torch.zeros(1))
-        loss = torch.max(self._vae_penalize_above, loss)
+        loss = torch.max(self._vae_penalize_above,
+                         loss) - self._vae_penalize_above
         loss = torch.min(torch.tensor(1.e8), loss)
         loss = torch.where(torch.isnan(loss), torch.tensor(1.e8), loss)
         return loss.unsqueeze(1) * self._vae_weight
@@ -798,7 +817,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if mdim and self._plan_with_goal_value_only:
                 values = values[..., :-1]  # last dim is distraction reward
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
-            # values = torch.min(values, torch.tensor(1.))  # is this needed?
+            if self._value_clipping:
+                values = torch.min(values, torch.tensor(1.))
             values = torch.log(torch.max(values, torch.tensor(1.e-10)))
             # Multiply all dims (sum after log):
             # if mdim and not self._plan_with_goal_value_only:
@@ -819,8 +839,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 values = values[..., :-1]
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
         # use_target_networks is called from ddpg_algorithm, and should ignore vae value.
-        if self._vae and not use_target_networks:
+        if self._vae and (not use_target_networks or self._use_vae_in_target):
             values -= self.vae_cost(obs)
+            if self.sparse_reward:
+                # otherwise nan results in value histograms:
+                values = torch.clamp(values, -10)
         return values, state
 
     def _summarize_tensor_dims(self, name, t):
@@ -988,13 +1011,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             plan_horizon = self._num_subgoals + 1
         return plan_horizon
 
-    def _assess_plan_value(self, ts, state, plan, use_target_networks=False):
+    def _assess_plan_cost(self,
+                          ts_or_exp,
+                          state,
+                          plan,
+                          use_target_networks=False):
         samples = plan.clone()
         if not self.control_aux:
             # leave out the real goal from samples (subgoals)
             samples = samples[:, :-1, :]
         return self._costs_agg_dist(
-            ts,
+            ts_or_exp,
             state,
             samples.unsqueeze(1),
             use_target_networks=use_target_networks)
@@ -1076,7 +1103,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
         old_plan = state.full_plan
-        old_costs = self._assess_plan_value(ts, state, old_plan)
+        old_costs = self._assess_plan_cost(ts, state, old_plan)
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
         if alf.summary.should_record_summaries():

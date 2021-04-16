@@ -51,7 +51,10 @@ DdpgCriticInfo = namedtuple(
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
-    "DdpgInfo", ["action_distribution", "actor_loss", "critic", "full_plan"],
+    "DdpgInfo", [
+        "action_distribution", "actor_loss", "critic", "full_plan",
+        "subgoals_index"
+    ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
@@ -333,10 +336,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return pred_step
 
     def _assess_plan_value(self, exp, plan):
-        # Assess value of a plan using goal_generator._costs_agg_dist, ignoring
-        # vae cost in the plan value.
-        return self._goal_generator._assess_plan_value(
-            exp, (), plan, use_target_networks=True)
+        # Assess value of a plan using goal_generator._costs_agg_dist,
+        # maybe ignoring vae cost in the plan value.
+        return -self._goal_generator._assess_plan_cost(
+            exp,
+            GoalState(subgoals_index=exp.rollout_info.subgoals_index),
+            plan,
+            use_target_networks=True).squeeze(1)
 
     def _reuse_plan_value(self, exp: Experience, state: DdpgCriticState):
         # get old full_plan from exp
@@ -360,16 +366,41 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         if self._bump_target_value or self._replan_target_value:
             if self._replan_target_value:
+                # We should use rollout subgoal indexes to make training consistent with rollout.
                 goals, costs, _ = self._goal_generator.get_goals_and_costs(
-                    exp.observation, (), use_target_networks=True)
-                plan_values = -costs
+                    exp.observation,
+                    GoalState(subgoals_index=exp.rollout_info.subgoals_index),
+                    use_target_networks=True)
+                plan_values = -costs.squeeze(1)
             if self._bump_target_value:
                 old_plan_values = self._reuse_plan_value(exp, state)
                 if self._replan_target_value:
+                    alf.summary.scalar(
+                        "planner/train_rate_replan_gt_oldplan",
+                        torch.mean((plan_values > old_plan_values).float()))
                     plan_values = torch.max(plan_values, old_plan_values)
                 else:
                     plan_values = old_plan_values
-            target_q_values = torch.max(target_q_values, plan_values)
+            if self._goal_generator.sparse_reward:
+                plan_values = torch.exp(plan_values)
+
+            goal_target_value = target_q_values
+            # potentially multi-dim value
+            if len(target_q_values.shape) > 1:
+                goal_target_value = target_q_values[:, 0]
+            alf.summary.scalar("planner/train_value_plan",
+                               torch.mean(plan_values))
+            alf.summary.scalar("planner/train_value_target_q",
+                               torch.mean(goal_target_value))
+            alf.summary.scalar(
+                "planner/train_rate_plan_gt_target_q",
+                torch.mean((plan_values > goal_target_value).float()))
+            final_target_value = torch.max(goal_target_value, plan_values)
+            assert torch.all(~torch.isnan(final_target_value))
+            if len(target_q_values.shape) > 1:
+                target_q_values[:, 0] = final_target_value
+            else:
+                target_q_values = final_target_value
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
