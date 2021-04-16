@@ -84,7 +84,7 @@ def _discounted_return(rewards, values, is_lasts, discounts):
 
     Returns:
         Tensor: A tensor with shape ``[T-1,B]`` (or ``[T-1]``) representing the
-        discounted returns. Shape is ``[B,T-1]`` when time_major is false.
+        discounted returns.
     """
     assert values.shape[0] >= 2, ("The sequence length needs to be "
                                   "at least 2. Got {s}".format(
@@ -114,7 +114,7 @@ class TASACTDLoss(nn.Module):
     :math:`\mathcal{T}^{\pi^{\text{ta}}}` proposed in the TASAC paper. For a sampled
     trajectory, it compares the beta action :math:`\tilde{b}_n` sampled from the
     current policy with the historical rollout beta action :math:`b_n` step by step,
-    and uses the maximum :math:`n` that has :math:`\tilde{b}_n\lor b_n=1` as the
+    and uses the minimum :math:`n` that has :math:`\tilde{b}_n\lor b_n=1` as the
     target step for boostrapping.
     """
 
@@ -226,7 +226,17 @@ class TASACTDLoss(nn.Module):
 
 @alf.configurable
 class TasacAlgorithm(OffPolicyAlgorithm):
-    """Temporally abstract soft actor-critic algorithm. See
+    r"""Temporally abstract soft actor-critic algorithm.
+
+    In a nutsell, for inference TASAC adds a second stage that chooses between a
+    candidate action output by an SAC actor and the action from the previous
+    step. For policy evaluation, TASAC uses an unbiased multi-step Q operator
+    for TD backup by re-using trajectories that have shared repeated actions
+    between rollout and training. For policy improvement, the new actor gradient
+    is approximated by multiplying a scaling factor to the
+    :math:`\frac{\partial Q}{\partial a}` term in the original SAC’s actor
+    gradient, where the scaling factor is the optimal probability of choosing
+    the candidate action in the second stage. See
 
         "TASAC: Temporally Abstract Soft Actor-Critic for Continuous Control",
         Yu et al., arXiv 2021.
@@ -359,7 +369,10 @@ class TasacAlgorithm(OffPolicyAlgorithm):
         self._use_entropy_reward = use_entropy_reward
         self._a1_advantage_clipping = a1_advantage_clipping
 
-        self._training_started = False
+        # Create as a buffer so that training from a checkpoint will have
+        # the correct flag.
+        self.register_buffer("_training_started",
+                             torch.zeros((), dtype=torch.bool))
 
         self._update_target = common.get_target_updater(
             models=[self._critic_networks],
@@ -397,8 +410,8 @@ class TasacAlgorithm(OffPolicyAlgorithm):
 
         # NOTE: when time_step_or_exp is from replay buffer, ``prev_action``
         # represents the previous action *during rollout* at the current step!!
-        # Its value is determined by the rollout b. To use the true ``prev_action``
-        # during training, we need to store it in a train_state.
+        # Its value is determined by the rollout b. To use the ``prev_action``
+        # from ``train_step()``, we need to store it in a train_state.
 
         observation, b0_action = (time_step_or_exp.observation,
                                   time_step_or_exp.prev_action)
@@ -497,7 +510,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
         # compute resampling action dist
         action_dist, _ = self._actor_network((observation.detach(), b0_action))
         # resample a new attempting action
-        if mode == "predict":
+        if mode == Mode.predict:
             action = dist_utils.epsilon_greedy_sample(action_dist,
                                                       epsilon_greedy)
         else:
@@ -518,12 +531,11 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                 beta_dist = _safe_categorical(q_values2, beta_alpha)
             else:
                 clip_min, clip_max = self._a1_advantage_clipping
-                delta_q = torch.clamp(q_1 - q_0, min=clip_min, max=clip_max)
-                clipped_q_values2 = torch.stack(
-                    [torch.zeros_like(delta_q), delta_q], dim=-1)
+                clipped_q_values2 = (q_values2 - q_0.unsqueeze(-1)).clamp(
+                    min=clip_min, max=clip_max)
                 beta_dist = _safe_categorical(clipped_q_values2, beta_alpha)
 
-        if mode == "predict":
+        if mode == Mode.predict:
             b = dist_utils.epsilon_greedy_sample(beta_dist, epsilon_greedy)
         else:
             b = dist_utils.sample_action_distribution(beta_dist)
@@ -613,7 +625,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                                    torch.mean(repeats.to(torch.float32)))
 
     def train_step(self, exp: Experience, state):
-        self._training_started = True
+        self._training_started.fill_(True)
 
         (action_distributions, actions, new_action, new_state,
          q_values2) = self._predict_action(
@@ -665,11 +677,8 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                 alf.summary.histogram("train_repeats/value",
                                       repeats.to(torch.float32))
 
-        policy_l = math_ops.add_ignore_empty(actor_loss.loss, alpha_loss)
-        critic_l = critic_loss.loss
-
         return LossInfo(
-            loss=critic_l + policy_l,
+            loss=actor_loss.loss + alpha_loss + critic_loss.loss,
             extra=TasacLossInfo(
                 actor=actor_loss.extra,
                 critic=critic_loss.extra,
