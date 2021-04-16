@@ -701,7 +701,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
-        self.assertRaises(KeyError, net, x)
+        self.assertRaises(LookupError, net, x)
 
     def test_sequential3(self):
         # test output
