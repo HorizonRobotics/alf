@@ -342,7 +342,7 @@ class Player(object):
                 reward. So the penalty is capped at ``Player.PENALTY_RATE_RED_LIGHT * max(0., episode_reward))``.
                 Note that this reward is only given once at the first step of
                 contiguous red light violation.
-            overspeed_penalty_weight (float): if > 0, a penalty propotional to
+            overspeed_penalty_weight (float): if > 0, a penalty proportional to
                 the overspeed magnitude will be applied, multiplied by the step
                 time (seconds each step of simulation represents) to make the
                 penalty invariant to it, and then multiplied by the weight
@@ -796,7 +796,7 @@ class Player(object):
         self._prev_violated_red_light_id = red_light_id
 
         overspeed = self.get_overspeed_amount()
-        if overspeed > 0:
+        if overspeed > 0 and self._overspeed_penalty_weight > 0:
             logging.info("actor=%d frame=%d OVERSPEED" % (self._actor.id,
                                                           current_frame))
             reward_vector[Player.REWARD_OVERSPEED] = 1.
