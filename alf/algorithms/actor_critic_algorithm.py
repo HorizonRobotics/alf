@@ -28,7 +28,8 @@ ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
 
 ActorCriticInfo = namedtuple(
-    "ActorCriticInfo", ["action_distribution", "value"], default_value=())
+    "ActorCriticInfo", ["action", "action_distribution", "value"],
+    default_value=())
 
 
 @alf.configurable
@@ -132,7 +133,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
-                value=value, action_distribution=action_distribution))
+                action=action,
+                value=value,
+                action_distribution=action_distribution))
 
     def calc_loss(self, experience, train_info: ActorCriticInfo):
         """Calculate loss."""

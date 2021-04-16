@@ -16,7 +16,7 @@ import torch.nn as nn
 from typing import Callable
 
 import alf
-from alf.data_structures import AlgStep, LossInfo, TimeStep
+from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
 from alf.nest import (flatten, flatten_up_to, get_field, map_structure,
                       map_structure_up_to, pack_sequence_as)
 from alf.nest.utils import get_nested_field
@@ -27,6 +27,7 @@ from alf.utils.spec_utils import is_same_spec
 from .algorithm import Algorithm
 from .config import TrainerConfig
 from .on_policy_algorithm import OnPolicyAlgorithm
+from .rl_algorithm import RLAlgorithm
 
 
 def SequentialAlg(*modules,
@@ -68,6 +69,29 @@ def _build_nested_fields(paths):
     return nested_fields
 
 
+class AlgRLWrapper(Algorithm):
+    def __init__(self, rl):
+        super().__init__(
+            train_state_spec=rl.train_state_spec,
+            rollout_state_spec=rl.rollout_state_spec,
+            predict_state_spec=rl.predict_state_spec,
+            name=rl.name)
+        self._rl = rl
+
+    def rollout_step(self, inputs, state):
+        return self._rl.rollout_step(inputs, state)
+
+    def calc_loss(self, inputs, train_info):
+        exp = Experience(
+            step_type=inputs.step_type,
+            reward=inputs.reward,
+            discount=inputs.discount,
+            observation=inputs.observation,
+            prev_action=inputs.prev_action,
+            action=train_info.action)
+        return self._rl.calc_loss(exp, train_info)
+
+
 class _Sequential(Algorithm):
     def __init__(self, elements, element_dict, output, debug_summaries, name):
         train_state_spec = []
@@ -91,6 +115,10 @@ class _Sequential(Algorithm):
                 input, module = element
             else:
                 module = element
+            if isinstance(module, RLAlgorithm):
+                assert module.is_on_policy(), (
+                    "Only on-policy RLAlgorithm is supported: %s", module)
+                module = AlgRLWrapper(module)
             if not (isinstance(module, (Callable, Algorithm))
                     and is_nested_str(input)):
                 raise ValueError(
@@ -104,7 +132,7 @@ class _Sequential(Algorithm):
                 assert module.name not in alg_names, (
                     "Duplicated algorithm name %s" % module.name)
                 alg_names.add(module.name)
-            if isinstance(module, Network):
+            elif isinstance(module, Network):
                 train_state_spec.append(module.state_spec)
                 rollout_state_spec.append(module.state_spec)
                 predict_state_spec.append(module.state_spec)
@@ -142,7 +170,7 @@ class _Sequential(Algorithm):
         self._output = output
         self._inputs = inputs
         self._outputs = outputs
-        self._alg_inputs = _build_nested_fields(alg_inputs)
+        self._alg_inputs = _build_nested_fields(alf.nest.flatten(alg_inputs))
         del self._alg_inputs['input']
 
     def rollout_step(self, inputs, state):
@@ -151,6 +179,7 @@ class _Sequential(Algorithm):
         var_dict = {'input': inputs, 'info': info_dict, 'state': state_dict}
         infos = [()] * len(self._networks)
         new_state = [()] * len(self._networks)
+        x = inputs
         for i, net in enumerate(self._networks):
             output = self._outputs[i]
             if self._inputs[i]:
@@ -191,7 +220,7 @@ class _Sequential(Algorithm):
             extra[net.name] = loss_info.extra
             loss = add_ignore_empty(loss_info.loss, loss)
             scalar_loss = add_ignore_empty(loss_info.scalar_loss, scalar_loss)
-            priority = add_ignore_empty(loss.priority, priority)
+            priority = add_ignore_empty(loss_info.priority, priority)
 
         return LossInfo(
             loss=loss, scalar_loss=scalar_loss, extra=extra, priority=priority)
@@ -226,7 +255,7 @@ class EchoAlg(Algorithm):
         return AlgStep(
             output=real_output,
             state=(block_state, echo_output),
-            info=(block_state, alg_step.info))
+            info=(alg_step.info, echo_state))
 
     def calc_loss(self, inputs, train_info):
         block_info, echo_state = train_info
@@ -234,13 +263,13 @@ class EchoAlg(Algorithm):
         return self._alg.calc_loss(block_input, block_info)
 
 
+@alf.configurable
 class RLAlgWrapper(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
                  algorithm,
                  env,
-                 is_on_policy=True,
                  reward_spec=alf.TensorSpec(()),
                  reward_weights=None,
                  config: TrainerConfig = None,
@@ -255,17 +284,13 @@ class RLAlgWrapper(OnPolicyAlgorithm):
             predict_state_spec=algorithm.predict_state_spec,
             rollout_state_spec=algorithm.rollout_state_spec,
             reward_weights=reward_weights,
+            env=env,
             config=config,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
 
         self._algorithm = algorithm
-
-        self._is_on_policy = is_on_policy
-
-    def is_on_policy(self):
-        return self._is_on_policy
 
     def rollout_step(self, time_step: TimeStep, state):
         return self._algorithm.rollout_step(time_step, state)
@@ -279,4 +304,4 @@ class LossAlg(Algorithm):
         super().__init__(name=name)
 
     def rollout_step(self, inputs, state):
-        return AlgStep(output=inputs, state=state, info=LossInfo(loss=input))
+        return AlgStep(output=inputs, state=state, info=LossInfo(loss=inputs))
