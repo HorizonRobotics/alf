@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from absl import logging
-import numpy as np
 import functools
 from enum import Enum
 
@@ -449,8 +448,8 @@ class TasacAlgorithm(OffPolicyAlgorithm):
         """Compute Q(s,a)"""
         observation = (observation, action)
         critics, _ = critic_net(observation)  # [B, replicas * reward_dim]
-        critics = torch.reshape(  # [B, replicas, reward_dim]
-            critics, (-1, self._num_critic_replicas) + self._reward_spec.shape)
+        critics = critics.reshape(  # [B, replicas, reward_dim]
+            -1, self._num_critic_replicas, *self._reward_spec.shape)
         if replica_min:
             if self.has_multidim_reward():
                 sign = self.reward_weights.sign()
