@@ -752,6 +752,7 @@ def write_gin_configs(root_dir, gin_file):
         f.write(config_str)
 
 
+@logging.skip_log_prefix
 def warning_once(msg, *args):
     """Generate warning message once.
 
