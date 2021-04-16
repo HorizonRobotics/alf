@@ -13,8 +13,8 @@
 # limitations under the License.
 
 from absl import logging
-import functools
 from enum import Enum
+import functools
 
 import torch
 import torch.nn as nn
@@ -24,19 +24,18 @@ from typing import Callable
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.sac_algorithm import _set_target_entropy
-from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import Experience, LossInfo, namedtuple, TimeStep
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import (losses, common, dist_utils, math_ops, tensor_utils,
-                       value_ops, spec_utils)
+from alf.utils import (common, dist_utils, losses, math_ops, spec_utils,
+                       tensor_utils, value_ops)
 from alf.utils.conditional_ops import conditional_update
-from alf.utils.summary_utils import summarize_action, safe_mean_hist_summary
+from alf.utils.summary_utils import safe_mean_hist_summary, summarize_action
 
 TasacState = namedtuple("TasacState", ["repeats"], default_value=())
 
@@ -64,7 +63,7 @@ def _safe_categorical(logits, alpha):
     :math:`exp(\frac{Q}{\alpha})`.
     """
     logits = logits / torch.clamp(alpha, min=1e-10)
-    # logits are equivelant after subtracting a common number
+    # logits are equivalent after subtracting a common number
     logits = logits - torch.max(logits, dim=-1, keepdim=True)[0]
     return td.Categorical(logits=logits)
 

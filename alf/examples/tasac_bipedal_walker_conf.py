@@ -18,9 +18,8 @@ import alf
 from alf.algorithms.data_transformer import RewardNormalizer
 from alf.algorithms.tasac_algorithm import TasacAlgorithm
 from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
-from alf.utils import math_ops
 from alf.optimizers import AdamTF
-from alf.utils import dist_utils
+from alf.utils import dist_utils, math_ops
 
 import sac_conf
 
