@@ -106,6 +106,18 @@ class Test3(Test):
         return self._a - 1, self._b - 2, self._c - 3
 
 
+@alf.repr_wrapper
+class MyClass(object):
+    def __init__(self, a, b, c=100, d=200):
+        pass
+
+
+@alf.repr_wrapper
+class MySubClass(MyClass):
+    def __init__(self, x):
+        super().__init__(3, 5)
+
+
 class ConfigTest(alf.test.TestCase):
     def test_config1(self):
 
@@ -217,6 +229,14 @@ class ConfigTest(alf.test.TestCase):
         logging.info("get_inoperative_configs(): \n%s" %
                      pprint.pformat(inoperative_configs))
         self.assertTrue('A.B.C.D.test.arg' in dict(inoperative_configs))
+
+    def test_repr_wrapper(self):
+        a = MyClass(1, 2)
+        self.assertEqual(repr(a), "MyClass(1, 2)")
+        a = MyClass(3, 5, d=300)
+        self.assertEqual(repr(a), "MyClass(3, 5, d=300)")
+        b = MySubClass(6)
+        self.assertEqual(repr(b), 'MySubClass(6)')
 
 
 if __name__ == '__main__':
