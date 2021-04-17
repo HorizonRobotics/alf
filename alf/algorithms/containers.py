@@ -37,8 +37,8 @@ def SequentialAlg(*modules,
                   **named_modules):
 
     return _Sequential(
-        modules,
-        named_modules,
+        elements=modules,
+        element_dict=named_modules,
         output=output,
         debug_summaries=debug_summaries,
         name=name)
@@ -93,7 +93,12 @@ class AlgRLWrapper(Algorithm):
 
 
 class _Sequential(Algorithm):
-    def __init__(self, elements, element_dict, output, debug_summaries, name):
+    def __init__(self,
+                 elements=(),
+                 element_dict={},
+                 output='',
+                 debug_summaries=False,
+                 name='SequentialAlg'):
         train_state_spec = []
         rollout_state_spec = []
         predict_state_spec = []
@@ -171,7 +176,8 @@ class _Sequential(Algorithm):
         self._inputs = inputs
         self._outputs = outputs
         self._alg_inputs = _build_nested_fields(alf.nest.flatten(alg_inputs))
-        del self._alg_inputs['input']
+        if 'input' in self._alg_inputs:
+            del self._alg_inputs['input']
 
     def rollout_step(self, inputs, state):
         info_dict = {}
