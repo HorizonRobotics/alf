@@ -436,9 +436,8 @@ class CurvesPlotter(object):
 
         if not isinstance(linestyle, list):
             linestyle = [linestyle] * len(mean_curves)
-        else:
-            assert len(linestyle) == len(mean_curves), (
-                "Didn't provide enough line styles!")
+        elif len(linestyle) < len(mean_curves):
+            linestyle += linestyle[-1:] * (len(mean_curves) - len(linestyle))
 
         for i, c in enumerate(mean_curves):
             if i < len(mean_curves) - 1:

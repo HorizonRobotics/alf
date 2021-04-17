@@ -107,7 +107,7 @@ class TDLoss(nn.Module):
         return self._gamma.clone()
 
     def forward(self, experience, value, target_value):
-        """Cacluate the loss.
+        """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.

@@ -76,9 +76,10 @@ class StepScheduler(Scheduler):
         """
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
-            schedule (list[tuple]): each tuple is a pair of (progress, value)
-                which means that if current progress is less than progress,
-                the current value will be value.
+            schedule (list[tuple]): each tuple is a pair of ``(progress, value)``
+                the scheduled result will be the ``value`` of the smallest
+                ``progress`` such that it is greater than the current
+                training progress.
         """
         super().__init__(progress_type)
         self._progresses, self._values = zip(*schedule)

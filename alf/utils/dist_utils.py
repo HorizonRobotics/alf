@@ -721,8 +721,9 @@ def calc_default_target_entropy(spec, min_prob=0.1):
     Args:
         spec (TensorSpec): action spec
         min_prob (float): If continuous spec, we suppose the prob concentrates on
-            a delta of ``min_prob * (M-m)``; if discrete spec, we ignore the entry
-            of ``1 - min_prob`` and uniformly distribute probs on rest.
+            a delta of ``min_prob * (M-m)``; if discrete spec, we uniformly
+            distribute ``min_prob`` on all entries except the peak which has
+            a probability of ``1 - min_prob``.
     Returns:
         target entropy
     """
@@ -731,7 +732,8 @@ def calc_default_target_entropy(spec, min_prob=0.1):
         N = M - m + 1
         if N == 1:
             return 0
-        return min_prob * (np.log(N - 1) - log_mp)
+        return (min_prob * (np.log(N - 1) - log_mp) -
+                (1 - min_prob) * np.log(1 - min_prob))
 
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
