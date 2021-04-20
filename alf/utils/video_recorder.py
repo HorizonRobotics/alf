@@ -32,7 +32,15 @@ import torch.distributions as td
 
 import alf
 from alf.utils import dist_utils
-import alf.summary.render as render
+
+try:
+    # There might be importing errors about matplotlib on the cluster if the
+    # correct version (requires python3.7) of matplotlib is not installed.
+    # In this case we just skip importing because no rendering is needed on
+    # cluster.
+    import alf.summary.render as render
+except ImportError:
+    render = None
 
 
 class RecorderBuffer(object):
