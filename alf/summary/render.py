@@ -595,7 +595,7 @@ def render_action(name, action, action_spec, **kwargs):
 def render_action_distribution(name,
                                act_dist,
                                action_spec,
-                               n_samples=100,
+                               n_samples=500,
                                n_bins=20,
                                **kwargs):
     """An action distribution renderer that plots agent's action distribution
@@ -613,13 +613,15 @@ def render_action_distribution(name,
         **kwargs: all other arguments will be directed to ``render_curve()``
     """
 
-    def _approximate_probs(dist):
+    def _approximate_probs(dist, x_range):
         """Given a 1D continuous distribution, sample a bunch of points to
         form a histogram to approximate the distribution curve. The values of
         the histogram are densities (integral equal to 1 over the bin range).
 
         Args:
             dist (Distribution): action distribution whose param is rank-2
+            x_range (tuple[float]): a tuple of ``(min_x, max_x)`` for the domain
+                of the distribution.
 
         Returns:
             np.array: a 2D matrix where each row is a prob hist for a dim
@@ -632,7 +634,8 @@ def render_action_distribution(name,
         points = np.reshape(points, (-1, dim))
         probs = []
         for d in range(dim):
-            hist, _ = np.histogram(points[:, d], bins=n_bins, density=True)
+            hist, _ = np.histogram(
+                points[:, d], bins=n_bins, density=True, range=x_range)
             probs.append(hist)
         return np.stack(probs)
 
@@ -642,9 +645,10 @@ def render_action_distribution(name,
             probs = dist.probs.reshape(-1).cpu().numpy()
             x_range, legends = None, None
         else:
-            probs = _approximate_probs(dist)
-            legends = ["d%s" % i for i in range(probs.shape[0])]
             x_range = (np.min(spec.minimum), np.max(spec.maximum))
+            probs = _approximate_probs(dist, x_range)
+            legends = ["d%s" % i for i in range(probs.shape[0])]
+
         name_ = name if path == '' else name + '/' + path
         return render_curve(
             name=name_, data=probs, legends=legends, x_range=x_range)
