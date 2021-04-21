@@ -306,8 +306,12 @@ class RLAlgWrapper(OnPolicyAlgorithm):
 
 
 class LossAlg(Algorithm):
-    def __init__(self, name="LossAlg"):
+    def __init__(self, loss_weight=1.0, name="LossAlg"):
         super().__init__(name=name)
+        self._loss_weight = loss_weight
 
     def rollout_step(self, inputs, state):
-        return AlgStep(output=inputs, state=state, info=LossInfo(loss=inputs))
+        return AlgStep()
+
+    def calc_loss(self, inputs, info):
+        return LossInfo(loss=self._loss_weight * inputs, extra=inputs)
