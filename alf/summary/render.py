@@ -376,7 +376,7 @@ def render_heatmap(name,
         **kwargs: All other arguments that are forwarded to ``ax.imshow``.
 
     Returns:
-        img (Image): an output image rendered for the tensor
+        Image: an output image rendered for the tensor
     """
     assert len(data.shape) == 2, "Must be a rank-2 tensor!"
     if row_labels:
@@ -398,6 +398,72 @@ def render_heatmap(name,
         **kwargs)
     if annotate_format != '':
         _annotate_heatmap(im, valfmt=annotate_format, size=font_size)
+    return _convert_to_image(name, fig, dpi, img_height, img_width)
+
+
+@_rendering_wrapper
+def render_contour(name,
+                   data,
+                   x_ticks=None,
+                   y_ticks=None,
+                   x_label=None,
+                   y_label=None,
+                   font_size=7,
+                   img_height=256,
+                   img_width=256,
+                   dpi=300,
+                   figsize=(2, 2),
+                   flip_y_axis=True,
+                   **kwargs):
+    """Render a 2D tensor as a contour.
+
+    Args:
+        name (str): rendering identifier
+        data (Tensor|np.ndarray): a tensor/np.array of shape ``[H,W]``. Note that
+            the rows of ``data`` correspond to y (inverted) and columns correspond
+            to x in the contour figure.
+        x_ticks (np.array): A list of length ``W`` with x ticks.
+        y_ticks (np.array): A list (from 0 to H-1) of length ``H`` with y ticks.
+        x_label (str): label shown besides x-axis
+        y_label (str): label shown besides y-axis
+        font_size (int): font size for the numbers on the contour
+        img_height (int): height of the output image
+        img_width (int): width of the output image
+        dpi (int): resolution of each rendered image
+        figsize (tuple[int]): figure size. For the relationship between ``dpi``
+            and ``figsize``, please refer to `this post <https://stackoverflow.com/questions/47633546/relationship-between-dpi-and-figure-size>`_.
+        flip_y_axis (bool): whether flip the y axis. Flipping makes this consistent
+            with heatmap regarding y axis.
+        **kargs: All other arguments that are forwarded to ``ax.contour``.
+
+    Returns:
+        Image: an output image rendered for the tensor
+    """
+    assert len(data.shape) == 2, "Must be a rank-2 tensor!"
+    if not isinstance(data, np.ndarray):
+        array = data.cpu().numpy()
+    else:
+        array = data
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # x must be dim 0 for ax.contour()
+    array = np.transpose(array, (0, 1))
+
+    if x_ticks is None:
+        x_ticks = np.arange(len(array))
+    if y_ticks is None:
+        y_ticks = np.arange(len(array[0]))
+
+    ct = ax.contour(x_ticks, y_ticks, array, **kwargs)
+    ax.clabel(ct, inline=True, fontsize=font_size)
+    if x_label:
+        ax.set_xlabel(x_label)
+    if y_label:
+        ax.set_ylabel(y_label)
+
+    if flip_y_axis:
+        plt.gca().invert_yaxis()
+
     return _convert_to_image(name, fig, dpi, img_height, img_width)
 
 
@@ -441,7 +507,7 @@ def render_curve(name,
         **kwargs: all other arguments to ``ax.plot()``.
 
     Returns:
-        img (Image): an output image rendered for the tensor
+        Image: an output image rendered for the tensor
     """
     assert len(data.shape) in (1, 2), "Must be rank-1 or rank-2!"
     if not isinstance(data, np.ndarray):
@@ -518,7 +584,7 @@ def render_bar(name,
         **kwargs: all other arguments to ``ax.bar()``.
 
     Returns:
-        img (Image): an output image rendered for the tensor
+        Image: an output image rendered for the tensor
     """
     assert len(data.shape) in (1, 2), "Must be rank-1 or rank-2!"
     if not isinstance(data, np.ndarray):
@@ -570,7 +636,7 @@ def render_action(name, action, action_spec, **kwargs):
         **kwargs: all other arguments will be directed to ``render_bar()``.
 
     Returns:
-        imgs (nested Image):
+        nested Image: a structure same with ``action``
     """
 
     def _render_action(path, act, spec):
