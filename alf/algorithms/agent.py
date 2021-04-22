@@ -148,7 +148,10 @@ class Agent(OnPolicyAlgorithm):
         if goal_generator is not None and isinstance(
                 goal_generator, SubgoalPlanningGoalGenerator):
 
-            def _value(obs, states=(), use_target_networks=False):
+            def _value(obs,
+                       states=(),
+                       use_target_networks=False,
+                       replica_min=True):
                 # Input obs can have 3 dims (batch, population, observation_dim) in CEM,
                 # or 2 dims (batch, observation_dim) as well.
                 if hasattr(rl_algorithm, "_goal_net_position_only"
@@ -193,8 +196,13 @@ class Agent(OnPolicyAlgorithm):
                         _w = goal_generator._combine_her_nonher_value_weight
                         v = hv * _w + nv * (1. - _w)
                 if rl_algorithm._num_critic_replicas > 1:
-                    obs_dim = len(alf.nest.get_nest_shape(obs))
-                    v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)
+                    if replica_min:
+                        obs_dim = len(alf.nest.get_nest_shape(obs))
+                        v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)
+                    else:
+                        # take value from first replica:
+                        obs_dim = len(alf.nest.get_nest_shape(obs))
+                        v = torch.index_select(v, obs_dim - 1, torch.tensor(0))
                 return v, s
 
             goal_generator.set_value_fn(_value)

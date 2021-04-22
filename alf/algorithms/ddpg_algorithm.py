@@ -97,6 +97,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  bump_target_value=False,
                  replan_target_value=False,
+                 value_clipping=False,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -158,6 +159,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_value (Q_{s+1}).
             replan_target_value (bool): whether to use replanned value to improve
                 target value.
+            value_clipping (bool): whether to clip target value to 0-1.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -287,6 +289,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._goal_generator = None
         self._bump_target_value = bump_target_value
         self._replan_target_value = replan_target_value
+        self._value_clipping = value_clipping
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
@@ -369,8 +372,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 # We should use rollout subgoal indexes to make training consistent with rollout.
                 goals, costs, _ = self._goal_generator.get_goals_and_costs(
                     exp.observation,
-                    GoalState(subgoals_index=exp.rollout_info.subgoals_index),
-                    use_target_networks=True)
+                    (),  # start afresh, ignoring rollout subgoal index.
+                    use_target_networks=True,
+                    is_training=True)
                 plan_values = -costs.squeeze(1)
             if self._bump_target_value:
                 old_plan_values = self._reuse_plan_value(exp, state)
@@ -388,6 +392,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             # potentially multi-dim value
             if len(target_q_values.shape) > 1:
                 goal_target_value = target_q_values[:, 0]
+            if self._value_clipping:
+                goal_target_value = torch.clamp(goal_target_value, 0., 1.)
             alf.summary.scalar("planner/train_value_plan",
                                torch.mean(plan_values))
             alf.summary.scalar("planner/train_value_target_q",

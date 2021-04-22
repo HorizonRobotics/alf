@@ -383,6 +383,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  normalize_goals=False,
                  bound_goals=False,
                  value_fn=None,
+                 use_critic_replicas=False,
                  combine_her_nonher_value_weight=0.,
                  value_clipping=False,
                  value_state_spec=(),
@@ -442,6 +443,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             bound_goals (bool): whether to use normalizer stats to bound planned goals.
             value_fn (Callable or None): value function to measure distance between states.
                 When value_fn is None, it can also be set via set_value_fn.
+            use_critic_replicas (bool): whether compute CEM cost before taking min across
+                critic replicas.
             value_clipping (bool): whether to cap goal conditioned value to 1.
             value_state_spec (nested TensorSpec): spec of the state of value function.
             max_replan_steps (int): number of steps to execute a plan before
@@ -580,6 +583,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._goal_achieved_fn = _goal_ach_fn
         if value_fn:
             self._value_fn = value_fn
+        self._use_critic_replicas = use_critic_replicas
         self._combine_her_nonher_value_weight = combine_her_nonher_value_weight
 
         self._value_state_spec = value_state_spec
@@ -803,12 +807,20 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def set_value_fn(self, value_fn):
         self._value_fn = value_fn
 
-    def _wrapped_value_fn(self, obs, state, use_target_networks=False):
+    def _wrapped_value_fn(self,
+                          obs,
+                          state,
+                          use_target_networks=False,
+                          use_replica_min=True):
         # input tensors can be 2 (batch_size, batch_length) or 3 dimensional
         # (batch_size, population, plan_horizon).
         # This function consolidates multi dim value functions into a single dimension.
         values, state = self._value_fn(
-            obs, state, use_target_networks=use_target_networks)
+            obs,
+            state,
+            use_target_networks=use_target_networks,
+            replica_min=use_replica_min)
+        # values includes replica dim at obs_dim - 1.
         obs_dim = len(alf.nest.get_nest_shape(obs))
         mdim = obs_dim <= values.ndim
         if self.sparse_reward:
@@ -817,9 +829,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if mdim and self._plan_with_goal_value_only:
                 values = values[..., :-1]  # last dim is distraction reward
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
-            if self._value_clipping:
-                values = torch.min(values, torch.tensor(1.))
-            values = torch.log(torch.max(values, torch.tensor(1.e-10)))
+            if self._value_clipping and self._plan_with_goal_value_only:
+                values = torch.clamp(values, 0., 1.)
+            values = torch.log(torch.clamp(values, 1.e-10))
             # Multiply all dims (sum after log):
             # if mdim and not self._plan_with_goal_value_only:
             #     # multi dim reward
@@ -861,7 +873,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                         state,
                         samples,
                         info=None,
-                        use_target_networks=False):
+                        use_target_networks=False,
+                        use_replica_min=True):
         # This function can alter the values of ``samples`` when only planning
         # remaining subgoals.
         assert self._value_fn, "no value function provided."
@@ -978,7 +991,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self._value_state_spec != ():
             raise NotImplementedError()
         values, _unused_value_state = self._wrapped_value_fn(
-            stack_obs, (), use_target_networks=use_target_networks)
+            stack_obs, (),
+            use_target_networks=use_target_networks,
+            use_replica_min=use_replica_min)
         dists = -values.reshape(batch_size, pop_size, n_goals, -1)
         if info is not None:
             info["all_population_costs"] = dists
@@ -1030,13 +1045,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                             observation,
                             state=(),
                             use_target_networks=False,
+                            is_training=False,
                             info=None):
         """Generate cem goals and associated costs.
+
+        Note, this function can be called during rollout or training.
 
         Args:
             observation (nested Tensor): the observation at the current time step.
             state (nested Tensor): state of this goal generator.
             use_target_networks (bool): whether to use target networks to compute plan value.
+            is_training (bool): whether it's being called during training or rollout.
             info (dict): populates debugging info, e.g. segment costs.
 
         Returns:
@@ -1056,11 +1075,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         else:
             plan_dim = self._action_dim
         plan_horizon = self._compute_plan_horizon()
+        use_replica_min = True
+        if self._use_critic_replicas and is_training:
+            # use the first replica for getting plan during training
+            use_replica_min = False
         opt = CEMOptimizer(
             planning_horizon=plan_horizon,
             action_dim=plan_dim,
             bounds=self._action_bounds,
-            use_target_networks=use_target_networks)
+            use_target_networks=use_target_networks,
+            # generate plan using first replica, not min of all replicas
+            use_replica_min=use_replica_min)
         opt.set_cost(self._costs_agg_dist)
         if self._normalizer:
             means = self._normalizer._mean_averager.get()
@@ -1074,6 +1099,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
         goals, costs = opt.obtain_solution(ts, state, info)
+        if self._use_critic_replicas and is_training:
+            # re-assess plan value using min over all critic replicas
+            costs = self._assess_plan_cost(
+                ts, state, goals, use_target_networks=use_target_networks)
         return goals, costs, ts
 
     def generate_goal(self, observation, state, new_goal_mask):
