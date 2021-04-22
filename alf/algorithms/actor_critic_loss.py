@@ -93,7 +93,7 @@ class ActorCriticLoss(nn.Module):
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
 
-    def forward(self, experience, train_info):
+    def forward(self, info):
         """Cacluate actor critic loss. The first dimension of all the tensors is
         time dimension and the second dimesion is the batch dimension.
 
@@ -108,9 +108,8 @@ class ActorCriticLoss(nn.Module):
             LossInfo: with ``extra`` being ``ActorCriticLossInfo``.
         """
 
-        value = train_info.value
-        returns, advantages = self._calc_returns_and_advantages(
-            experience, value)
+        value = info.value
+        returns, advantages = self._calc_returns_and_advantages(info, value)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -129,7 +128,7 @@ class ActorCriticLoss(nn.Module):
             advantages = torch.clamp(advantages, -self._advantage_clip,
                                      self._advantage_clip)
 
-        pg_loss = self._pg_loss(experience, train_info, advantages.detach())
+        pg_loss = self._pg_loss(info, advantages.detach())
 
         td_loss = self._td_error_loss_fn(returns.detach(), value)
 
@@ -138,7 +137,7 @@ class ActorCriticLoss(nn.Module):
         entropy_loss = ()
         if self._entropy_regularization is not None:
             entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
-                train_info.action_distribution, return_sum=False)
+                info.rollout_action_distribution, return_sum=False)
             entropy_loss = alf.nest.map_structure(lambda x: -x, entropy)
             loss -= self._entropy_regularization * sum(
                 alf.nest.flatten(entropy_for_gradient))
@@ -148,27 +147,27 @@ class ActorCriticLoss(nn.Module):
             extra=ActorCriticLossInfo(
                 td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
 
-    def _pg_loss(self, experience, train_info, advantages):
+    def _pg_loss(self, info, advantages):
         action_log_prob = dist_utils.compute_log_probability(
-            train_info.action_distribution, experience.action)
+            info.action_distribution, info.action)
         return -advantages * action_log_prob
 
-    def _calc_returns_and_advantages(self, experience, value):
+    def _calc_returns_and_advantages(self, info, value):
         returns = value_ops.discounted_return(
-            rewards=experience.reward,
+            rewards=info.reward,
             values=value,
-            step_types=experience.step_type,
-            discounts=experience.discount * self._gamma)
+            step_types=info.step_type,
+            discounts=info.discount * self._gamma)
         returns = tensor_utils.tensor_extend(returns, value[-1])
 
         if not self._use_gae:
             advantages = returns - value
         else:
             advantages = value_ops.generalized_advantage_estimation(
-                rewards=experience.reward,
+                rewards=info.reward,
                 values=value,
-                step_types=experience.step_type,
-                discounts=experience.discount * self._gamma,
+                step_types=info.step_type,
+                discounts=info.discount * self._gamma,
                 td_lambda=self._lambda)
             advantages = tensor_utils.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:

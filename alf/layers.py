@@ -964,13 +964,13 @@ class Conv2DBatchEnsemble(Conv2D):
     to Efficient Ensemble and Lifelong Learning <https://arxiv.org/abs/2002.06715>`_
 
     In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
-    member k in addition to the conv2d kernel W of shape ``[C_out, C_in, K_h, K_w]``. 
-    For input x of shape ``[B, C, H, W]``, the result for ensemble member k is 
+    member k in addition to the conv2d kernel W of shape ``[C_out, C_in, K_h, K_w]``.
+    For input x of shape ``[B, C, H, W]``, the result for ensemble member k is
     calculated as :math:`(W \circ (s_k r_k^T).unsqueeze(-1).unsqueeze(-1)) * x`.
-    This can be more efficiently calculated as 
+    This can be more efficiently calculated as
 
         :math:`(W*(x \circ r_k.unsqueeze(-1).unsqueeze(-1))) \circ s_k.unsqueeze(-1).unsqueeze(-1)`
-    
+
     Note that for each sample in a batch, a random ensemble member will used for it
     if ``ensemble_ids`` is not provided to ``forward()``.
 
@@ -1078,10 +1078,10 @@ class Conv2DBatchEnsemble(Conv2D):
 
         Args:
             inputs (Tensor|tuple): if a Tensor, its shape should be ``[B, C, H, W]``.
-                And a random ensemble id will be generated for each sample in the batch. 
-                If a tuple, it should contain two tensors. The first one is the data 
-                tensor with shape ``[B, C, H, W]``. The second one is ensemble_ids 
-                indicating which ensemble member each sample should use. Its shape 
+                And a random ensemble id will be generated for each sample in the batch.
+                If a tuple, it should contain two tensors. The first one is the data
+                tensor with shape ``[B, C, H, W]``. The second one is ensemble_ids
+                indicating which ensemble member each sample should use. Its shape
                 should be [batch_size], and all elements should be in [0, ensemble_size).
         Returns:
             tuple if ``output_ensemble_ids`` is True,

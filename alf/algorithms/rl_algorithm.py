@@ -345,7 +345,7 @@ class RLAlgorithm(Algorithm):
                     step_metrics=self._metrics[:2])
 
     # Subclass may override predict_step() to allow more efficient implementation
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, inputs: TimeStep, state):
         r"""Predict for one step of observation.
 
         This only used for evaluation. So it only need to perform computations
@@ -355,16 +355,12 @@ class RLAlgorithm(Algorithm):
             time_step (TimeStep): Current observation and other inputs for computing
                 action.
             state (nested Tensor): should be consistent with predict_state_spec
-            epsilon_greedy (float): a floating value in :math:`[0,1]`, representing
-                the chance of action sampling instead of taking argmax.
-                This can help prevent a dead loop in some deterministic environment
-                like `Breakout`.
         Returns:
             AlgStep:
             - output (nested Tensor): should be consistent with ``action_spec``.
             - state (nested Tensor): should be consistent with ``predict_state_spec``.
         """
-        policy_step = self.rollout_step(time_step, state)
+        policy_step = self.rollout_step(inputs, state)
         return policy_step._replace(info=())
 
     def _rollout_step(self, time_step: TimeStep, state):
@@ -375,66 +371,6 @@ class RLAlgorithm(Algorithm):
         if self._rollout_info_spec is None:
             self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
         return policy_step
-
-    @abstractmethod
-    def rollout_step(self, time_step: TimeStep, state):
-        """Perform one step of rollout.
-
-        It is called to generate actions for every environment step.
-        It also needs to generate necessary information for training.
-
-        Args:
-            time_step (TimeStep):
-            state (nested Tensor): should be consistent with ``train_state_spec``.
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): should be consistent with ``action_spec``.
-            - state (nested Tensor): should be consistent with ``train_state_spec``.
-            - info (nested Tensor): everything necessary for training. Note that
-              ("action", "reward", "discount", "is_last") are automatically
-              collected in ``unroll()``. So the user only need to put other
-              stuff (e.g. value estimation) into ``policy_step.info``.
-        """
-        pass
-
-    @abstractmethod
-    def train_step(self, experience: Experience, state):
-        """Perform one step of training computation.
-
-        Args:
-            experience (Experience):
-            state (nested Tensor): should be consistent with ``train_state_spec``.
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): should be consistent with ``action_spec``.
-            - state (nested Tensor): should be consistent with ``train_state_spec``.
-            - info (nested Tensor): everything necessary for training.
-        """
-        pass
-
-    @abstractmethod
-    def calc_loss(self, experience, train_info):
-        """Calculate the loss for each step.
-
-        ``calc_loss()`` does not need to mask out the loss at invalid steps as
-        ``train_iter()`` will apply the mask automatically.
-
-        Args:
-            experience (Experience): experiences collected from the most recent
-                ``unroll()`` or from a replay buffer. It's used for the most
-                recent ``update_with_gradient()``.
-            train_info (nest): information collected for training.
-                It is batched from each ``AlgStep.info`` returned by
-                ``rollout_step()`` (on-policy training) or ``train_step()``
-                (off-policy training).
-
-        Returns:
-            LossInfo: loss at each time step for each sample in the batch. The
-            shapes of the tensors in it should be :math:`[T, B]`.
-        """
-        pass
 
     @common.mark_rollout
     def unroll(self, unroll_length):

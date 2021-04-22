@@ -53,15 +53,8 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
     # Implement train_step() to allow off-policy training for an
     # OnPolicyAlgorithm
-    def train_step(self, exp: Experience, state):
-        time_step = TimeStep(
-            step_type=exp.step_type,
-            reward=exp.reward,
-            discount=exp.discount,
-            observation=exp.observation,
-            prev_action=exp.prev_action,
-            env_id=exp.env_id)
-        return self.rollout_step(time_step, state)
+    def train_step(self, inputs, state, rollout_info, batch_info):
+        return self.rollout_step(inputs, state)
 
     def _train_iter_on_policy(self):
         """User may override this for their own training procedure."""

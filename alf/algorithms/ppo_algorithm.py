@@ -13,18 +13,22 @@
 # limitations under the License.
 """PPO algorithm."""
 
-from collections import namedtuple
 import gin
 import torch
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.data_structures import Experience, TimeStep
+from alf.data_structures import Experience, namedtuple, TimeStep
 from alf.utils import common, value_ops
 
-PPOInfo = namedtuple("PPOInfo",
-                     ["action_distribution", "returns", "advantages"])
+PPOInfo = namedtuple(
+    "PPOInfo", [
+        "step_type", "discount", "reward", "rollout_action",
+        "rollout_action_distribution", "returns", "advantages",
+        "action_distribution", "value"
+    ],
+    default_value=())
 
 
 @alf.configurable
@@ -40,13 +44,23 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     def is_on_policy(self):
         return False
 
-    def preprocess_experience(self, exp: Experience):
+    def train_step(self, inputs, state, rollout_info, batch_info):
+        alg_step = self._rollout_step(inputs, state)
+        return alg_step._replace(
+            info=rollout_info._replace(
+                step_type=alg_step.info.step_type,
+                reward=alg_step.info.reward,
+                discount=alg_step.info.discount,
+                action_distribution=alg_step.info.action_distribution,
+                value=alg_step.info.value))
+
+    def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         """Compute advantages and put it into exp.rollout_info."""
         advantages = value_ops.generalized_advantage_estimation(
-            rewards=exp.reward,
-            values=exp.rollout_info.value,
-            step_types=exp.step_type,
-            discounts=exp.discount * self._loss._gamma,
+            rewards=rollout_info.reward,
+            values=rollout_info.value,
+            step_types=rollout_info.step_type,
+            discounts=rollout_info.discount * self._loss._gamma,
             td_lambda=self._loss._lambda,
             time_major=False)
         advantages = torch.cat([
@@ -54,7 +68,9 @@ class PPOAlgorithm(ActorCriticAlgorithm):
             torch.zeros(*advantages.shape[:-1], 1, dtype=advantages.dtype)
         ],
                                dim=-1)
-        returns = exp.rollout_info.value + advantages
-        return exp._replace(
-            rollout_info=PPOInfo(exp.rollout_info.action_distribution, returns,
-                                 advantages))
+        returns = rollout_info.value + advantages
+        return root_inputs, PPOInfo(
+            rollout_action_distribution=rollout_info.action_distribution,
+            returns=returns,
+            rollout_action=rollout_info.action,
+            advantages=advantages)

@@ -97,13 +97,12 @@ class PPOLoss(ActorCriticLoss):
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
 
-    def _pg_loss(self, experience, train_info, advantages):
+    def _pg_loss(self, info, advantages):
         scope = alf.summary.scope(self.__class__.__name__)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
-            action_distribution=train_info.action_distribution,
-            collect_action_distribution=experience.rollout_info.
-            action_distribution,
-            action=experience.action,
+            action_distribution=info.action_distribution,
+            collect_action_distribution=info.rollout_action_distribution,
+            action=info.rollout_action,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,
@@ -127,7 +126,5 @@ class PPOLoss(ActorCriticLoss):
 
         return policy_gradient_loss
 
-    def _calc_returns_and_advantages(self, experience, value):
-        advantages = experience.rollout_info.advantages
-        returns = experience.rollout_info.returns
-        return returns, advantages
+    def _calc_returns_and_advantages(self, info, value):
+        return info.returns, info.advantages

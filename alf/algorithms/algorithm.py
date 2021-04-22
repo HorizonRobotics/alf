@@ -16,25 +16,24 @@
 from absl import logging
 import copy
 from collections import OrderedDict
-from functools import wraps
 import itertools
 import json
 import os
 import psutil
-import six
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
-from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
+from alf.utils import (common, dist_utils, spec_utils, summary_utils,
                        tensor_utils)
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
+from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
 
@@ -57,7 +56,7 @@ def _flatten_module(module):
         return [module]
 
 
-class Algorithm(nn.Module):
+class Algorithm(AlgorithmInterface):
     """Algorithm base class. ``Algorithm`` is a generic interface for supervised
     training algorithms. The key interface functions are:
 
@@ -191,8 +190,36 @@ class Algorithm(nn.Module):
         self._optimizers = []
         self._opt_keys = []
         self._module_to_optimizer = {}
+        self._path = ''
         if optimizer:
             self._optimizers.append(optimizer)
+
+    def forward(self, *input):
+        raise RuntimeError("forward() should not be called")
+
+    def set_path(self, path):
+        """Path from the root algorithm to this algorithm.
+
+        The input state to rollout_step() can be retrieved by
+
+        .. code-block:: python
+
+            nest.get_field(experience.rollout_state, self.path)
+
+        The info from  rollout_step() can be retrieved by:
+
+        .. code-block:: python
+
+            nest.get_field(experience.rollout_info, self.path)
+
+        Returns:
+            str: path from the root algorithm to this algorithm
+        """
+        self._path = path
+
+    @property
+    def path(self):
+        return self._path
 
     def is_rl(self):
         """Always returns False for non-RL algorithms."""
@@ -351,20 +378,6 @@ class Algorithm(nn.Module):
             Experience: transformed experience
         """
         return self._data_transformer.transform_experience(experience)
-
-    def preprocess_experience(self, experience):
-        """This function is called on the experiences obtained from a replay
-        buffer. An example usage of this function is to calculate advantages and
-        returns in ``PPOAlgorithm``.
-
-        The shapes of tensors in experience are assumed to be :math:`(B, T, ...)`.
-
-        Args:
-            experience (nest): original experience
-        Returns:
-            processed experience
-        """
-        return experience
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.
@@ -986,61 +999,6 @@ class Algorithm(nn.Module):
         main_str += ')'
         return main_str
 
-    #------------- User need to implement the following functions -------
-
-    # Subclass may override predict_step() for more efficient implementation
-    def predict_step(self, inputs, state=None):
-        """Predict for one step of inputs.
-
-        Args:
-            inputs (nested Tensor): inputs for prediction.
-            state (nested Tensor): network state (for RNN).
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): prediction result.
-            - state (nested Tensor): should match ``predict_state_spec``.
-        """
-        algorithm_step = self.rollout_step(inputs, state)
-        return algorithm_step._replace(info=None)
-
-    def rollout_step(self, inputs, state=None):
-        """Rollout for one step of inputs.
-
-        Args:
-            inputs (nested Tensor): inputs for prediction.
-            state (nested Tensor): network state (for RNN).
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): prediction result.
-            - state (nested Tensor): should match ``rollout_state_spec``.
-        """
-        algorithm_step = self.train_step(inputs, state)
-        return algorithm_step._replace(info=None)
-
-    def train_step(self, inputs, state=None):
-        """Perform one step of training computation.
-
-        It is called to generate actions for every environment step.
-        It also needs to generate necessary information for training.
-
-        Args:
-            inputs (nested Tensor): inputs for train.
-            state (nested Tensor): consistent with ``train_state_spec``.
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): predict outputs.
-            - state (nested Tensor): should match ``train_state_spec``.
-            - info (nested Tensor): information for training. If this is
-              ``LossInfo``, ``calc_loss()`` in ``Algorithm`` can be used.
-              Otherwise, the user needs to override ``calc_loss()`` to
-              calculate loss or override ``update_with_gradient()`` to do
-              customized training.
-        """
-        return AlgStep()
-
     # Subclass may override update_with_gradient() to allow customized training
     def update_with_gradient(self,
                              loss_info,
@@ -1128,7 +1086,6 @@ class Algorithm(nn.Module):
                 It is batched from each ``AlgStep.info`` returned by ``rollout_step()``
                 or ``train_step()``.
         """
-        pass
 
     def after_train_iter(self, experience, train_info=None):
         """Do things after completing one training iteration (i.e. ``train_iter()``
@@ -1158,17 +1115,13 @@ class Algorithm(nn.Module):
                 - This function is called by ``_train_iter_off_policy`` with
                   ``config.unroll_with_grad=False``.
         """
-        pass
 
     # Subclass may override calc_loss() to allow more sophisticated loss
-    def calc_loss(self, experience, train_info):
+    def calc_loss(self, info):
         """Calculate the loss at each step for each sample.
 
         Args:
-            experience (Experience): experiences collected from the most recent
-                ``unroll()`` or from a replay buffer. It's used for the most
-                recent ``update_with_gradient()``.
-            train_info (nest): information collected for training. It is batched
+            info (nest): information collected for training. It is batched
                 from each ``AlgStep.info`` returned by ``rollout_step()``
                 (on-policy training) or ``train_step()`` (off-policy training).
         Returns:
@@ -1176,11 +1129,11 @@ class Algorithm(nn.Module):
                 batch. The shapes of the tensors in loss info should be
                 :math:`(T, B)`.
         """
-        assert isinstance(train_info, LossInfo), (
-            "train_info returned by"
+        assert isinstance(info, LossInfo), (
+            "info returned by"
             " train_step() should be LossInfo. Otherwise you need override"
-            " calc_loss() to generate LossInfo from train_info")
-        return train_info
+            " calc_loss() to generate LossInfo from info")
+        return info
 
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
@@ -1200,7 +1153,7 @@ class Algorithm(nn.Module):
         else:
             valid_masks = None
         experience = experience._replace(rollout_info_field='rollout_info')
-        loss_info = self.calc_loss(experience, train_info)
+        loss_info = self.calc_loss(train_info)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
         self.after_update(experience, train_info)
         self.summarize_train(experience, train_info, loss_info, params)
@@ -1285,7 +1238,23 @@ class Algorithm(nn.Module):
             # The experience put in one_time replayer is already transformed
             # in unroll().
             experience = self.transform_experience(experience)
-        experience = self.preprocess_experience(experience)
+        time_step = TimeStep(
+            step_type=experience.step_type,
+            reward=experience.reward,
+            discount=experience.discount,
+            observation=experience.observation,
+            prev_action=experience.prev_action,
+            env_id=experience.env_id)
+        time_step, rollout_info = self.preprocess_experience(
+            time_step, experience.rollout_info, experience.batch_info)
+        experience = experience._replace(
+            step_type=time_step.step_type,
+            reward=time_step.reward,
+            discount=time_step.discount,
+            observation=time_step.observation,
+            prev_action=time_step.prev_action,
+            env_id=time_step.env_id,
+            rollout_info=rollout_info)
         experience = self._clear_batch_info(experience)
         if self._processed_experience_spec is None:
             self._processed_experience_spec = dist_utils.extract_spec(
@@ -1420,7 +1389,15 @@ class Algorithm(nn.Module):
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
                     "the state but will simply keep updating it.")
-            policy_step = self.train_step(exp, policy_state)
+            time_step = TimeStep(
+                step_type=exp.step_type,
+                reward=exp.reward,
+                discount=exp.discount,
+                observation=exp.observation,
+                prev_action=exp.prev_action,
+                env_id=exp.env_id)
+            policy_step = self.train_step(time_step, policy_state,
+                                          exp.rollout_info, exp.batch_info)
             if self._train_info_spec is None:
                 self._train_info_spec = dist_utils.extract_spec(
                     policy_step.info)
@@ -1447,7 +1424,15 @@ class Algorithm(nn.Module):
 
         exp = dist_utils.params_to_distributions(
             exp, self.processed_experience_spec)
-        policy_step = self.train_step(exp, policy_state)
+        time_step = TimeStep(
+            step_type=exp.step_type,
+            reward=exp.reward,
+            discount=exp.discount,
+            observation=exp.observation,
+            prev_action=exp.prev_action,
+            env_id=exp.env_id)
+        policy_step = self.train_step(time_step, policy_state,
+                                      exp.rollout_info, exp.batch_info)
 
         if self._train_info_spec is None:
             self._train_info_spec = dist_utils.extract_spec(policy_step.info)
@@ -1479,7 +1464,7 @@ class Algorithm(nn.Module):
             experience, self.processed_experience_spec)
 
         experience = self._add_batch_info(experience, batch_info)
-        loss_info = self.calc_loss(experience, train_info)
+        loss_info = self.calc_loss(train_info)
         if loss_info.priority is not ():
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
