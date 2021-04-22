@@ -175,9 +175,6 @@ class Agent(OnPolicyAlgorithm):
             reward_weight_algorithm = reward_weight_algorithm_cls(
                 reward_spec=reward_spec, debug_summaries=debug_summaries)
             agent_helper.register_algorithm(reward_weight_algorithm, "rw")
-            # Initialize the reward weights of the rl algorithm
-            rl_algorithm.set_reward_weights(
-                reward_weight_algorithm.reward_weights)
 
         super().__init__(
             observation_spec=observation_spec,
@@ -228,6 +225,11 @@ class Agent(OnPolicyAlgorithm):
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
             observation = [observation, goal_step.output]
+
+        if self._reward_weight_algorithm is not None:
+            # Initialize the reward weights of the rl algorithm
+            self._rl_algorithm.set_reward_weights(
+                self._reward_weight_algorithm.reward_weights)
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
@@ -393,6 +395,12 @@ class Agent(OnPolicyAlgorithm):
         algorithms = list(filter(lambda a: a is not None, algorithms))
         self._agent_helper.after_train_iter(algorithms, experience, train_info)
 
+        # Strictly speaking, if we load a checkpoint for training, then in the
+        # first iteration ``self._rl_algorithm`` might have the wrong reward
+        # weights because the function call below is called only after the first
+        # iteration. But for simplicity (there is no easy way to set the weights
+        # after loading a checkpoint while before the first iteration) here we
+        # ignore its effect.
         if self._reward_weight_algorithm:
             self._rl_algorithm.set_reward_weights(
                 self._reward_weight_algorithm.reward_weights)
