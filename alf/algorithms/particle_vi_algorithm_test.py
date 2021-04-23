@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""ParticleVI algorithm test."""
 
 import math
 
@@ -56,7 +57,7 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         x -= torch.mean(x, dim=1, keepdim=True)
         return fact * x.matmul(x.t()).squeeze()
 
-    @parameterized.parameters(('svgd'), ('gfsf'))
+    @parameterized.parameters(('svgd'), ('gfsf'), ('minmax'))
     def test_par_vi_algorithm(self, par_vi='svgd'):
         """
         The par_vi algorithm is trained to match the likelihood of a Gaussian 
@@ -71,6 +72,8 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             dim,
             num_particles=num_particles,
             par_vi=par_vi,
+            critic_hidden_layers=(20, ),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-3),
             optimizer=alf.optimizers.AdamTF(lr=1e-2))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
