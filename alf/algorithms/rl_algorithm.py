@@ -128,18 +128,23 @@ class RLAlgorithm(Algorithm):
         assert reward_spec.ndim <= 1, "reward_spec must be rank-0 or rank-1!"
         self._reward_spec = reward_spec
 
-        self._reward_weights = None
         if reward_spec.numel > 1:
             if reward_weights:
                 assert reward_spec.numel == len(reward_weights), (
                     "Mismatch between len(reward_weights)=%s and reward_dim=%s"
                     % (len(reward_weights), reward_spec.numel))
-                self._reward_weights = torch.tensor(
-                    reward_weights, dtype=torch.float32)
+                # Note that if training or playing from a checkpoint while specifying
+                # a reward weight vector different from the original one, this new
+                # specified vector will be overwritten by the checkpoint.
+                self.register_buffer(
+                    "_reward_weights",
+                    torch.tensor(reward_weights, dtype=torch.float32))
             else:
-                self._reward_weights = torch.ones(
-                    reward_spec.shape, dtype=torch.float32)
+                self.register_buffer(
+                    "_reward_weights",
+                    torch.ones(reward_spec.shape, dtype=torch.float32))
         else:
+            self._reward_weights = None
             assert reward_weights is None, (
                 "reward_weights cannot be used for one dimensional reward")
 
