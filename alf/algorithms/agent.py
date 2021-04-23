@@ -175,6 +175,9 @@ class Agent(OnPolicyAlgorithm):
             reward_weight_algorithm = reward_weight_algorithm_cls(
                 reward_spec=reward_spec, debug_summaries=debug_summaries)
             agent_helper.register_algorithm(reward_weight_algorithm, "rw")
+            # Initialize the reward weights of the rl algorithm
+            rl_algorithm.set_reward_weights(
+                reward_weight_algorithm.reward_weights)
 
         super().__init__(
             observation_spec=observation_spec,
