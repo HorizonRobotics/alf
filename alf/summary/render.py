@@ -137,7 +137,7 @@ class Image(object):
         return cls(img)
 
     @classmethod
-    def from_image_nest(cls, imgs):
+    def pack_image_nest(cls, imgs):
         """Given a nest of images, pack them into a larger image so that it has
         an area as small as possible. This problem is generally known as
         "rectangle packing" and its optimal solution is
@@ -168,11 +168,46 @@ class Image(object):
             H = max(H, pos[1] + size[1])
             W = max(W, pos[0] + size[0])
 
-        packed_img = np.ones((H, W, 3), dtype=np.uint8) * 255
+        packed_img = np.full((H, W, 3), 255, dtype=np.uint8)
         for pos, img in zip(positions, imgs):
             packed_img[pos[1]:pos[1] + img.shape[0], pos[0]:pos[0] +
                        img.shape[1], :] = img.data
         return cls(packed_img)
+
+    @classmethod
+    def stack_images(cls, imgs, horizontal=True):
+        """Given a list/tuple of images, stack them in order either horizontally
+        or vertically.
+
+        Args:
+            imgs (list[Image]|tuple[Image]): a list/tuple of ``Image`` instances
+            horizontal (bool): if True, stack images horizontally, otherwise
+                vertically.
+
+        Returns:
+            Image: the stacked big image
+        """
+        assert isinstance(imgs, (list, tuple))
+        if horizontal:
+            H = max([i.shape[0] for i in imgs])
+            W = sum([i.shape[1] for i in imgs])
+            stacked_img = np.full((H, W, 3), 255, dtype=np.uint8)
+            offset_w = 0
+            for i in imgs:
+                stacked_img[:i.shape[0], offset_w:offset_w +
+                            i.shape[1], :] = i.data
+                offset_w += i.shape[1]
+        else:
+            H = sum([i.shape[0] for i in imgs])
+            W = max([i.shape[1] for i in imgs])
+            stacked_img = np.full((H, W, 3), 255, dtype=np.uint8)
+            offset_h = 0
+            for i in imgs:
+                stacked_img[offset_h:offset_h +
+                            i.shape[0], :i.shape[1], :] = i.data
+                offset_h += i.shape[0]
+
+        return cls(stacked_img)
 
 
 _rendering_enabled = False
