@@ -168,7 +168,7 @@ class Image(object):
             H = max(H, pos[1] + size[1])
             W = max(W, pos[0] + size[0])
 
-        packed_img = np.ones((H, W, 3), dtype=np.uint8) * 255
+        packed_img = np.full((H, W, 3), 255, dtype=np.uint8)
         for pos, img in zip(positions, imgs):
             packed_img[pos[1]:pos[1] + img.shape[0], pos[0]:pos[0] +
                        img.shape[1], :] = img.data
@@ -191,7 +191,7 @@ class Image(object):
         if horizontal:
             H = max([i.shape[0] for i in imgs])
             W = sum([i.shape[1] for i in imgs])
-            stacked_img = np.ones((H, W, 3), dtype=np.uint8) * 255
+            stacked_img = np.full((H, W, 3), 255, dtype=np.uint8)
             offset_w = 0
             for i in imgs:
                 stacked_img[:i.shape[0], offset_w:offset_w +
@@ -200,7 +200,7 @@ class Image(object):
         else:
             H = sum([i.shape[0] for i in imgs])
             W = max([i.shape[1] for i in imgs])
-            stacked_img = np.ones((H, W, 3), dtype=np.uint8) * 255
+            stacked_img = np.full((H, W, 3), 255, dtype=np.uint8)
             offset_h = 0
             for i in imgs:
                 stacked_img[offset_h:offset_h +
