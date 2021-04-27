@@ -35,9 +35,11 @@ def assert_same_structure(nest1, nest2):
     try:
         cnest.assert_same_structure(nest1, nest2)
     except Exception as e:
+        paths = tuple(_get_all_paths(nst) for nst in (nest1, nest2))
         logging.error(
-            "assert_same_structure() fails for {} and {}. Error message: '{}'".
-            format(nest1, nest2, str(e)))
+            "assert_same_structure() fails for {} and {}. Error message: '{}'"
+            "nest1 has paths {}. nest2 has paths {}.".format(
+                nest1, nest2, str(e), paths[0], paths[1]))
         raise e
 
 
@@ -46,9 +48,10 @@ def map_structure(func, *nests):
     try:
         return cnest.map_structure(func, *nests)
     except Exception as e:
-        logging.error(
-            "map_structure() fails for {}. Error message: '{}'".format(
-                nests, str(e)))
+        paths = tuple(_get_all_paths(nst) for nst in nests)
+        logging.error("map_structure() fails for {}. Error message: '{}'. "
+                      "The paths in nests are {}.".format(
+                          nests, str(e), paths))
         raise e
 
 
@@ -386,7 +389,7 @@ def py_map_structure_with_path(func, *nests):
                     *values[:-1],
                     path=path + ("." if path else "") + str(values[-1]))
                 for values in zip(*nests, range(len(nests[0])))
-            ])[:-1]
+            ])
         else:
             ret = {}
             for fields_and_values in zip(

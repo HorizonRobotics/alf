@@ -18,8 +18,15 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder as GymVideoReco
 from gym import error, logger
 
 import alf
-import alf.summary.render as render
-from alf.utils import common
+
+try:
+    # There might be importing errors about matplotlib on the cluster if the
+    # correct version (requires python3.7) of matplotlib is not installed.
+    # In this case we just skip importing because no rendering is needed on
+    # cluster.
+    import alf.summary.render as render
+except ImportError:
+    render = None
 
 
 @alf.configurable(whitelist=['frame_max_width', 'frames_per_sec'])

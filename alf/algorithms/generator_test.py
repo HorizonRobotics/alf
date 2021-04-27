@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Generator test."""
 
 import math
 
@@ -67,6 +68,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dict(entropy_regularization=1.0, par_vi='svgd'),
         dict(entropy_regularization=1.0, par_vi='svgd2'),
         dict(entropy_regularization=1.0, par_vi='svgd3'),
+        dict(entropy_regularization=1.0, par_vi='minmax'),
         dict(entropy_regularization=0.0),
         dict(entropy_regularization=0.0, mi_weight=1),
     )
@@ -85,7 +87,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dim = 2
         batch_size = 64
         net = Net(dim)
-        hidden_size = 10
+        hidden_size = 20
         generator = Generator(
             dim,
             noise_dim=3,

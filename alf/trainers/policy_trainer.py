@@ -110,6 +110,7 @@ class Trainer(object):
         self._checkpointer = None
 
         self._evaluate = config.evaluate
+        self._eval_uncertainty = config.eval_uncertainty
         self._eval_interval = config.eval_interval
 
         self._summary_interval = config.summary_interval
@@ -520,8 +521,11 @@ class SLTrainer(Trainer):
             with record_time("time/train_iter"):
                 self._algorithm.train_iter()
 
-            if self._evaluate and (epoch_num + 1) % self._eval_interval == 0:
-                self._algorithm.evaluate()
+            if (epoch_num + 1) % self._eval_interval == 0:
+                if self._evaluate:
+                    self._algorithm.evaluate()
+                if self._eval_uncertainty:
+                    self._algorithm.eval_uncertainty()
 
             if epoch_num == begin_epoch_num:
                 self._summarize_training_setting()
@@ -533,6 +537,8 @@ class SLTrainer(Trainer):
             if (self._num_epochs and epoch_num >= self._num_epochs):
                 if self._evaluate:
                     self._algorithm.evaluate()
+                if self._eval_uncertainty:
+                    self._algorithm.eval_uncertainty()
                 break
 
             if self._num_epochs and epoch_num >= time_to_checkpoint:

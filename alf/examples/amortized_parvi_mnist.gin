@@ -1,0 +1,54 @@
+import alf.algorithms.hypernetwork_algorithm
+import alf.trainers.policy_trainer
+import functools
+
+# Lenet for MNIST
+CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
+FC_LAYER_PARAMS = ((84, True), )
+HIDDEN_LAYERS = (512, 1024)
+
+# optimizer config
+hypernet/Adam.lr = 1e-3
+hypernet/Adam.weight_decay = 0 #1e-4
+hypernet_critic/Adam.lr = 1e-4
+hypernet_critic/Adam.weight_decay = 1e-4
+
+# algorithm config
+HyperNetwork.conv_layer_params = %CONV_LAYER_PARAMS
+HyperNetwork.fc_layer_params = %FC_LAYER_PARAMS
+HyperNetwork.hidden_layers = %HIDDEN_LAYERS
+HyperNetwork.noise_dim = 512
+HyperNetwork.num_particles = 10
+
+HyperNetwork.data_creator = functools.partial(
+    @datagen.load_mnist, label_idx=[0,1,2,3,4,5], train_bs=100, test_bs=100)
+HyperNetwork.data_creator_outlier = functools.partial(
+    @datagen.load_mnist, label_idx=[6,7,8,9], train_bs=100, test_bs=100)
+
+HyperNetwork.use_fc_bn = True
+HyperNetwork.par_vi = 'svgd3'
+HyperNetwork.loss_type = 'classification'
+HyperNetwork.entropy_regularization = 1.
+HyperNetwork.optimizer = @hypernet/Adam()
+HyperNetwork.critic_optimizer = @hypernet_critic/Adam()
+HyperNetwork.critic_hidden_layers = (512,512)
+HyperNetwork.critic_iter_num = 5
+HyperNetwork.critic_l2_weight = 10.0
+HyperNetwork.num_train_classes = 6
+HyperNetwork.logging_training = True
+HyperNetwork.logging_evaluate = True
+
+import alf.networks.param_networks
+ParamConvNet.use_bias=True
+
+# training config
+TrainerConfig.ml_type='sl'
+TrainerConfig.algorithm_ctor=@HyperNetwork
+TrainerConfig.num_iterations=100
+TrainerConfig.num_checkpoints=1
+TrainerConfig.evaluate=True
+TrainerConfig.eval_uncertainty=True
+TrainerConfig.eval_interval=1
+TrainerConfig.summary_interval=1
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True

@@ -49,7 +49,7 @@ class CriticAlgorithm(Algorithm):
                  optimizer=None,
                  name="CriticAlgorithm"):
         """Create a CriticAlgorithm.
-
+        
         Args:
             input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
@@ -96,12 +96,12 @@ class CriticAlgorithm(Algorithm):
 
     def predict_step(self, inputs, state=None, requires_jac_diag=False):
         """Predict for one step of inputs.
-
+        
         Args:
             inputs (Tensor): inputs for prediction.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
-
+        
         Returns:
             AlgStep:
             - output (Tensor): predictions or (predictions, diag_jacobian)
@@ -313,7 +313,7 @@ class Generator(Algorithm):
         self._predict_net = None
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
-            self._predict_net = net.copy(name="Genrator_average")
+            self._predict_net = net.copy(name="Generator_average")
             self._predict_net_updater = common.get_target_updater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
