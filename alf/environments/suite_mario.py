@@ -19,7 +19,7 @@ import gym
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.gym_wrappers import FrameSkip
 from alf.environments.mario_wrappers import MarioXReward, \
-    LimitedDiscreteActions, ProcessFrame84, FrameFormat
+    LimitedDiscreteActions, ProcessFrame84
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -47,7 +47,6 @@ def load(game,
          discount=1.0,
          wrap_with_process=False,
          frame_skip=4,
-         data_format='channels_last',
          record=False,
          crop=True,
          gym_env_wrappers=(),
@@ -61,8 +60,6 @@ def load(game,
         wrap_with_process (bool): Whether wrap env in a process
         discount (float): Discount to use for the environment.
         frame_skip (int): the frequency at which the agent experiences the game
-        data_format (str): one of `channels_last` (default) or `channels_first`.
-                    The ordering of the dimensions in the inputs.
         record (bool): Record the gameplay , see retro.retro_env.RetroEnv.record
                `False` for not record otherwise record to current working directory or
                specified director
@@ -89,7 +86,6 @@ def load(game,
         if frame_skip:
             env = FrameSkip(env, frame_skip)
         env = ProcessFrame84(env, crop=crop)
-        env = FrameFormat(env, data_format=data_format)
         env = LimitedDiscreteActions(env, buttons)
         return suite_gym.wrap_env(
             env,

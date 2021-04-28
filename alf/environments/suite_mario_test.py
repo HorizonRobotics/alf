@@ -41,7 +41,7 @@ class SuiteMarioTest(alf.test.TestCase):
             game=game, state='Level1-1', wrap_with_process=True)
         self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
-        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+        self.assertEqual((1, 84, 84), self._env.observation_spec().shape)
 
         actions = self._env.action_spec().sample()
         for _ in range(10):
@@ -54,7 +54,7 @@ class SuiteMarioTest(alf.test.TestCase):
                 game=game, state='Level1-1', wrap_with_process=False))
         self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
-        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+        self.assertEqual((1, 84, 84), self._env.observation_spec().shape)
 
         actions = self._env.action_spec().sample()
         for _ in range(10):
@@ -75,7 +75,7 @@ class SuiteMarioTest(alf.test.TestCase):
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
-        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+        self.assertEqual((1, 84, 84), self._env.observation_spec().shape)
 
         actions = self._env.action_spec().sample(outer_dims=(env_num, ))
         for _ in range(10):
