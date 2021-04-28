@@ -51,12 +51,13 @@ ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
 ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 Agent.optimizer=@ac/AdamTF()
 Agent.intrinsic_reward_module=@ICMAlgorithm()
-TrainerConfig.data_transformer_ctor=@ImageScaleTransformer
 ActorCriticLoss.entropy_regularization=0.01
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
 # training config
+FrameStacker.stack_size=4
+TrainerConfig.data_transformer_ctor=[@FrameStacker, @ImageScaleTransformer]
 TrainerConfig.unroll_length=32
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=10000000
