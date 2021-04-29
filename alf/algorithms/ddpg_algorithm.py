@@ -13,6 +13,7 @@
 # limitations under the License.
 """Deep Deterministic Policy Gradient (DDPG)."""
 
+import copy
 import functools
 import gin
 import numpy as np
@@ -44,8 +45,8 @@ DdpgCriticState = namedtuple(
     default_value=())
 DdpgCriticInfo = namedtuple(
     "DdpgCriticInfo", [
-        "q_values", "non_her_q_values", "goal_values", "target_q_values",
-        "non_her_target", "target_goal_values"
+        "q_values", "replan_value_loss", "non_her_q_values", "goal_values",
+        "target_q_values", "non_her_target", "target_goal_values"
     ],
     default_value=())
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
@@ -56,7 +57,8 @@ DdpgInfo = namedtuple(
         "subgoals_index"
     ],
     default_value=())
-DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
+DdpgLossInfo = namedtuple('DdpgLossInfo',
+                          ('actor', 'critic', 'replan_value_loss'))
 
 
 @gin.configurable
@@ -95,6 +97,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  action_l2=0,
                  actor_optimizer=None,
                  critic_optimizer=None,
+                 replan_value=False,
                  bump_target_value=False,
                  replan_target_value=False,
                  value_clipping=False,
@@ -155,6 +158,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             action_l2 (float): weight of squared action l2-norm on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
+            replan_value (bool): whether to use plan value to update
+                ``Q_s(plan_action)``.
             bump_target_value (bool): whether to use goal plan value to improve
                 target_value (Q_{s+1}).
             replan_target_value (bool): whether to use replanned value to improve
@@ -287,6 +292,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             period=target_update_period)
 
         self._goal_generator = None
+        self._replan_value = replan_value
         self._bump_target_value = bump_target_value
         self._replan_target_value = replan_target_value
         self._value_clipping = value_clipping
@@ -352,6 +358,16 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         old_full_plan = exp.rollout_info.full_plan
         return self._assess_plan_value(exp, old_full_plan)
 
+    def populate_goal(self, goals, observation):
+        """Populate goal keys in dict observation based on goal_generator.action_dim
+        """
+        if self._goal_generator.control_aux:
+            action_dim = self._goal_generator._action_dim
+            observation["aux_desired"] = goals[:, action_dim:]
+        else:
+            action_dim = goals.shape[1]
+        observation["desired_goal"] = goals[:, :action_dim]
+
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(
             exp.observation, state=state.target_actor)
@@ -367,14 +383,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         else:
             target_q_values = target_q_values.squeeze(dim=1)
 
-        if self._bump_target_value or self._replan_target_value:
-            if self._replan_target_value:
+        replan = self._replan_target_value or self._replan_value
+        if self._bump_target_value or replan:
+            if replan:
+                use_target_networks = self._replan_target_value
                 # We should use rollout subgoal indexes to make training consistent with rollout.
-                goals, costs, _ = self._goal_generator.get_goals_and_costs(
+                plan, costs, _ = self._goal_generator.get_goals_and_costs(
                     exp.observation,
                     (),  # start afresh, ignoring rollout subgoal index.
-                    use_target_networks=True,
+                    use_target_networks=use_target_networks,
                     is_training=True)
+                goals = plan[:, 0, :]
                 plan_values = -costs.squeeze(1)
             if self._bump_target_value:
                 old_plan_values = self._reuse_plan_value(exp, state)
@@ -419,6 +438,22 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             non_her_target_q, non_her_target = self._non_her_target(
                 (exp.observation, exp.action), state=state.non_her_target)
 
+        replan_value_loss = ()
+        if self._replan_value:
+            observation = copy.deepcopy(exp.observation)
+            self.populate_goal(goals, observation)
+            replan_action, _ = self._actor_network(observation, state=())
+            plan_q_values, _ = self._critic_networks(
+                (exp.observation, replan_action), state=state.critics)
+            batch_size = plan_values.shape[0]
+            _plan_values = plan_values.detach().reshape(batch_size, 1).expand(
+                batch_size, self._num_critic_replicas)
+            _plan_q = plan_q_values[:, :, 0]
+            replan_value_loss = alf.utils.losses.element_wise_squared_loss(
+                torch.max(_plan_values, _plan_q), _plan_q)
+            replan_value_loss = replan_value_loss.sum(
+                dim=1)  # sum over replicas
+
         state = DdpgCriticState(
             critics=critic_states,
             non_her_critic=non_her_critic,
@@ -428,6 +463,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         info = DdpgCriticInfo(
             q_values=q_values,
+            replan_value_loss=replan_value_loss,
             non_her_q_values=non_her_q_values,
             target_q_values=target_q_values,
             non_her_target=non_her_target_q)
@@ -588,10 +624,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = train_info.actor_loss
 
+        replan_value_loss = train_info.critic.replan_value_loss
+        full_loss = critic_loss + actor_loss.loss
+        if replan_value_loss != ():
+            full_loss += replan_value_loss
         return LossInfo(
-            loss=critic_loss + actor_loss.loss,
+            loss=full_loss,
             priority=priority,
-            extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
+            extra=DdpgLossInfo(
+                critic=critic_loss,
+                actor=actor_loss.extra,
+                replan_value_loss=replan_value_loss))
 
     def after_update(self, experience, train_info: DdpgInfo):
         self._update_target()

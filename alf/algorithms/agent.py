@@ -281,12 +281,7 @@ class Agent(OnPolicyAlgorithm):
                     observation[
                         "final_goal"] = info.goal_generator.final_goal.float()
             # Set generated goal as desired_goal, also goes into ReplayBuffer
-            if self._control_aux():
-                action_dim = self._goal_generator._action_dim
-                observation["aux_desired"] = goal_step.output[:, action_dim:]
-            else:
-                action_dim = goal_step.output.shape[1]
-            observation["desired_goal"] = goal_step.output[:, :action_dim]
+            self._rl_algorithm.populate_goal(goal_step.output, observation)
         else:
             observation = [observation, goal_step.output]
         return observation, info
