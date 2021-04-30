@@ -45,7 +45,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
-                 epsilon_greedy=0.0,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,
@@ -108,7 +107,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
-        self._epsilon_greedy = epsilon_greedy
+        self._epsilon_greedy = alf.get_config_value(
+            'TrainerConfig.epsilon_greedy')
 
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())

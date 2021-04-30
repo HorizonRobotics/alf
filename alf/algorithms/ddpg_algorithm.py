@@ -63,6 +63,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
                  reward_weights=None,
+                 calculate_priority=False,
                  env=None,
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
@@ -98,6 +99,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             reward_weights (list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             num_critic_replicas (int): number of critics to be used. Default is 1.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -130,6 +133,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        self._calculate_priority = calculate_priority
+        self._epsilon_greedy = alf.get_config_value(
+            'TrainerConfig.epsilon_greedy')
 
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec),
@@ -315,35 +321,32 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
-    def calc_loss(self, experience, train_info: DdpgInfo):
-
+    def calc_loss(self, info: DdpgInfo):
         critic_losses = [None] * self._num_critic_replicas
         for i in range(self._num_critic_replicas):
             critic_losses[i] = self._critic_losses[i](
-                experience=experience,
-                value=train_info.critic.q_values[:, :, i, ...],
-                target_value=train_info.critic.target_q_values).loss
+                info=info,
+                value=info.critic.q_values[:, :, i, ...],
+                target_value=info.critic.target_q_values).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        if (experience.batch_info != ()
-                and experience.batch_info.importance_weights != ()):
-            valid_masks = (experience.step_type != StepType.LAST).to(
-                torch.float32)
+        if self._calculate_priority:
+            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
             priority = (
                 (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 
-        actor_loss = train_info.actor_loss
+        actor_loss = info.actor_loss
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
             priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
-    def after_update(self, experience, train_info: DdpgInfo):
+    def after_update(self, root_inputs, info: DdpgInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

@@ -24,7 +24,8 @@ import gin
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
-from alf.utils import common, dist_utils, summary_utils, math_ops
+from alf.utils import common, dist_utils, summary_utils
+from alf.utils.summary_utils import record_time
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -77,6 +78,7 @@ class RLAlgorithm(Algorithm):
                  reward_spec=TensorSpec(()),
                  predict_state_spec=None,
                  rollout_state_spec=None,
+                 is_on_policy=None,
                  reward_weights=None,
                  env=None,
                  config: TrainerConfig = None,
@@ -97,6 +99,7 @@ class RLAlgorithm(Algorithm):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``rollout_state_spec``.
+            is_on_policy:
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. If not None, the weighted sum of rewards is
                 the reward for training. Otherwise, the sum of rewards is used.
@@ -117,6 +120,7 @@ class RLAlgorithm(Algorithm):
             train_state_spec=train_state_spec,
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
+            is_on_policy=is_on_policy,
             optimizer=optimizer,
             config=config,
             debug_summaries=debug_summaries,
@@ -154,7 +158,7 @@ class RLAlgorithm(Algorithm):
         self._current_policy_state = None
         self._current_transform_state = None
 
-        if self._env is not None and not self.is_on_policy():
+        if self._env is not None and not self.on_policy:
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 replayer = "one_time"
             else:
@@ -192,16 +196,6 @@ class RLAlgorithm(Algorithm):
     def is_rl(self):
         """Always return True for RLAlgorithm."""
         return True
-
-    @abstractmethod
-    def is_on_policy(self):
-        """Whehter this algorithm is an on-policy algorithm.
-
-        If it's on-policy algorihtm, ``train_iter()`` will use
-        ``_train_iter_on_policy()`` to train. Otherwise, it will use
-        ``_train_iter_off_policy()``.
-        """
-        pass
 
     @property
     def observation_spec(self):
@@ -323,7 +317,7 @@ class RLAlgorithm(Algorithm):
         if self._debug_summaries:
             summary_utils.summarize_action(experience.action,
                                            self._action_spec)
-            if not self.is_on_policy():
+            if not self.on_policy:
                 self.summarize_reward("training_reward", experience.reward)
 
         if self._config.summarize_action_distributions:
@@ -484,15 +478,50 @@ class RLAlgorithm(Algorithm):
             int:
             - number of samples being trained on (including duplicates).
         """
-        if self.is_on_policy():
+        if self.on_policy:
             return self._train_iter_on_policy()
         else:
             return self._train_iter_off_policy()
 
     def _train_iter_on_policy(self):
-        """Implemented in ``OnPolicyAlgorithm``."""
-        raise NotImplementedError()
+        """User may override this for their own training procedure."""
+        alf.summary.increment_global_counter()
+
+        with record_time("time/unroll"):
+            experience = self.unroll(self._config.unroll_length)
+            self.summarize_metrics()
+
+        with record_time("time/train"):
+            train_info = experience.rollout_info
+            experience = experience._replace(rollout_info=())
+            steps = self.train_from_unroll(experience, train_info)
+
+        with record_time("time/after_train_iter"):
+            self.after_train_iter(experience, train_info)
+
+        return steps
 
     def _train_iter_off_policy(self):
-        """Implemented in ``OffPolicyAlgorithm``."""
-        raise NotImplementedError()
+        """User may override this for their own training procedure."""
+        config: TrainerConfig = self._config
+
+        if not config.update_counter_every_mini_batch:
+            alf.summary.increment_global_counter()
+
+        with torch.set_grad_enabled(config.unroll_with_grad):
+            with record_time("time/unroll"):
+                self.eval()
+                experience = self.unroll(config.unroll_length)
+                self.summarize_rollout(experience)
+                self.summarize_metrics()
+
+        self.train()
+        steps = self.train_from_replay_buffer(update_global_counter=True)
+
+        with record_time("time/after_train_iter"):
+            train_info = experience.rollout_info
+            experience = experience._replace(rollout_info=())
+            self.after_train_iter(experience, train_info)
+
+        # For now, we only return the steps of the primary algorithm's training
+        return steps

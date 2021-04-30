@@ -15,12 +15,12 @@
 from collections import namedtuple
 
 import torch
-import torch.nn as nn
 
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, dist_utils, value_ops
+from .containers import Loss
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])
@@ -37,7 +37,7 @@ def _normalize_advantages(advantages, variance_epsilon=1e-8):
 
 
 @alf.configurable
-class ActorCriticLoss(nn.Module):
+class ActorCriticLoss(Loss):
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
@@ -77,7 +77,7 @@ class ActorCriticLoss(nn.Module):
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
         """
-        super().__init__()
+        super().__init__(name=name)
 
         self._td_loss_weight = td_loss_weight
         self._name = name
@@ -174,3 +174,6 @@ class ActorCriticLoss(nn.Module):
                 returns = advantages + value
 
         return returns, advantages
+
+    def calc_loss(self, info):
+        return self(info)

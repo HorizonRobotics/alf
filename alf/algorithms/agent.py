@@ -48,7 +48,7 @@ AgentInfo = namedtuple(
 
 
 @alf.configurable
-class Agent(OnPolicyAlgorithm):
+class Agent(RLAlgorithm):
     """Agent is a master algorithm that integrates different algorithms together.
     """
 
@@ -142,8 +142,6 @@ class Agent(OnPolicyAlgorithm):
             reward_spec=reward_spec,
             debug_summaries=debug_summaries)
         agent_helper.register_algorithm(rl_algorithm, "rl")
-        # Whether the agent is on-policy or not depends on its rl algorithm.
-        self._is_on_policy = rl_algorithm.is_on_policy()
 
         if isinstance(rl_algorithm, LatentMbrlAlgorithm):
             assert isinstance(representation_learner,
@@ -185,6 +183,7 @@ class Agent(OnPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             optimizer=optimizer,
+            is_on_policy=rl_algorithm.on_policy,
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -195,7 +194,7 @@ class Agent(OnPolicyAlgorithm):
                     intrinsic_reward_module, entropy_target_algorithm,
                     reward_weight_algorithm):
             if alg is not None:
-                alg.set_on_policy(self._is_on_policy)
+                alg.set_on_policy(self.on_policy)
         self._representation_learner = representation_learner
         self._rl_algorithm = rl_algorithm
         self._reward_weight_algorithm = reward_weight_algorithm
@@ -210,11 +209,7 @@ class Agent(OnPolicyAlgorithm):
         # before this line.
         self.use_rollout_state = self.use_rollout_state
 
-    def is_on_policy(self):
-        return self._is_on_policy
-
-    def predict_step(self, time_step: TimeStep, state: AgentState,
-                     epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state: AgentState):
         """Predict for one step."""
         new_state = AgentState()
         observation = time_step.observation
@@ -230,14 +225,13 @@ class Agent(OnPolicyAlgorithm):
         if self._goal_generator is not None:
             goal_step = self._goal_generator.predict_step(
                 time_step._replace(observation=observation),
-                state.goal_generator, epsilon_greedy)
+                state.goal_generator)
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
             observation = [observation, goal_step.output]
 
         rl_step = self._rl_algorithm.predict_step(
-            time_step._replace(observation=observation), state.rl,
-            epsilon_greedy)
+            time_step._replace(observation=observation), state.rl)
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
@@ -378,7 +372,7 @@ class Agent(OnPolicyAlgorithm):
         algorithms = list(filter(lambda a: a is not None, algorithms))
         self._agent_helper.after_update(algorithms, experience, train_info)
 
-    def after_train_iter(self, experience, train_info: AgentInfo = None):
+    def after_train_iter(self, experience, info: AgentInfo):
         """Call ``after_train_iter()`` of the RL algorithm and goal generator,
         respectively.
         """
@@ -387,7 +381,7 @@ class Agent(OnPolicyAlgorithm):
             self._goal_generator, self._reward_weight_algorithm
         ]
         algorithms = list(filter(lambda a: a is not None, algorithms))
-        self._agent_helper.after_train_iter(algorithms, experience, train_info)
+        self._agent_helper.after_train_iter(algorithms, experience, info)
 
         if self._reward_weight_algorithm:
             self._rl_algorithm.set_reward_weights(

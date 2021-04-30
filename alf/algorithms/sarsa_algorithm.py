@@ -25,7 +25,6 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
                                  LossInfo, namedtuple, StepType, TimeStep)
 from alf.networks import Network
@@ -53,7 +52,7 @@ nest_map = alf.nest.map_structure
 
 
 @gin.configurable
-class SarsaAlgorithm(OnPolicyAlgorithm):
+class SarsaAlgorithm(RLAlgorithm):
     r"""SARSA Algorithm.
 
     SARSA update Q function using the following loss:
@@ -176,8 +175,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             critic_networks = alf.networks.NaiveParallelNetwork(
                 critic_network, num_critic_replicas)
 
-        self._on_policy = on_policy
-
         if not actor_network.is_distribution_output:
             noise_process = alf.networks.OUProcess(
                 state_spec=action_spec, damping=ou_damping, stddev=ou_stddev)
@@ -191,6 +188,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             action_spec,
             reward_spec=reward_spec,
             env=env,
+            is_on_policy=on_policy,
             config=config,
             predict_state_spec=SarsaState(
                 noise=noise_state,
@@ -263,9 +261,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         self._is_rnn = len(alf.nest.flatten(critic_network.state_spec)) > 0
 
-    def is_on_policy(self):
-        return self._on_policy
-
     def _trainable_attributes_to_ignore(self):
         return ["_target_critic_networks", "_rollout_actor_network"]
 
@@ -316,7 +311,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         return state._replace(critics=(), target_critics=())
 
     def rollout_step(self, time_step: TimeStep, state: SarsaState):
-        if self._on_policy:
+        if self.on_policy:
             return self._train_step(time_step, state)
 
         if not self._is_rnn:

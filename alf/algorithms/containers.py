@@ -24,13 +24,12 @@ from alf.utils.math_ops import add_ignore_empty
 
 from .algorithm import Algorithm
 from .config import TrainerConfig
-from .on_policy_algorithm import OnPolicyAlgorithm
 from .rl_algorithm import RLAlgorithm
 
 
 class AlgorithmContainer(Algorithm):
     def __init__(self, algs, train_state_spec, rollout_state_spec,
-                 predict_state_spec, debug_summaries, name):
+                 predict_state_spec, is_on_policy, debug_summaries, name):
         """
         Args:
             algs (dict[Algorithm]): a dictionary of algorithms.
@@ -42,21 +41,33 @@ class AlgorithmContainer(Algorithm):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
+            is_on_policy (None|bool):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """
-        is_on_policy = None
-        on_policy_algs = [
-            alg for alg in algs.values() if alg.is_on_policy() == True
-        ]
-        off_policy_algs = [
-            alg for alg in algs.values() if alg.is_on_policy() == False
-        ]
-        if on_policy_algs and off_policy_algs:
-            raise ValueError("%s is on-policy, but %s is off-policy." %
-                             (on_policy_algs[0].name, off_policy_algs[0].name))
-        if on_policy_algs or off_policy_algs:
-            is_on_policy = bool(on_policy_algs)
+        assert isinstance(algs, dict)
+        if is_on_policy is not None:
+            for aname, alg in algs.items():
+                if alg.on_policy is not None:
+                    assert alg.on_policy == is_on_policy, (
+                        "is_on_policy=%s "
+                        "is different from algs[%s].on_policy=%s" %
+                        (is_on_policy, aname, alg.on_policy))
+        else:
+            is_on_policy = None
+            on_policy_algs = [
+                alg for alg in algs.values() if alg.on_policy == True
+            ]
+            off_policy_algs = [
+                alg for alg in algs.values() if alg.on_policy == False
+            ]
+            if on_policy_algs and off_policy_algs:
+                raise ValueError(
+                    "%s is on-policy, but %s is off-policy." %
+                    (on_policy_algs[0].name, off_policy_algs[0].name))
+            if on_policy_algs or off_policy_algs:
+                is_on_policy = bool(on_policy_algs)
+        if is_on_policy is not None:
             for alg in algs.values():
                 alg.set_on_policy(is_on_policy)
 
@@ -110,48 +121,63 @@ class AlgorithmContainer(Algorithm):
 
 def SequentialAlg(*modules,
                   output='',
+                  is_on_policy=None,
                   name="SequentialAlg",
                   debug_summaries=False,
                   **named_modules):
+    """
+
+
+    The following examples shows an example of using SequentialAlg to build
+    actor-critic algorithm.
+
+    Example:
+
+    .. code: block
+
+        from alf.algorithms.actor_critic_algorithm import ActorCriticLoss, ActorCriticInfo
+        from alf.networks import ActorDistributionNetwork, ValueNetwork
+
+        value_net = ValueNetwork(
+            input_tensor_spec=env.observation_spec(), fc_layer_params=(10, 8))
+
+        actor_net = ActorDistributionNetwork(
+            input_tensor_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
+            fc_layer_params=(10, 8),
+            discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
+
+        alg = SequentialAlg(
+            is_on_policy=True,
+            value=('input.observation', value_net),
+            action_dist=('input.observation', actor_net),
+            action=dist_utils.sample_action_distribution,
+            loss=(ActorCriticInfo(
+                reward='input.reward',
+                step_type='input.step_type',
+                discount='input.discount',
+                action_distribution='action_dist',
+                action='action',
+                value='value'), ActorCriticLoss()),
+            output='action')
+
+    """
 
     return _SequentialAlg(
         elements=modules,
         element_dict=named_modules,
         output=output,
+        is_on_policy=is_on_policy,
         debug_summaries=debug_summaries,
         name=name)
-
-
-def _build_nested_fields(paths):
-    """
-    Examples:
-
-        nest = _build_nested_fields(['a.b', 'a', 'c.d'])
-        assert nest == {'a': 'a', 'c': {'d': 'c.d'}}}
-    """
-    nested_fields = {}
-    for path in paths:
-        fields = path.split('.')
-        sub_nest = nested_fields
-        for i, field in enumerate(fields):
-            if isinstance(sub_nest, str):
-                break
-            elif i == len(fields) - 1:
-                sub_nest[field] = path
-            else:
-                if field in sub_nest:
-                    sub_nest = sub_nest[field]
-                else:
-                    sub_nest[field] = {}
-                    sub_nest = sub_nest[field]
-    return nested_fields
 
 
 class _SequentialAlg(AlgorithmContainer):
     def __init__(self,
                  elements=(),
-                 element_dict={},
+                 element_dict=None,
                  output='',
+                 is_on_policy=None,
                  debug_summaries=False,
                  name='SequentialAlg'):
         train_state_spec = []
@@ -160,8 +186,9 @@ class _SequentialAlg(AlgorithmContainer):
         modules = []
         inputs = []
         outputs = []
-        named_elements = list(zip([''] * len(elements), elements)) + list(
-            element_dict.items())
+        named_elements = list(zip([''] * len(elements), elements))
+        if element_dict:
+            named_elements.extend(element_dict.items())
         is_nested_str = lambda s: all(
             map(lambda x: type(x) == str, flatten(s)))
 
@@ -208,6 +235,7 @@ class _SequentialAlg(AlgorithmContainer):
             train_state_spec=train_state_spec,
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
+            is_on_policy=is_on_policy,
             debug_summaries=debug_summaries,
             name=name)
 
@@ -274,6 +302,17 @@ class _SequentialAlg(AlgorithmContainer):
 
 
 class EchoAlg(Algorithm):
+    """Echo Algorithm.
+
+    EchoAlg uses part of the output of ``alg`` of current step as part of
+    the input of ``alg`` for the next step. It assumes that the input of ``alg``
+    is a dict with two keys: 'input' and 'echo', and the output of ``alg`` is
+    a dict with two keys: 'output' and 'echo'. The 'echo' output of current step
+    will be the 'echo' input of the next step. 'input' of ``alg``'s input is from
+    the input of ``EchoAlg`` and 'output' of ``alg``'s output is the output of
+    ``EchoAlg``.
+    """
+
     def __init__(self, alg, echo_spec, debug_summaries=False, name='EchoAlg'):
         """
         Args:
@@ -288,7 +327,7 @@ class EchoAlg(Algorithm):
             train_state_spec=(alg.train_state_spec, echo_spec),
             rollout_state_spec=(alg.rollout_state_spec, echo_spec),
             predict_state_spec=(alg.predict_state_spec, echo_spec),
-            is_on_policy=alg.is_on_policy(),
+            is_on_policy=alg.on_policy,
             debug_summaries=debug_summaries,
             name=name)
 
@@ -297,6 +336,10 @@ class EchoAlg(Algorithm):
     def set_on_policy(self, is_on_policy):
         super().set_on_policy(is_on_policy)
         self._alg.set_on_policy(is_on_policy)
+
+    def set_path(self, path):
+        super().set_path(path)
+        self._alg.set_path(path)
 
     def predict_step(self, inputs, state):
         block_state, echo_state = state
@@ -340,7 +383,9 @@ class EchoAlg(Algorithm):
 
 
 @alf.configurable
-class RLAlgWrapper(OnPolicyAlgorithm):
+class RLAlgWrapper(RLAlgorithm):
+    """Wrap an Algorithm as RLAlgorithm."""
+
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -352,7 +397,6 @@ class RLAlgWrapper(OnPolicyAlgorithm):
                  optimizer=None,
                  debug_summaries=False,
                  name="RLAlgWrapper"):
-        self._is_on_policy = algorithm.is_on_policy()
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -361,6 +405,7 @@ class RLAlgWrapper(OnPolicyAlgorithm):
             predict_state_spec=algorithm.predict_state_spec,
             rollout_state_spec=algorithm.rollout_state_spec,
             reward_weights=reward_weights,
+            is_on_policy=algorithm.on_policy,
             env=env,
             config=config,
             optimizer=optimizer,
@@ -369,12 +414,13 @@ class RLAlgWrapper(OnPolicyAlgorithm):
 
         self._algorithm = algorithm
 
-    def is_on_policy(self):
-        return self._is_on_policy
-
     def set_on_policy(self, is_on_policy):
         super().set_on_policy(is_on_policy)
-        self._algorithm.set_on_policy()
+        self._algorithm.set_on_policy(is_on_policy)
+
+    def set_path(self, path):
+        super().set_path(path)
+        self._alg.set_path(path)
 
     def rollout_step(self, inputs: TimeStep, state):
         return self._algorithm.rollout_step(inputs, state)
@@ -390,13 +436,21 @@ class RLAlgWrapper(OnPolicyAlgorithm):
                                                      batch_info)
 
 
-class LossAlg(Algorithm):
+class Loss(Algorithm):
+    """Algorithm that uses its input as loss.
+
+    It can be subclassed to customize calc_loss().
+    """
+
     def __init__(self, loss_weight=1.0, name="LossAlg"):
         super().__init__(name=name)
         self._loss_weight = loss_weight
 
+    def predict_step(self, inputs, state):
+        return AlgStep()
+
     def rollout_step(self, inputs, state):
-        if self.is_on_policy():
+        if self.on_policy:
             return AlgStep(info=inputs)
         else:
             return AlgStep()

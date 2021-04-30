@@ -13,12 +13,7 @@
 # limitations under the License.
 """Base class for on-policy RL algorithms."""
 
-import torch
-
-import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import Experience, TimeStep, StepType
-from alf.utils.summary_utils import record_time
 
 
 class OnPolicyAlgorithm(OffPolicyAlgorithm):
@@ -55,25 +50,3 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
     # OnPolicyAlgorithm
     def train_step(self, inputs, state, rollout_info):
         return self.rollout_step(inputs, state)
-
-    def _train_iter_on_policy(self):
-        """User may override this for their own training procedure."""
-        alf.summary.increment_global_counter()
-
-        with record_time("time/unroll"):
-            experience = self.unroll(self._config.unroll_length)
-            self.summarize_metrics()
-
-        with record_time("time/train"):
-            train_info = experience.rollout_info
-            experience = experience._replace(rollout_info=())
-            steps = self.train_from_unroll(experience, train_info)
-
-        with record_time("time/after_train_iter"):
-            # Here we don't pass ``train_info`` to disable another on-policy
-            # training because otherwise it will backprop on the same graph
-            # twice, which is unnecessary because we could have simply merged
-            # the two trainings into the parent's ``rollout_step``.
-            self.after_train_iter(experience)
-
-        return steps

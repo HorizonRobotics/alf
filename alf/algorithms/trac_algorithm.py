@@ -19,7 +19,7 @@ import torch.distributions as td
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import Experience, namedtuple, StepType, TimeStep
 from alf.optimizers.trusted_updater import TrustedUpdater
 from alf.utils import common, dist_utils, math_ops
@@ -37,7 +37,7 @@ TracInfo = namedtuple(
 
 
 @alf.configurable
-class TracAlgorithm(OnPolicyAlgorithm):
+class TracAlgorithm(RLAlgorithm):
     """Trust-region actor-critic.
 
     It compares the action distributions after the SGD with the action
@@ -83,8 +83,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_spec=action_spec,
             debug_summaries=debug_summaries)
 
-        self._is_on_policy = ac_algorithm.is_on_policy()
-
         assert hasattr(ac_algorithm, '_actor_network')
 
         super().__init__(
@@ -92,6 +90,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             env=env,
+            is_on_policy=ac_algorithm.on_policy,
             config=config,
             train_state_spec=ac_algorithm.train_state_spec,
             predict_state_spec=ac_algorithm.predict_state_spec,
@@ -109,9 +108,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
             return np.sqrt(action_dist_clip_per_dim * dims)
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
-
-    def is_on_policy(self):
-        return self._is_on_policy
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._ac_algorithm.predict_step(time_step, state,

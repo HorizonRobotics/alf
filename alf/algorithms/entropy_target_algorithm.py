@@ -396,7 +396,7 @@ class NestedEntropyTargetAlgorithm(Algorithm):
             self._nested_algs = alf.nest.utils.make_nested_module(algs)
 
     def rollout_step(self, distribution, step_type):
-        if self.is_on_policy():
+        if self.on_policy:
             return self.train_step(distribution, step_type)
         else:
             return AlgStep()

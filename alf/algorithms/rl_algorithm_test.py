@@ -20,12 +20,12 @@ import unittest
 import alf
 from alf.utils import common, dist_utils, tensor_utils
 from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.tensor_specs import TensorSpec
 
 
-class MyAlg(OnPolicyAlgorithm):
+class MyAlg(RLAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -41,6 +41,7 @@ class MyAlg(OnPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=observation_spec,
             env=env,
+            is_on_policy=on_policy,
             config=config,
             optimizer=alf.optimizers.Adam(lr=1e-1),
             debug_summaries=debug_summaries,
@@ -48,9 +49,6 @@ class MyAlg(OnPolicyAlgorithm):
 
         self._proj_net = alf.networks.CategoricalProjectionNetwork(
             input_size=2, action_spec=action_spec)
-
-    def is_on_policy(self):
-        return self._on_policy
 
     def predict_step(self, time_step: TimeStep, state):
         dist, _ = self._proj_net(time_step.observation)

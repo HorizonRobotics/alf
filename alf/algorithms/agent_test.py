@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import torch
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
@@ -29,6 +30,7 @@ class AgentTest(alf.test.TestCase):
         observation_spec = TensorSpec((10, ))
         action_spec = BoundedTensorSpec((), dtype='int64')
         time_step = TimeStep(
+            reward=torch.ones((batch_size, )),
             observation=observation_spec.zeros(outer_dims=(batch_size, )),
             prev_action=action_spec.zeros(outer_dims=(batch_size, )))
 
@@ -52,8 +54,7 @@ class AgentTest(alf.test.TestCase):
         rollout_state = agent.get_initial_rollout_state(batch_size)
         train_state = agent.get_initial_train_state(batch_size)
 
-        pred_step = agent.predict_step(
-            time_step, predict_state, epsilon_greedy=0.1)
+        pred_step = agent.predict_step(time_step, predict_state)
         self.assertEqual(pred_step.state.irm, ())
 
         rollout_step = agent.rollout_step(time_step, rollout_state)

@@ -13,12 +13,7 @@
 # limitations under the License.
 """Base class for off policy algorithms."""
 
-import torch
-
-import alf
-from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.utils.summary_utils import record_time
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
@@ -55,28 +50,3 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
     def is_on_policy(self):
         return False
-
-    def _train_iter_off_policy(self):
-        """User may override this for their own training procedure."""
-        config: TrainerConfig = self._config
-
-        if not config.update_counter_every_mini_batch:
-            alf.summary.increment_global_counter()
-
-        with torch.set_grad_enabled(config.unroll_with_grad):
-            with record_time("time/unroll"):
-                self.eval()
-                experience = self.unroll(config.unroll_length)
-                self.summarize_rollout(experience)
-                self.summarize_metrics()
-
-        self.train()
-        steps = self.train_from_replay_buffer(update_global_counter=True)
-
-        with record_time("time/after_train_iter"):
-            train_info = experience.rollout_info
-            experience = experience._replace(rollout_info=())
-            self.after_train_iter(experience, train_info)
-
-        # For now, we only return the steps of the primary algorithm's training
-        return steps

@@ -19,7 +19,7 @@ import torch
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.data_structures import Experience, namedtuple, TimeStep
+from alf.data_structures import namedtuple, TimeStep
 from alf.utils import common, value_ops
 
 PPOInfo = namedtuple(
@@ -44,7 +44,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     def is_on_policy(self):
         return False
 
-    def train_step(self, inputs, state, rollout_info):
+    def train_step(self, inputs: TimeStep, state, rollout_info):
         alg_step = self._rollout_step(inputs, state)
         return alg_step._replace(
             info=rollout_info._replace(
@@ -54,7 +54,8 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                 action_distribution=alg_step.info.action_distribution,
                 value=alg_step.info.value))
 
-    def preprocess_experience(self, root_inputs, rollout_info, batch_info):
+    def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
+                              batch_info):
         """Compute advantages and put it into exp.rollout_info."""
         advantages = value_ops.generalized_advantage_estimation(
             rewards=rollout_info.reward,

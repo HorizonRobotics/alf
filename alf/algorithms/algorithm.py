@@ -29,8 +29,7 @@ from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
-from alf.utils import (common, dist_utils, spec_utils, summary_utils,
-                       tensor_utils)
+from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from .algorithm_interface import AlgorithmInterface
@@ -200,34 +199,23 @@ class Algorithm(AlgorithmInterface):
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
 
-    def set_path(self, path):
-        """Path from the root algorithm to this algorithm.
-
-        The input state to rollout_step() can be retrieved by
-
-        .. code-block:: python
-
-            nest.get_field(experience.rollout_state, self.path)
-
-        The info from  rollout_step() can be retrieved by:
-
-        .. code-block:: python
-
-            nest.get_field(experience.rollout_info, self.path)
-
-        Returns:
-            str: path from the root algorithm to this algorithm
-        """
-        self._path = path
-
     @property
     def path(self):
         return self._path
 
-    def is_on_policy(self):
+    def set_path(self, path):
+        self._path = path
+
+    @property
+    def on_policy(self):
         return self._is_on_policy
 
     def set_on_policy(self, is_on_policy):
+        if self.on_policy is not None:
+            assert self.on_policy == is_on_policy, (
+                "set_on_policy() can"
+                "only be called to change is_on_policy if is_on_policy is None."
+            )
         self._is_on_policy = is_on_policy
 
     def is_rl(self):
@@ -1082,48 +1070,6 @@ class Algorithm(AlgorithmInterface):
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
         return loss_info, all_params
-
-    def after_update(self, experience, train_info):
-        """Do things after completing one gradient update (i.e. ``update_with_gradient()``).
-        This function can be used for post-processings following one minibatch
-        update, such as copy a training model to a target model in SAC, DQN, etc.
-
-        Args:
-            experience (nest): experiences collected for the most recent
-                ``update_with_gradient()``.
-            train_info (nest): information collected for training.
-                It is batched from each ``AlgStep.info`` returned by ``rollout_step()``
-                or ``train_step()``.
-        """
-
-    def after_train_iter(self, experience, train_info=None):
-        """Do things after completing one training iteration (i.e. ``train_iter()``
-        that consists of one or multiple gradient updates). This function can
-        be used for training additional modules that have their own training logic
-        (e.g., on/off-policy, replay buffers, etc). These modules should be added
-        to ``_trainable_attributes_to_ignore`` in the parent algorithm.
-
-        Other things might also be possible as long as they should be done once
-        every training iteration.
-
-        This function will serve the same purpose with ``after_update`` if there
-        is always only one gradient update in each training iteration. Otherwise
-        it's less frequently called than ``after_update``.
-
-        Args:
-            experience (nest): experience collected during ``unroll()``.
-                Note that it won't contain the field ``rollout_info`` because this
-                is the info collected just from the unroll but not from a replay
-                buffer. And ``rollout_info`` has been assigned to ``train_info``.
-            train_info (nest): information collected during ``unroll()``. If it's
-                ``None``, then only off-policy training is allowed. Currently
-                this arg is ``None`` when:
-
-                - This function is called by ``_train_iter_on_policy``, because
-                  it's not recomended to backprop on the same graph twice.
-                - This function is called by ``_train_iter_off_policy`` with
-                  ``config.unroll_with_grad=False``.
-        """
 
     # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, info):

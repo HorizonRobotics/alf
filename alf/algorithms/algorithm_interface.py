@@ -14,18 +14,12 @@
 
 import torch.nn as nn
 
-from alf.nest.utils import get_nested_field
 from alf.data_structures import AlgStep, LossInfo
-from alf.networks import Network
-
-# Experience = namedtuple(
-#     'Experience', ['root_inputs', 'rollout_state', 'rollout_info'])
-
-# BatchInfo = namedtuple(
-#     "BatchInfo", ["env_ids", "positions", "importance_weights", "replay_buffer"])
 
 
 class AlgorithmInterface(nn.Module):
+    """The interface for algorithm."""
+
     @property
     def path(self):
         """Path from the root algorithm to this algorithm.
@@ -45,8 +39,27 @@ class AlgorithmInterface(nn.Module):
         Returns:
             str: path from the root algorithm to this algorithm
         """
+        raise NotImplementedError()
 
-    def is_on_policy(self):
+    def set_path(self, path):
+        """Path from the root algorithm to this algorithm.
+
+        The input state to rollout_step() can be retrieved by
+
+        .. code-block:: python
+
+            nest.get_field(experience.rollout_state, self.path)
+
+        The info from  rollout_step() can be retrieved by:
+
+        .. code-block:: python
+
+            nest.get_field(experience.rollout_info, self.path)
+        """
+        raise NotImplementedError()
+
+    @property
+    def on_policy(self):
         """Whether is on-policy training.
 
         For on-policy training, ``train_step()`` will not be called. And ``info``
@@ -56,10 +69,24 @@ class AlgorithmInterface(nn.Module):
         from replay buffer. And ``info`` passed to ``calc_loss()`` is info collected
         from ``train_step``.
 
+        An algorithm can override this to indicate whether it is an on-policy or
+        off-policy algorithm. If an algorithm does not override this, it support
+        both on-policy and off-policy training. It can check wether it is on-policy
+        training by calling this function.
+
         Returns:
             bool | None: True if on-policy training, False if off-policy training,
                 None if not set.
         """
+        raise NotImplementedError()
+
+    def set_on_policy(self, is_on_policy):
+        """Set whether this algorithm is on-policy or not.
+
+        Args:
+            is_on_policy (bool):
+        """
+        raise NotImplementedError()
 
     def predict_step(self, inputs, state):
         """Predict for one step of inputs.
@@ -72,9 +99,15 @@ class AlgorithmInterface(nn.Module):
             - output (nested Tensor): prediction result.
             - state (nested Tensor): should match ``predict_state_spec``.
         """
+        raise NotImplementedError()
 
     def rollout_step(self, inputs, state):
         """Rollout for one step of inputs.
+
+        It is called to calculate output for every environment step. For on-policy
+        training, it also needs to generate necessary information for calc_loss().
+        For off-policy training, it needs to generate necessary information for
+        train_step().
 
         Args:
             inputs (nested Tensor): inputs for prediction.
@@ -88,12 +121,14 @@ class AlgorithmInterface(nn.Module):
               training, it will be retrieved from replay buffer and passed as
               ``rollout_info`` for train_step().
         """
+        raise NotImplementedError()
 
     def train_step(self, inputs, state, rollout_info):
         """Perform one step of training computation.
 
-        It is called to generate actions for every environment step.
-        It also needs to generate necessary information for training.
+        It is called to calculate output for every time step for a batch of
+        experience from replay buffer. It also needs to generate necessary
+        information for calc_loss().
 
         Args:
             inputs (nested Tensor): inputs for train.
@@ -111,6 +146,7 @@ class AlgorithmInterface(nn.Module):
               calculate loss or override ``update_with_gradient()`` to do
               customized training.
         """
+        raise NotImplementedError()
 
     def calc_loss(self, info):
         """Calculate the loss at each step for each sample.
@@ -124,6 +160,7 @@ class AlgorithmInterface(nn.Module):
                 batch. The shapes of the tensors in loss info should be
                 :math:`(T, B)`.
         """
+        raise NotImplementedError()
 
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         """This function is called on the experiences obtained from a replay
@@ -156,7 +193,7 @@ class AlgorithmInterface(nn.Module):
                 ``update_with_gradient()``.
             info (nest): information collected for training.
                 It is batched from each ``AlgStep.info`` returned by ``rollout_step()``
-                or ``train_step()``.
+                for on-policy training or ``train_step()`` for off-policy training.
         """
 
     def after_train_iter(self, root_inputs, rollout_info):

@@ -120,7 +120,7 @@ class EncodingAlgorithm(Algorithm):
             - state: rnn state from ``encoder``
             - info: LossInfo
         """
-        if self.is_on_policy():
+        if self.on_policy:
             return self.predict_step(time_step, state)
         else:
             return self.train_step(time_step, state, None)
