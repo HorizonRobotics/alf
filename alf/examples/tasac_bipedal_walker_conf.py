@@ -34,7 +34,6 @@ hidden_layers = (256, 256)
 # algorithm config
 actor_network_cls = partial(
     ActorDistributionNetwork,
-    input_preprocessors=alf.layers.Detach(),
     fc_layer_params=hidden_layers,
     continuous_projection_net_ctor=partial(
         NormalProjectionNetwork,
@@ -46,7 +45,7 @@ critic_network_cls = partial(
     CriticNetwork, joint_fc_layer_params=hidden_layers)
 
 alf.config(
-    'TasacAlgorithm',
+    'TasacAlgorithmBase',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     target_update_tau=0.005,
