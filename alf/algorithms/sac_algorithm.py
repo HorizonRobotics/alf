@@ -54,9 +54,8 @@ SacActorInfo = namedtuple(
 
 SacInfo = namedtuple(
     "SacInfo", [
-        "reward", "step_type", "discount", "rollout_action",
-        "rollout_action_distribution", "action_distribution", "actor",
-        "critic", "alpha", "log_pi"
+        "reward", "step_type", "discount", "action", "action_distribution",
+        "actor", "critic", "alpha", "log_pi"
     ],
     default_value=())
 
@@ -151,6 +150,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
                  reward_weights=None,
+                 epsilon_greedy=None,
                  use_entropy_reward=True,
                  calculate_priority=False,
                  use_parallel_network=False,
@@ -195,6 +195,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
                 Otherwise, the sum of the q values is used.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             use_entropy_reward (bool): whether to include entropy as reward
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
@@ -246,8 +251,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._use_parallel_network = use_parallel_network
         self._calculate_priority = calculate_priority
-        self._epsilon_greedy = alf.get_config_value(
-            'TrainerConfig.epsilon_greedy')
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -558,9 +565,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=action,
             state=new_state,
-            info=SacInfo(
-                rollout_action=action,
-                rollout_action_distribution=action_dist))
+            info=SacInfo(action=action, action_distribution=action_dist))
 
     def _compute_critics(self, critic_net, observation, action, critics_state):
         if self._act_type == ActionType.Continuous:
@@ -635,8 +640,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
                            rollout_info: SacInfo, action, action_distribution):
         critics, critics_state = self._compute_critics(
-            self._critic_networks, inputs.observation,
-            rollout_info.rollout_action, state.critics)
+            self._critic_networks, inputs.observation, rollout_info.action,
+            state.critics)
 
         target_critics, target_critics_state = self._compute_critics(
             self._target_critic_networks, inputs.observation, action,
@@ -649,13 +654,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critics = target_critics.min(dim=1)[0]
 
         if self._act_type == ActionType.Discrete:
-            critics = self._select_q_value(rollout_info.rollout_action,
-                                           critics)
+            critics = self._select_q_value(rollout_info.action, critics)
             target_critics = self._select_q_value(
                 action, target_critics.unsqueeze(dim=1))
         elif self._act_type == ActionType.Mixed:
-            critics = self._select_q_value(rollout_info.rollout_action[0],
-                                           critics)
+            critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
             target_critics = torch.sum(
                 discrete_act_dist.probs * target_critics, dim=-1)
@@ -710,9 +713,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
-            rollout_action=rollout_info.rollout_action,
-            rollout_action_distribution=rollout_info.
-            rollout_action_distribution,
+            action=rollout_info.action,
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,

@@ -13,8 +13,6 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
-import gin
-
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
@@ -45,6 +43,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
+                 epsilon_greedy=None,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,
@@ -62,6 +61,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
                 Algorithm.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -82,7 +86,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (torch.optim.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
-            """
+        """
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         value_network = value_network_ctor(input_tensor_spec=observation_spec)

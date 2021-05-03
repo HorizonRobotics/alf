@@ -98,8 +98,14 @@ class ActorCriticLoss(Loss):
         time dimension and the second dimesion is the batch dimension.
 
         Args:
-            experience (nest): experience used for training. All tensors are
-                time-major.
+            info (namedtuple): information for calculating loss. All tensors are
+                time-major. It should contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+                - action:
+                - action_distribution:
+                - value:
             train_info (nest): information collected for training. It is batched
                 from each ``AlgStep.info`` returned by ``rollout_step()``
                 (on-policy training) or ``train_step()`` (off-policy training).
@@ -137,7 +143,7 @@ class ActorCriticLoss(Loss):
         entropy_loss = ()
         if self._entropy_regularization is not None:
             entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
-                info.rollout_action_distribution, return_sum=False)
+                info.action_distribution, return_sum=False)
             entropy_loss = alf.nest.map_structure(lambda x: -x, entropy)
             loss -= self._entropy_regularization * sum(
                 alf.nest.flatten(entropy_for_gradient))

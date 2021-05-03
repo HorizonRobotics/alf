@@ -205,15 +205,14 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
         experience = replay_buffer.get_field(None,
                                              env_ids.unsqueeze(-1).cpu(),
                                              positions.unsqueeze(-1).cpu())
-        experience = experience._replace(
-            replay_buffer=replay_buffer,
-            batch_info=BatchInfo(env_ids=env_ids, positions=positions),
-            rollout_info_field='rollout_info')
-        processed_experience = muzero.preprocess_experience(experience)
+        batch_info = BatchInfo(
+            env_ids=env_ids, positions=positions, replay_buffer=replay_buffer)
+        processed_experience, processed_rollout_info = muzero.preprocess_experience(
+            experience, experience.rollout_info, batch_info)
         import pprint
-        pprint.pprint(processed_experience.rollout_info)
+        pprint.pprint(processed_rollout_info)
         alf.nest.map_structure(lambda x, y: self.assertEqual(x, y),
-                               processed_experience.rollout_info, expected)
+                               processed_rollout_info, expected)
 
     def get_exptected_info(self, sparse_reward):
         # yapf: disable

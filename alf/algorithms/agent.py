@@ -38,7 +38,7 @@ from alf.utils import math_ops
 from alf.tensor_specs import TensorSpec
 
 AgentState = namedtuple(
-    "AgentState", ["obs_trans", "rl", "irm", "goal_generator", "repr", "rw"],
+    "AgentState", ["rl", "irm", "goal_generator", "repr", "rw"],
     default_value=())
 
 AgentInfo = namedtuple(
@@ -287,8 +287,7 @@ class Agent(RLAlgorithm):
                 "`action_distribution`, which is required by "
                 "`enforce_entropy_target`")
             et_step = self._entropy_target_algorithm.rollout_step(
-                rl_step.info.action_distribution,
-                step_type=time_step.step_type)
+                (rl_step.info.action_distribution, time_step.step_type))
             info = info._replace(entropy_target=et_step.info)
 
         if self._reward_weight_algorithm:
@@ -341,8 +340,7 @@ class Agent(RLAlgorithm):
                 "`action_distribution`, which is required by "
                 "`enforce_entropy_target`")
             et_step = self._entropy_target_algorithm.train_step(
-                rl_step.info.action_distribution,
-                step_type=time_step.step_type)
+                (rl_step.info.action_distribution, time_step.step_type))
             info = info._replace(entropy_target=et_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
@@ -398,13 +396,13 @@ class Agent(RLAlgorithm):
             exp = exp._replace(reward=rewards['overall'])
 
         if self._representation_learner:
-            new_exp, repr_info = self._representation_learner.preprocess_experience(
+            exp, repr_info = self._representation_learner.preprocess_experience(
                 exp, rollout_info.repr, batch_info)
             rollout_info = rollout_info._replace(repr=repr_info)
 
-        new_exp, rl_info = self._rl_algorithm.preprocess_experience(
-            new_exp, rollout_info.rl, batch_info)
-        return new_exp, rollout_info._replace(rl=rl_info)
+        exp, rl_info = self._rl_algorithm.preprocess_experience(
+            exp, rollout_info.rl, batch_info)
+        return exp, rollout_info._replace(rl=rl_info)
 
     def summarize_rollout(self, experience):
         """First call ``RLAlgorithm.summarize_rollout()`` to summarize basic

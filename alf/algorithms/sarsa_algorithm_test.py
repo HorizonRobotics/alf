@@ -94,6 +94,7 @@ def _create_algorithm(env, sac, use_rnn, on_policy, priority_replay):
         action_spec=action_spec,
         env=env,
         config=config,
+        epsilon_greedy=0.1,
         on_policy=on_policy,
         ou_stddev=0.2,
         ou_damping=0.5,

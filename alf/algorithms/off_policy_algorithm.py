@@ -48,5 +48,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
             update_with_gradient(loss)
     """
 
-    def is_on_policy(self):
+    @property
+    def on_policy(self):
         return False

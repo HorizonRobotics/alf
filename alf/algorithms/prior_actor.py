@@ -13,7 +13,6 @@
 # limitations under the License.
 """Prior action policies for KL regularized RL."""
 
-import gin
 import numpy as np
 import torch
 import torch.distributions as td
@@ -22,7 +21,6 @@ from torch.distributions import Categorical, Independent, Uniform
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, TimeStep, StepType
-from alf.networks import Network
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
@@ -106,7 +104,7 @@ class MixtureSameFamily(td.Distribution):
         return torch.logsumexp(log_prob_x + log_mix_prob, dim=-1)  # [S, B]
 
 
-@gin.configurable
+@alf.configurable
 class SameActionPriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
@@ -218,7 +216,7 @@ class SameActionPriorActor(Algorithm):
         return self.predict_step(inputs, state)
 
 
-@gin.configurable
+@alf.configurable
 class UniformPriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
@@ -283,5 +281,5 @@ class UniformPriorActor(Algorithm):
     def rollout_step(self, inputs: TimeStep, state):
         return self.predict_step(inputs, state)
 
-    def train_step(self, inputs: TimeStep, state, unroll_info=()):
+    def train_step(self, inputs: TimeStep, state, rollout_info=None):
         return self.predict_step(inputs, state)

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl import logging
 from enum import Enum
 import functools
 
@@ -25,17 +24,16 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.sac_algorithm import _set_target_entropy
-from alf.data_structures import Experience, LossInfo, namedtuple, TimeStep
+from alf.data_structures import LossInfo, namedtuple, TimeStep
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import (common, dist_utils, losses, math_ops, spec_utils,
-                       tensor_utils, value_ops)
+from alf.utils import common, dist_utils, losses, math_ops, tensor_utils
 from alf.utils.conditional_ops import conditional_update
-from alf.utils.summary_utils import safe_mean_hist_summary, summarize_action
+from alf.utils.summary_utils import safe_mean_hist_summary
 
 TasacState = namedtuple("TasacState", ["repeats"], default_value=())
 
@@ -49,8 +47,10 @@ TasacActorInfo = namedtuple(
     default_value=())
 
 TasacInfo = namedtuple(
-    "TasacInfo",
-    ["action_distribution", "action", "actor", "critic", "alpha", "repeats"],
+    "TasacInfo", [
+        "reward", "step_type", "discount", "action", "action_distribution",
+        "rollout_beta", "beta", "actor", "critic", "alpha", "repeats"
+    ],
     default_value=())
 
 TasacLossInfo = namedtuple('TasacLossInfo', ('actor', 'critic', 'alpha'))
@@ -147,44 +147,40 @@ class TASACTDLoss(nn.Module):
         """
         return self._gamma.clone()
 
-    def forward(self, experience, value, target_value, train_b):
+    def forward(self, info, value, target_value):
         r"""Calculate the TD loss. The first dimension of all the tensors is the
         time dimension and the second dimesion is the batch dimension.
 
         Args:
-            experience (Experience): experience collected from a replay buffer.
+            info (TasacInfo): TasacInfo collected from train_step().
             value (torch.Tensor): the tensor for the value at each time
                 step. The loss is between this and the calculated return.
             target_value (torch.Tensor): the tensor for the value at each time
                 step. This is used to calculate return.
-            train_b (torch.Tensor): the :math:`\beta` policy actions :math:`\tilde{b}_n`
-                sampled from the current policy. These will be compared to the
-                rollout :math:`\beta` policy actions :math:`b_n`
-                (``experience.rollout_info.action[0]``) to decide the target
-                boostrapping steps.
 
         Returns:
             LossInfo: TD loss with the ``extra`` field same as the loss.
         """
-        if experience.reward.ndim == 3:
+        train_b = info.beta
+        if info.reward.ndim == 3:
             # [T, B, D] or [T, B, 1]
-            discounts = experience.discount.unsqueeze(-1) * self._gamma
+            discounts = info.discount.unsqueeze(-1) * self._gamma
         else:
             # [T, B]
-            discounts = experience.discount * self._gamma
+            discounts = info.discount * self._gamma
 
-        rollout_b = experience.rollout_info.action[0]
+        rollout_b = info.beta
         # td return till the first action switching
         b = (rollout_b | train_b).to(torch.bool)
         # b at step 0 doesn't affect the bootstrapping of any step
         b[0, :] = False
 
         # combine is_last and b
-        is_lasts = (experience.step_type == StepType.LAST)
+        is_lasts = (info.step_type == StepType.LAST)
         is_lasts |= b
 
         returns = _discounted_return(
-            rewards=experience.reward,
+            rewards=info.reward,
             values=target_value,
             is_lasts=is_lasts,
             discounts=discounts)
@@ -199,7 +195,7 @@ class TASACTDLoss(nn.Module):
             loss = loss.mean(dim=-1)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = experience.step_type[:-1] != StepType.LAST
+            mask = info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
 
                 def _summarize(v, r, td, suffix):
@@ -249,6 +245,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  num_critic_replicas=2,
+                 epsilon_greedy=None,
                  env=None,
                  config: TrainerConfig = None,
                  target_update_tau=0.05,
@@ -274,6 +271,11 @@ class TasacAlgorithm(OffPolicyAlgorithm):
             critic_network_cls (Callable): is used to construct critic network.
                 for estimating ``Q(s,a)`` given that the action is continuous.
             num_critic_replicas (int): number of critics to be used. Default is 2.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -309,6 +311,10 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                 "Only support a single continuous action!")
 
         self._num_critic_replicas = num_critic_replicas
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         critic_networks, actor_network = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -401,7 +407,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
         return critic_networks, actor_network
 
     def _predict_action(self,
-                        time_step_or_exp,
+                        time_step,
                         state,
                         epsilon_greedy=None,
                         mode=Mode.rollout):
@@ -411,8 +417,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
         # Its value is determined by the rollout b. To use the ``prev_action``
         # from ``train_step()``, we need to store it in a train_state.
 
-        observation, b0_action = (time_step_or_exp.observation,
-                                  time_step_or_exp.prev_action)
+        observation, b0_action = (time_step.observation, time_step.prev_action)
 
         beta_dist, b, action_dist, action, q_values2 = self._compute_beta_and_action(
             observation, b0_action, epsilon_greedy, mode)
@@ -468,31 +473,28 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                        (beta_entropy - self._target_entropy[0]).detach())
         return alpha_loss
 
-    def _calc_critic_loss(self, experience, train_info: TasacInfo):
+    def _calc_critic_loss(self, info: TasacInfo):
         # We need to put entropy reward in ``experience.reward`` instead of
         # ``target_critics`` because in the case of multi-step TD learning,
         # the entropy should also appear in intermediate steps!
         if self._use_entropy_reward:
             with torch.no_grad():
-                actor_extra = train_info.actor.extra
+                actor_extra = info.actor.extra
                 beta_alpha = self._log_alpha[0].exp()
                 alpha = self._log_alpha[1].exp()
                 entropy_reward = (beta_alpha * actor_extra.beta_entropy +
                                   alpha * actor_extra.action_entropy)
                 gamma = self._critic_losses[0].gamma
-                experience = experience._replace(
-                    reward=experience.reward + entropy_reward * gamma)
+                info = info._replace(
+                    reward=info.reward + entropy_reward * gamma)
 
-        critic_info = train_info.critic
+        critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
             kwargs = dict(
-                experience=experience,
+                info=info,
                 value=critic_info.critics[:, :, i, ...],
                 target_value=critic_info.target_critic)
-            if isinstance(l, TASACTDLoss):
-                kwargs["train_b"] = train_info.action[0]
-
             critic_losses.append(l(**kwargs).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
@@ -564,18 +566,18 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                 action_entropy=action_entropy,
                 beta_entropy=beta_entropy))
 
-    def _critic_train_step(self, exp: Experience, b0_action, action, beta_dist,
-                           action_dist, beta_entropy, action_entropy):
+    def _critic_train_step(self, inputs: TimeStep, rollout_action, b0_action,
+                           action, beta_dist):
 
         with torch.no_grad():
             target_q_0 = self._compute_critics(
                 self._target_critic_networks,
-                exp.observation,
+                inputs.observation,
                 b0_action,
                 apply_reward_weights=False)
             target_q_1 = self._compute_critics(
                 self._target_critic_networks,
-                exp.observation,
+                inputs.observation,
                 action,
                 apply_reward_weights=False)
 
@@ -588,29 +590,33 @@ class TasacAlgorithm(OffPolicyAlgorithm):
 
         critics = self._compute_critics(
             self._critic_networks,
-            exp.observation,
-            exp.action,
+            inputs.observation,
+            rollout_action,
             replica_min=False,
             apply_reward_weights=False)
         return TasacCriticInfo(critics=critics, target_critic=target_critic)
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy=0.):
+    def predict_step(self, inputs: TimeStep, state):
         action_dists, actions, new_action, new_state, _ = self._predict_action(
-            time_step, state, epsilon_greedy=epsilon_greedy, mode=Mode.predict)
+            inputs,
+            state,
+            epsilon_greedy=self._epsilon_greedy,
+            mode=Mode.predict)
         return AlgStep(
             output=new_action,
             state=new_state,
             info=TasacInfo(action_distribution=action_dists, action=actions))
 
-    def rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, inputs: TimeStep, state):
         action_dists, actions, new_action, new_state, _ = self._predict_action(
-            time_step, state, mode=Mode.rollout)
+            inputs, state, mode=Mode.rollout)
         return AlgStep(
             output=new_action,
             state=new_state,
             info=TasacInfo(
+                action=new_action,
                 action_distribution=action_dists,
-                action=actions,
+                beta=actions[0],
                 repeats=state.repeats))
 
     def summarize_rollout(self, experience):
@@ -622,12 +628,12 @@ class TasacAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("rollout_repeats/mean",
                                    torch.mean(repeats.to(torch.float32)))
 
-    def train_step(self, exp: Experience, state):
+    def train_step(self, inputs: TimeStep, state, rollout_info: TasacInfo):
         self._training_started.fill_(True)
 
         (action_distributions, actions, new_action, new_state,
          q_values2) = self._predict_action(
-             exp, state=state, mode=Mode.train)
+             inputs, state=state, mode=Mode.train)
 
         beta_dist, action_dist = action_distributions
         b0_action, action = actions[1:]
@@ -638,38 +644,41 @@ class TasacAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = self._actor_train_step(action, action_entropy, beta_dist,
                                             beta_entropy, q_values2)
-        critic_info = self._critic_train_step(exp, b0_action, action,
-                                              beta_dist, action_dist,
-                                              beta_entropy, action_entropy)
+        critic_info = self._critic_train_step(inputs, rollout_info.action,
+                                              b0_action, action, beta_dist)
         alpha_loss = self._alpha_train_step(beta_entropy, action_entropy)
 
         info = TasacInfo(
+            reward=inputs.reward,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            rollout_beta=rollout_info.beta,
             action_distribution=action_distributions,
             actor=actor_loss,
             critic=critic_info,
-            action=actions,
+            beta=actions[0],
             alpha=alpha_loss,
             repeats=state.repeats)
         return AlgStep(output=new_action, state=new_state, info=info)
 
-    def after_update(self, experience, train_info: TasacInfo):
+    def after_update(self, root_inputs, info: TasacInfo):
         self._update_target()
 
-    def calc_loss(self, experience, train_info: TasacInfo):
-        critic_loss = self._calc_critic_loss(experience, train_info)
-        alpha_loss = train_info.alpha
-        actor_loss = train_info.actor
+    def calc_loss(self, info: TasacInfo):
+        critic_loss = self._calc_critic_loss(info)
+        alpha_loss = info.alpha
+        actor_loss = info.actor
         if self._debug_summaries:
             with alf.summary.scope(self._name):
                 alf.summary.scalar("alpha/beta", self._log_alpha[0].exp())
                 alf.summary.scalar("alpha/action", self._log_alpha[1].exp())
                 alf.summary.scalar("resample_advantage",
                                    torch.mean(actor_loss.extra.adv))
-                p_beta0 = train_info.action_distribution[0].probs[..., 0]
+                p_beta0 = info.action_distribution[0].probs[..., 0]
                 alf.summary.histogram("P_beta_0/value", p_beta0)
                 alf.summary.scalar("P_beta_0/mean", p_beta0.mean())
                 alf.summary.scalar("P_beta_0/std", p_beta0.std())
-                repeats = train_info.repeats
+                repeats = info.repeats
                 alf.summary.scalar("train_repeats/mean",
                                    torch.mean(repeats.to(torch.float32)))
                 alf.summary.histogram("train_repeats/value",

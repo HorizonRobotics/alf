@@ -51,7 +51,7 @@ class ICMAlgorithmTest(alf.test.TestCase):
 
         # the inverse net should predict a uniform distribution
         self.assertTensorClose(
-            torch.sum(alg_step.info.loss.extra['inverse_loss']),
+            torch.sum(alg_step.info.inverse_loss),
             torch.as_tensor(
                 math.log(action_spec.maximum - action_spec.minimum + 1)),
             epsilon=1e-4)
@@ -70,8 +70,7 @@ class ICMAlgorithmTest(alf.test.TestCase):
 
         # the inverse net should predict a zero action vector
         self.assertTensorClose(
-            torch.sum(alg_step.info.loss.extra['inverse_loss']),
-            torch.as_tensor(0))
+            torch.sum(alg_step.info.inverse_loss), torch.as_tensor(0))
 
 
 if __name__ == "__main__":

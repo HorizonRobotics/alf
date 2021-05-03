@@ -14,24 +14,19 @@
 """Model-based RL Algorithm."""
 
 from functools import partial
-import numpy as np
-import gin
 
 import torch
-import torch.nn as nn
-import torch.distributions as td
 from typing import Callable
 
+import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  TimeStep)
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils, tensor_utils
 from alf.utils.math_ops import add_ignore_empty
 
 from alf.algorithms.dynamics_learning_algorithm import DynamicsLearningAlgorithm
@@ -45,7 +40,7 @@ MbrlInfo = namedtuple(
     "MbrlInfo", ["dynamics", "reward", "planner"], default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class MbrlAlgorithm(OffPolicyAlgorithm):
     """Model-based RL algorithm
     """
@@ -59,6 +54,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  planner_module: PlanAlgorithm,
                  reward_spec=TensorSpec(()),
                  particles_per_replica=1,
+                 epsilon_greedy=None,
                  env=None,
                  config: TrainerConfig = None,
                  dynamics_optimizer=None,
@@ -89,6 +85,11 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             particles_per_replica (int): number of particles for each replica
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -107,6 +108,10 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             if reward_module is not None else (),
             planner=planner_module.train_state_spec
             if planner_module is not None else ())
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         super().__init__(
             feature_spec,
@@ -281,8 +286,9 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 dynamics=dynamics_state, planner=planner_state),
             info=MbrlInfo())
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy=0.0):
-        return self._predict_with_planning(time_step, state, epsilon_greedy)
+    def predict_step(self, time_step: TimeStep, state):
+        return self._predict_with_planning(
+            time_step, state, epsilon_greedy=self._epsilon_greedy)
 
     def rollout_step(self, time_step: TimeStep, state):
         # note epsilon_greedy
@@ -290,11 +296,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         return self._predict_with_planning(
             time_step, state, epsilon_greedy=0.0)
 
-    def train_step(self, exp: Experience, state: MbrlState):
-        action = exp.action
-        dynamics_step = self._dynamics_module.train_step(exp, state.dynamics)
-        reward_step = self._reward_module.train_step(exp, state.reward)
-        plan_step = self._planner_module.train_step(exp, state.planner)
+    def train_step(self, inputs: TimeStep, state: MbrlState,
+                   rollout_info=None):
+        dynamics_step = self._dynamics_module.train_step(
+            inputs, state.dynamics)
+        reward_step = self._reward_module.train_step(inputs, state.reward)
+        plan_step = self._planner_module.train_step(inputs, state.planner)
         state = MbrlState(
             dynamics=dynamics_step.state,
             reward=reward_step.state,
@@ -303,21 +310,21 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             dynamics=dynamics_step.info,
             reward=reward_step.info,
             planner=plan_step.info)
-        return AlgStep(action, state, info)
+        return AlgStep((), state, info)
 
-    def calc_loss(self, experience, training_info):
+    def calc_loss(self, training_info):
         loss_dynamics = self._dynamics_module.calc_loss(training_info.dynamics)
         loss = loss_dynamics.loss
         loss = add_ignore_empty(loss, training_info.reward)
         loss = add_ignore_empty(loss, training_info.planner)
         return LossInfo(loss=loss, scalar_loss=loss_dynamics.scalar_loss)
 
-    def after_update(self, experience, training_info):
+    def after_update(self, root_inputs, training_info):
         self._planner_module.after_update(
-            training_info._replace(planner=training_info.planner))
+            root_inputs, training_info._replace(planner=training_info.planner))
 
 
-@gin.configurable
+@alf.configurable
 class LatentMbrlAlgorithm(MbrlAlgorithm):
     """Model-based RL algorithm in a latent space.
     """
@@ -446,10 +453,10 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
 
         return AlgStep(output=action, state=state, info=MbrlInfo())
 
-    def train_step(self, exp: Experience, state: MbrlState):
+    def train_step(self, exp: Experience, state: MbrlState, rollout_info=None):
         # overwrite the behavior of base class ``train_step``
         return AlgStep(output=(), state=state, info=MbrlInfo())
 
-    def calc_loss(self, experience, training_info: MbrlInfo):
+    def calc_loss(self, training_info: MbrlInfo):
         # overwrite the behavior of base class ``calc_loss``
         return LossInfo()

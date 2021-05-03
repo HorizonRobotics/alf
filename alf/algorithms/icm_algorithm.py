@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-
 import torch
 
 import alf
@@ -28,7 +26,7 @@ from alf.utils.normalizers import ScalarAdaptiveNormalizer, AdaptiveNormalizer
 ICMInfo = namedtuple("ICMInfo", ["step_type", "forward_loss", "inverse_loss"])
 
 
-@gin.configurable
+@alf.configurable
 class ICMAlgorithm(Algorithm):
     """Intrinsic Curiosity Module
 
@@ -211,11 +209,14 @@ class ICMAlgorithm(Algorithm):
                 forward_loss=forward_loss,
                 inverse_loss=inverse_loss))
 
-    def rollout_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state)
+    def predict_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
 
-    def train_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state, calc_rewards=False)
+    def rollout_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
+
+    def train_step(self, inputs: TimeStep, state, rollout_info=None):
+        return self._step(inputs, state, calc_rewards=False)
 
     def calc_loss(self, info: ICMInfo):
         mask = (info.step_type != StepType.FIRST).to(torch.float32)

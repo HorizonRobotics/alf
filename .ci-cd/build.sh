@@ -48,6 +48,7 @@ function test() {
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.agent_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.containers_test \
         alf.algorithms.data_transformer_test \
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
@@ -56,6 +57,7 @@ function test() {
         alf.algorithms.hypernetwork_algorithm_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
+        alf.algorithms.lagrangian_reward_weight_algorithm_test \
         alf.algorithms.mcts_algorithm_test \
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \

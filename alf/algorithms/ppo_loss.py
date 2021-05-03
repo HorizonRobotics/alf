@@ -17,11 +17,8 @@ import torch
 
 import alf
 
-from alf.data_structures import LossInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import common
 from alf.utils import value_ops
 
 
@@ -102,7 +99,7 @@ class PPOLoss(ActorCriticLoss):
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
             action_distribution=info.action_distribution,
             collect_action_distribution=info.rollout_action_distribution,
-            action=info.rollout_action,
+            action=info.action,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,

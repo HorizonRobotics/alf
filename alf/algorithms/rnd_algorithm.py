@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-
 import torch
 
 import alf
-from alf.algorithms.icm_algorithm import ICMInfo
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.networks import EncodingNetwork
@@ -27,7 +24,7 @@ from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.normalizers import AdaptiveNormalizer
 
 
-@gin.configurable
+@alf.configurable
 class RNDAlgorithm(Algorithm):
     """Exploration by Random Network Distillation, Burda et al. 2019.
 
@@ -153,14 +150,16 @@ class RNDAlgorithm(Algorithm):
                 intrinsic_reward = self._reward_normalizer.normalize(
                     intrinsic_reward, clip_value=self._reward_clip_value)
 
-        return AlgStep(
-            output=intrinsic_reward, info=ICMInfo(loss=LossInfo(loss=loss)))
+        return AlgStep(output=intrinsic_reward, info=loss)
 
-    def rollout_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state)
+    def predict_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
 
-    def train_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state, calc_rewards=False)
+    def rollout_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
 
-    def calc_loss(self, info: ICMInfo):
-        return LossInfo(scalar_loss=torch.mean(info.loss.loss))
+    def train_step(self, inputs: TimeStep, state, rollout_info=None):
+        return self._step(inputs, state, calc_rewards=False)
+
+    def calc_loss(self, info):
+        return LossInfo(scalar_loss=info.mean())

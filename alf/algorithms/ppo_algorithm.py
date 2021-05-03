@@ -13,18 +13,17 @@
 # limitations under the License.
 """PPO algorithm."""
 
-import gin
 import torch
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.data_structures import namedtuple, TimeStep
-from alf.utils import common, value_ops
+from alf.utils import value_ops
 
 PPOInfo = namedtuple(
     "PPOInfo", [
-        "step_type", "discount", "reward", "rollout_action",
+        "step_type", "discount", "reward", "action",
         "rollout_action_distribution", "returns", "advantages",
         "action_distribution", "value"
     ],
@@ -41,7 +40,8 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     `baselines.ppo2`.
     """
 
-    def is_on_policy(self):
+    @property
+    def on_policy(self):
         return False
 
     def train_step(self, inputs: TimeStep, state, rollout_info):
@@ -73,5 +73,5 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         return root_inputs, PPOInfo(
             rollout_action_distribution=rollout_info.action_distribution,
             returns=returns,
-            rollout_action=rollout_info.action,
+            action=rollout_info.action,
             advantages=advantages)

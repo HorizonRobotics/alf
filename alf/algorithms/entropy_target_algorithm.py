@@ -14,8 +14,6 @@
 """An algorithm for adjusting entropy regularization strength."""
 from absl import logging
 import copy
-import gin
-import math
 import numpy as np
 import torch
 from typing import Callable
@@ -154,7 +152,7 @@ class EntropyTargetAlgorithm(Algorithm):
         self._slow_update_rate = torch.tensor(slow_update_rate)
         self._fast_update_rate = torch.tensor(fast_update_rate)
 
-    def rollout_step(self, distribution, step_type, on_policy_training):
+    def rollout_step(self, distribution_and_step_type, state=None):
         """Rollout step.
 
         Args:
@@ -167,12 +165,15 @@ class EntropyTargetAlgorithm(Algorithm):
             AlgStep: ``info`` field is ``LossInfo``, other fields are empty. All
             fields are empty If ``on_policy_training=False``.
         """
-        if on_policy_training:
-            return self.train_step(distribution, step_type)
+        if self.on_policy:
+            return self.train_step(distribution_and_step_type)
         else:
             return AlgStep()
 
-    def train_step(self, distribution, step_type):
+    def train_step(self,
+                   distribution_and_step_type,
+                   state=None,
+                   rollout_info=None):
         """Train step.
 
         Args:
@@ -182,6 +183,7 @@ class EntropyTargetAlgorithm(Algorithm):
         Returns:
             AlgStep: ``info`` field is ``LossInfo``, other fields are empty.
         """
+        distribution, step_type = distribution_and_step_type
         entropy, entropy_for_gradient = entropy_with_fallback(distribution)
         return AlgStep(
             output=(),
@@ -395,15 +397,19 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         if alf.nest.is_nested(algs):
             self._nested_algs = alf.nest.utils.make_nested_module(algs)
 
-    def rollout_step(self, distribution, step_type):
+    def rollout_step(self, distribution_and_step_type, state):
         if self.on_policy:
-            return self.train_step(distribution, step_type)
+            return self.train_step(distribution_and_step_type)
         else:
             return AlgStep()
 
-    def train_step(self, distribution, step_type):
+    def train_step(self,
+                   distribution_and_step_type,
+                   state=None,
+                   rollout_info=None):
+        distribution, step_type = distribution_and_step_type
         infos = alf.nest.map_structure(
-            lambda alg, dist: alg.train_step(dist, step_type).info._replace(
+            lambda alg, dist: alg.train_step((dist, step_type)).info._replace(
                 step_type=()), self._algs, distribution)
         return AlgStep(output=(), state=(), info=(step_type, infos))
 

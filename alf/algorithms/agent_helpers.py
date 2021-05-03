@@ -56,6 +56,7 @@ class AgentHelper(object):
                 ``AgentState`` or ``AgentInfo``.
         """
         self._alg_to_field_mapping[alg] = alg_field
+        alg.set_path(alg_field)
         if alg_field in self._train_state_spec._fields:
             self._train_state_spec = self._train_state_spec._replace(
                 **{alg_field: alg.train_state_spec})

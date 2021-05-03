@@ -1188,7 +1188,6 @@ class Algorithm(AlgorithmInterface):
         """Train using experience."""
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
-        experience = self._add_batch_info(experience, batch_info)
         if self._exp_replayer_type != "one_time":
             # The experience put in one_time replayer is already transformed
             # in unroll().
@@ -1201,7 +1200,7 @@ class Algorithm(AlgorithmInterface):
             prev_action=experience.prev_action,
             env_id=experience.env_id)
         time_step, rollout_info = self.preprocess_experience(
-            time_step, experience.rollout_info, experience.batch_info)
+            time_step, experience.rollout_info, batch_info)
         experience = experience._replace(
             step_type=time_step.step_type,
             reward=time_step.reward,
@@ -1210,7 +1209,6 @@ class Algorithm(AlgorithmInterface):
             prev_action=time_step.prev_action,
             env_id=time_step.env_id,
             rollout_info=rollout_info)
-        experience = self._clear_batch_info(experience)
         if self._processed_experience_spec is None:
             self._processed_experience_spec = dist_utils.extract_spec(
                 experience, from_dim=2)
@@ -1291,7 +1289,8 @@ class Algorithm(AlgorithmInterface):
                                                     experience)
                 if batch_info is not None:
                     batch_info = alf.nest.map_structure(
-                        lambda x: x[indices], batch_info)
+                        lambda x: x[indices]
+                        if isinstance(x, torch.Tensor) else x, batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
                     alf.summary.increment_global_counter()
@@ -1305,8 +1304,8 @@ class Algorithm(AlgorithmInterface):
                     experience)
                 if batch_info:
                     binfo = alf.nest.map_structure(
-                        lambda x: x[b:min(batch_size, b + mini_batch_size)],
-                        batch_info)
+                        lambda x: x[b:min(batch_size, b + mini_batch_size)]
+                        if isinstance(x, torch.Tensor) else x, batch_info)
                 else:
                     binfo = None
                 batch = _make_time_major(batch)
@@ -1397,17 +1396,6 @@ class Algorithm(AlgorithmInterface):
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
-    def _add_batch_info(self, experience, batch_info):
-        if batch_info is not None:
-            experience = experience._replace(
-                batch_info=batch_info,
-                replay_buffer=self._exp_replayer.replay_buffer)
-        return experience._replace(rollout_info_field='rollout_info')
-
-    def _clear_batch_info(self, experience):
-        return experience._replace(
-            batch_info=(), replay_buffer=(), rollout_info_field=())
-
     def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)
         if self._config.temporally_independent_train_step or length == 1:
@@ -1418,7 +1406,6 @@ class Algorithm(AlgorithmInterface):
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
 
-        experience = self._add_batch_info(experience, batch_info)
         loss_info = self.calc_loss(train_info)
         if loss_info.priority is not ():
             priority = (loss_info.priority**self._config.priority_replay_alpha

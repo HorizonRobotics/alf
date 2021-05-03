@@ -43,7 +43,8 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
         update_with_gradient(loss)
     """
 
-    def is_on_policy(self):
+    @property
+    def on_policy(self):
         return True
 
     # Implement train_step() to allow off-policy training for an

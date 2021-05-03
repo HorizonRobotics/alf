@@ -15,21 +15,16 @@
 
 from absl import logging
 import copy
-import gin
 import numpy as np
 import torch
 import torch.nn as nn
 
 import alf
-from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
-                                 LossInfo, namedtuple, StepType, TimeStep)
-from alf.networks import Network
-from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
-from alf.utils.summary_utils import safe_mean_hist_summary
+from alf.data_structures import AlgStep, LossInfo, namedtuple, StepType, TimeStep
+from alf.utils import common, dist_utils, losses, math_ops, tensor_utils
 import alf.nest.utils as nest_utils
 from alf.tensor_specs import TensorSpec
 
@@ -41,8 +36,8 @@ SarsaState = namedtuple(
     default_value=())
 SarsaInfo = namedtuple(
     'SarsaInfo', [
-        'action_distribution', 'actor_loss', 'critics', 'target_critics',
-        'neg_entropy'
+        'reward', 'step_type', 'discount', 'action_distribution', 'actor_loss',
+        'critics', 'target_critics', 'neg_entropy'
     ],
     default_value=())
 SarsaLossInfo = namedtuple('SarsaLossInfo',
@@ -51,7 +46,7 @@ SarsaLossInfo = namedtuple('SarsaLossInfo',
 nest_map = alf.nest.map_structure
 
 
-@gin.configurable
+@alf.configurable
 class SarsaAlgorithm(RLAlgorithm):
     r"""SARSA Algorithm.
 
@@ -80,7 +75,9 @@ class SarsaAlgorithm(RLAlgorithm):
                  config=None,
                  critic_loss_cls=OneStepTDLoss,
                  target_entropy=None,
+                 epsilon_greedy=None,
                  use_entropy_reward=False,
+                 calculate_priority=False,
                  initial_alpha=1.0,
                  ou_stddev=0.2,
                  ou_damping=0.15,
@@ -132,8 +129,15 @@ class SarsaAlgorithm(RLAlgorithm):
                 callable function, then it will be called on the action spec to
                 calculate a target entropy. If ``None``, a default entropy will
                 be calculated.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             use_entropy_reward (bool): If ``True``, will use alpha*entropy as
                 additional reward.
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             ou_stddev (float): Only used for DDPG. Standard deviation for the
                 Ornstein-Uhlenbeck (OU) noise added in the default collect policy.
             ou_damping (float): Only used for DDPG. Damping factor for the OU
@@ -158,6 +162,11 @@ class SarsaAlgorithm(RLAlgorithm):
             debug_summaries (bool): ``True`` if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        self._calculate_priority = calculate_priority
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec))
         actor_network = actor_network_ctor(
@@ -295,61 +304,65 @@ class SarsaAlgorithm(RLAlgorithm):
             action = nest_map(_sample, action_distribution, noise)
         return action_distribution, action, actor_state, noise_state
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, inputs: TimeStep, state: SarsaState):
         action_distribution, action, actor_state, noise_state = self._get_action(
-            self._rollout_actor_network, time_step, state, epsilon_greedy)
+            self._rollout_actor_network, inputs, state, self._epsilon_greedy)
         return AlgStep(
             output=action,
             state=SarsaState(
                 noise=noise_state,
                 actor=actor_state,
-                prev_observation=time_step.observation,
-                prev_step_type=time_step.step_type),
+                prev_observation=inputs.observation,
+                prev_step_type=inputs.step_type),
             info=SarsaInfo(action_distribution=action_distribution))
 
     def convert_train_state_to_predict_state(self, state: SarsaState):
         return state._replace(critics=(), target_critics=())
 
-    def rollout_step(self, time_step: TimeStep, state: SarsaState):
+    def rollout_step(self, inputs: TimeStep, state: SarsaState):
         if self.on_policy:
-            return self._train_step(time_step, state)
+            return self._train_step(inputs, state)
 
         if not self._is_rnn:
             critic_states = state.critics
         else:
             _, critic_states = self._critic_networks(
-                (state.prev_observation, time_step.prev_action), state.critics)
+                (state.prev_observation, inputs.prev_action), state.critics)
 
-            not_first_step = time_step.step_type != StepType.FIRST
+            not_first_step = inputs.step_type != StepType.FIRST
 
             critic_states = common.reset_state_if_necessary(
                 state.critics, critic_states, not_first_step)
 
         action_distribution, action, actor_state, noise_state = self._get_action(
-            self._rollout_actor_network, time_step, state)
+            self._rollout_actor_network, inputs, state)
 
         if not self._is_rnn:
             target_critic_states = state.target_critics
         else:
             _, target_critic_states = self._target_critic_networks(
-                (time_step.observation, action), state.target_critics)
+                (inputs.observation, action), state.target_critics)
 
         info = SarsaInfo(action_distribution=action_distribution)
 
         rl_state = SarsaState(
             noise=noise_state,
-            prev_observation=time_step.observation,
-            prev_step_type=time_step.step_type,
+            prev_observation=inputs.observation,
+            prev_step_type=inputs.step_type,
             actor=actor_state,
             critics=critic_states,
             target_critics=target_critic_states)
 
         return AlgStep(action, rl_state, info)
 
-    def train_step(self, time_step: Experience, state: SarsaState):
-        return self._train_step(experience_to_time_step(time_step), state)
+    def train_step(self, inputs: TimeStep, state: SarsaState, rollout_info):
+        return self._train_step(inputs, state)
 
-    def _train_step(self, time_step: TimeStep, state: SarsaState):
+    def _train_step(
+            self,
+            time_step: TimeStep,
+            state: SarsaState,
+    ):
         not_first_step = time_step.step_type != StepType.FIRST
         prev_critics, critic_states = self._critic_networks(
             (state.prev_observation, time_step.prev_action), state.critics)
@@ -385,6 +398,9 @@ class SarsaAlgorithm(RLAlgorithm):
             (time_step.observation, action), state.target_critics)
 
         info = SarsaInfo(
+            reward=time_step.reward,
+            step_type=time_step.step_type,
+            discount=time_step.discount,
             action_distribution=action_distribution,
             actor_loss=actor_loss,
             critics=prev_critics,
@@ -401,7 +417,7 @@ class SarsaAlgorithm(RLAlgorithm):
 
         return AlgStep(action, rl_state, info)
 
-    def calc_loss(self, experience, info: SarsaInfo):
+    def calc_loss(self, info: SarsaInfo):
         loss = info.actor_loss
         if self._log_alpha is not None:
             alpha = self._log_alpha.exp().detach()
@@ -415,22 +431,21 @@ class SarsaAlgorithm(RLAlgorithm):
         # And info.target_critics is the critics for the current step. So we
         # need to rearrange ``experience``` to match the requirement for
         # `OneStepTDLoss`.
-        step_type0 = experience.step_type[0]
+        step_type0 = info.step_type[0]
         step_type0 = torch.where(step_type0 == StepType.LAST,
                                  torch.tensor(StepType.MID), step_type0)
         step_type0 = torch.where(step_type0 == StepType.FIRST,
                                  torch.tensor(StepType.LAST), step_type0)
 
         gamma = self._critic_losses[0].gamma
-        reward = experience.reward
+        reward = info.reward
         if self._use_entropy_reward:
             reward -= gamma * (
                 self._log_alpha.exp() * info.neg_entropy).detach()
-        shifted_experience = experience._replace(
-            discount=tensor_utils.tensor_prepend_zero(experience.discount),
+        shifted_experience = info._replace(
+            discount=tensor_utils.tensor_prepend_zero(info.discount),
             reward=tensor_utils.tensor_prepend_zero(reward),
-            step_type=tensor_utils.tensor_prepend(experience.step_type,
-                                                  step_type0))
+            step_type=tensor_utils.tensor_prepend(info.step_type, step_type0))
         critic_losses = []
         for i in range(self._num_critic_replicas):
             critic = tensor_utils.tensor_extend_zero(info.critics[..., i])
@@ -442,11 +457,9 @@ class SarsaAlgorithm(RLAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        not_first_step = (experience.step_type != StepType.FIRST).to(
-            torch.float32)
+        not_first_step = (info.step_type != StepType.FIRST).to(torch.float32)
         critic_loss = critic_loss * not_first_step
-        if (experience.batch_info != ()
-                and experience.batch_info.importance_weights != ()):
+        if self._calculate_priority:
             valid_n = torch.clamp(not_first_step.sum(dim=0), min=1.0)
             priority = (critic_loss.sum(dim=0) / valid_n).sqrt()
         else:
@@ -472,5 +485,5 @@ class SarsaAlgorithm(RLAlgorithm):
                 alpha=alpha_loss,
                 neg_entropy=info.neg_entropy))
 
-    def after_update(self, experience, train_info: SarsaInfo):
+    def after_update(self, root_inputs, info: SarsaInfo):
         self._update_target()
