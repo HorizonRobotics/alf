@@ -40,11 +40,12 @@ def is_available():
     return social_bot is not None
 
 
-def transform_reward(reward):
+@gin.configurable
+def transform_reward(reward, reward_cap=1.):
     goal_reward = reward
     if isinstance(reward, (np.ndarray, list)):
         goal_reward = reward[0]
-    goal_reward = goal_reward >= 0
+    goal_reward = (goal_reward >= 0) * reward_cap
     if isinstance(reward, (np.ndarray, list)):
         reward[0] = goal_reward
     else:

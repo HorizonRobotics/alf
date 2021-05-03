@@ -100,6 +100,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  replan_value=False,
                  bump_target_value=False,
                  replan_target_value=False,
+                 plan_value_learning_rate=1.,
                  value_clipping=False,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
@@ -164,6 +165,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_value (Q_{s+1}).
             replan_target_value (bool): whether to use replanned value to improve
                 target value.
+            plan_value_learning_rate (float): learning rate of using plan value
+                to update q value.
             value_clipping (bool): whether to clip target value to 0-1.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
@@ -295,6 +298,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._replan_value = replan_value
         self._bump_target_value = bump_target_value
         self._replan_target_value = replan_target_value
+        self._plan_value_learning_rate = plan_value_learning_rate
         self._value_clipping = value_clipping
         self._dqda_clipping = dqda_clipping
 
@@ -407,25 +411,29 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             if self._goal_generator.sparse_reward:
                 plan_values = torch.exp(plan_values)
 
-            goal_target_value = target_q_values
-            # potentially multi-dim value
-            if len(target_q_values.shape) > 1:
-                goal_target_value = target_q_values[:, 0]
-            if self._value_clipping:
-                goal_target_value = torch.clamp(goal_target_value, 0., 1.)
-            alf.summary.scalar("planner/train_value_plan",
-                               torch.mean(plan_values))
-            alf.summary.scalar("planner/train_value_target_q",
-                               torch.mean(goal_target_value))
-            alf.summary.scalar(
-                "planner/train_rate_plan_gt_target_q",
-                torch.mean((plan_values > goal_target_value).float()))
-            final_target_value = torch.max(goal_target_value, plan_values)
-            assert torch.all(~torch.isnan(final_target_value))
-            if len(target_q_values.shape) > 1:
-                target_q_values[:, 0] = final_target_value
-            else:
-                target_q_values = final_target_value
+            if self._bump_target_value or self._replan_target_value:
+                goal_target_value = target_q_values
+                # potentially multi-dim value
+                if len(target_q_values.shape) > 1:
+                    goal_target_value = target_q_values[:, 0]
+                if self._value_clipping:
+                    goal_target_value = torch.clamp(goal_target_value, 0., 1.)
+                alf.summary.scalar("planner/train_value_plan",
+                                   torch.mean(plan_values))
+                alf.summary.scalar("planner/train_value_target_q",
+                                   torch.mean(goal_target_value))
+                alf.summary.scalar(
+                    "planner/train_rate_plan_gt_target_q",
+                    torch.mean((plan_values > goal_target_value).float()))
+                plan_value = (
+                    plan_values - goal_target_value
+                ) * self._plan_value_learning_rate + goal_target_value
+                final_target_value = torch.max(plan_value, goal_target_value)
+                assert torch.all(~torch.isnan(final_target_value))
+                if len(target_q_values.shape) > 1:
+                    target_q_values[:, 0] = final_target_value
+                else:
+                    target_q_values = final_target_value
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
@@ -449,6 +457,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             _plan_values = plan_values.detach().reshape(batch_size, 1).expand(
                 batch_size, self._num_critic_replicas)
             _plan_q = plan_q_values[:, :, 0]
+            alf.summary.scalar("planner/train_value_i_plan",
+                               torch.mean(_plan_values))
+            alf.summary.scalar("planner/train_value_i_q", torch.mean(_plan_q))
+            alf.summary.scalar("planner/train_rate_i_plan_gt_q",
+                               torch.mean((_plan_values > _plan_q).float()))
+            _plan_values = (_plan_values -
+                            _plan_q) * self._plan_value_learning_rate + _plan_q
             replan_value_loss = alf.utils.losses.element_wise_squared_loss(
                 torch.max(_plan_values, _plan_q), _plan_q)
             replan_value_loss = replan_value_loss.sum(
