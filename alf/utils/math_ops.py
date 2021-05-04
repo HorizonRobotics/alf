@@ -16,6 +16,7 @@
 import functools
 import gin
 import torch
+import torch.nn as nn
 
 import alf
 
@@ -80,6 +81,86 @@ def swish(x):
         Tensor
     """
     return x * torch.sigmoid(x)
+
+
+@alf.configurable
+def softlower(x, low, hinge_softness=None):
+    """Softly lower bound ``x`` by ``low``, namely,
+    ``softlower(x, low) = softplus(x - low) + low``
+
+    Args:
+        x (Tensor): input
+        low (float|Tensor): the lower bound
+        hinge_softness (float): this positive parameter changes the transition
+            slope. A higher softness results in a smoother transition from
+            ``low`` to identity. Default to 1.
+
+    Returns:
+        Tensor
+    """
+    if hinge_softness is not None:
+        assert hinge_softness > 0
+    else:
+        hinge_softness = 1.
+    return (nn.functional.softplus(
+        (x - low) / hinge_softness) * hinge_softness + low)
+
+
+@alf.configurable
+def softupper(x, high, hinge_softness=None):
+    """Softly upper bound ``x`` by ``high``, namely,
+    ``softupper(x, high) = -softplus(high - x) + high``.
+
+    Args:
+        x (Tensor): input
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+            slope. A higher softness results in a smoother transition from
+            identity to ``high``. Default to 1.
+
+    Returns:
+        Tensor
+    """
+    if hinge_softness is not None:
+        assert hinge_softness > 0
+    else:
+        hinge_softness = 1.
+    return (-nn.functional.softplus(
+        (high - x) / hinge_softness) * hinge_softness + high)
+
+
+@alf.configurable
+def softclip(x, low, high, hinge_softness=None):
+    """Softly bound ``x`` in between ``[low, high]``, namely,
+
+    .. code-block:: python
+
+        clipped = softupper(softlower(x, low), high)
+        softclip(x) = (clipped - high) / (high - softupper(low, high)) * (high - low) + high
+
+    The second scaling step is beause we will have
+    ``softupper(low, high) < low`` due to distortion of softplus, so we need to
+    shrink the interval slightly by ``(high - low) / (high - softupper(low, high))``
+    to preserve the lower bound. Due to this rescaling, the bijector can be mildly
+    asymmetric.
+
+    Args:
+        x (Tensor): input
+        low (float|Tensor): the lower bound
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+            slope. A higher softness results in a smoother transition from
+            ``low`` to ``high``. Default to 1.
+    """
+    if not isinstance(low, torch.Tensor):
+        low = torch.tensor(low)
+    assert torch.all(high > low), "Invalid clipping range"
+
+    softupper_high_at_low = softupper(low, high, hinge_softness)
+    clipped = softupper(
+        softlower(x, low, hinge_softness), high, hinge_softness)
+    return ((clipped - high) / (high - softupper_high_at_low) * (high - low) +
+            high)
 
 
 def max_n(inputs):

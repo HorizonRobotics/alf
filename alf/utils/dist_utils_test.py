@@ -19,6 +19,7 @@ import torch
 import torch.distributions as td
 
 import alf
+from alf.utils import math_ops
 import alf.utils.dist_utils as dist_utils
 
 ActionDistribution = namedtuple('ActionDistribution', ['a', 'b'])
@@ -270,6 +271,41 @@ class TestRSampleActionDistribution(alf.test.TestCase):
         self.assertRaises(AssertionError,
                           dist_utils.rsample_action_distribution,
                           action_distribution)
+
+
+class TestSoftTransforms(alf.test.TestCase):
+    def test_soft_transforms(self):
+        N = 100
+        x = torch.randn([N, N], dtype=torch.float32)
+        softplus = dist_utils.Softplus()
+        softplus_x = softplus(x)
+        softplus_x_ = torch.nn.functional.softplus(x)
+
+        self.assertTrue(torch.all(softplus_x >= 0.))
+        self.assertTensorClose(softplus._inverse(softplus_x), x)
+        self.assertTensorClose(softplus_x, softplus_x_)
+
+        softlower = dist_utils.Softlower(0.1)
+        softlower_x = softlower(x)
+        softlower_x_ = math_ops.softlower(x, 0.1)
+        self.assertTrue(torch.all(softlower_x >= 0.1))
+        self.assertTensorClose(softlower.inv(softlower_x), x)
+        self.assertTensorClose(softlower_x, softlower_x_)
+
+        softupper = dist_utils.Softupper(-0.01, hinge_softness=0.01)
+        softupper_x = softupper(x)
+        softupper_x_ = math_ops.softupper(x, -0.01, hinge_softness=0.01)
+        self.assertTrue(torch.all(softupper_x <= -0.01))
+        self.assertTensorClose(softupper.inv(softupper_x), x)
+        self.assertTensorClose(softupper_x, softupper_x_)
+
+        softclip = dist_utils.Softclip(-1e-3, 1e-3, hinge_softness=1e-4)
+        softclip_x = softclip(x)
+        softclip_x_ = math_ops.softclip(x, -1e-3, 1e-3, hinge_softness=1e-4)
+        self.assertTrue(torch.all(softclip_x <= 1e-3))
+        self.assertTrue(torch.all(softclip_x >= -1e-3))
+        self.assertTensorClose(softclip.inv(softclip_x), x)
+        self.assertTensorClose(softclip_x, softclip_x_)
 
 
 if __name__ == '__main__':
