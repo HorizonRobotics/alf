@@ -141,7 +141,6 @@ class TracAlgorithm(RLAlgorithm):
     def train_step(self, exp: Experience, state, rollout_info):
         ac_info = rollout_info.ac._replace(
             action_distribution=rollout_info.action_distribution)
-        exp = exp._replace(rollout_info=ac_info)
         policy_step = self._ac_algorithm.train_step(exp, state, ac_info)
         return self._make_policy_step(exp, state, policy_step)
 
@@ -246,5 +245,5 @@ class TracAlgorithm(RLAlgorithm):
         ac_info = rollout_info.ac._replace(
             action_distribution=rollout_info.action_distribution)
         root_inputs, new_ac_info = self._ac_algorithm.preprocess_experience(
-            root_inputs, ac_info)
+            root_inputs, ac_info, batch_info)
         return root_inputs, rollout_info._replace(ac=new_ac_info)

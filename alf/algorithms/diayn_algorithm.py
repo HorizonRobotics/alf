@@ -23,7 +23,7 @@ from alf.utils.tensor_utils import to_tensor
 from alf.utils import math_ops
 from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
-DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
+DIAYNInfo = namedtuple("DIAYNInfo", ["loss"])
 
 
 @alf.configurable
@@ -153,9 +153,7 @@ class DIAYNAlgorithm(Algorithm):
                 intrinsic_reward)
 
         return AlgStep(
-            output=(),
-            state=skill,
-            info=DIAYNInfo(reward=intrinsic_reward, loss=loss))
+            output=intrinsic_reward, state=skill, info=DIAYNInfo(loss=loss))
 
     def rollout_step(self, inputs, state):
         return self._step(inputs, state)

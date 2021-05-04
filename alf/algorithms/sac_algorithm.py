@@ -303,7 +303,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        if actor_optimizer is not None:
+        if actor_optimizer is not None and actor_network is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])

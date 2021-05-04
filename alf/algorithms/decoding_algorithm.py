@@ -15,6 +15,7 @@
 
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo
 from alf.networks import Network

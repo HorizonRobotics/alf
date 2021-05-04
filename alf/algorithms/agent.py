@@ -15,10 +15,6 @@
 
 from typing import Callable
 
-import gin
-
-import torch
-
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.algorithm import Algorithm
@@ -209,6 +205,10 @@ class Agent(RLAlgorithm):
         # before this line.
         self.use_rollout_state = self.use_rollout_state
 
+    def set_path(self, path):
+        super().set_path(path)
+        self._agent_helper.set_path(path)
+
     def predict_step(self, time_step: TimeStep, state: AgentState):
         """Predict for one step."""
         new_state = AgentState()
@@ -226,9 +226,10 @@ class Agent(RLAlgorithm):
             goal_step = self._goal_generator.predict_step(
                 time_step._replace(observation=observation),
                 state.goal_generator)
+            goal, goal_reward = goal_step.output
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
-            observation = [observation, goal_step.output]
+            observation = [observation, goal]
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl)
@@ -317,9 +318,10 @@ class Agent(RLAlgorithm):
             goal_step = self._goal_generator.train_step(
                 time_step._replace(observation=observation),
                 state.goal_generator, rollout_info.goal_generator)
+            goal, goal_reward = goal_step.output
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            observation = [observation, goal_step.output]
+            observation = [observation, goal]
 
         if self._irm is not None:
             irm_step = self._irm.train_step(

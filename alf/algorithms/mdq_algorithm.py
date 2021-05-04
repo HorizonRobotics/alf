@@ -166,7 +166,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         self._target_entropy = _set_target_entropy(self.name, target_entropy,
                                                    flat_action_spec)
 
-        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
+        log_alpha = nn.Parameter(torch.tensor(float(initial_log_alpha)))
         self._log_alpha = log_alpha
 
         self._update_target = common.get_target_updater(

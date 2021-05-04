@@ -56,7 +56,6 @@ class AgentHelper(object):
                 ``AgentState`` or ``AgentInfo``.
         """
         self._alg_to_field_mapping[alg] = alg_field
-        alg.set_path(alg_field)
         if alg_field in self._train_state_spec._fields:
             self._train_state_spec = self._train_state_spec._replace(
                 **{alg_field: alg.train_state_spec})
@@ -180,3 +179,11 @@ class AgentHelper(object):
             info = (None if rollout_info is None else getattr(
                 rollout_info, field))
             alg.after_train_iter(root_inputs, info)
+
+    def set_path(self, path):
+        """Set the path for the sub-algorithms."""
+        prefix = path
+        if path:
+            prefix = prefix + '.'
+        for alg, name in self._alg_to_field_mapping.items():
+            alg.set_path(path + name)

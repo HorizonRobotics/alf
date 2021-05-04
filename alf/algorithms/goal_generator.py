@@ -114,17 +114,17 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         step_type = time_step.step_type
         new_goal = self._update_goal(observation, state, step_type)
         return AlgStep(
-            output=new_goal,
+            output=(new_goal, ()),
             state=GoalState(goal=new_goal),
             info=GoalInfo(goal=new_goal))
 
-    def rollout_step(self, time_step: TimeStep, state):
-        return self._step(time_step, state)
+    def rollout_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        return self._step(time_step, state)
+    def predict_step(self, inputs: TimeStep, state):
+        return self._step(inputs, state)
 
-    def train_step(self, exp: Experience, state):
+    def train_step(self, inputs: TimeStep, state, rollout_info):
         """For off-policy training, the current output goal should be taken from
         the goal in ``exp.rollout_info`` (historical goals generated during rollout).
 
@@ -134,9 +134,10 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         experience trajectory.
 
         Args:
-            exp (Experience): the experience data whose ``rollout_info`` has been
+            inputs (TimeStep): the experience data whose ``rollout_info`` has been
                 replaced with goal generator ``rollout_info``.
             state (nested Tensor):
+            rollout_info (GoalInfo)
 
         Returns:
             AlgStep:
@@ -144,8 +145,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             - state (nested Tensor):
             - info (GoalInfo): for training.
         """
-        goal = exp.rollout_info.goal
-        return AlgStep(output=goal, state=state, info=GoalInfo(goal=goal))
+        goal = rollout_info.goal
+        return AlgStep(
+            output=(goal, ()), state=state, info=GoalInfo(goal=goal))
 
-    def calc_loss(self, experience, info: GoalInfo):
+    def calc_loss(self, info: GoalInfo):
         return LossInfo()

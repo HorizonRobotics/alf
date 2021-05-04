@@ -478,6 +478,8 @@ class RLAlgorithm(Algorithm):
             int:
             - number of samples being trained on (including duplicates).
         """
+        assert self.on_policy is not None
+
         if self.on_policy:
             return self._train_iter_on_policy()
         else:

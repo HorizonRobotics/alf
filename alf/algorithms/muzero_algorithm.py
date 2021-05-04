@@ -75,6 +75,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  recurrent_gradient_scaling_factor=0.5,
                  reward_normalizer=None,
                  reward_clip_value=-1.,
+                 calculate_priority=False,
                  train_reward_function=True,
                  train_game_over_function=True,
                  reanalyze_ratio=0.,
@@ -111,6 +112,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 normalize reward.
             train_reward_function (bool): whether train reward function. If
                 False, reward should only be given at the last step of an episode.
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
@@ -136,6 +139,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             debug_summaries=debug_summaries)
         mcts.set_model(model)
+        self._calculate_priority = calculate_priority
         self._device = alf.get_default_device()
         super().__init__(
             observation_spec=observation_spec,
@@ -589,8 +593,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         return env_ids, positions
 
     def calc_loss(self, info: LossInfo):
-        priority = (info.value - info.target.value[..., 0])
-        priority = priority.abs().sum(dim=1)
+        if self._calculate_priority:
+            priority = (info.value - info.target.value[..., 0])
+            priority = priority.abs().sum(dim=0)
+        else:
+            priority = ()
 
         return LossInfo(scalar_loss=info.loss.mean(), priority=priority)
 

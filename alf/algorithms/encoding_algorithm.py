@@ -82,7 +82,8 @@ class EncodingAlgorithm(Algorithm):
         self._encoder = encoder
         output_spec = encoder.output_spec
         if output_fields is not None:
-            self._output_spec = get_nested_field(output_spec, output_fields)
+            output_spec = get_nested_field(output_spec, output_fields)
+        self._output_spec = output_spec
         if loss_fields is not None:
             # make sure loss_fields can be found in output_spec
             loss_specs = get_nested_field(output_spec, loss_fields)

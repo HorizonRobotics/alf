@@ -25,7 +25,7 @@ import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
@@ -56,52 +56,7 @@ def _flatten_module(module):
 
 
 class Algorithm(AlgorithmInterface):
-    """Algorithm base class. ``Algorithm`` is a generic interface for supervised
-    training algorithms. The key interface functions are:
-
-    1. ``predict_step()``: one step of computation of action for evaluation.
-    2. ``rollout_step()``: one step of computation for rollout. It is used for
-       collecting experiences during training. Different from ``predict_step``,
-       ``rollout_step`` may include addtional computations for training. An
-       algorithm could immediately use the collected experiences to update
-       parameters after one rollout (multiple rollout steps) is performed; or it
-       can put these collected experiences into a replay buffer.
-    3. ``train_step()``: only used by algorithms that put experiences into
-       replay buffers. The training data are sampled from the replay buffer
-       filled by ``rollout_step()``.
-    4. ``train_from_unroll()``: perform a training iteration from the unrolled
-       result.
-    5. ``train_from_replay_buffer()``: perform a training iteration from a
-       replay buffer.
-    6. ``update_with_gradient()``: Do one gradient update based on the loss. It
-       is used by the default ``train_from_unroll()`` and
-       ``train_from_replay_buffer()`` implementations. You can override to
-       implement your own ``update_with_gradient()``.
-    7. ``calc_loss()``: calculate loss based the ``experience`` and the
-       ``train_info`` collected from ``rollout_step()`` or ``train_step()``. It
-       is used by the default implementations of ``train_from_unroll()`` and
-       ``train_from_replay_buffer()``. If you want to use these two functions,
-       you need to implement ``calc_loss()``.
-    8. ``after_update()``: called by ``train_iter()`` after every call to
-       ``update_with_gradient()``, mainly for some postprocessing steps such as
-       copying a training model to a target model in SAC or DQN.
-    9. ``after_train_iter()``: called by ``train_iter()`` after every call to
-       ``train_from_unroll()`` (on-policy training iter) or
-       ``train_from_replay_buffer`` (off-policy training iter). It's mainly for
-       training additional modules that have their own training logic (e.g.,
-       on/off-policy, replay buffers, etc). Other things might also be possible
-       as long as they should be done once every training iteration.
-
-    .. note::
-        A base (non-RL) algorithm will not directly interact with an
-        environment. The interation loop will always be driven by an
-        ``RLAlgorithm`` that outputs actions and gets rewards. So a base
-        (non-RL) algorithm is always attached to an ``RLAlgorithm`` and cannot
-        change the timing of (when to launch) a training iteration. However, it
-        can have its own logic of a training iteration (e.g.,
-        ``train_from_unroll()`` and ``train_from_replay_buffer()``) which can be
-        triggered by a parent ``RLAlgorithm`` inside its ``after_train_iter()``.
-    """
+    """Base implementation for AlgorithmInterface."""
 
     def __init__(self,
                  train_state_spec=(),
@@ -1110,7 +1065,8 @@ class Algorithm(AlgorithmInterface):
         experience = experience._replace(rollout_info_field='rollout_info')
         loss_info = self.calc_loss(train_info)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
-        self.after_update(experience, train_info)
+        time_step = experience_to_time_step(experience)
+        self.after_update(time_step, train_info)
         self.summarize_train(experience, train_info, loss_info, params)
         return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
 
@@ -1191,7 +1147,9 @@ class Algorithm(AlgorithmInterface):
         if self._exp_replayer_type != "one_time":
             # The experience put in one_time replayer is already transformed
             # in unroll().
+            experience = self._add_batch_info(experience, batch_info)
             experience = self.transform_experience(experience)
+            experience = self._clear_batch_info(experience)
         time_step = TimeStep(
             step_type=experience.step_type,
             reward=experience.reward,
@@ -1343,13 +1301,7 @@ class Algorithm(AlgorithmInterface):
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
                     "the state but will simply keep updating it.")
-            time_step = TimeStep(
-                step_type=exp.step_type,
-                reward=exp.reward,
-                discount=exp.discount,
-                observation=exp.observation,
-                prev_action=exp.prev_action,
-                env_id=exp.env_id)
+            time_step = experience_to_time_step(exp)
             policy_step = self.train_step(time_step, policy_state,
                                           exp.rollout_info)
             if self._train_info_spec is None:
@@ -1378,13 +1330,7 @@ class Algorithm(AlgorithmInterface):
 
         exp = dist_utils.params_to_distributions(
             exp, self.processed_experience_spec)
-        time_step = TimeStep(
-            step_type=exp.step_type,
-            reward=exp.reward,
-            discount=exp.discount,
-            observation=exp.observation,
-            prev_action=exp.prev_action,
-            env_id=exp.env_id)
+        time_step = experience_to_time_step(exp)
         policy_step = self.train_step(time_step, policy_state,
                                       exp.rollout_info)
 
@@ -1395,6 +1341,17 @@ class Algorithm(AlgorithmInterface):
             lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
+
+    def _add_batch_info(self, experience, batch_info):
+        if batch_info is not None:
+            experience = experience._replace(
+                batch_info=batch_info,
+                replay_buffer=self._exp_replayer.replay_buffer)
+        return experience._replace(rollout_info_field='rollout_info')
+
+    def _clear_batch_info(self, experience):
+        return experience._replace(
+            batch_info=(), replay_buffer=(), rollout_info_field=())
 
     def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)
@@ -1418,6 +1375,9 @@ class Algorithm(AlgorithmInterface):
                         "new_priority", priority)
                     summary_utils.add_mean_hist_summary(
                         "old_importance_weight", batch_info.importance_weights)
+        else:
+            assert batch_info is None or batch_info.importance_weights is (), (
+                "Priority replay is enabled. But priority is not calculated.")
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
@@ -1426,6 +1386,7 @@ class Algorithm(AlgorithmInterface):
             valid_masks = None
         loss_info, params = self.update_with_gradient(loss_info, valid_masks,
                                                       weight, batch_info)
-        self.after_update(experience, train_info)
+        time_step = experience_to_time_step(experience)
+        self.after_update(time_step, train_info)
 
         return experience, train_info, loss_info, params
