@@ -28,6 +28,12 @@ from .rl_algorithm import RLAlgorithm
 
 
 class AlgorithmContainer(Algorithm):
+    """Algorithm that contains several sub-algorithms.
+
+    It provides sensible implementation of several interface functions of
+    Algorithm.
+    """
+
     def __init__(self, algs, train_state_spec, rollout_state_spec,
                  predict_state_spec, is_on_policy, debug_summaries, name):
         """
@@ -41,7 +47,9 @@ class AlgorithmContainer(Algorithm):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
-            is_on_policy (None|bool):
+            is_on_policy (None|bool): whether the algorithm is on-policy or not.
+                If None, the on-policiness will be decided based on the on-policiness
+                of each sub-algorithm.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """
@@ -82,11 +90,13 @@ class AlgorithmContainer(Algorithm):
         self._algs = algs
 
     def set_on_policy(self, is_on_policy):
+        """Call set_on_policy of each sub-algorithm."""
         super().set_on_policy(is_on_policy)
         for alg in self._algs.values():
             alg.set_on_policy(is_on_policy)
 
     def set_path(self, path):
+        """Set the path for each sub-algorithm."""
         super().set_path(path)
         prefix = path
         if path:
@@ -95,6 +105,7 @@ class AlgorithmContainer(Algorithm):
             alg.set_path(path + name)
 
     def calc_loss(self, info):
+        """Call calc_loss of each sub-algorithm and accumalte the loss."""
         extra = {}
         scalar_loss = ()
         loss = ()
@@ -110,6 +121,7 @@ class AlgorithmContainer(Algorithm):
             loss=loss, scalar_loss=scalar_loss, extra=extra, priority=priority)
 
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
+        """Call the preprocess_experience of each sub-algorithm."""
         new_infos = {}
         for name, alg in self._algs.items():
             root_inputs, info = alg.preprocess_experience(
@@ -117,6 +129,16 @@ class AlgorithmContainer(Algorithm):
             new_infos[name] = info
 
         return root_inputs, new_infos
+
+    def after_update(self, root_inputs, info):
+        """Call after_update of each sub-algorithm."""
+        for name, alg in self._algs.items():
+            alg.after_update(root_inputs, info[name])
+
+    def after_train_iter(self, root_inputs, rollout_info):
+        """Call after_train_iter of each sub-algorithm."""
+        for name, alg in self._algs.items():
+            alg.after_train_iter(root_inputs, rollout_info[name])
 
 
 def SequentialAlg(*modules,
@@ -246,7 +268,7 @@ class _SequentialAlg(AlgorithmContainer):
         self._inputs = inputs
         self._outputs = outputs
 
-    def rollout_step(self, inputs, state):
+    def _step(self, step_func, inputs, state):
         info_dict = {}
         state_dict = {}
         var_dict = {'input': inputs, 'info': info_dict, 'state': state_dict}
@@ -258,7 +280,7 @@ class _SequentialAlg(AlgorithmContainer):
             if self._inputs[i]:
                 x = get_nested_field(var_dict, self._inputs[i])
             if isinstance(net, Algorithm):
-                alg_step = net.rollout_step(x, state[i])
+                alg_step = getattr(net, step_func)(x, state[i])
                 x = alg_step.output
                 new_state[i] = alg_step.state
                 info[net.name] = alg_step.info
@@ -272,6 +294,12 @@ class _SequentialAlg(AlgorithmContainer):
         if self._output:
             x = get_nested_field(var_dict, self._output)
         return AlgStep(output=x, state=new_state, info=info)
+
+    def predict_step(self, inputs, state):
+        return self._step('predict_step', inputs, state)
+
+    def rollout_step(self, inputs, state):
+        return self._step('rollout_step', inputs, state)
 
     def train_step(self, inputs, state, rollout_info):
         info_dict = {}
@@ -381,10 +409,16 @@ class EchoAlg(Algorithm):
         return self._alg.preprocess_experience(root_inputs, rollout_info,
                                                batch_info)
 
+    def after_update(self, root_inputs, info):
+        self._alg.after_update(root_inputs, info)
+
+    def after_train_iter(self, root_inputs, rollout_info):
+        self._alg.after_train_iter(root_inputs, rollout_info)
+
 
 @alf.configurable
 class RLAlgWrapper(RLAlgorithm):
-    """Wrap an Algorithm as RLAlgorithm."""
+    """Wrap an Algorithm as RLAlgorithm so that it can be used for RLTrainer"""
 
     def __init__(self,
                  observation_spec,
@@ -434,6 +468,12 @@ class RLAlgWrapper(RLAlgorithm):
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         return self._algorithm.preprocess_experience(root_inputs, rollout_info,
                                                      batch_info)
+
+    def after_update(self, root_inputs, info):
+        self._algorithm.after_update(root_inputs, info)
+
+    def after_train_iter(self, root_inputs, rollout_info):
+        self._algorithm.after_train_iter(root_inputs, rollout_info)
 
 
 class Loss(Algorithm):
