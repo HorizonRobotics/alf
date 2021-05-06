@@ -99,7 +99,8 @@ def main(_):
 
     if FLAGS.store_snapshot:
         # ../<ALF_REPO>/alf/bin/train.py
-        alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+        file_path = os.path.abspath(__file__)
+        alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
         # generate a snapshot of ALF repo as ``<root_dir>/alf``
         common.generate_alf_root_snapshot(alf_root, root_dir)
 
