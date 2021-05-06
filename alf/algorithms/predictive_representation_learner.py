@@ -510,7 +510,7 @@ class PredictiveRepresentationLearner(Algorithm):
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
 
-            # [B, T, unroll_steps+1]
+            # [B, T, unroll_steps]
             action = replay_buffer.get_field('prev_action', env_ids,
                                              positions[:, :, 1:])
 

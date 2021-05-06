@@ -37,7 +37,7 @@ class AlgorithmInterface(nn.Module):
        result.
     5. ``train_from_replay_buffer()``: perform a training iteration from a
        replay buffer.
-    6. ``update_with_gradient()``: Do one gradient update based on the loss. It
+    6. ``update_with_gradient()``: do one gradient update based on the loss. It
        is used by the default ``train_from_unroll()`` and
        ``train_from_replay_buffer()`` implementations. You can override to
        implement your own ``update_with_gradient()``.
@@ -71,13 +71,22 @@ class AlgorithmInterface(nn.Module):
     def path(self):
         """Path from the root algorithm to this algorithm.
 
-        The input state to rollout_step() can be retrieved by
+        Currently, path is useful when an algorithm needs to directly access
+        the data about itself in replay buffer. There are two types of
+        data about an algorithm are stored in replay buffer: one is ``rollout_info``,
+        which is ``AlgStep.info`` returned by rollout_step(), the other is ``state``,
+        which is the ``state`` argument used to call ``rollout_step()``. The data
+        in replay buffer is organized as ``Experience`` which includes ``rollout_info``
+        and ``state``.
+
+        Given an experience structure, the input state to ``rollout_step()`` can be
+        retrieved by:
 
         .. code-block:: python
 
             nest.get_field(experience.state, self.path)
 
-        The info from  rollout_step() can be retrieved by:
+        The info from ``rollout_step()`` can be retrieved by:
 
         .. code-block:: python
 
@@ -91,9 +100,14 @@ class AlgorithmInterface(nn.Module):
     def set_path(self, path):
         """Set the path from the root algorithm to this algorithm.
 
+        See ``AlgorithmInterface.path`` for description about path.
         This function is called by the trainer before training starts.
         It needs to be implemented if the algorithm contains some other
         sub-algorithms.
+
+        If an algorithm does not have any sub-algorithm or its sub-algorithm does
+        not need to access the root replay buffer directly, it does not implement
+        this function.
         """
         raise NotImplementedError()
 

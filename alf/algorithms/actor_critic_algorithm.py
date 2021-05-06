@@ -115,8 +115,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
-        self._epsilon_greedy = alf.get_config_value(
-            'TrainerConfig.epsilon_greedy')
 
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())

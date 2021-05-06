@@ -105,7 +105,7 @@ class AlgorithmContainer(Algorithm):
             alg.set_path(path + name)
 
     def calc_loss(self, info):
-        """Call calc_loss of each sub-algorithm and accumalte the loss."""
+        """Call calc_loss of each sub-algorithm and accumulate the loss."""
         extra = {}
         scalar_loss = ()
         loss = ()

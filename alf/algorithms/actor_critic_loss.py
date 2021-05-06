@@ -106,10 +106,6 @@ class ActorCriticLoss(Loss):
                 - action:
                 - action_distribution:
                 - value:
-            train_info (nest): information collected for training. It is batched
-                from each ``AlgStep.info`` returned by ``rollout_step()``
-                (on-policy training) or ``train_step()`` (off-policy training).
-                All tensors in ``train_info`` are time-major.
         Returns:
             LossInfo: with ``extra`` being ``ActorCriticLossInfo``.
         """

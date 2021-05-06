@@ -13,24 +13,22 @@
 # limitations under the License.
 """Agent for integrating multiple algorithms."""
 
+import copy
 from typing import Callable
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.agent_helpers import AgentHelper
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.entropy_target_algorithm import (
     EntropyTargetAlgorithm, NestedEntropyTargetAlgorithm)
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.mbrl_algorithm import LatentMbrlAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.predictive_representation_learner import \
                             PredictiveRepresentationLearner
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import AlgStep, Experience
 from alf.data_structures import TimeStep, namedtuple
-from alf.utils import math_ops
 from alf.tensor_specs import TensorSpec
 
 AgentState = namedtuple(
@@ -92,8 +90,8 @@ class Agent(RLAlgorithm):
                 the observation for downstream algorithms such as ``rl_algorithm``.
             intrinsic_reward_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward.
-            goal_generator (Algorithm): an algorithm with output a tuple of goal
-                vector and a reward. The reward can be ``()``.
+            goal_generator (Algorithm): an algorithm which outputs a tuple of goal
+                vector and a reward. The reward can be ``()`` if no reward is given.
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
             extrinsic_reward_coef (float): Coefficient for extrinsic reward
             enforce_entropy_target (bool): If True, use ``(Nested)EntropyTargetAlgorithm``
@@ -251,10 +249,7 @@ class Agent(RLAlgorithm):
             info = info._replace(repr=repr_step.info)
             observation = repr_step.output
 
-        training_reward = time_step.reward
         rewards = {}
-        if self._extrinsic_reward_coef != 1:
-            training_reward *= self._extrinsic_reward_coef
 
         if self._goal_generator is not None:
             goal_step = self._goal_generator.rollout_step(
@@ -265,7 +260,6 @@ class Agent(RLAlgorithm):
             goal, goal_reward = goal_step.output
             observation = [observation, goal]
             if goal_reward is not ():
-                training_reward += goal_reward
                 rewards['goal_generator'] = goal_reward
 
         if self._irm is not None:
@@ -273,11 +267,17 @@ class Agent(RLAlgorithm):
                 time_step._replace(observation=observation), state=state.irm)
             info = info._replace(irm=irm_step.info)
             new_state = new_state._replace(irm=irm_step.state)
-            training_reward += self._intrinsic_reward_coef * irm_step.output
             rewards['irm'] = irm_step.output
 
+        if rewards:
+            info = info._replace(rewards=rewards)
+            overall_reward = self._calc_overall_reward(time_step.reward,
+                                                       rewards)
+        else:
+            overall_reward = time_step.reward
+
         rl_time_step = time_step._replace(
-            observation=observation, reward=training_reward)
+            observation=observation, reward=overall_reward)
         rl_step = self._rl_algorithm.rollout_step(rl_time_step, state.rl)
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
@@ -295,10 +295,6 @@ class Agent(RLAlgorithm):
             rw_step = self._reward_weight_algorithm.rollout_step(
                 time_step, state.rw)
             info = info._replace(rw=rw_step.info)
-
-        if id(training_reward) != id(time_step.reward):
-            rewards['overall'] = training_reward
-            info = info._replace(rewards=rewards)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
 
@@ -347,19 +343,30 @@ class Agent(RLAlgorithm):
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
 
-    def calc_loss(self, train_info: AgentInfo):
+    def _calc_overall_reward(self, extrinsic_reward, intrinsic_rewards):
+        overall_reward = extrinsic_reward
+        if self._extrinsic_reward_coef != 1:
+            overall_reward *= self._extrinsic_reward_coef
+        if 'irm' in intrinsic_rewards:
+            overall_reward += self._intrinsic_reward_coef * intrinsic_rewards[
+                'irm']
+        if 'goal_generator' in intrinsic_rewards:
+            overall_reward += intrinsic_rewards['goal_generator']
+        return overall_reward
+
+    def calc_loss(self, info: AgentInfo):
         """Calculate loss."""
 
-        if train_info.rewards is not ():
-            for name, reward in train_info.rewards.items():
-                self.summarize_reward("calc_training_reward/%s" % name, reward)
+        if info.rewards is not ():
+            for name, reward in info.rewards.items():
+                self.summarize_reward("reward/%s" % name, reward)
 
         algorithms = [
             self._representation_learner, self._rl_algorithm, self._irm,
             self._goal_generator, self._entropy_target_algorithm
         ]
         algorithms = list(filter(lambda a: a is not None, algorithms))
-        return self._agent_helper.accumulate_loss_info(algorithms, train_info)
+        return self._agent_helper.accumulate_loss_info(algorithms, info)
 
     def after_update(self, experience, train_info: AgentInfo):
         """Call ``after_update()`` of the RL algorithm and goal generator,
@@ -395,6 +402,9 @@ class Agent(RLAlgorithm):
         exp = root_inputs
         rewards = rollout_info.rewards
         if rewards is not ():
+            rewards = copy.copy(rewards)
+            rewards['overall'] = self._calc_overall_reward(
+                root_inputs.reward, rewards)
             exp = exp._replace(reward=rewards['overall'])
 
         if self._representation_learner:
