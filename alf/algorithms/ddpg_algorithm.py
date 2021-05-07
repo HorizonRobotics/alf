@@ -102,6 +102,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  replan_target_value=False,
                  plan_value_learning_rate=1.,
                  value_clipping=False,
+                 sigmoid_value_clipping=False,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -168,6 +169,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             plan_value_learning_rate (float): learning rate of using plan value
                 to update q value.
             value_clipping (bool): whether to clip target value to 0-1.
+            sigmoid_value_clipping (bool): use sigmoid to clip value.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -300,6 +302,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._replan_target_value = replan_target_value
         self._plan_value_learning_rate = plan_value_learning_rate
         self._value_clipping = value_clipping
+        self._sigmoid_value_clipping = sigmoid_value_clipping
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
@@ -372,11 +375,28 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             action_dim = goals.shape[1]
         observation["desired_goal"] = goals[:, :action_dim]
 
+    def _clip_goal_value(self, value):
+        # input is directly from the output of critic or target networks, and is of shape
+        # ``(batch_size, replicas, reward_dims)``.
+        if self._value_clipping:
+            goal_value = value
+            # potentially multi-dim value
+            if len(value.shape) > 2:
+                goal_value = value[:, :, 0]
+            if self._sigmoid_value_clipping:
+                goal_value = torch.sigmoid(goal_value)
+            else:
+                goal_value = torch.clamp(goal_value, 0., 1.)
+            if len(value.shape) > 2:
+                value[:, :, 0] = goal_value
+        return value
+
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(
             exp.observation, state=state.target_actor)
         target_q_values, target_critic_states = self._target_critic_networks(
             (exp.observation, target_action), state=state.target_critics)
+        target_q_values = self._clip_goal_value(target_q_values)
 
         if self._num_critic_replicas > 1:
             if self._num_critics_for_training > 0:
@@ -416,8 +436,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 # potentially multi-dim value
                 if len(target_q_values.shape) > 1:
                     goal_target_value = target_q_values[:, 0]
-                if self._value_clipping:
-                    goal_target_value = torch.clamp(goal_target_value, 0., 1.)
                 alf.summary.scalar("planner/train_value_plan",
                                    torch.mean(plan_values))
                 alf.summary.scalar("planner/train_value_target_q",
@@ -438,6 +456,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
 
+        q_values = self._clip_goal_value(q_values)
+
         non_her_q_values, non_her_critic = (), ()
         non_her_target_q, non_her_target = (), ()
         if self._non_her_critic:  # assumes no states.
@@ -450,12 +470,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self._replan_value:
             observation = copy.deepcopy(exp.observation)
             self.populate_goal(goals, observation)
+            # get action and value of the replanned goal
             replan_action, _ = self._actor_network(observation, state=())
             plan_q_values, _ = self._critic_networks(
                 (exp.observation, replan_action), state=state.critics)
+            plan_q_values = self._clip_goal_value(plan_q_values)
             batch_size = plan_values.shape[0]
             _plan_values = plan_values.detach().reshape(batch_size, 1).expand(
                 batch_size, self._num_critic_replicas)
+            # correct this q value for the planned subgoal using plan value as target.
             _plan_q = plan_q_values[:, :, 0]
             alf.summary.scalar("planner/train_value_i_plan",
                                torch.mean(_plan_values))
@@ -511,6 +534,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
+        q_values = self._clip_goal_value(q_values)
         if q_values.ndim == 3:
             # Multidimensional reward: [B, num_criric_replicas, reward_dim]
             if self._reward_weights is None:
