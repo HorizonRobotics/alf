@@ -31,11 +31,14 @@ from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
     "BatchInfo",
-    ["env_ids", "positions", "importance_weights", "replay_buffer"],
+    ["env_ids", "positions", "importance_weights", "replay_buffer", "future_distance"],
     default_value=())
+# future_distance (Tensor): of shape (batch_size, batch_length), is the distance from
+#   the transition's end state to the sampled future state in terms of number of
+#   environment steps.
 
 
-@alf.configurable
+@gin.configurable
 class ReplayBuffer(RingBuffer):
     """Replay buffer with RingBuffer as implementation.
 

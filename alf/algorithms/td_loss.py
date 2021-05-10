@@ -32,6 +32,7 @@ class TDLoss(nn.Module):
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  normalize_target=False,
+                 improve_w_goal_return=False,
                  debug_summaries=False,
                  name="TDLoss"):
         r"""
@@ -92,6 +93,7 @@ class TDLoss(nn.Module):
         self._gamma = torch.tensor(gamma)
         self._td_error_loss_fn = td_error_loss_fn
         self._lambda = td_lambda
+        self._improve_w_goal_return = improve_w_goal_return
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
@@ -153,6 +155,30 @@ class TDLoss(nn.Module):
                 discounts=discounts,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
+
+        if self._improve_w_goal_return:
+            batch_length, batch_size = returns.shape[:2]
+            her_cond = experience.batch_info.her.unsqueeze(0).expand(
+                batch_length, batch_size)
+            if her_cond != () and torch.any(her_cond):
+                goal_return = torch.pow(
+                    self._gamma * torch.ones(her_cond.shape),
+                    experience.batch_info.future_distance.unsqueeze(0).expand(
+                        batch_length, batch_size))
+                returns_0 = returns
+                # Multi-dim reward:
+                if len(returns.shape) > 2:
+                    returns_0 = returns[:, :, 0]
+                returns_0 = torch.where(her_cond,
+                                        torch.max(returns_0, goal_return),
+                                        returns_0)
+                with alf.summary.scope(self._name):
+                    alf.summary.scalar(
+                        "goal_return_gt_td",
+                        torch.mean((returns_0 < goal_return).float()))
+                    alf.summary.scalar("goal_return", torch.mean(goal_return))
+                if len(returns.shape) > 2:
+                    returns[:, :, 0] = returns_0
 
         value = value[:-1]
         if self._normalize_target:
