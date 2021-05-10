@@ -32,8 +32,10 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo",
-    ["env_ids", "positions", "importance_weights", "her", "full_her_data"],
+    "BatchInfo", [
+        "env_ids", "positions", "importance_weights", "her", "full_her_data",
+        "future_distance"
+    ],
     default_value=())
 # positions (Tensor): of shape (batch_size, batch_length), the absolute positions
 #   of the sampled transitions inside the replay buffer before modular buffer_size.
@@ -44,6 +46,9 @@ BatchInfo = namedtuple(
 #   for all the transitions sampled during replay (her or not).
 #   The full data used to relabel the her slice of the replayed data.  This can be
 #   useful for e.g. training c-VAE in the goal_generator.
+# future_distance (Tensor): of shape (batch_size, batch_length), is the distance from
+#   the transition's end state to the sampled future state in terms of number of
+#   environment steps.
 
 
 @gin.configurable
@@ -803,8 +808,8 @@ def hindsight_relabel_fn(buffer,
             torch.mean(dist.float()))
 
     # get random future state
-    future_idx = buffer.circular(last_step_pos + (torch.rand(*dist.shape) *
-                                                  (dist + 1)).to(torch.int64))
+    future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(torch.int64)
+    future_idx = buffer.circular(last_step_pos + future_dist)
     achieved_goals = alf.nest.get_field(buffer._buffer, achieved_goal_field)
     future_ag = achieved_goals[(last_env_ids, future_idx)].unsqueeze(1)
 
@@ -825,7 +830,8 @@ def hindsight_relabel_fn(buffer,
         if has_her:
             relabeled_aux[her_batch_index_tuple] = future_aux[her_indices]
         full_her_data["aux_desired"] = future_aux
-    info = info._replace(her=her_cond, full_her_data=full_her_data)
+    info = info._replace(
+        her=her_cond, full_her_data=full_her_data, future_distance=future_dist)
 
     # recompute rewards
     result_ag = alf.nest.get_field(result, achieved_goal_field)
@@ -929,6 +935,8 @@ def hindsight_relabel_fn(buffer,
             i_str, torch.mean(res_reward[her_indices][:, 1:]))
 
     if alf.summary.should_record_summaries():
+        alf.summary.scalar("replayer/" + buffer._name + ".future_distance",
+                           torch.mean(future_dist.float()))
         if has_her:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
