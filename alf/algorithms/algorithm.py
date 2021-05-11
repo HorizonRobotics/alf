@@ -1005,7 +1005,7 @@ class Algorithm(AlgorithmInterface):
                                "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
         for optimizer in optimizers:
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss

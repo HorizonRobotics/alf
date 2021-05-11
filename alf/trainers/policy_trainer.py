@@ -514,14 +514,22 @@ class SLTrainer(Trainer):
 
         checkpoint_interval = math.ceil(
             self._num_epochs / self._num_checkpoints)
-        time_to_checkpoint = checkpoint_interval
+        time_to_checkpoint = begin_epoch_num + checkpoint_interval
 
         logging.info("==> Begin Training")
         while True:
-            logging.info("-" * 68)
-            logging.info("Epoch: {}".format(epoch_num + 1))
+            t0 = time.time()
             with record_time("time/train_iter"):
-                self._algorithm.train_iter()
+                train_steps = self._algorithm.train_iter()
+                train_steps = train_steps or 1
+            t = time.time() - t0
+            logging.log_every_n_seconds(
+                logging.INFO,
+                '%s -> %s: %s time=%.3f throughput=%0.2f' %
+                (common.get_conf_file(),
+                 os.path.basename(self._root_dir.strip('/')), epoch_num, t,
+                 int(train_steps) / t),
+                n_seconds=1)
 
             if (epoch_num + 1) % self._eval_interval == 0:
                 if self._evaluate:
