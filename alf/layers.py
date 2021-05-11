@@ -1277,6 +1277,7 @@ class ConvTranspose2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
+                 output_padding=0,
                  use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
@@ -1295,6 +1296,9 @@ class ConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
+            output_padding (int or tuple): Additional size added to one side of
+                each dimension in the output shape. Default: 0. See pytorch
+                documentation for more detail.
             use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv_trans layer.
@@ -1315,6 +1319,7 @@ class ConvTranspose2D(nn.Module):
             kernel_size,
             stride=strides,
             padding=padding,
+            output_padding=output_padding,
             bias=use_bias)
         if kernel_initializer is None:
             variance_scaling_init(
