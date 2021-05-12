@@ -62,7 +62,6 @@ class AlgorithmContainer(Algorithm):
                         "is different from algs[%s].on_policy=%s" %
                         (is_on_policy, aname, alg.on_policy))
         else:
-            is_on_policy = None
             on_policy_algs = [
                 alg for alg in algs.values() if alg.on_policy == True
             ]
@@ -145,29 +144,91 @@ def SequentialAlg(*modules,
                   output='',
                   is_on_policy=None,
                   name="SequentialAlg",
-                  debug_summaries=False,
                   **named_modules):
-    """
+    """Compose Algorithms Networks sequentially as a new Algorithm.
 
+    All the modules provided through ``modules`` and ``named_modules`` are calculated
+    sequentially in the same order as they appear in the call to ``SequentialAlg``.
+    By default, each module takes the output of the previous module as its input
+    (or the input to the Sequential if it is the first module), and the output of
+    the last module is the output of the ``SequentialAlg``. Note that the output
+    of a module means differently depending on the type of the module:
 
-    The following examples shows an example of using SequentialAlg to build
-    actor-critic algorithm.
+    * Algorithm: ``AlgStep.output`` field from ``predict_step``, ``rollout_step``
+        or ``train_step``
+    * Network: the first element of the tuple returned from ``forward()``
+    * torch.nn.Module or Callable: the return value of the Callable.
 
-    Example:
+    In addition to using the output of the previous module as input,
+    ``SequentialAlg`` also allow using other output, state or info from previous
+    module as the input to a module. To do this,
+    one can pass a tuple of (nested_str, module) instead of module as an argument
+    to ``SequentialAlg``. With this, the inputs to the module will be obtained using
+    ``get_nested_field(named_results, nested_str)``, where ``named_results``
+    is a dictionary containing the inputs to ``SequentialAlg`` and all the results calulcated
+    by previous modules. More specifically, ``named_results['input']`` is the
+    inputs to this algorithm. ``named_results['a']`` is the output of the module
+    named 'a'. ``named_results['info']['a']`` is the info output of the algorithm
+    named 'a'.  And ``named_results['state']['a']`` is state output of the
+    algorithm/network named 'a'.
 
-    .. code: block
+    Example 1:
 
-        from alf.algorithms.actor_critic_algorithm import ActorCriticLoss, ActorCriticInfo
-        from alf.networks import ActorDistributionNetwork, ValueNetwork
+    The following contructs an algorithm which predicts the future of its input:
 
-        value_net = ValueNetwork(
-            input_tensor_spec=env.observation_spec(), fc_layer_params=(10, 8))
+    .. code-block:: python
 
-        actor_net = ActorDistributionNetwork(
-            input_tensor_spec=env.observation_spec(),
-            action_spec=env.action_spec(),
-            fc_layer_params=(10, 8),
-            discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
+        predictor = EncodingNetwork(...)
+
+        alg = SequentialAlg(
+            predicted=predictor,
+            delayed=networks.Delay(),
+            error=(('delayed', 'input'), lambda xy: (xy[0] - xy[1]) ** 2,
+            loss=Loss(),
+            output='predicted',
+        )
+
+    It is equivalent to the following:
+
+    .. code-block:: python
+
+        class PredictAlgorithm(Algorithm):
+            def __init__(self, predictor):
+                super().__init__(train_state_spec=(
+                    predictor.state_spec,
+                    predictor.input_tensor_spec))
+                self._predictor = predictor
+                self._loss = Loss()
+
+            def rollout_step(self, inputs, state):
+                return self._step(inputs, state)
+
+            def train_step(self, inputs, state, rollout_info):
+                return self._step(inputs, state)
+
+            def _step(self, inputs, state):
+                predictor_state, delayed = state
+                predicted, predictor_state = self._predictor(inputs, predictor_state)
+                error = (delayed - inputs) ** 2
+                loss_step = self._loss.rollout_step(error)
+                return AlgStep(
+                    output=predicted,
+                    state=(predictor_state, predicted),
+                    info=loss_step.info)
+
+            def calc_loss(info):
+                return self._loss.calc_loss(info)
+
+        alg = PredictAlgorithm(predictor)
+
+    Example 2:
+
+    The following example constructs an actor-critic algorithm:
+
+    .. code-block:: python
+
+        value_net = ValueNetwork(...)
+        actor_net = ActorDistributionNetwork(...)
 
         alg = SequentialAlg(
             is_on_policy=True,
@@ -183,6 +244,69 @@ def SequentialAlg(*modules,
                 value='value'), ActorCriticLoss()),
             output='action')
 
+    It is equivalent to the following:
+
+    .. code-block:: python
+
+        class ACAlgorithm(Algorithm):
+            def __init__(self, value_net, actor_net):
+                super().__init__(
+                    train_state_spec=(value_net.state_spec, actor_net.state_spec),
+                    is_on_policy=True)
+                self._value_net = value_net
+                self._actor_net = actor_net
+                self._loss = ActorCriticLoss()
+
+            def rollout_step(self, inputs, state):
+                value, value_state = self._value_net(inputs.observation, state[0])
+                action_dist, actor_state = self._actor_net(inputs.observation, state[1])
+                action = dist_utils.sample_action_distribution(action_dist)
+                loss_step = self._loss.rollout_step(ActorCriticInfo(
+                    reward=inputs.reward,
+                    step_type=inputs.step_type,
+                    discount=inputs.discount,
+                    action_distribution=action_dist,
+                    action=action,
+                    value=value))
+                )
+                return AlgStep(
+                    output=action,
+                    state=(value_state, actor_state),
+                    info=loss_step.info)
+
+            def calc_loss(self, info):
+                self._loss.calc_loss(info)
+
+        alg = ACAlgorithm(value_net, actor_net)
+
+    Args:
+        modules (Callable | Algorithm | (nested str, Callable) | (nested str, Algorithm)):
+            The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+            or plain ``Callable``. Optionally, their inputs can be specified
+            by the first element of the tuple. If input is not provided, it is
+            assumed to be the result of the previous module (or input to this
+            ``Sequential`` for the first module). If input is provided, it
+            should be a nested str. It will be used to retrieve results from
+            the dictionary of the current ``named_results``. For modules
+            specified by ``modules``, because no ``named_modules`` has been
+            invoked, ``named_outputs`` is ``{'input': input}``.
+        named_modules (Callable | Algorithm  | (nested str, Callable) | (nested str, Algorithm)):
+            The ``Callable`` can be a ``torch.nn.Module``, ``alf.nn.Network``
+            or plain ``Callable``. Optionally, their inputs can be specified
+            by the first element of the tuple. If input is not provided, it is
+            assumed to be the result of the previous module (or input to this
+            ``Sequential`` for the first module). If input is provided, it
+            should be a nested str. It will be used to retrieve results from
+            the dictionary of the current ``named_results``. ``named_results``
+            is updated once the result of a named module is calculated.
+        output (nested str): if not provided, the result from the last module
+            will be used as output. Otherwise, it will be used to retrieve
+            results from ``named_results`` after the results of all modules
+            have been calculated.
+        is_on_policy (bool): wether this supports on-policy or off-policy training.
+            If is None, it should supports both on-policy and off-policy training.
+        name (str): name of this algorithm
+
     """
 
     return _SequentialAlg(
@@ -190,7 +314,6 @@ def SequentialAlg(*modules,
         element_dict=named_modules,
         output=output,
         is_on_policy=is_on_policy,
-        debug_summaries=debug_summaries,
         name=name)
 
 
@@ -200,7 +323,6 @@ class _SequentialAlg(AlgorithmContainer):
                  element_dict=None,
                  output='',
                  is_on_policy=None,
-                 debug_summaries=False,
                  name='SequentialAlg'):
         train_state_spec = []
         rollout_state_spec = []
@@ -258,7 +380,7 @@ class _SequentialAlg(AlgorithmContainer):
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
             is_on_policy=is_on_policy,
-            debug_summaries=debug_summaries,
+            debug_summaries=False,
             name=name)
 
         self._networks = modules
@@ -285,6 +407,7 @@ class _SequentialAlg(AlgorithmContainer):
                 new_state[i] = alg_step.state
                 info[net.name] = alg_step.info
                 info_dict[output] = alg_step.info
+                state_dict[output] = new_state[i]
             elif isinstance(net, Network):
                 x, new_state[i] = net(x, state[i])
                 state_dict[output] = new_state[i]
@@ -318,6 +441,7 @@ class _SequentialAlg(AlgorithmContainer):
                 new_state[i] = alg_step.state
                 info[net.name] = alg_step.info
                 info_dict[output] = alg_step.info
+                state_dict[output] = new_state[i]
             elif isinstance(net, Network):
                 x, new_state[i] = net(x, state[i])
                 state_dict[output] = new_state[i]
@@ -332,7 +456,7 @@ class _SequentialAlg(AlgorithmContainer):
 class EchoAlg(Algorithm):
     """Echo Algorithm.
 
-    EchoAlg uses part of the output of ``alg`` of current step as part of
+    Echo algorithm uses part of the output of ``alg`` of current step as part of
     the input of ``alg`` for the next step. It assumes that the input of ``alg``
     is a dict with two keys: 'input' and 'echo', and the output of ``alg`` is
     a dict with two keys: 'output' and 'echo'. The 'echo' output of current step
@@ -341,11 +465,12 @@ class EchoAlg(Algorithm):
     ``EchoAlg``.
     """
 
-    def __init__(self, alg, echo_spec, debug_summaries=False, name='EchoAlg'):
+    def __init__(self, alg, echo_spec, name='EchoAlg'):
         """
         Args:
             alg (Algorithm): the module for performing the actual computation
-            echo_spec ():
+            echo_spec (nested TensorSpec): describe the data format of echo.
+            name (str):
         """
         assert isinstance(alg, Algorithm), (
             "block must be an instance of "
@@ -356,7 +481,6 @@ class EchoAlg(Algorithm):
             rollout_state_spec=(alg.rollout_state_spec, echo_spec),
             predict_state_spec=(alg.predict_state_spec, echo_spec),
             is_on_policy=alg.on_policy,
-            debug_summaries=debug_summaries,
             name=name)
 
         self._alg = alg
@@ -418,7 +542,9 @@ class EchoAlg(Algorithm):
 
 @alf.configurable
 class RLAlgWrapper(RLAlgorithm):
-    """Wrap an Algorithm as RLAlgorithm so that it can be used for RLTrainer"""
+    """Wrap an ``Algorithm`` instance as an ``RLAlgorithm`` instance
+       so that it can be used for RLTrainer.
+    """
 
     def __init__(self,
                  observation_spec,
@@ -426,11 +552,32 @@ class RLAlgWrapper(RLAlgorithm):
                  algorithm,
                  env=None,
                  reward_spec=alf.TensorSpec(()),
-                 reward_weights=None,
                  config: TrainerConfig = None,
                  optimizer=None,
                  debug_summaries=False,
                  name="RLAlgWrapper"):
+        """
+        Args:
+            observation_spec (nested TensorSpec): representing the observations.
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            algorithm (Algorithm): algorithm to be wrapped. It should take
+                ``TimeStep`` as input and its output will be used as action.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
+            env (Environment): The environment to interact with. ``env`` is a
+                batched environment, which means that it runs multiple
+                simulations simultaneously. Running multiple environments in
+                parallel is crucial to on-policy algorithms as it increases the
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
+            config (TrainerConfig): config for training. ``config`` only needs to
+                be provided to the algorithm which performs a training iteration
+                by itself.
+            optimizer (torch.optim.Optimizer): The default optimizer for training.
+            debug_summaries (bool): If True, debug summaries will be created.
+            name (str): Name of this algorithm.
+
+        """
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -438,7 +585,6 @@ class RLAlgWrapper(RLAlgorithm):
             reward_spec=reward_spec,
             predict_state_spec=algorithm.predict_state_spec,
             rollout_state_spec=algorithm.rollout_state_spec,
-            reward_weights=reward_weights,
             is_on_policy=algorithm.on_policy,
             env=env,
             config=config,
@@ -474,29 +620,3 @@ class RLAlgWrapper(RLAlgorithm):
 
     def after_train_iter(self, root_inputs, rollout_info):
         self._algorithm.after_train_iter(root_inputs, rollout_info)
-
-
-class Loss(Algorithm):
-    """Algorithm that uses its input as loss.
-
-    It can be subclassed to customize calc_loss().
-    """
-
-    def __init__(self, loss_weight=1.0, name="LossAlg"):
-        super().__init__(name=name)
-        self._loss_weight = loss_weight
-
-    def predict_step(self, inputs, state):
-        return AlgStep()
-
-    def rollout_step(self, inputs, state):
-        if self.on_policy:
-            return AlgStep(info=inputs)
-        else:
-            return AlgStep()
-
-    def train_step(self, inputs, state, rollout_info):
-        return AlgStep(info=inputs)
-
-    def calc_loss(self, info):
-        return LossInfo(loss=self._loss_weight * info, extra=info)

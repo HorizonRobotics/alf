@@ -285,7 +285,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         """
         repr_state = ()
         if self._repr_learner is not None:
-            repr_step = self._repr_learner.train_step(rl_exp, state.repr)
+            repr_step = self._repr_learner.train_step(inputs, state.repr)
             inputs = inputs._replace(observation=repr_step.output)
             repr_state = repr_step.state
 

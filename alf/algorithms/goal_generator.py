@@ -134,10 +134,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         experience trajectory.
 
         Args:
-            inputs (TimeStep): the experience data whose ``rollout_info`` has been
-                replaced with goal generator ``rollout_info``.
+            inputs (TimeStep): the experience data.
             state (nested Tensor):
-            rollout_info (GoalInfo)
+            rollout_info (GoalInfo):
 
         Returns:
             AlgStep:

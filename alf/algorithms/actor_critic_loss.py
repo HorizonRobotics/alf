@@ -20,7 +20,7 @@ import alf
 from alf.data_structures import LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, dist_utils, value_ops
-from .containers import Loss
+from .algorithm import Loss
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])

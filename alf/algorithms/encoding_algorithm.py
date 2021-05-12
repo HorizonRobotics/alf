@@ -25,9 +25,9 @@ from alf.nest.utils import get_nested_field
 class EncodingAlgorithm(Algorithm):
     """Basic encoding algorithm.
 
-    This is just a wrapper for ``EncodingNetwork``. It also serves as a standard
-    interface for other representation learning algorithms. It does not have any
-    loss. So it relies on the downstream tasks to train the model.
+    It uses the provided encoding network to computed the representation. It
+    also supports the training of the encoding network by using some of its output
+    as losses.
     """
 
     def __init__(self,
@@ -54,7 +54,7 @@ class EncodingAlgorithm(Algorithm):
             output_fields (None | nested str): if None, all the output from the
                 encoder will be used as the output. Otherwise, ``output_fields``
                 will be used to retrieve the fields from the encoder output.
-            loss_fields (None | nested str): there is not lsss for this is None.
+            loss_fields (None | nested str): there is not loss if this is None.
                 Otherwise, ``loss_fields`` will be used to retrieve fields from
                 encoder output and use them as loss. Note that those fields must
                 be scalar.

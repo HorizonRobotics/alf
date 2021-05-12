@@ -49,7 +49,7 @@ TasacActorInfo = namedtuple(
 TasacInfo = namedtuple(
     "TasacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "rollout_beta", "beta", "actor", "critic", "alpha", "repeats"
+        "rollout_b", "b", "actor", "critic", "alpha", "repeats"
     ],
     default_value=())
 
@@ -161,7 +161,7 @@ class TASACTDLoss(nn.Module):
         Returns:
             LossInfo: TD loss with the ``extra`` field same as the loss.
         """
-        train_b = info.beta
+        train_b = info.b
         if info.reward.ndim == 3:
             # [T, B, D] or [T, B, 1]
             discounts = info.discount.unsqueeze(-1) * self._gamma
@@ -169,7 +169,7 @@ class TASACTDLoss(nn.Module):
             # [T, B]
             discounts = info.discount * self._gamma
 
-        rollout_b = info.beta
+        rollout_b = info.rollout_b
         # td return till the first action switching
         b = (rollout_b | train_b).to(torch.bool)
         # b at step 0 doesn't affect the bootstrapping of any step
@@ -616,7 +616,7 @@ class TasacAlgorithm(OffPolicyAlgorithm):
             info=TasacInfo(
                 action=new_action,
                 action_distribution=action_dists,
-                beta=actions[0],
+                b=actions[0],
                 repeats=state.repeats))
 
     def summarize_rollout(self, experience):
@@ -652,11 +652,11 @@ class TasacAlgorithm(OffPolicyAlgorithm):
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
-            rollout_beta=rollout_info.beta,
+            rollout_b=rollout_info.b,
             action_distribution=action_distributions,
             actor=actor_loss,
             critic=critic_info,
-            beta=actions[0],
+            b=actions[0],
             alpha=alpha_loss,
             repeats=state.repeats)
         return AlgStep(output=new_action, state=new_state, info=info)

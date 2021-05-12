@@ -99,7 +99,7 @@ class RLAlgorithm(Algorithm):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``rollout_state_spec``.
-            is_on_policy:
+            is_on_policy (None|bool): whether the algorithm is on-policy or not.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. If not None, the weighted sum of rewards is
                 the reward for training. Otherwise, the sum of rewards is used.
@@ -475,8 +475,7 @@ class RLAlgorithm(Algorithm):
         Users may choose to implement their own ``train_iter()``.
 
         Returns:
-            int:
-            - number of samples being trained on (including duplicates).
+            int: the number of samples being trained on (including duplicates).
         """
         assert self.on_policy is not None
 

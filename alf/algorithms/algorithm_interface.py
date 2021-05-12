@@ -123,9 +123,11 @@ class AlgorithmInterface(nn.Module):
         from ``train_step``.
 
         An algorithm can override this to indicate whether it is an on-policy or
-        off-policy algorithm. If an algorithm does not override this, it support
-        both on-policy and off-policy training. It can check wether it is on-policy
-        training by calling this function.
+        off-policy algorithm. If an algorithm does not override this, it needs to
+        support both on-policy and off-policy training, which means that ``rollout_step()``
+        and ``train_step()`` need to have the correct behavior for on-policy and
+        off-policy training. It can check wether it is on-policy training by
+        calling this function.
 
         Returns:
             bool | None: True if on-policy training, False if off-policy training,
@@ -151,6 +153,10 @@ class AlgorithmInterface(nn.Module):
             AlgStep:
             - output (nested Tensor): prediction result.
             - state (nested Tensor): should match ``predict_state_spec``.
+            - info (nest): information for analyzing the agent. In particular,
+                if an element of the info is ``alf.summary.render.Image``, it
+                will be rendered during play. See alf/summary/render.py for
+                detail.
         """
         raise NotImplementedError()
 
@@ -158,9 +164,9 @@ class AlgorithmInterface(nn.Module):
         """Rollout for one step of inputs.
 
         It is called to calculate output for every environment step. For on-policy
-        training, it also needs to generate necessary information for calc_loss().
+        training, it also needs to generate necessary information for ``calc_loss()``.
         For off-policy training, it needs to generate necessary information for
-        train_step().
+        ``train_step()``.
 
         Args:
             inputs (nested Tensor): inputs for prediction.
@@ -181,7 +187,7 @@ class AlgorithmInterface(nn.Module):
 
         It is called to calculate output for every time step for a batch of
         experience from replay buffer. It also needs to generate necessary
-        information for calc_loss().
+        information for ``calc_loss()``.
 
         Args:
             inputs (nested Tensor): inputs for train.
@@ -202,12 +208,14 @@ class AlgorithmInterface(nn.Module):
         raise NotImplementedError()
 
     def calc_loss(self, info):
-        """Calculate the loss at each step for each sample.
+        """Calculate the loss for one mini-batch.
 
         Args:
             info (nest): information collected for training. It is batched
                 from each ``AlgStep.info`` returned by ``rollout_step()``
                 (on-policy training) or ``train_step()`` (off-policy training).
+                The shape of the tensors in info is ``(T, B, ...)``, where T
+                is the mini-batch length and B is the mini-batch size.
         Returns:
             LossInfo: loss at each time step for each sample in the
                 batch. The shapes of the tensors in loss info should be
@@ -242,8 +250,8 @@ class AlgorithmInterface(nn.Module):
         update, such as copy a training model to a target model in SAC, DQN, etc.
 
         Args:
-            root_inputs (nest): experiences collected for the most recent
-                ``update_with_gradient()``.
+            root_inputs (nest): temporally batched inputs for the ``rollout_step()``
+                of the root algorithm collected during ``unroll()``.
             info (nest): information collected for training.
                 It is batched from each ``AlgStep.info`` returned by ``rollout_step()``
                 for on-policy training or ``train_step()`` for off-policy training.
@@ -264,8 +272,8 @@ class AlgorithmInterface(nn.Module):
         it's less frequently called than ``after_update``.
 
         Args:
-            root_inputs (nest): inputs for the rollout_step() of the root algorithm
-                collected during ``unroll()``.
+            root_inputs (nest): temporally bached inputs for the ``rollout_step()``
+                of the root algorithm collected during ``unroll()``.
             rollout_info (nest): information collected from rollout_step() for
                 this algorithm during ``unroll()``.
         """
@@ -283,7 +291,7 @@ class AlgorithmInterface(nn.Module):
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
         be called by any child algorithm that doesn't have the unroll logic but
-        has a different training logic with its parent (e.g., off-policy).
+        has a different training logic with its parent.
 
         Args:
             experience (Experience): collected during ``unroll()``.

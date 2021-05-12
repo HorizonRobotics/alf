@@ -1150,13 +1150,7 @@ class Algorithm(AlgorithmInterface):
             experience = self._add_batch_info(experience, batch_info)
             experience = self.transform_experience(experience)
             experience = self._clear_batch_info(experience)
-        time_step = TimeStep(
-            step_type=experience.step_type,
-            reward=experience.reward,
-            discount=experience.discount,
-            observation=experience.observation,
-            prev_action=experience.prev_action,
-            env_id=experience.env_id)
+        time_step = experience_to_time_step(experience)
         time_step, rollout_info = self.preprocess_experience(
             time_step, experience.rollout_info, batch_info)
         experience = experience._replace(
@@ -1390,3 +1384,29 @@ class Algorithm(AlgorithmInterface):
         self.after_update(time_step, train_info)
 
         return experience, train_info, loss_info, params
+
+
+class Loss(Algorithm):
+    """Algorithm that uses its input as loss.
+
+    It can be subclassed to customize calc_loss().
+    """
+
+    def __init__(self, loss_weight=1.0, name="LossAlg"):
+        super().__init__(name=name)
+        self._loss_weight = loss_weight
+
+    def predict_step(self, inputs, state=None):
+        return AlgStep()
+
+    def rollout_step(self, inputs, state=None):
+        if self.on_policy:
+            return AlgStep(info=inputs)
+        else:
+            return AlgStep()
+
+    def train_step(self, inputs, state=None, rollout_info=None):
+        return AlgStep(info=inputs)
+
+    def calc_loss(self, info):
+        return LossInfo(loss=self._loss_weight * info, extra=info)
