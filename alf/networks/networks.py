@@ -106,7 +106,9 @@ class Residue(Network):
             activation (Callable): activation function
         """
         block = wrap_as_network(block, input_tensor_spec)
-        super().__init__(input_tensor_spec=block.input_tensor_spec)
+        super().__init__(
+            input_tensor_spec=block.input_tensor_spec,
+            state_spec=block.state_spec)
         self._block = block
         self._activation = activation
 
