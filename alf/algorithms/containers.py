@@ -150,7 +150,7 @@ def SequentialAlg(*modules,
     All the modules provided through ``modules`` and ``named_modules`` are calculated
     sequentially in the same order as they appear in the call to ``SequentialAlg``.
     By default, each module takes the output of the previous module as its input
-    (or the input to the Sequential if it is the first module), and the output of
+    (or the input to the SequentialAlg if it is the first module), and the output of
     the last module is the output of the ``SequentialAlg``. Note that the output
     of a module means differently depending on the type of the module:
 
@@ -183,7 +183,7 @@ def SequentialAlg(*modules,
         alg = SequentialAlg(
             predicted=predictor,
             delayed=networks.Delay(),
-            error=(('delayed', 'input'), lambda xy: (xy[0] - xy[1]) ** 2,
+            error=(('delayed', 'input'), lambda xy: (xy[0] - xy[1]) ** 2),
             loss=Loss(),
             output='predicted',
         )

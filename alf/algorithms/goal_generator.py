@@ -126,7 +126,7 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
 
     def train_step(self, inputs: TimeStep, state, rollout_info):
         """For off-policy training, the current output goal should be taken from
-        the goal in ``exp.rollout_info`` (historical goals generated during rollout).
+        the goal in ``rollout_info`` (historical goals generated during rollout).
 
         Note that we cannot take the goal from ``state`` and pass it down because
         the first state might be a zero vector. And we also cannot resample
