@@ -59,6 +59,171 @@ SoftmaxTransform = get_invertable(td.SoftmaxTransform)
 
 
 @alf.configurable
+class Softplus(td.Transform):
+    r"""Transform via the mapping :math:`\text{Softplus}(x) = \log(1 + \exp(x))`.
+
+    Code adapted from `pyro <https://docs.pyro.ai/en/latest/_modules/pyro/distributions/transforms/softplus.html>`_
+    and `tensorflow <https://github.com/tensorflow/probability/blob/v0.12.2/tensorflow_probability/python/bijectors/softplus.py#L61-L189>`_.
+    """
+    domain = constraints.real
+    codomain = constraints.positive
+    bijective = True
+    sign = +1
+
+    def __init__(self, hinge_softness=1.):
+        """
+        Args:
+            hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                0 to identity.
+        """
+        super().__init__(cache_size=1)
+        self._hinge_softness = float(hinge_softness)
+        assert self._hinge_softness > 0, "Must be a positive softness number!"
+
+    def __eq__(self, other):
+        return (isinstance(other, Softplus)
+                and self._hinge_softness == other._hinge_softness)
+
+    def _call(self, x):
+        return nn.functional.softplus(x, beta=1. / self._hinge_softness)
+
+    def _inverse(self, y):
+        return (y / self._hinge_softness).expm1().log() * self._hinge_softness
+
+    def log_abs_det_jacobian(self, x, y):
+        return -nn.functional.softplus(-x / self._hinge_softness)
+
+
+@alf.configurable
+def Softlower(low, hinge_softness=1.):
+    """Create a Softlower transform by composing the Softplus and Affine
+    transforms. Mathematically, ``softlower(x, low) = softplus(x - low) + low``.
+
+    Args:
+        low (float|Tensor): the lower bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to identity.
+    """
+    return td.transforms.ComposeTransform([
+        AffineTransform(loc=-low, scale=1.),
+        Softplus(hinge_softness=hinge_softness),
+        AffineTransform(loc=low, scale=1.)
+    ])
+
+
+@alf.configurable
+def Softupper(high, hinge_softness=1.):
+    """Create a Softupper transform by composing the Softplus and Affine
+    transforms. Mathematically, ``softupper(x, high) = -softplus(high - x) + high``.
+
+    Args:
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                identity to ``high``.
+    """
+    return td.transforms.ComposeTransform([
+        AffineTransform(loc=high, scale=-1.),
+        Softplus(hinge_softness=hinge_softness),
+        AffineTransform(loc=high, scale=-1.)
+    ])
+
+
+@alf.configurable
+def SoftclipTF(low, high, hinge_softness=1.):
+    """Create a Softclip transform by composing Softlower, Softupper, and Affine
+    transforms, adapted from `tensorflow <https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/SoftClip>`_.
+    Mathematically,
+
+    .. code-block:: python
+
+        clipped = softupper(softlower(x, low), high)
+        softclip(x) = (clipped - high) / (high - softupper(low, high)) * (high - low) + high
+
+    The second scaling step is beause we will have
+    ``softupper(low, high) < low`` due to distortion of softplus, so we need to
+    shrink the interval slightly by ``(high - low) / (high - softupper(low, high))``
+    to preserve the lower bound. Due to this rescaling, the bijector can be mildly
+    asymmetric.
+
+    Args:
+        low (float|Tensor): the lower bound
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to ``high``.
+    """
+    if not isinstance(low, torch.Tensor):
+        low = torch.tensor(low)
+    assert torch.all(high > low), "Invalid clipping range"
+
+    # Compute the clipped value of ``low`` upper bounded by ``high``
+    softupper_high_at_low = Softupper(high, hinge_softness=hinge_softness)(low)
+    return td.transforms.ComposeTransform([
+        Softlower(low=low, hinge_softness=hinge_softness),
+        Softupper(high=high, hinge_softness=hinge_softness),  # clipped
+        AffineTransform(loc=-high, scale=1.),
+        AffineTransform(
+            loc=high, scale=(high - low) / (high - softupper_high_at_low))
+    ])
+
+
+@alf.configurable
+class Softclip(td.Transform):
+    r"""Transform via the mapping defined in ``alf.math_ops.softclip()``.
+    Unlike ``SoftclipTF``, this transform is symmetric regarding the lower and
+    upper bound when squashing.
+    """
+    domain = constraints.real
+    codomain = constraints.real
+    bijective = True
+    sign = +1
+
+    def __init__(self, low, high, hinge_softness=1.):
+        """
+        Args:
+            low (float): the lower bound
+            high (float): the upper bound
+            hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to ``high``.
+        """
+        super().__init__(cache_size=1)
+        self._hinge_softness = float(hinge_softness)
+        assert self._hinge_softness > 0, "Must be a positive softness number!"
+        self._l = float(low)
+        self._h = float(high)
+        self.codomain = constraints.interval(self._l, self._h)
+
+    def __eq__(self, other):
+        return (isinstance(other, Softclip)
+                and self._hinge_softness == other._hinge_softness
+                and self._l == other._l and self._h == other._h)
+
+    def _call(self, x):
+        return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
+
+    def _inverse(self, y):
+        """``y`` should be in ``[self._l, self._h]``. Note that when ``y`` is
+        close to boundaries, this inverse function might have numerical issues.
+        Since we use ``cache_size=1`` in the init function, here we don't clip
+        ``y``.
+        """
+        s = self._hinge_softness
+        return (y + s * (((self._l - y) / s).expm1() / (
+            (y - self._h) / s).expm1()).log())
+
+    def log_abs_det_jacobian(self, x, y):
+        r"""Compute ``log|dy/dx|``.
+        """
+        s = self._hinge_softness
+        return (1 - 1 / (1 + ((x - self._l) / s).exp()) - 1 / (1 + (
+            (self._h - x) / s).exp())).log()
+
+
+@alf.configurable
 class Softsign(td.Transform):
     domain = constraints.real
     codomain = constraints.interval(-1.0, 1.0)
