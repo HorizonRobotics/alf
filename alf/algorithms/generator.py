@@ -13,7 +13,6 @@
 # limitations under the License.
 """A generic generator."""
 
-import gin
 import numpy as np
 import torch
 
@@ -49,7 +48,7 @@ class CriticAlgorithm(Algorithm):
                  optimizer=None,
                  name="CriticAlgorithm"):
         """Create a CriticAlgorithm.
-        
+
         Args:
             input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
@@ -96,12 +95,12 @@ class CriticAlgorithm(Algorithm):
 
     def predict_step(self, inputs, state=None, requires_jac_diag=False):
         """Predict for one step of inputs.
-        
+
         Args:
             inputs (Tensor): inputs for prediction.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
-        
+
         Returns:
             AlgStep:
             - output (Tensor): predictions or (predictions, diag_jacobian)

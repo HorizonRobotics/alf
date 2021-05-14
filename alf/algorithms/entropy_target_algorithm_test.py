@@ -55,12 +55,12 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         dist, _ = net(embedding)
 
-        alg_step = alg.train_step(dist, self._time_step.step_type)
+        alg_step = alg.train_step((dist, self._time_step.step_type))
 
         info = alg_step.info
         for i in range(-3, 1):
             alg._stage = torch.tensor(i, dtype=torch.int32)
-            alg.calc_loss(self._time_step, info)
+            alg.calc_loss(info)
 
     def test_nested_entropy_target_algorithm(self):
         action_spec = dict(
@@ -81,12 +81,12 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         dist, _ = net(embedding)
 
-        alg_step = alg.train_step(dist, self._time_step.step_type)
+        alg_step = alg.train_step((dist, self._time_step.step_type))
 
         info = alg_step.info
         for i in range(-3, 1):
             alg._stage = torch.tensor(i, dtype=torch.int32)
-            alg.calc_loss(self._time_step, info)
+            alg.calc_loss(info)
 
 
 if __name__ == "__main__":

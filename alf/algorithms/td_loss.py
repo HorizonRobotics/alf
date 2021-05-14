@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import torch
 import torch.nn as nn
 
@@ -106,15 +105,19 @@ class TDLoss(nn.Module):
         """
         return self._gamma.clone()
 
-    def forward(self, experience, value, target_value):
+    def forward(self, info, value, target_value):
         """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.
 
         Args:
-            experience (Experience): experience collected from ``unroll()`` or
-                a replay buffer. All tensors are time-major.
+            info (namedtuple): experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
             value (torch.Tensor): the time-major tensor for the value at each time
                 step. The loss is between this and the calculated return.
             target_value (torch.Tensor): the time-major tensor for the value at
@@ -123,30 +126,30 @@ class TDLoss(nn.Module):
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
-        if experience.reward.ndim == 3:
+        if info.reward.ndim == 3:
             # [T, B, D] or [T, B, 1]
-            discounts = experience.discount.unsqueeze(-1) * self._gamma
+            discounts = info.discount.unsqueeze(-1) * self._gamma
         else:
             # [T, B]
-            discounts = experience.discount * self._gamma
+            discounts = info.discount * self._gamma
 
         if self._lambda == 1.0:
             returns = value_ops.discounted_return(
-                rewards=experience.reward,
+                rewards=info.reward,
                 values=target_value,
-                step_types=experience.step_type,
+                step_types=info.step_type,
                 discounts=discounts)
         elif self._lambda == 0.0:
             returns = value_ops.one_step_discounted_return(
-                rewards=experience.reward,
+                rewards=info.reward,
                 values=target_value,
-                step_types=experience.step_type,
+                step_types=info.step_type,
                 discounts=discounts)
         else:
             advantages = value_ops.generalized_advantage_estimation(
-                rewards=experience.reward,
+                rewards=info.reward,
                 values=target_value,
-                step_types=experience.step_type,
+                step_types=info.step_type,
                 discounts=discounts,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
@@ -165,7 +168,7 @@ class TDLoss(nn.Module):
             value = self._target_normalizer.normalize(value)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = experience.step_type[:-1] != StepType.LAST
+            mask = info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
 
                 def _summarize(v, r, td, suffix):

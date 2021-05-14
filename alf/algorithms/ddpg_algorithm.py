@@ -41,7 +41,10 @@ DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
-    "DdpgInfo", ["action_distribution", "actor_loss", "critic"],
+    "DdpgInfo", [
+        "reward", "step_type", "discount", "action", "action_distribution",
+        "actor_loss", "critic"
+    ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
@@ -63,6 +66,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
                  reward_weights=None,
+                 epsilon_greedy=None,
+                 calculate_priority=False,
                  env=None,
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
@@ -98,6 +103,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             reward_weights (list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             num_critic_replicas (int): number of critics to be used. Default is 1.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -130,6 +142,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        self._calculate_priority = calculate_priority
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec),
@@ -201,7 +218,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._dqda_clipping = dqda_clipping
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
+    def predict_step(self, inputs: TimeStep, state):
+        return self._predict_step(inputs, state, self._epsilon_greedy)
+
+    def _predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
         action, state = self._actor_network(
             time_step.observation, state=state.actor.actor)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
@@ -226,7 +246,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=noisy_action,
             state=state,
-            info=DdpgInfo(action_distribution=action))
+            info=DdpgInfo(action=noisy_action, action_distribution=action))
 
     def rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
@@ -241,17 +261,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 _rollout_random_action)
             noisy_action[ind[0], :] = random_action[ind[0], :]
 
-        pred_step = self.predict_step(time_step, state, epsilon_greedy=1.0)
+        pred_step = self._predict_step(time_step, state, epsilon_greedy=1.0)
         if self._rollout_random_action > 0:
             nest.map_structure(_update_random_action, self._action_spec,
                                pred_step.output)
         return pred_step
 
-    def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
+    def _critic_train_step(self, inputs: TimeStep, state: DdpgCriticState,
+                           rollout_info: DdpgInfo):
         target_action, target_actor_state = self._target_actor_network(
-            exp.observation, state=state.target_actor)
+            inputs.observation, state=state.target_actor)
         target_q_values, target_critic_states = self._target_critic_networks(
-            (exp.observation, target_action), state=state.target_critics)
+            (inputs.observation, target_action), state=state.target_critics)
 
         if self.has_multidim_reward():
             sign = self.reward_weights.sign()
@@ -260,7 +281,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             target_q_values = target_q_values.min(dim=1)[0]
 
         q_values, critic_states = self._critic_networks(
-            (exp.observation, exp.action), state=state.critics)
+            (inputs.observation, rollout_info.action), state=state.critics)
 
         state = DdpgCriticState(
             critics=critic_states,
@@ -272,12 +293,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         return state, info
 
-    def _actor_train_step(self, exp: Experience, state: DdpgActorState):
+    def _actor_train_step(self, inputs: TimeStep, state: DdpgActorState):
         action, actor_state = self._actor_network(
-            exp.observation, state=state.actor)
+            inputs.observation, state=state.actor)
 
         q_values, critic_states = self._critic_networks(
-            (exp.observation, action), state=state.critics)
+            (inputs.observation, action), state=state.critics)
         if self.has_multidim_reward():
             # Multidimensional reward: [B, replicas, reward_dim]
             q_values = q_values * self.reward_weights
@@ -304,46 +325,47 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
         return AlgStep(output=action, state=state, info=info)
 
-    def train_step(self, exp: Experience, state: DdpgState):
+    def train_step(self, inputs: TimeStep, state: DdpgState,
+                   rollout_info: DdpgInfo):
         critic_states, critic_info = self._critic_train_step(
-            exp=exp, state=state.critics)
-        policy_step = self._actor_train_step(exp=exp, state=state.actor)
+            inputs=inputs, state=state.critics, rollout_info=rollout_info)
+        policy_step = self._actor_train_step(inputs=inputs, state=state.actor)
         return policy_step._replace(
             state=DdpgState(actor=policy_step.state, critics=critic_states),
             info=DdpgInfo(
+                reward=inputs.reward,
+                step_type=inputs.step_type,
+                discount=inputs.discount,
                 action_distribution=policy_step.output,
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
-    def calc_loss(self, experience, train_info: DdpgInfo):
-
+    def calc_loss(self, info: DdpgInfo):
         critic_losses = [None] * self._num_critic_replicas
         for i in range(self._num_critic_replicas):
             critic_losses[i] = self._critic_losses[i](
-                experience=experience,
-                value=train_info.critic.q_values[:, :, i, ...],
-                target_value=train_info.critic.target_q_values).loss
+                info=info,
+                value=info.critic.q_values[:, :, i, ...],
+                target_value=info.critic.target_q_values).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        if (experience.batch_info != ()
-                and experience.batch_info.importance_weights != ()):
-            valid_masks = (experience.step_type != StepType.LAST).to(
-                torch.float32)
+        if self._calculate_priority:
+            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
             priority = (
                 (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 
-        actor_loss = train_info.actor_loss
+        actor_loss = info.actor_loss
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
             priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
-    def after_update(self, experience, train_info: DdpgInfo):
+    def after_update(self, root_inputs, info: DdpgInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

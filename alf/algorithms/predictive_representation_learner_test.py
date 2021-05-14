@@ -86,6 +86,8 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
         step_type0 = 'FMMMLFMMLFMMMM'
         step_type1 = 'FMMMMMLFMMMMLF'
 
+        prev_action = time_step.prev_action
+
         for i in range(len(step_type0)):
             step_type = [step_type0[i], step_type1[i]]
             step_type = [
@@ -101,9 +103,11 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
                 observation=torch.tensor([[i, i + 1, i], [i + 1, i, i]],
                                          dtype=torch.float32),
                 reward=reward,
+                prev_action=prev_action,
                 env_id=torch.arange(batch_size, dtype=torch.int32))
             alg_step = repr_learner.rollout_step(time_step, state)
             alg_step = alg_step._replace(output=i + torch.tensor([[1.], [0.]]))
+            prev_action = alg_step.output
             experience = ds.make_experience(time_step, alg_step, state)
             replay_buffer.add_batch(experience)
             state = alg_step.state
@@ -114,44 +118,45 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
         experience = replay_buffer.get_field(None,
                                              env_ids.unsqueeze(-1).cpu(),
                                              positions.unsqueeze(-1).cpu())
-        experience = experience._replace(
-            replay_buffer=replay_buffer,
-            batch_info=BatchInfo(env_ids=env_ids, positions=positions),
-            rollout_info_field='rollout_info')
-        processed_experience = repr_learner.preprocess_experience(experience)
-        pprint.pprint(processed_experience.rollout_info)
+        processed_experience, processed_rollout_info = repr_learner.preprocess_experience(
+            experience, experience.rollout_info,
+            BatchInfo(
+                env_ids=env_ids,
+                positions=positions,
+                replay_buffer=replay_buffer))
+        pprint.pprint(processed_rollout_info)
 
         # yapf: disable
         expected = PredictiveRepresentationLearnerInfo(
             action=torch.tensor(
-               [[[ 1.,  2.,  3.,  4.,  5.]],
-                [[ 2.,  3.,  4.,  5.,  5.]],
-                [[ 3.,  4.,  5.,  5.,  5.]],
-                [[ 4.,  5.,  5.,  5.,  5.]],
-                [[ 5.,  5.,  5.,  5.,  5.]],
-                [[ 6.,  7.,  8.,  9.,  9.]],
-                [[ 7.,  8.,  9.,  9.,  9.]],
-                [[ 8.,  9.,  9.,  9.,  9.]],
-                [[ 9.,  9.,  9.,  9.,  9.]],
-                [[10., 11., 12., 13., 14.]],
-                [[11., 12., 13., 14., 14.]],
-                [[12., 13., 14., 14., 14.]],
-                [[13., 14., 14., 14., 14.]],
-                [[14., 14., 14., 14., 14.]],
-                [[ 0.,  1.,  2.,  3.,  4.]],
-                [[ 1.,  2.,  3.,  4.,  5.]],
-                [[ 2.,  3.,  4.,  5.,  6.]],
-                [[ 3.,  4.,  5.,  6.,  6.]],
-                [[ 4.,  5.,  6.,  6.,  6.]],
-                [[ 5.,  6.,  6.,  6.,  6.]],
-                [[ 6.,  6.,  6.,  6.,  6.]],
-                [[ 7.,  8.,  9., 10., 11.]],
-                [[ 8.,  9., 10., 11., 12.]],
-                [[ 9., 10., 11., 12., 12.]],
-                [[10., 11., 12., 12., 12.]],
-                [[11., 12., 12., 12., 12.]],
-                [[12., 12., 12., 12., 12.]],
-                [[13., 13., 13., 13., 13.]]]).unsqueeze(-1),
+               [[[ 1.,  2.,  3.,  4.]],
+                [[ 2.,  3.,  4.,  4.]],
+                [[ 3.,  4.,  4.,  4.]],
+                [[ 4.,  4.,  4.,  4.]],
+                [[ 4.,  4.,  4.,  4.]],
+                [[ 6.,  7.,  8.,  8.]],
+                [[ 7.,  8.,  8.,  8.]],
+                [[ 8.,  8.,  8.,  8.]],
+                [[ 8.,  8.,  8.,  8.]],
+                [[10., 11., 12., 13.]],
+                [[11., 12., 13., 13.]],
+                [[12., 13., 13., 13.]],
+                [[13., 13., 13., 13.]],
+                [[13., 13., 13., 13.]],
+                [[ 0.,  1.,  2.,  3.]],
+                [[ 1.,  2.,  3.,  4.]],
+                [[ 2.,  3.,  4.,  5.]],
+                [[ 3.,  4.,  5.,  5.]],
+                [[ 4.,  5.,  5.,  5.]],
+                [[ 5.,  5.,  5.,  5.]],
+                [[ 5.,  5.,  5.,  5.]],
+                [[ 7.,  8.,  9., 10.]],
+                [[ 8.,  9., 10., 11.]],
+                [[ 9., 10., 11., 11.]],
+                [[10., 11., 11., 11.]],
+                [[11., 11., 11., 11.]],
+                [[11., 11., 11., 11.]],
+                [[12., 12., 12., 12.]]]).unsqueeze(-1),
             mask=torch.tensor(
                [[[ True,  True,  True,  True,  True]],
                 [[ True,  True,  True,  True, False]],
@@ -213,7 +218,7 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
         # yapf: enable
 
         alf.nest.map_structure(lambda x, y: self.assertEqual(x, y),
-                               processed_experience.rollout_info, expected)
+                               processed_rollout_info, expected)
 
 
 if __name__ == '__main__':

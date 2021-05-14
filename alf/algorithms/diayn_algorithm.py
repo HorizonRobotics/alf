@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-
 import torch
 
 import alf
@@ -25,15 +23,15 @@ from alf.utils.tensor_utils import to_tensor
 from alf.utils import math_ops
 from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
-DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
+DIAYNInfo = namedtuple("DIAYNInfo", ["loss"])
 
 
-@gin.configurable
+@alf.configurable
 def create_discrete_skill_spec(num_of_skills):
     return BoundedTensorSpec((), dtype="int64", maximum=num_of_skills - 1)
 
 
-@gin.configurable
+@alf.configurable
 class DIAYNAlgorithm(Algorithm):
     """Diversity is All You Need Module
 
@@ -155,17 +153,15 @@ class DIAYNAlgorithm(Algorithm):
                 intrinsic_reward)
 
         return AlgStep(
-            output=(),
-            state=skill,
-            info=DIAYNInfo(reward=intrinsic_reward, loss=loss))
+            output=intrinsic_reward, state=skill, info=DIAYNInfo(loss=loss))
 
-    def rollout_step(self, time_step, state):
-        return self._step(time_step, state)
+    def rollout_step(self, inputs, state):
+        return self._step(inputs, state)
 
-    def train_step(self, time_step, state):
-        return self._step(time_step, state, calc_rewards=False)
+    def train_step(self, inputs, state, rollout_info=None):
+        return self._step(inputs, state, calc_rewards=False)
 
-    def calc_loss(self, experience, info: DIAYNInfo):
+    def calc_loss(self, info: DIAYNInfo):
         loss = torch.mean(info.loss)
         return LossInfo(
             scalar_loss=loss, extra=dict(skill_discriminate_loss=info.loss))

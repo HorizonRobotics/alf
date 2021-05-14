@@ -104,7 +104,7 @@ class AgentHelper(object):
             summarize_fn(os.path.join(summary_prefix, "overall"), reward)
         return reward
 
-    def accumulate_loss_info(self, algorithms, experience, train_info):
+    def accumulate_loss_info(self, algorithms, train_info):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -123,8 +123,7 @@ class AgentHelper(object):
 
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
-            exp = _make_alg_experience(experience, name)
-            new_loss_info = algorithm.calc_loss(exp, info)
+            new_loss_info = algorithm.calc_loss(info)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})
@@ -145,14 +144,14 @@ class AgentHelper(object):
         assert loss_info is not None, "No loss info is calculated!"
         return loss_info
 
-    def after_update(self, algorithms, experience, train_info):
+    def after_update(self, algorithms, root_inputs, train_info):
         """For each provided algorithm, call its ``after_update()`` to do things after
         the agent completes one gradient update (i.e. ``update_with_gradient()``).
 
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose
                 ``after_update`` is to be called.
-            experience (Experience): experience used for the gradient update.
+            root_inputs (TimeStep): experience used for the gradient update.
             train_info (AgentInfo): information collected for training
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``train_step()`` or ``rollout_step()``.
@@ -160,10 +159,9 @@ class AgentHelper(object):
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
             info = getattr(train_info, field)
-            exp = _make_alg_experience(experience, field)
-            alg.after_update(exp, info)
+            alg.after_update(root_inputs, info)
 
-    def after_train_iter(self, algorithms, experience, train_info=None):
+    def after_train_iter(self, algorithms, root_inputs, rollout_info=None):
         """For each provided algorithm, call its ``after_train_iter()`` to do
         things after the agent finishes one training iteration (i.e.,
         ``train_iter()``).
@@ -171,15 +169,21 @@ class AgentHelper(object):
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose
                 ``after_train_iter`` is to be called.
-            experience (Experience): experience collected from ``rollout_step()``.
-            train_info (AgentInfo): information collected for training
+            root_inputs (TimeStep): experience collected from ``rollout_step()``.
+            rollout_info (AgentInfo): information collected for training
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``rollout_step()``.
         """
-        assert experience.rollout_info is (), (
-            "'experience' should always be collected from 'unroll()' and its "
-            "'rollout_info' field should have been moved to 'train_info'!")
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            info = (None if train_info is None else getattr(train_info, field))
-            alg.after_train_iter(experience, info)
+            info = (None if rollout_info is None else getattr(
+                rollout_info, field))
+            alg.after_train_iter(root_inputs, info)
+
+    def set_path(self, path):
+        """Set the path for the sub-algorithms."""
+        prefix = path
+        if path:
+            prefix = prefix + '.'
+        for alg, name in self._alg_to_field_mapping.items():
+            alg.set_path(path + name)

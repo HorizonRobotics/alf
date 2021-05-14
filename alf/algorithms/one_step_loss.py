@@ -12,15 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-import torch
-import torch.nn as nn
-
 import alf
-from alf.data_structures import LossInfo, StepType
-from alf.utils import common, losses, value_ops
-from alf.utils import tensor_utils
-from alf.utils.summary_utils import safe_mean_hist_summary
+from alf.utils import losses
 from alf.algorithms.td_loss import TDLoss
 
 

@@ -315,6 +315,7 @@ class RLTrainer(Trainer):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
+        self._algorithm.set_path('')
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -505,6 +506,7 @@ class SLTrainer(Trainer):
         self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
         self._algorithm = config.algorithm_ctor(config=config)
+        self._algorithm.set_path('')
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)
@@ -579,8 +581,7 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
-    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
-                                         epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
         recorder.capture_frame(policy_step.info, time_step.is_last())

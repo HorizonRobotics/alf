@@ -30,7 +30,8 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo", ["env_ids", "positions", "importance_weights"],
+    "BatchInfo",
+    ["env_ids", "positions", "importance_weights", "replay_buffer"],
     default_value=())
 
 
@@ -376,10 +377,10 @@ class ReplayBuffer(RingBuffer):
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
 
-        if alf.get_default_device() == self._device:
-            return result, info
-        else:
-            return convert_device(result), convert_device(info)
+        if alf.get_default_device() != self._device:
+            result, info = convert_device((result, info))
+        info = info._replace(replay_buffer=self)
+        return result, info
 
     def _recent_sample(self, batch_size, batch_length):
         return self._sample(batch_size, batch_length, self._recent_data_steps)

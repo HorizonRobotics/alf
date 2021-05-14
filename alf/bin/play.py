@@ -121,6 +121,7 @@ def play():
         action_spec=env.action_spec(),
         reward_spec=env.reward_spec(),
         config=config)
+    algorithm.set_path('')
     try:
         policy_trainer.play(
             FLAGS.root_dir,

@@ -13,9 +13,6 @@
 # limitations under the License.
 """LagrangianRewardWeightAlgorithm."""
 
-import numpy as np
-import gin
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -23,7 +20,6 @@ from torch.nn import functional as F
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import namedtuple, AlgStep
-from alf.nest import nest
 from alf.tensor_specs import TensorSpec
 from alf.utils import tensor_utils
 
@@ -107,11 +103,11 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
     def _trainable_attributes_to_ignore(self):
         return ["_lambdas"]
 
-    def rollout_step(self, time_step, state):
+    def rollout_step(self, inputs, state):
         return AlgStep(
-            info=LagInfo(rollout_reward=time_step.untransformed.reward))
+            info=LagInfo(rollout_reward=inputs.untransformed.reward))
 
-    def after_train_iter(self, experience, train_info: LagInfo):
+    def after_train_iter(self, root_inputs, train_info: LagInfo):
         """Retrieve *untransformed* rollout rewards from ``train_info``
         and train lambdas.
         """

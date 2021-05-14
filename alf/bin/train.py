@@ -86,7 +86,7 @@ def train_eval(root_dir):
     elif trainer_conf.ml_type == 'sl':
         trainer = policy_trainer.SLTrainer(trainer_conf)
     else:
-        raise ValueError("Unsupported ml_type: %s" % ml_type)
+        raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
     trainer.train()
 

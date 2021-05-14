@@ -18,7 +18,7 @@ import torch
 
 import alf
 import alf.data_structures as ds
-from alf.algorithms.lagrangian_algorithm import LagrangianRewardWeightAlgorithm
+from alf.algorithms.lagrangian_reward_weight_algorithm import LagrangianRewardWeightAlgorithm
 from alf.utils import common, dist_utils
 from alf.optimizers import Adam
 

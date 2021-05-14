@@ -12,30 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import namedtuple
-from functools import partial
-import gin
-import numpy as np
-
 import torch
-import torch.nn as nn
-import torch.distributions as td
 from typing import Callable
 
+import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
-                                 TimeStep, StepType)
+from alf.data_structures import AlgStep, namedtuple, TimeStep, StepType
 from alf.nest import nest
 from alf.optimizers.traj_optimizers import RandomOptimizer, CEMOptimizer
 from alf.tensor_specs import TensorSpec
-from alf.utils import common
 
 PlannerState = namedtuple("PlannerState", ["prev_plan"], default_value=())
 PlannerInfo = namedtuple("PlannerInfo", ["planner"])
-PlannerLossInfo = namedtuple('PlannerLossInfo', ["planner"])
 
 
-@gin.configurable
+@alf.configurable
 class PlanAlgorithm(OffPolicyAlgorithm):
     """Planning Module
 
@@ -93,7 +84,10 @@ class PlanAlgorithm(OffPolicyAlgorithm):
 
         self._action_seq_cost_func = None
 
-    def train_step(self, time_step: TimeStep, state: PlannerState):
+    def train_step(self,
+                   time_step: TimeStep,
+                   state: PlannerState,
+                   rollout_info=None):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
@@ -129,7 +123,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         pass
 
 
-@gin.configurable
+@alf.configurable
 class RandomShootingAlgorithm(PlanAlgorithm):
     """Random Shooting-based planning method.
 
@@ -193,7 +187,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             lower_bound=solution_lower_bound,
             cost_func=self._calc_cost_for_action_sequence)
 
-    def train_step(self, time_step: TimeStep, state):
+    def train_step(self, time_step: TimeStep, state, rollout_info=None):
         """
         Args:
             time_step (TimeStep): input data for planning
@@ -237,11 +231,11 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         cost = self._action_seq_cost_func(obs, ac_seqs)
         return cost
 
-    def after_update(self, training_info):
+    def after_update(self, root_inputs, info):
         pass
 
 
-@gin.configurable
+@alf.configurable
 class CEMPlanAlgorithm(RandomShootingAlgorithm):
     """CEM-based planning method.
 
@@ -326,8 +320,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         else:
             self._scalar_var = scalar_var
 
-    def predict_plan(self, time_step: TimeStep, state: PlannerState,
-                     epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState):
         prev_plan = state.prev_plan
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
