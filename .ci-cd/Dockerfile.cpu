@@ -55,7 +55,7 @@ RUN apt update && apt install -y ffmpeg
 RUN apt-get install -q -y gazebo9
 RUN apt-get install -q -y libgazebo9-dev
 
-RUN pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu \
+RUN pip3 install torch==1.8.1+cpu torchvision==0.9.1+cpu \
     -f https://download.pytorch.org/whl/torch_stable.html
 
 
@@ -82,14 +82,16 @@ RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git
 COPY requirements.txt  /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
 
-# import public ROM for super mario (ignore shasum)
-RUN cd /tmp \
-    && wget \
-      'https://static.roms.download/roms/nintendo/Super Mario Bros (E).zip' \
-    && unzip 'Super Mario Bros (E).zip' \
-    && mv 'Super Mario Bros (E).nes' \
-      /usr/local/lib/python3.6/dist-packages/retro/data/stable/SuperMarioBros-Nes/rom.nes \
-    && rm 'Super Mario Bros (E).zip'
+# The source is inaccessible anymore. We leave it here as a reference and
+# install it manually when building the image if needed.
+# # import public ROM for super mario (ignore shasum)
+# RUN cd /tmp \
+#     && wget \
+#       'https://static.roms.download/roms/nintendo/Super Mario Bros (E).zip' \
+#     && unzip 'Super Mario Bros (E).zip' \
+#     && mv 'Super Mario Bros (E).nes' \
+#       /usr/local/lib/python3.7/dist-packages/retro/data/stable/SuperMarioBros-Nes/rom.nes \
+#     && rm 'Super Mario Bros (E).zip'
 
 # clean
 RUN  rm -rf /var/lib/apt/lists/*

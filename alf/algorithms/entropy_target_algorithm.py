@@ -151,8 +151,10 @@ class EntropyTargetAlgorithm(Algorithm):
 
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
-        self._slow_update_rate = torch.tensor(slow_update_rate)
-        self._fast_update_rate = torch.tensor(fast_update_rate)
+        self._slow_update_rate = torch.tensor(
+            slow_update_rate, dtype=torch.float32)
+        self._fast_update_rate = torch.tensor(
+            fast_update_rate, dtype=torch.float32)
 
     def rollout_step(self, distribution, step_type, on_policy_training):
         """Rollout step.
@@ -238,9 +240,9 @@ class EntropyTargetAlgorithm(Algorithm):
         target_entropy = self._target_entropy()
 
         if target_entropy > 0:
-            fast_stage_thresh = 0.5 * target_entropy
+            fast_stage_thresh = (0.5 * target_entropy).astype(np.float32)
         else:
-            fast_stage_thresh = 2.0 * target_entropy
+            fast_stage_thresh = (2.0 * target_entropy).astype(np.float32)
 
         def _init_entropy():
             self._max_entropy.fill_(

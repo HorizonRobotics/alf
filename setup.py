@@ -19,7 +19,7 @@ os.system("pip install -e ./alf/nest/cnest")
 
 setup(
     name='alf',
-    version='0.0.1',
+    version='0.0.3',
     python_requires='>3.6.0',
     install_requires=[
         'atari_py == 0.1.7',
@@ -41,8 +41,8 @@ setup(
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard == 2.1.0',
-        'torch == 1.4.0',
-        'torchvision == 0.5.0',
+        'torch == 1.8.1',
+        'torchvision == 0.9.1',
     ],  # And any other dependencies foo needs
     package_data={'': ['*.gin']},
     packages=find_packages(),

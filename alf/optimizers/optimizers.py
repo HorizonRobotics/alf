@@ -87,7 +87,7 @@ def _score_func(x, alpha=1e-5):
 def wrap_optimizer(cls):
     """A helper function to construct torch optimizers with
     params as [{'params': []}]. After construction, new parameter
-    groups can be adde by using the add_param_group() method.
+    groups can be added by using the add_param_group() method.
 
     This wrapper also clips gradients first before calling ``step()``.
     """
