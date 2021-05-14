@@ -84,7 +84,7 @@ def swish(x):
 
 
 @alf.configurable
-def softlower(x, low, hinge_softness=None):
+def softlower(x, low, hinge_softness=1.):
     """Softly lower bound ``x`` by ``low``, namely,
     ``softlower(x, low) = softplus(x - low) + low``
 
@@ -98,16 +98,12 @@ def softlower(x, low, hinge_softness=None):
     Returns:
         Tensor
     """
-    if hinge_softness is not None:
-        assert hinge_softness > 0
-    else:
-        hinge_softness = 1.
-    return (nn.functional.softplus(
-        (x - low) / hinge_softness) * hinge_softness + low)
+    assert hinge_softness > 0
+    return nn.functional.softplus(x - low, beta=1. / hinge_softness) + low
 
 
 @alf.configurable
-def softupper(x, high, hinge_softness=None):
+def softupper(x, high, hinge_softness=1.):
     """Softly upper bound ``x`` by ``high``, namely,
     ``softupper(x, high) = -softplus(high - x) + high``.
 
@@ -121,16 +117,12 @@ def softupper(x, high, hinge_softness=None):
     Returns:
         Tensor
     """
-    if hinge_softness is not None:
-        assert hinge_softness > 0
-    else:
-        hinge_softness = 1.
-    return (-nn.functional.softplus(
-        (high - x) / hinge_softness) * hinge_softness + high)
+    assert hinge_softness > 0
+    return -nn.functional.softplus(high - x, beta=1. / hinge_softness) + high
 
 
 @alf.configurable
-def softclip(x, low, high, hinge_softness=None):
+def softclip_tf(x, low, high, hinge_softness=1.):
     """Softly bound ``x`` in between ``[low, high]``, namely,
 
     .. code-block:: python
@@ -138,7 +130,7 @@ def softclip(x, low, high, hinge_softness=None):
         clipped = softupper(softlower(x, low), high)
         softclip(x) = (clipped - high) / (high - softupper(low, high)) * (high - low) + high
 
-    The second scaling step is beause we will have
+    The second scaling step is because we will have
     ``softupper(low, high) < low`` due to distortion of softplus, so we need to
     shrink the interval slightly by ``(high - low) / (high - softupper(low, high))``
     to preserve the lower bound. Due to this rescaling, the bijector can be mildly
@@ -161,6 +153,42 @@ def softclip(x, low, high, hinge_softness=None):
         softlower(x, low, hinge_softness), high, hinge_softness)
     return ((clipped - high) / (high - softupper_high_at_low) * (high - low) +
             high)
+
+
+@alf.configurable
+def softclip(x, low, high, hinge_softness=1., threshold=10.):
+    r"""Softly bound ``x`` in between ``[low, high]``. Unlike ``softclip_tf``,
+    this transform is symmetric regarding the lower and upper bound when
+    squashing. The softclip function can be defined in several forms:
+
+    .. math::
+
+        \begin{array}{lll}
+            &\ln(\frac{e^{l-x}+1}{e^{x-h}+1}) + x & (1)\\
+            =&\ln(\frac{e^{x-l}+1}{e^{x-h}+1}) + l & (2)\\
+            =&\ln(\frac{e^{l-x}+1}{e^{h-x}+1}) + h & (3)\\
+        \end{array}
+
+    Args:
+        x (Tensor): input
+        low (float|Tensor): the lower bound
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+            slope. A higher softness results in a smoother transition from
+            ``low`` to ``high``. Default to 1.
+        threshold (float): For numerical stability, the function becomes (2) when
+            ``x < low - hinge_softness * threshold``
+            and becomes (3) ``x > high + hinge_softness * threshold``. Default
+            value: 10.
+    """
+    l, h, s = low, high, hinge_softness
+    u = ((l - x) / s).exp()
+    v = ((x - h) / s).exp()
+    return torch.where(
+        x < l - s * threshold, l + s * ((1 + 1 / u) / (1 + v)).log(),
+        torch.where(x > h + s * threshold,
+                    h + s * ((1 + u) / (1 + 1 / v)).log(),
+                    x + s * ((1 + u) / (1 + v)).log()))
 
 
 def max_n(inputs):

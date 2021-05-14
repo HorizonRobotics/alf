@@ -285,27 +285,44 @@ class TestSoftTransforms(alf.test.TestCase):
         self.assertTensorClose(softplus._inverse(softplus_x), x)
         self.assertTensorClose(softplus_x, softplus_x_)
 
-        softlower = dist_utils.Softlower(0.1)
+        b = 0.1
+        softlower = dist_utils.Softlower(b)
         softlower_x = softlower(x)
-        softlower_x_ = math_ops.softlower(x, 0.1)
-        self.assertTrue(torch.all(softlower_x >= 0.1))
+        softlower_x_ = math_ops.softlower(x, b)
+        self.assertTrue(torch.all(softlower_x >= b))
         self.assertTensorClose(softlower.inv(softlower_x), x)
         self.assertTensorClose(softlower_x, softlower_x_)
 
-        softupper = dist_utils.Softupper(-0.01, hinge_softness=0.01)
+        b = -0.01
+        softupper = dist_utils.Softupper(b, hinge_softness=0.01)
         softupper_x = softupper(x)
-        softupper_x_ = math_ops.softupper(x, -0.01, hinge_softness=0.01)
-        self.assertTrue(torch.all(softupper_x <= -0.01))
+        softupper_x_ = math_ops.softupper(x, b, hinge_softness=0.01)
+        self.assertTrue(torch.all(softupper_x <= b))
         self.assertTensorClose(softupper.inv(softupper_x), x)
         self.assertTensorClose(softupper_x, softupper_x_)
 
-        softclip = dist_utils.Softclip(-1e-3, 1e-3, hinge_softness=1e-4)
+        b = 1e-4
+        softclip = dist_utils.SoftclipTF(-b, b, hinge_softness=1e-4)
         softclip_x = softclip(x)
-        softclip_x_ = math_ops.softclip(x, -1e-3, 1e-3, hinge_softness=1e-4)
-        self.assertTrue(torch.all(softclip_x <= 1e-3))
-        self.assertTrue(torch.all(softclip_x >= -1e-3))
+        softclip_x_ = math_ops.softclip_tf(x, -b, b, hinge_softness=1e-4)
+        self.assertTrue(torch.all(softclip_x <= b))
+        self.assertTrue(torch.all(softclip_x >= -b))
         self.assertTensorClose(softclip.inv(softclip_x), x)
         self.assertTensorClose(softclip_x, softclip_x_)
+
+        b = 1e-4
+        softclip = dist_utils.Softclip(-b, b, hinge_softness=1e-4)
+        softclip_x = softclip(x)
+        softclip_x_ = math_ops.softclip(x, -b, b, hinge_softness=1e-4)
+        self.assertTrue(torch.all(softclip_x <= b))
+        self.assertTrue(torch.all(softclip_x >= -b))
+        self.assertTensorClose(softclip.inv(softclip_x), x)
+        self.assertTensorClose(softclip_x, softclip_x_)
+
+        # test Softclip._inverse in mild conditions
+        b = 1
+        softclip = dist_utils.Softclip(-b, b, hinge_softness=1)
+        self.assertTensorClose(softclip._inverse(softclip(x)), x, epsilon=1e-4)
 
 
 if __name__ == '__main__':
