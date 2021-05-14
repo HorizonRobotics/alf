@@ -156,7 +156,7 @@ def softclip_tf(x, low, high, hinge_softness=1.):
 
 
 @alf.configurable
-def softclip(x, low, high, hinge_softness=1., threshold=10.):
+def softclip(x, low, high, hinge_softness=1.):
     r"""Softly bound ``x`` in between ``[low, high]``. Unlike ``softclip_tf``,
     this transform is symmetric regarding the lower and upper bound when
     squashing. The softclip function can be defined in several forms:
@@ -176,19 +176,15 @@ def softclip(x, low, high, hinge_softness=1., threshold=10.):
         hinge_softness (float): this positive parameter changes the transition
             slope. A higher softness results in a smoother transition from
             ``low`` to ``high``. Default to 1.
-        threshold (float): For numerical stability, the function becomes (2) when
-            ``x < low - hinge_softness * threshold``
-            and becomes (3) ``x > high + hinge_softness * threshold``. Default
-            value: 10.
     """
     l, h, s = low, high, hinge_softness
     u = ((l - x) / s).exp()
     v = ((x - h) / s).exp()
+    u1 = u.log1p()
+    v1 = v.log1p()
     return torch.where(
-        x < l - s * threshold, l + s * ((1 + 1 / u) / (1 + v)).log(),
-        torch.where(x > h + s * threshold,
-                    h + s * ((1 + u) / (1 + 1 / v)).log(),
-                    x + s * ((1 + u) / (1 + v)).log()))
+        x < l, l + s * ((1 / u).log1p() - v1),
+        torch.where(x > h, h + s * (u1 - (1 / v).log1p()), x + s * (u1 - v1)))
 
 
 def max_n(inputs):

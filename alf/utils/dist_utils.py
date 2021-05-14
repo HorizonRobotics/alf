@@ -181,7 +181,7 @@ class Softclip(td.Transform):
     bijective = True
     sign = +1
 
-    def __init__(self, low, high, hinge_softness=1., threhsold=10.):
+    def __init__(self, low, high, hinge_softness=1.):
         """
         Args:
             low (float): the lower bound
@@ -189,26 +189,21 @@ class Softclip(td.Transform):
             hinge_softness (float): this positive parameter changes the transition
                 slope. A higher softness results in a smoother transition from
                 ``low`` to ``high``.
-            threshold (float): the threshold parameter for
-                ``alf.math_ops.softclip()``.
         """
         super().__init__(cache_size=1)
         self._hinge_softness = float(hinge_softness)
         assert self._hinge_softness > 0, "Must be a positive softness number!"
         self._l = float(low)
         self._h = float(high)
-        self._threshold = float(threhsold)
         self.codomain = constraints.interval(self._l, self._h)
 
     def __eq__(self, other):
         return (isinstance(other, Softclip)
                 and self._hinge_softness == other._hinge_softness
-                and self._l == other._l and self._h == other._h
-                and self._threshold == other._threshold)
+                and self._l == other._l and self._h == other._h)
 
     def _call(self, x):
-        return alf.math.softclip(x, self._l, self._h, self._hinge_softness,
-                                 self._threshold)
+        return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
 
     def _inverse(self, y):
         """``y`` should be in ``[self._l, self._h]``. Note that when ``y`` is
