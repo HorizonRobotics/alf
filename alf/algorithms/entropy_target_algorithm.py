@@ -149,6 +149,11 @@ class EntropyTargetAlgorithm(Algorithm):
 
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
+
+        # need to explicitly speficy dtype to be the same as `self._update_rate`
+        # as required by the `torch.where` function later. This was not needed
+        # in lower version of pytorch (e.g. 1.4) as it will cast a np.float64
+        # to torch.float32.
         self._slow_update_rate = torch.tensor(
             slow_update_rate, dtype=torch.float32)
         self._fast_update_rate = torch.tensor(
@@ -242,9 +247,9 @@ class EntropyTargetAlgorithm(Algorithm):
         target_entropy = self._target_entropy()
 
         if target_entropy > 0:
-            fast_stage_thresh = (0.5 * target_entropy).astype(np.float32)
+            fast_stage_thresh = (0.5 * target_entropy)
         else:
-            fast_stage_thresh = (2.0 * target_entropy).astype(np.float32)
+            fast_stage_thresh = (2.0 * target_entropy)
 
         def _init_entropy():
             self._max_entropy.fill_(
