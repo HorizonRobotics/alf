@@ -20,7 +20,7 @@ from typing import Callable
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from . import adam_tf
+from . import adam_tf, adamw
 
 
 def _rbf_func(x):
@@ -284,7 +284,7 @@ def wrap_optimizer(cls):
 
 Adam = alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam))
 
-AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
+AdamW = alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW))
 
 SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
 
