@@ -19,12 +19,14 @@ from torch.optim import _functional as F
 
 
 class AdamW(Optimizer):
-    r"""Implements AdamW algorithm.
+    """AdamW optimizer.
 
-    The current implementation of AdamW in PyTorch 1.8 has a bug introduced
+    The current implementation of AdamW in pytorch 1.8 has a bug introduced
     during refactoring (https://github.com/pytorch/pytorch/pull/52944).
-    This method is copied from the latest fix (#52944) which is now in pytorch
-    repo and can be removed after upgrading to PyTorch versions including the fix.
+    This method is copied from the latest fix (#52944).
+
+
+    TODO: remove this after upgrading to pytorch versions including fix (#52944).
 
     The original Adam algorithm was proposed in `Adam: A Method for Stochastic Optimization`_.
     The AdamW variant was proposed in `Decoupled Weight Decay Regularization`_.
