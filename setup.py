@@ -43,7 +43,8 @@ setup(
         'tensorboard == 2.1.0',
         'torch == 1.8.1',
         'torchvision == 0.9.1',
-    ],  # And any other dependencies foo needs
+        'torchtext == 0.9.1',
+    ],  # And any other dependencies alf needs
     package_data={'': ['*.gin']},
     packages=find_packages(),
 )
