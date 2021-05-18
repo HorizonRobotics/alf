@@ -247,9 +247,9 @@ class EntropyTargetAlgorithm(Algorithm):
         target_entropy = self._target_entropy()
 
         if target_entropy > 0:
-            fast_stage_thresh = (0.5 * target_entropy)
+            fast_stage_thresh = 0.5 * target_entropy
         else:
-            fast_stage_thresh = (2.0 * target_entropy)
+            fast_stage_thresh = 2.0 * target_entropy
 
         def _init_entropy():
             self._max_entropy.fill_(
