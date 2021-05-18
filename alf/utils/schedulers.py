@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Schedulers."""
-from alf.trainers.policy_trainer import Trainer
 import gin
+
+import alf
+from alf.trainers.policy_trainer import Trainer
 
 
 class Scheduler(object):
@@ -29,6 +31,7 @@ class Scheduler(object):
     * "percent": percent of training completed.
     * "iterations": the number training iterations.
     * "env_steps": the number of environment steps
+    * "global_counter": the value from ``alf.summary.get_global_counter()``
 
     """
 
@@ -43,11 +46,15 @@ class Scheduler(object):
             self._progress_func = Trainer.current_iterations
         elif progress_type == "env_steps":
             self._progress_func = Trainer.current_env_steps
+        elif progress_type == "global_counter":
+            self._progress_func = alf.summary.get_global_counter
         else:
             raise ValueError("Unknown progress_type: %s" % progress_type)
 
+        self._progress_type = progress_type
+
     def progress(self):
-        return self._progress_func()
+        return float(self._progress_func())
 
 
 class ConstantScheduler(object):
@@ -57,8 +64,11 @@ class ConstantScheduler(object):
     def __call__(self):
         return self._value
 
+    def __repr__(self):
+        return 'ConstantScheduler(%s)' % self._value
 
-@gin.configurable
+
+@alf.configurable
 class StepScheduler(Scheduler):
     """There is one value for each defined region of training progress."""
 
@@ -66,9 +76,10 @@ class StepScheduler(Scheduler):
         """
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
-            schedule (list[tuple]): each tuple is a pair of (progress, value)
-                which means that if current progress is less than progress,
-                the current value will be value.
+            schedule (list[tuple]): each tuple is a pair of ``(progress, value)``
+                the scheduled result will be the ``value`` of the smallest
+                ``progress`` such that it is greater than the current
+                training progress.
         """
         super().__init__(progress_type)
         self._progresses, self._values = zip(*schedule)
@@ -83,8 +94,12 @@ class StepScheduler(Scheduler):
         self._index = index
         return self._values[index]
 
+    def __repr__(self):
+        return "StepScheduler('%s', %s)" % (
+            self._progress_type, list(zip(self._progresses, self._values)))
 
-@gin.configurable
+
+@alf.configurable
 class LinearScheduler(Scheduler):
     """The value is linearly changed in each defined region of progress."""
 
@@ -123,8 +138,12 @@ class LinearScheduler(Scheduler):
         self._index = index
         return value
 
+    def __repr__(self):
+        return "LinearScheduler('%s', %s)" % (
+            self._progress_type, list(zip(self._progresses, self._values)))
 
-@gin.configurable
+
+@alf.configurable
 class ExponentialScheduler(Scheduler):
     """The value is exponentially decayed based on the progress."""
 
@@ -146,3 +165,8 @@ class ExponentialScheduler(Scheduler):
         progress = self.progress()
         return self._initial_value * self._decay_rate**(
             progress / self._decay_time)
+
+    def __repr__(self):
+        return "ExponentialScheduler('%s', initial_value=%s, decay_rate=%s, decay_time=%s)" % (
+            self._progress_type, self._initial_value, self._decay_rate,
+            self._decay_time)

@@ -11,15 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Adapted from the following:
-
-https://github.com/neale/HyperGAN/blob/master/datagen.py
-"""
+"""Utilities for supervised learning algorithms"""
 from collections import Counter
 
 import torch
 import torchvision
 from torchvision import datasets, transforms
+from torch.utils.data import Subset
 
 import alf
 
@@ -65,133 +63,110 @@ def load_test(train_bs=50, test_bs=10, num_workers=0):
     return train_loader, test_loader
 
 
+def get_classes(target, labels):
+    """Helper function to subclass a dataloader, i.e. select only given
+        classes from target dataset.
+
+    Args:
+        target (torch.utils.data.Dataset): the dataset that should be filtered.
+        labels (list[int]): list of labels to filter on.
+    
+    Returns:
+        label_indices (list[int]): indices of examples with label in
+            ``labels``. 
+    """
+    label_indices = []
+    for i in range(len(target)):
+        if target[i][1] in labels:
+            label_indices.append(i)
+    return label_indices
+
+
 @alf.configurable
-def load_mnist(train_bs=100, test_bs=100, num_workers=0):
+def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
+    """ Loads the MNIST dataset. 
+    
+    Args:
+        label_idx (list[int]): class indices to load from the dataset.
+        train_bs (int): training batch size.
+        test_bs (int): testing batch size. 
+        num_workers (int): number of processes to allocate for loading data.
+        small_subset (bool): load a small subset of 50 images for testing. 
+        
+    Returns:
+        train_loader (torch.utils.data.DataLoader): training data loader.
+        test_loader (torch.utils.data.DataLoader): test data loader.
+    """
+
     kwargs = {
         'num_workers': num_workers,
         'pin_memory': False,
         'drop_last': False
     }
     path = 'data_m/'
+
+    data_transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.1307, ), (0.3081, ))])
+
+    trainset = datasets.MNIST(
+        root=path, train=False, download=True, transform=data_transform)
+    testset = datasets.MNIST(root=path, train=False, transform=data_transform)
+
+    if label_idx is not None:
+        trainset = Subset(trainset, get_classes(trainset, label_idx))
+        testset = Subset(testset, get_classes(testset, label_idx))
+
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            path,
-            train=True,
-            download=True,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=train_bs,
-        shuffle=True,
-        **kwargs)
+        trainset, batch_size=train_bs, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            path,
-            train=False,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=test_bs,
-        shuffle=False,
-        **kwargs)
+        testset, batch_size=test_bs, shuffle=False, **kwargs)
+
     return train_loader, test_loader
 
 
 @alf.configurable
-def load_notmnist(train_bs=100, test_bs=100, num_workers=0):
+def load_cifar10(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
+    """ Loads the CIFAR-10 dataset.
+    Args:
+        label_idx (list[int]): classes to be loaded from the dataset.
+        train_bs (int): training batch size.
+        test_bs (int): testing batch size. 
+        num_workers (int): number of processes to allocate for loading data.
+        
+    Returns:
+        train_loader (torch.utils.data.DataLoader): training data loader.
+        test_loader (torch.utils.data.DataLoader): test data loader.
+    """
     kwargs = {
         'num_workers': num_workers,
         'pin_memory': False,
         'drop_last': False
     }
-    path = 'data_nm/'
-    train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            path,
-            train=True,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=train_bs,
-        shuffle=True,
-        **kwargs)
+    path = 'data_c10/'
+
+    data_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010))
+    ])
+
+    trainset = datasets.CIFAR10(
+        root=path, train=True, download=True, transform=data_transform)
+
+    testset = datasets.CIFAR10(
+        root=path, train=False, download=True, transform=data_transform)
+
+    if label_idx is not None:
+        trainset = Subset(trainset, get_classes(trainset, label_idx))
+        testset = Subset(testset, get_classes(testset, label_idx))
+
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            path,
-            train=False,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=test_bs,
-        shuffle=False,
-        **kwargs)
-    return train_loader, test_loader
-
-
-@alf.configurable
-def load_cifar(train_bs=32, test_bs=100):
-    path = 'data_c/'
-    kwargs = {'num_workers': 1, 'pin_memory': False, 'drop_last': True}
-    transform_train = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-    trainset = torchvision.datasets.CIFAR10(
-        root=path, train=True, download=True, transform=transform_train)
-    trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=train_bs, shuffle=True, **kwargs)
-    testset = torchvision.datasets.CIFAR10(
-        root=path, train=False, download=True, transform=transform_test)
-    testloader = torch.utils.data.DataLoader(
         testset, batch_size=test_bs, shuffle=False, **kwargs)
-    return trainloader, testloader
+    train_loader = torch.utils.data.DataLoader(
+        trainset, batch_size=train_bs, shuffle=True, **kwargs)
 
-
-@alf.configurable
-def load_cifar_hidden(train_bs=32, test_bs=100, c_idx=[0, 1, 2, 3, 4]):
-    path = './data_c'
-    kwargs = {'num_workers': 2, 'pin_memory': False, 'drop_last': True}
-    transform_train = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-
-    def get_classes(target, labels):
-        label_indices = []
-        for i in range(len(target)):
-            if target[i][1] in labels:
-                label_indices.append(i)
-        return label_indices
-
-    trainset = torchvision.datasets.CIFAR10(
-        root=path, train=True, download=False, transform=transform_train)
-    train_hidden = torch.utils.data.Subset(trainset,
-                                           get_classes(trainset, c_idx))
-    trainloader = torch.utils.data.DataLoader(
-        train_hidden, batch_size=train_bs, shuffle=True, **kwargs)
-
-    testset = torchvision.datasets.CIFAR10(
-        root=path, train=False, download=False, transform=transform_test)
-    test_hidden = torch.utils.data.Subset(testset, get_classes(testset, c_idx))
-    testloader = torch.utils.data.DataLoader(
-        test_hidden, batch_size=test_bs, shuffle=False, **kwargs)
-    return trainloader, testloader
+    return train_loader, test_loader
 
 
 def _load_textdata(load_fn, train_bs, test_bs, max_vocab_size=None):

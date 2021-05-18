@@ -20,34 +20,30 @@ from PIL import Image
 import gym
 from gym import spaces
 
-# See https://github.com/openai/large-scale-curiosity/blob/ \
-#  0c3d179fd61ee46233199d0891c40fbe7964d3aa/wrappers.py#L155-L238
+# See https://github.com/openai/large-scale-curiosity/blob/0c3d179fd61ee46233199d0891c40fbe7964d3aa/wrappers.py#L155-L238
 
 
 class MarioXReward(gym.Wrapper):
-    """
-    Wrap mario environment and use X-axis coordinate increment as reward
+    """Wrap mario environment and use X-axis coordinate increment as reward.
 
-    ```
-        max_x = 0 if initial or upgrade_to_new_level
-        current_x = xscrollHi * 256 + xscrollLo
-        reward = current_x - max_x if current_x > max_x else 0
-        max_x = current_x if current_x > max_x else max_x
-    ```
+    .. code-block::
+
+        if initial or upgrade_to_new_level
+            reward, max_x = 0, 0
+        else:
+            current_x = xscrollHi * 256 + xscrollLo
+            reward = current_x - max_x if current_x > max_x else 0
+            max_x = current_x if current_x > max_x else max_x
     """
 
     def __init__(self, env):
         gym.Wrapper.__init__(self, env)
-        self.current_level = [0, 0]
-        self.visited_levels = set()
-        self.visited_levels.add(tuple(self.current_level))
+        self.current_level = (0, 0)
         self.current_max_x = 0.
 
     def reset(self):
         ob = self.env.reset()
-        self.current_level = [0, 0]
-        self.visited_levels = set()
-        self.visited_levels.add(tuple(self.current_level))
+        self.current_level = (0, 0)
         self.current_max_x = 0.
         return ob
 
@@ -56,23 +52,18 @@ class MarioXReward(gym.Wrapper):
         levellow, levelhigh, xscrollHi, xscrollLo = \
             info["levelLo"], info["levelHi"], \
             info["xscrollHi"], info["xscrollLo"]
-        currentx = xscrollHi * 256 + xscrollLo
-        new_level = [levellow, levelhigh]
+        new_level = (levellow, levelhigh)
         if new_level != self.current_level:
             self.current_level = new_level
             self.current_max_x = 0.
             reward = 0.
-            self.visited_levels.add(tuple(self.current_level))
         else:
+            currentx = xscrollHi * 256 + xscrollLo
             if currentx > self.current_max_x:
-                delta = currentx - self.current_max_x
+                reward = currentx - self.current_max_x
                 self.current_max_x = currentx
-                reward = delta
             else:
                 reward = 0.
-        if done:
-            info["levels"] = copy(self.visited_levels)
-            info["retro_episode"] = dict(levels=copy(self.visited_levels))
 
         return ob, reward, done, info
 

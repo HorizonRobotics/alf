@@ -53,7 +53,10 @@ SacActorInfo = namedtuple(
     "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
-    "SacInfo", ["action_distribution", "actor", "critic", "alpha", "log_pi"],
+    "SacInfo", [
+        "reward", "step_type", "discount", "action", "action_distribution",
+        "actor", "critic", "alpha", "log_pi"
+    ],
     default_value=())
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
@@ -147,7 +150,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
                  reward_weights=None,
+                 epsilon_greedy=None,
                  use_entropy_reward=True,
+                 calculate_priority=False,
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -190,7 +195,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
                 Otherwise, the sum of the q values is used.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             use_entropy_reward (bool): whether to include entropy as reward
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             num_critic_replicas (int): number of critics to be used. Default is 2.
@@ -238,6 +250,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """
         self._num_critic_replicas = num_critic_replicas
         self._use_parallel_network = use_parallel_network
+        self._calculate_priority = calculate_priority
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -286,7 +303,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        if actor_optimizer is not None:
+        if actor_optimizer is not None and actor_network is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])
@@ -501,38 +518,35 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         return action_dist, action, q_values, new_state
 
-    def predict_step(self,
-                     time_step: TimeStep,
-                     state: SacState,
-                     epsilon_greedy=1.0):
+    def predict_step(self, inputs: TimeStep, state: SacState):
         action_dist, action, _, action_state = self._predict_action(
-            time_step.observation,
+            inputs.observation,
             state=state.action,
-            epsilon_greedy=epsilon_greedy,
+            epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
         return AlgStep(
             output=action,
             state=SacState(action=action_state),
             info=SacInfo(action_distribution=action_dist))
 
-    def rollout_step(self, time_step: TimeStep, state: SacState):
+    def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay
         buffer, then this function also call ``_critic_networks`` and
         ``_target_critic_networks`` to maintain their states.
         """
         action_dist, action, _, action_state = self._predict_action(
-            time_step.observation,
+            inputs.observation,
             state=state.action,
             epsilon_greedy=1.0,
             eps_greedy_sampling=True)
 
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(
-                self._critic_networks, time_step.observation, action,
+                self._critic_networks, inputs.observation, action,
                 state.critic.critics)
             _, target_critics_state = self._compute_critics(
-                self._target_critic_networks, time_step.observation, action,
+                self._target_critic_networks, inputs.observation, action,
                 state.critic.target_critics)
             critic_state = SacCriticState(
                 critics=critics_state, target_critics=target_critics_state)
@@ -551,7 +565,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=action,
             state=new_state,
-            info=SacInfo(action_distribution=action_dist))
+            info=SacInfo(action=action, action_distribution=action_dist))
 
     def _compute_critics(self, critic_net, observation, action, critics_state):
         if self._act_type == ActionType.Continuous:
@@ -563,7 +577,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critics, critics_state = critic_net(observation, state=critics_state)
         return critics, critics_state
 
-    def _actor_train_step(self, exp: Experience, state, action, critics,
+    def _actor_train_step(self, inputs: TimeStep, state, action, critics,
                           log_pi, action_distribution):
         neg_entropy = sum(nest.flatten(log_pi))
 
@@ -573,7 +587,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
-                self._critic_networks, exp.observation, action, state)
+                self._critic_networks, inputs.observation, action, state)
 
             if self.has_multidim_reward():
                 # Multidimensional reward: [B, replicas, reward_dim]
@@ -623,13 +637,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             -1, q_values.shape[1], -1).long()
         return q_values.gather(-1, action).squeeze(-1)
 
-    def _critic_train_step(self, exp: Experience, state: SacCriticState,
-                           action, log_pi, action_distribution):
+    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
+                           rollout_info: SacInfo, action, action_distribution):
         critics, critics_state = self._compute_critics(
-            self._critic_networks, exp.observation, exp.action, state.critics)
+            self._critic_networks, inputs.observation, rollout_info.action,
+            state.critics)
 
         target_critics, target_critics_state = self._compute_critics(
-            self._target_critic_networks, exp.observation, action,
+            self._target_critic_networks, inputs.observation, action,
             state.target_critics)
 
         if self.has_multidim_reward():
@@ -639,17 +654,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critics = target_critics.min(dim=1)[0]
 
         if self._act_type == ActionType.Discrete:
-            critics = self._select_q_value(exp.action, critics)
+            critics = self._select_q_value(rollout_info.action, critics)
             target_critics = self._select_q_value(
                 action, target_critics.unsqueeze(dim=1))
-
         elif self._act_type == ActionType.Mixed:
-            critics = self._select_q_value(exp.action[0], critics)
+            critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
             target_critics = torch.sum(
                 discrete_act_dist.probs * target_critics, dim=-1)
 
-        target_critic = target_critics.reshape(exp.reward.shape)
+        target_critic = target_critics.reshape(inputs.reward.shape)
 
         target_critic = target_critic.detach()
 
@@ -665,10 +679,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_entropy)
         return sum(nest.flatten(alpha_loss))
 
-    def train_step(self, exp: Experience, state: SacState):
+    def train_step(self, inputs: TimeStep, state: SacState,
+                   rollout_info: SacInfo):
         (action_distribution, action, critics,
          action_state) = self._predict_action(
-             exp.observation, state=state.action)
+             inputs.observation, state=state.action)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
@@ -681,20 +696,24 @@ class SacAlgorithm(OffPolicyAlgorithm):
             log_pi = sum(nest.flatten(log_pi))
 
         if self._prior_actor is not None:
-            prior_step = self._prior_actor.train_step(exp, ())
+            prior_step = self._prior_actor.train_step(inputs, ())
             log_prior = dist_utils.compute_log_probability(
                 prior_step.output, action)
             log_pi = log_pi - log_prior
 
         actor_state, actor_loss = self._actor_train_step(
-            exp, state.actor, action, critics, log_pi, action_distribution)
+            inputs, state.actor, action, critics, log_pi, action_distribution)
         critic_state, critic_info = self._critic_train_step(
-            exp, state.critic, action, log_pi, action_distribution)
+            inputs, state.critic, rollout_info, action, action_distribution)
         alpha_loss = self._alpha_train_step(log_pi)
 
         state = SacState(
             action=action_state, actor=actor_state, critic=critic_state)
         info = SacInfo(
+            reward=inputs.reward,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            action=rollout_info.action,
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,
@@ -702,17 +721,17 @@ class SacAlgorithm(OffPolicyAlgorithm):
             log_pi=log_pi)
         return AlgStep(action, state, info)
 
-    def after_update(self, experience, train_info: SacInfo):
+    def after_update(self, root_inputs, info: SacInfo):
         self._update_target()
         if self._max_log_alpha is not None:
             nest.map_structure(
                 lambda la: la.data.copy_(torch.min(la, self._max_log_alpha)),
                 self._log_alpha)
 
-    def calc_loss(self, experience, train_info: SacInfo):
-        critic_loss = self._calc_critic_loss(experience, train_info)
-        alpha_loss = train_info.alpha
-        actor_loss = train_info.actor
+    def calc_loss(self, info: SacInfo):
+        critic_loss = self._calc_critic_loss(info)
+        alpha_loss = info.alpha
+        actor_loss = info.actor
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -733,7 +752,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic=critic_loss.extra,
                 alpha=alpha_loss))
 
-    def _calc_critic_loss(self, experience, train_info: SacInfo):
+    def _calc_critic_loss(self, info: SacInfo):
         # We need to put entropy reward in ``experience.reward`` instead of
         # ``target_critics`` because in the case of multi-step TD learning,
         # the entropy should also appear in intermediate steps!
@@ -742,26 +761,24 @@ class SacAlgorithm(OffPolicyAlgorithm):
             with torch.no_grad():
                 entropy_reward = nest.map_structure(
                     lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
-                    train_info.log_pi)
+                    info.log_pi)
                 entropy_reward = sum(nest.flatten(entropy_reward))
                 gamma = self._critic_losses[0].gamma
-                experience = experience._replace(
-                    reward=experience.reward + entropy_reward * gamma)
+                info = info._replace(
+                    reward=info.reward + entropy_reward * gamma)
 
-        critic_info = train_info.critic
+        critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
             critic_losses.append(
-                l(experience=experience,
+                l(info=info,
                   value=critic_info.critics[:, :, i, ...],
                   target_value=critic_info.target_critic).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        if (experience.batch_info != ()
-                and experience.batch_info.importance_weights is not ()):
-            valid_masks = (experience.step_type != StepType.LAST).to(
-                torch.float32)
+        if self._calculate_priority:
+            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
             priority = (
                 (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()

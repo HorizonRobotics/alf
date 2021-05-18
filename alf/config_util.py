@@ -28,6 +28,7 @@ __all__ = [
 ]
 
 
+@logging.skip_log_prefix
 def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
     """Set the values for the configs with given name as suffix.
 
@@ -266,6 +267,7 @@ def _get_config_node(config_name):
     return config_node
 
 
+@logging.skip_log_prefix
 def config1(config_name, value, mutable=True, raise_if_used=True):
     """Set one configurable value.
 
@@ -304,6 +306,7 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
         config_node.set_mutable(mutable)
 
 
+@logging.skip_log_prefix
 def pre_config(configs):
     """Preset the values for configs before the module defining it is imported.
 

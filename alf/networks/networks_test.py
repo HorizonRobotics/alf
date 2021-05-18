@@ -17,6 +17,7 @@ import torch
 import alf
 
 from alf.networks import TemporalPool
+from alf.utils.common import zero_tensor_from_nested_spec
 
 
 class NestworksTest(alf.test.TestCase):
@@ -157,6 +158,60 @@ class NestworksTest(alf.test.TestCase):
             o, state = l(x[:, i, :], state)
             self.assertTensorClose(
                 o, x[:, 3:18, :].reshape(batch_size, 5, 3, dim).mean(dim=2))
+
+    def test_delay0(self):
+        spec = alf.TensorSpec((2, 4))
+        l = alf.nn.Delay(spec, 0)
+        self.assertEqual(l.input_tensor_spec, spec)
+        self.assertEqual(l.state_spec, ())
+        x = spec.randn((4, ))
+        out, state = l(x, ())
+        self.assertTensorEqual(out, x)
+        self.assertEqual(state, ())
+
+    def test_delay1(self):
+        spec = alf.TensorSpec((2, 4))
+        l = alf.nn.Delay(spec)
+        self.assertEqual(l.input_tensor_spec, spec)
+        self.assertEqual(l.state_spec, spec)
+        batch_size = 4
+        x1 = spec.randn((batch_size, ))
+        state = zero_tensor_from_nested_spec(l.state_spec, batch_size)
+        out, state = l(x1, state)
+        self.assertTensorEqual(out, spec.zeros((batch_size, )))
+        self.assertTensorEqual(state, x1)
+        x2 = spec.randn((batch_size, ))
+        out, state = l(x2, state)
+        self.assertTensorEqual(out, x1)
+        self.assertTensorEqual(state, x2)
+
+    def test_delay2(self):
+        spec = alf.TensorSpec((2, 4))
+        l = alf.nn.Delay(spec, delay=2)
+        self.assertEqual(l.input_tensor_spec, spec)
+        self.assertEqual(l.state_spec, (spec, spec))
+        batch_size = 4
+
+        x1 = spec.randn((batch_size, ))
+        state = zero_tensor_from_nested_spec(l.state_spec, batch_size)
+        out, state = l(x1, state)
+        self.assertTensorEqual(out, spec.zeros((batch_size, )))
+        self.assertEqual(type(state), tuple)
+        self.assertEqual(len(state), 2)
+        self.assertTensorEqual(state[0], spec.zeros((batch_size, )))
+        self.assertTensorEqual(state[1], x1)
+
+        x2 = spec.randn((batch_size, ))
+        out, state = l(x2, state)
+        self.assertTensorEqual(out, spec.zeros((batch_size, )))
+        self.assertTensorEqual(state[0], x1)
+        self.assertTensorEqual(state[1], x2)
+
+        x3 = spec.randn((batch_size, ))
+        out, state = l(x3, state)
+        self.assertTensorEqual(out, x1)
+        self.assertTensorEqual(state[0], x2)
+        self.assertTensorEqual(state[1], x3)
 
 
 if __name__ == '__main__':

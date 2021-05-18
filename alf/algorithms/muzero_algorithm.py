@@ -14,7 +14,6 @@
 """MuZero algorithm."""
 
 from functools import partial
-import gin
 import torch
 
 import alf
@@ -22,7 +21,7 @@ from alf.algorithms.data_transformer import create_data_transformer
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import AlgStep, Experience, LossInfo, namedtuple, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
-from alf.algorithms.mcts_algorithm import MCTSAlgorithm
+from alf.algorithms.mcts_algorithm import MCTSAlgorithm, MCTSInfo
 from alf.algorithms.mcts_models import MCTSModel, ModelOutput, ModelTarget
 from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
@@ -41,8 +40,12 @@ MuzeroInfo = namedtuple(
 
         # MCTSModelTarget
         # [B, unroll_steps + 1, ...]
-        'target'
-    ])
+        'target',
+
+        # Loss from training
+        'loss',
+    ],
+    default_value=())
 
 
 def scale_gradient(tensor, scale):
@@ -51,7 +54,7 @@ def scale_gradient(tensor, scale):
     return tensor
 
 
-@gin.configurable
+@alf.configurable
 class MuzeroAlgorithm(OffPolicyAlgorithm):
     """MuZero algorithm.
 
@@ -72,6 +75,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  recurrent_gradient_scaling_factor=0.5,
                  reward_normalizer=None,
                  reward_clip_value=-1.,
+                 calculate_priority=False,
                  train_reward_function=True,
                  train_game_over_function=True,
                  reanalyze_ratio=0.,
@@ -108,6 +112,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 normalize reward.
             train_reward_function (bool): whether train reward function. If
                 False, reward should only be given at the last step of an episode.
+            calculate_priority (bool): whether to calculate priority. This is
+                only useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
@@ -133,6 +139,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             debug_summaries=debug_summaries)
         mcts.set_model(model)
+        self._calculate_priority = calculate_priority
         self._device = alf.get_default_device()
         super().__init__(
             observation_spec=observation_spec,
@@ -173,7 +180,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ['_target_model']
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state):
         if self._reward_normalizer is not None:
             time_step = time_step._replace(
                 reward=self._reward_normalizer.normalize(
@@ -188,7 +195,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     time_step.reward, self._reward_clip_value))
         return self._mcts.predict_step(time_step, state)
 
-    def train_step(self, exp: Experience, state):
+    def train_step(self, exp: TimeStep, state, rollout_info):
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
@@ -197,7 +204,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             model_output.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
         model_outputs = [dist_utils.distributions_to_params(model_output)]
-        info = exp.rollout_info
+        info = rollout_info
 
         for i in range(self._num_unroll_steps):
             model_output = self._model.recurrent_inference(
@@ -214,19 +221,23 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         model_outputs = alf.nest.utils.stack_nests(model_outputs, dim=1)
         model_outputs = dist_utils.params_to_distributions(
             model_outputs, model_output_spec)
-        return AlgStep(info=self._model.calc_loss(model_outputs, info.target))
+        return AlgStep(
+            info=info._replace(
+                loss=self._model.calc_loss(model_outputs, info.target).loss))
 
     @torch.no_grad()
-    def preprocess_experience(self, experience: Experience):
-        """Fill experience.rollout_info with MuzeroInfo
+    def preprocess_experience(self, root_inputs: TimeStep,
+                              rollout_info: MCTSInfo, batch_info):
+        """Fill rollout_info with MuzeroInfo
 
         Note that the shape of experience is [B, T, ...]
         """
-        assert experience.batch_info != ()
-        batch_info: BatchInfo = experience.batch_info
-        replay_buffer: ReplayBuffer = experience.replay_buffer
-        info_path: str = experience.rollout_info_field
-        mini_batch_length = experience.step_type.shape[1]
+        assert batch_info != ()
+        replay_buffer: ReplayBuffer = batch_info.replay_buffer
+        info_path: str = "rollout_info"
+        info_path += "." + self.path if self.path else ""
+        mini_batch_length = root_inputs.step_type.shape[1]
+        rollout_value = rollout_info.value
         assert mini_batch_length == 1, (
             "Only support TrainerConfig.mini_batch_length=1, got %s" %
             mini_batch_length)
@@ -244,7 +255,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 # Here we assume state and info have similar name scheme.
                 mcts_state_field = 'state' + info_path[len('rollout_info'):]
                 r = torch.rand(
-                    experience.step_type.shape[0]) < self._reanalyze_ratio
+                    root_inputs.step_type.shape[0]) < self._reanalyze_ratio
                 r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
                     replay_buffer, env_ids[r], positions[r], mcts_state_field)
 
@@ -303,8 +314,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             if not self._train_game_over_function:
                 game_overs = ()
 
-            action = replay_buffer.get_field('action', env_ids,
-                                             positions[:, :-1])
+            action = replay_buffer.get_field('prev_action', env_ids,
+                                             positions[:, 1:])
 
             rollout_info = MuzeroInfo(
                 action=action,
@@ -320,13 +331,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(1),
                                               rollout_info)
         rollout_info = convert_device(rollout_info)
-        rollout_info = rollout_info._replace(
-            value=experience.rollout_info.value)
+        rollout_info = rollout_info._replace(value=rollout_value)
 
         if self._reward_normalizer:
-            experience = experience._replace(
+            root_inputs = root_inputs._replace(
                 reward=rollout_info.target.reward[:, :, 0])
-        return experience._replace(rollout_info=rollout_info)
+        return root_inputs, rollout_info
 
     def _calc_bootstrap_return(self, replay_buffer, env_ids, positions,
                                value_field):
@@ -582,19 +592,15 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         positions = torch.min(positions, episode_end_positions)
         return env_ids, positions
 
-    def calc_loss(self, experience, train_info: LossInfo):
-        assert experience.batch_info != ()
-        if (experience.batch_info != ()
-                and experience.batch_info.importance_weights != ()):
-            priority = (experience.rollout_info.value -
-                        experience.rollout_info.target.value[..., 0])
-            priority = priority.abs().sum(dim=1)
+    def calc_loss(self, info: LossInfo):
+        if self._calculate_priority:
+            priority = (info.value - info.target.value[..., 0])
+            priority = priority.abs().sum(dim=0)
         else:
             priority = ()
 
-        return train_info._replace(
-            loss=(), scalar_loss=train_info.loss.mean(), priority=priority)
+        return LossInfo(scalar_loss=info.loss.mean(), priority=priority)
 
-    def after_update(self, experience, train_info):
+    def after_update(self, root_inputs, info):
         if self._update_target is not None:
             self._update_target()

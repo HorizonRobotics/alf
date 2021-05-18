@@ -351,6 +351,8 @@ class GridSearch(object):
 
 def search():
     FLAGS.alsologtostderr = True
+    logging.get_absl_handler().use_absl_log_file(
+        log_dir=os.path.expanduser(FLAGS.root_dir))
     GridSearch(FLAGS.search_config).run()
 
 
@@ -369,7 +371,8 @@ def launch_snapshot_gridsearch():
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
     # ../<ALF_REPO>/alf/bin/grid_search.py
-    alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+    file_path = os.path.abspath(__file__)
+    alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
     common.generate_alf_root_snapshot(alf_root, root_dir)
 
     # point the grid search to the snapshot paths

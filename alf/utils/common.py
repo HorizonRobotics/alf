@@ -752,6 +752,7 @@ def write_gin_configs(root_dir, gin_file):
         f.write(config_str)
 
 
+@logging.skip_log_prefix
 def warning_once(msg, *args):
     """Generate warning message once.
 
@@ -766,7 +767,7 @@ def warning_once(msg, *args):
     """
     caller = logging.get_absl_logger().findCaller()
     count = logging._get_next_log_count_per_token(caller)
-    logging.log_if(logging.WARNING, msg, not (count % (1 << 62)), *args)
+    logging.log_if(logging.WARNING, msg, count == 0, *args)
 
 
 def set_random_seed(seed):

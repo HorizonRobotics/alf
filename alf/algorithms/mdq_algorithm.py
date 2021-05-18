@@ -13,7 +13,6 @@
 # limitations under the License.
 """Multi-Dimentional Q-Learning Algorithm."""
 
-import gin
 import functools
 
 import torch
@@ -42,12 +41,15 @@ MdqCriticInfo = namedtuple("MdqCriticInfo", [
 
 MdqState = namedtuple("MdqState", ['critic'])
 MdqAlphaInfo = namedtuple("MdqAlphaInfo", ["alpha_loss", "neg_entropy"])
-MdqInfo = namedtuple("MdqInfo", ["critic", "alpha"], default_value=())
+MdqInfo = namedtuple(
+    "MdqInfo",
+    ["reward", "step_type", "discount", "action", "critic", "alpha"],
+    default_value=())
 
 MdqLossInfo = namedtuple('MdqLossInfo', ['critic', 'distill', 'alpha'])
 
 
-@gin.configurable
+@alf.configurable
 class MdqAlgorithm(OffPolicyAlgorithm):
     """Multi-Dimentional Q-Learning Algorithm.
     """
@@ -58,6 +60,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             action_spec: BoundedTensorSpec,
             critic_network: MdqCriticNetwork,
             reward_spec=TensorSpec(()),
+            epsilon_greedy=None,
             env=None,
             config: TrainerConfig = None,
             critic_loss_ctor=None,
@@ -77,6 +80,11 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             critic_network (MdqCriticNetwork): an instance of MdqCriticNetwork
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -105,6 +113,11 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
 
         critic_networks = critic_network
         target_critic_networks = critic_networks.copy(
@@ -153,7 +166,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         self._target_entropy = _set_target_entropy(self.name, target_entropy,
                                                    flat_action_spec)
 
-        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
+        log_alpha = nn.Parameter(torch.tensor(float(initial_log_alpha)))
         self._log_alpha = log_alpha
 
         self._update_target = common.get_target_updater(
@@ -181,10 +194,11 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
-        return AlgStep(output=action, state=empty_state, info=MdqInfo())
+        return AlgStep(
+            output=action, state=empty_state, info=MdqInfo(action=action))
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        return self._predict(time_step, state, epsilon_greedy)
+    def predict_step(self, time_step: TimeStep, state):
+        return self._predict(time_step, state, self._epsilon_greedy)
 
     def rollout_step(self, time_step: TimeStep, state):
         if self.need_full_rollout_state():
@@ -193,12 +207,12 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         return self._predict(time_step, state, epsilon_greedy=1.0)
 
-    def _critic_train_step(self, exp: Experience, state: MdqCriticState,
-                           action, log_pi_per_dim):
+    def _critic_train_step(self, inputs: TimeStep, state: MdqCriticState,
+                           rollout_action, action, log_pi_per_dim):
         alpha = self._log_alpha.exp().detach()
 
-        critic_input = (exp.observation, exp.action.to(torch.float32))
-        target_critic_input = (exp.observation, action.detach())
+        critic_input = (inputs.observation, rollout_action.to(torch.float32))
+        target_critic_input = (inputs.observation, action.detach())
 
         # [B, n]
         critic, critic_state = self._critic_networks(
@@ -214,7 +228,8 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             noise_clip=0,
             spec_clip=True)
 
-        critic_distill_input = (exp.observation, noisy_distill_action.detach())
+        critic_distill_input = (inputs.observation,
+                                noisy_distill_action.detach())
 
         # [B, n, action_dim]
         critic_adv_form, critic_state = self._critic_networks(
@@ -284,34 +299,38 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             extra=MdqAlphaInfo(alpha_loss=alpha_loss, neg_entropy=neg_entropy))
         return info
 
-    def train_step(self, exp: Experience, state: MdqState):
+    def train_step(self, inputs: TimeStep, state: MdqState, rollout_info):
 
         alpha = torch.exp(self._log_alpha).detach()
 
         action, log_pi_per_dim = self._critic_networks.get_action(
-            exp.observation, alpha=alpha, greedy=False)
+            inputs.observation, alpha=alpha, greedy=False)
         action = action[:, 0:1, :].expand_as(action)
         log_pi_per_dim = log_pi_per_dim[:, 0:1, :].expand_as(log_pi_per_dim)
 
         critic_state, critic_info = self._critic_train_step(
-            exp, state.critic, action, log_pi_per_dim)
+            inputs, state.critic, rollout_info.action, action, log_pi_per_dim)
 
         alpha_info = self._alpha_train_step(log_pi_per_dim)
 
         state = MdqState(critic=critic_state)
-        info = MdqInfo(critic=critic_info, alpha=alpha_info)
+        info = MdqInfo(
+            reward=inputs.reward,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            critic=critic_info,
+            alpha=alpha_info)
         return AlgStep(action, state, info)
 
-    def after_update(self, experience, train_info: MdqInfo):
+    def after_update(self, root_inputs, info: MdqInfo):
         # sync parallel/non-parallel network parameters
         # need to syn net first in the case of using target net as policy
         self._critic_networks.sync_net()
         self._update_target()
 
-    def calc_loss(self, experience, train_info: MdqInfo):
-        alpha_loss = train_info.alpha
-        critic_loss, distill_loss = self._calc_critic_loss(
-            experience, train_info)
+    def calc_loss(self, info: MdqInfo):
+        alpha_loss = info.alpha
+        critic_loss, distill_loss = self._calc_critic_loss(info)
 
         total_loss = critic_loss.loss + distill_loss + alpha_loss.loss.squeeze(
             -1)
@@ -322,7 +341,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
                 alpha=alpha_loss.extra,
                 distill=distill_loss))
 
-    def _calc_critic_loss(self, experience, train_info: MdqInfo):
+    def _calc_critic_loss(self, train_info: MdqInfo):
         critic_info = train_info.critic
 
         # [t, B, n]
@@ -355,7 +374,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         critic_losses = []
         for j in range(num_critic_replicas):
             critic_losses.append(self._critic_losses[j](
-                experience=experience,
+                info=train_info,
                 value=critic_free_form[:, :, j],
                 target_value=target_critic_corrected).loss)
 

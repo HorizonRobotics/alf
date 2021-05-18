@@ -14,17 +14,16 @@
 """Handcrafted Algorithm."""
 
 import numpy as np
-import gin
 import torch
 
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
+from alf.data_structures import AlgStep, LossInfo, TimeStep
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 
-@gin.configurable
+@alf.configurable
 class HandcraftedAlgorithm(OffPolicyAlgorithm):
     """A base class for algorithms with handcrafted computational logic.
     Note that a concrete algorithm should subclass from this and implement the
@@ -85,22 +84,22 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
         """
         return self._policy_func(observation)
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.0):
-        action = self._predict_action(time_step.observation, state=state)
+    def predict_step(self, inputs: TimeStep, state):
+        action = self._predict_action(inputs.observation, state=state)
         return AlgStep(output=action, state=state)
 
-    def rollout_step(self, time_step: TimeStep, state):
-        action = self._predict_action(time_step.observation, state=state)
+    def rollout_step(self, inputs: TimeStep, state):
+        action = self._predict_action(inputs.observation, state=state)
         return AlgStep(output=action, state=state)
 
-    def train_step(self, exp: Experience, state):
+    def train_step(self, inputs: TimeStep, state, rollout_info):
         return AlgStep()
 
-    def calc_loss(self, experience, train_info):
+    def calc_loss(self, info):
         return LossInfo()
 
 
-@gin.configurable
+@alf.configurable
 class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
     """A simple controller for Carla environment.
     """

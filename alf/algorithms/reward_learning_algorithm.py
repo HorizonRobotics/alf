@@ -12,21 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import namedtuple
-import gin
-
-import torch
-import torch.nn as nn
-import torch.distributions as td
 from typing import Callable
 
+import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
-                                 TimeStep)
-from alf.nest import nest
+from alf.data_structures import AlgStep, TimeStep
 
 
-@gin.configurable
+@alf.configurable
 class RewardEstimationAlgorithm(Algorithm):
     """Reward Estimation Module
 
@@ -38,7 +31,7 @@ class RewardEstimationAlgorithm(Algorithm):
         """
         super().__init__(train_state_spec=(), name=name)
 
-    def train_step(self, time_step: TimeStep, state):
+    def train_step(self, time_step: TimeStep, state, rollout_info=None):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
@@ -47,10 +40,6 @@ class RewardEstimationAlgorithm(Algorithm):
             AlgStep
         """
         pass
-
-    def calc_loss(self, info):
-        return LossInfo(
-            loss=info.loss, scalar_loss=info.loss, extra=loss.extra)
 
     def compute_reward(self, obs, action, state):
         """Compute reward based on the provided observation and action
@@ -64,7 +53,7 @@ class RewardEstimationAlgorithm(Algorithm):
         pass
 
 
-@gin.configurable
+@alf.configurable
 class FixedRewardFunction(RewardEstimationAlgorithm):
     """Fixed Reward Estimation Module with hand-crafted computational rules.
     """
@@ -83,7 +72,7 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
         super().__init__(name=name)
         self._reward_func = reward_func
 
-    def train_step(self, time_step: TimeStep, state=()):
+    def train_step(self, time_step: TimeStep, state=(), rollout_info=None):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning

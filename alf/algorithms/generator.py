@@ -13,7 +13,6 @@
 # limitations under the License.
 """A generic generator."""
 
-import gin
 import numpy as np
 import torch
 
@@ -313,7 +312,7 @@ class Generator(Algorithm):
         self._predict_net = None
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
-            self._predict_net = net.copy(name="Genrator_average")
+            self._predict_net = net.copy(name="Generator_average")
             self._predict_net_updater = common.get_target_updater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
 

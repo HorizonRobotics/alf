@@ -86,7 +86,7 @@ def train_eval(root_dir):
     elif trainer_conf.ml_type == 'sl':
         trainer = policy_trainer.SLTrainer(trainer_conf)
     else:
-        raise ValueError("Unsupported ml_type: %s" % ml_type)
+        raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
     trainer.train()
 
@@ -99,7 +99,8 @@ def main(_):
 
     if FLAGS.store_snapshot:
         # ../<ALF_REPO>/alf/bin/train.py
-        alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+        file_path = os.path.abspath(__file__)
+        alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
         # generate a snapshot of ALF repo as ``<root_dir>/alf``
         common.generate_alf_root_snapshot(alf_root, root_dir)
 

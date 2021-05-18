@@ -13,9 +13,6 @@
 # limitations under the License.
 """LagrangianRewardWeightAlgorithm."""
 
-import numpy as np
-import gin
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -23,7 +20,6 @@ from torch.nn import functional as F
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import namedtuple, AlgStep
-from alf.nest import nest
 from alf.tensor_specs import TensorSpec
 from alf.utils import tensor_utils
 
@@ -92,7 +88,6 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
 
         # convert to softplus space
         self._lambdas = nn.Parameter(self._inv_softplus(lambda_init))
-        self._reward_weights = F.softplus(self._lambdas)
         self._optimizer = optimizer
         self._optimizer.add_param_group({'params': self._lambdas})
 
@@ -103,29 +98,28 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
     def reward_weights(self):
         """Return the detached reward weights. These weights are expected not to
         be changed by external code."""
-        return self._reward_weights.detach().clone()
+        return F.softplus(self._lambdas).detach().clone()
 
     def _trainable_attributes_to_ignore(self):
         return ["_lambdas"]
 
-    def rollout_step(self, time_step, state):
+    def rollout_step(self, inputs, state):
         return AlgStep(
-            info=LagInfo(rollout_reward=time_step.untransformed.reward))
+            info=LagInfo(rollout_reward=inputs.untransformed.reward))
 
-    def after_train_iter(self, experience, train_info: LagInfo):
+    def after_train_iter(self, root_inputs, train_info: LagInfo):
         """Retrieve *untransformed* rollout rewards from ``train_info``
         and train lambdas.
         """
         # [T, B, reward_dim]
+        reward_weights = F.softplus(self._lambdas)
         loss = ((train_info.rollout_reward - self._reward_thresholds).detach()
-                * (self._reward_weights * self._reward_training_mask))
+                * (reward_weights * self._reward_training_mask))
         loss = loss.sum(dim=-1).mean()
 
         self._optimizer.zero_grad()
         loss.backward()
         self._optimizer.step()
-
-        self._reward_weights = F.softplus(self._lambdas)
 
         if self._debug_summaries:
             with alf.summary.scope(self._name):
@@ -133,5 +127,4 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
                 for i in range(len(self._reward_thresholds)):
                     alf.summary.scalar("reward_threshold/%d" % i,
                                        self._reward_thresholds[i])
-                    alf.summary.scalar("lambda/%d" % i,
-                                       self._reward_weights[i])
+                    alf.summary.scalar("lambda/%d" % i, reward_weights[i])

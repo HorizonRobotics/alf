@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Hypernetwork algorithm test."""
 
+import absl
 from absl.testing import parameterized
 import numpy as np
 import torch
@@ -21,6 +23,8 @@ import alf
 from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
+from alf.utils.datagen import TestDataSet
+from torch.utils.data import TensorDataset, DataLoader
 
 
 class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
@@ -54,13 +58,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('minmax'),
+    @parameterized.parameters(('gfsf', False), ('svgd2', False),
+                              ('svgd3', False), ('minmax', False),
                               ('gfsf', True), ('svgd2', True), ('svgd3', True))
     def test_bayesian_linear_regression(self,
-                                        par_vi='minmax',
+                                        par_vi='svgd3',
                                         function_vi=False,
                                         train_batch_size=10,
-                                        num_particles=64):
+                                        num_particles=128):
         r"""
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where
@@ -83,10 +88,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         print("beta: {}".format(beta))
         noise = torch.randn(batch_size, output_dim)
         targets = inputs @ beta + noise
-        true_cov = torch.inverse(
-            inputs.t() @ inputs)  # + torch.eye(input_size))
+        true_cov = torch.inverse(inputs.t() @ inputs)
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
+
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
@@ -182,11 +187,67 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(mean_err, 0.5)
         self.assertLess(cov_err, 0.5)
 
-    def test_hypernetwork_classification(self):
-        # TODO: out of distribution tests
-        # If simply use a linear classifier with random weights,
-        # the cross_entropy loss does not seem to capture the distribution.
-        pass
+    def test_hypernetwork_uncertainty(self,
+                                      par_vi='svgd3',
+                                      function_vi=False,
+                                      train_batch_size=10,
+                                      num_particles=10):
+
+        input_spec = TensorSpec((1, 28, 28), torch.float32)
+        noise_dim = 128
+
+        trainset = TensorDataset(
+            torch.randn(100, 1, 28, 28), torch.randint(0, 9, (100, )))
+        testset = TensorDataset(
+            torch.randn(50, 1, 28, 28), torch.randint(0, 9, (50, )))
+        outlier_trainset = TensorDataset(
+            torch.randn(100, 1, 28, 28), torch.randint(0, 9, (100, )))
+        outlier_testset = TensorDataset(
+            torch.randn(50, 1, 28, 28), torch.randint(0, 9, (50, )))
+
+        trainset.classes = torch.arange(10)
+        testset.classes = torch.arange(10)
+        outlier_trainset.classes = torch.arange(10)
+        outlier_testset.classes = torch.arange(10)
+
+        train_loader = DataLoader(trainset, train_batch_size)
+        test_loader = DataLoader(testset, train_batch_size)
+        outlier_train_loader = DataLoader(trainset, train_batch_size)
+        outlier_test_loader = DataLoader(trainset, train_batch_size)
+
+        conv_layer_params = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
+        fc_layer_params = ((84, True), )
+        hidden_layers = (noise_dim, 256)
+        algorithm = HyperNetwork(
+            input_tensor_spec=input_spec,
+            output_dim=10,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            hidden_layers=hidden_layers,
+            num_particles=num_particles,
+            last_activation=math_ops.identity,
+            noise_dim=noise_dim,
+            loss_type='classification',
+            par_vi=par_vi,
+            function_vi=function_vi,
+            function_bs=train_batch_size,
+            optimizer=alf.optimizers.Adam(lr=1e-3))
+
+        algorithm.set_data_loader(
+            train_loader,
+            test_loader=test_loader,
+            outlier_data_loaders=(outlier_train_loader, outlier_test_loader),
+            entropy_regularization=train_batch_size / 100)
+
+        def _test(sampled_predictive=False):
+            print("-" * 68)
+            algorithm.evaluate(num_particles=num_particles)
+            return algorithm.eval_uncertainty(num_particles=num_particles)
+
+        algorithm.train_iter()
+        auc_entropy, auc_var = _test()
+        self.assertGreater(auc_entropy, 0.49)
+        self.assertGreater(auc_var, 0.49)
 
 
 if __name__ == "__main__":

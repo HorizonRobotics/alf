@@ -35,9 +35,11 @@ def assert_same_structure(nest1, nest2):
     try:
         cnest.assert_same_structure(nest1, nest2)
     except Exception as e:
+        paths = tuple(_get_all_paths(nst) for nst in (nest1, nest2))
         logging.error(
-            "assert_same_structure() fails for {} and {}. Error message: '{}'".
-            format(nest1, nest2, str(e)))
+            "assert_same_structure() fails for {} and {}. Error message: '{}'"
+            "nest1 has paths {}. nest2 has paths {}.".format(
+                nest1, nest2, str(e), paths[0], paths[1]))
         raise e
 
 
@@ -46,9 +48,10 @@ def map_structure(func, *nests):
     try:
         return cnest.map_structure(func, *nests)
     except Exception as e:
-        logging.error(
-            "map_structure() fails for {}. Error message: '{}'".format(
-                nests, str(e)))
+        paths = tuple(_get_all_paths(nst) for nst in nests)
+        logging.error("map_structure() fails for {}. Error message: '{}'. "
+                      "The paths in nests are {}.".format(
+                          nests, str(e), paths))
         raise e
 
 
@@ -386,7 +389,7 @@ def py_map_structure_with_path(func, *nests):
                     *values[:-1],
                     path=path + ("." if path else "") + str(values[-1]))
                 for values in zip(*nests, range(len(nests[0])))
-            ])[:-1]
+            ])
         else:
             ret = {}
             for fields_and_values in zip(
@@ -697,6 +700,11 @@ def py_prune_nest_like(nest, slim_nest, value_to_match=None):
                 nest, slim_nest))
 
 
+def _get_all_paths(nested):
+    """Get all paths in nested."""
+    return flatten(py_map_structure_with_path(lambda path, x: path, nested))
+
+
 def get_field(nested, field):
     """Get the field from nested.
 
@@ -711,6 +719,8 @@ def get_field(nested, field):
             name at different level. ``None`` or '' means the whole nest.
     Returns:
         nest: value of the field corresponding to ``field``
+    Raises:
+        LookupError: if field cannot be found.
     """
 
     def _traverse(nested, levels):
@@ -721,10 +731,18 @@ def get_field(nested, field):
             return _traverse(nested=getattr(nested, level), levels=levels[1:])
         elif isinstance(nested, dict):
             return _traverse(nested=nested[level], levels=levels[1:])
-        else:
+        elif isinstance(nested, (tuple, list)):
             return _traverse(nested=nested[int(level)], levels=levels[1:])
+        else:
+            raise LookupError()
 
-    return _traverse(nested=nested, levels=field.split('.') if field else [])
+    try:
+        return _traverse(
+            nested=nested, levels=field.split('.') if field else [])
+    except (AttributeError, LookupError, ValueError):
+        raise LookupError(
+            "Cannot find path '%s' in nested. nested has paths: %s" %
+            (field, _get_all_paths(nested)))
 
 
 def transform_nest(nested, field, func):

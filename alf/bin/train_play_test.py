@@ -121,8 +121,10 @@ ON_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
 ON_POLICY_TRAIN_PARAMS = _to_conf_params(ON_POLICY_TRAIN_CONF)
 
 OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
-    'TrainerConfig.unroll_length=1',
-    'TrainerConfig.initial_collect_steps=8',
+    # Make sure initial_collect_steps <= (num_iterations - 1) * unroll_length * num_parallel_environments
+    # so there are some real training
+    'TrainerConfig.unroll_length=2',
+    'TrainerConfig.initial_collect_steps=2',
     'TrainerConfig.num_updates_per_train_iter=1',
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
@@ -130,6 +132,19 @@ OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.replay_buffer_length=64',
 ]
 OFF_POLICY_TRAIN_PARAMS = _to_conf_params(OFF_POLICY_TRAIN_CONF)
+
+MUZERO_TRAIN_CONF = COMMON_TRAIN_CONF + [
+    # Make sure initial_collect_steps <= (num_iterations - 1) * unroll_length * num_parallel_environments
+    # so there are some real training
+    'TrainerConfig.unroll_length=2',
+    'TrainerConfig.initial_collect_steps=2',
+    'TrainerConfig.num_updates_per_train_iter=1',
+    'TrainerConfig.mini_batch_size=4',
+    'TrainerConfig.replay_buffer_length=64',
+    'TrainerConfig.whole_replay_buffer_training=False',
+    'TrainerConfig.clear_replay_buffer=False',
+]
+MUZERO_TRAIN_PARAMS = _to_conf_params(MUZERO_TRAIN_CONF)
 
 ON_POLICY_ALG_OFF_POLICY_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=2',
@@ -453,7 +468,7 @@ class TrainPlayTest(alf.test.TestCase):
     def test_muzero_tic_tac_toe(self):
         self._test(
             conf_file='muzero_tic_tac_toe.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+            extra_train_params=MUZERO_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_breakout(self):
@@ -579,6 +594,11 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sarsa_sac_pendulum(self):
         self._test(
             conf_file='sarsa_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_tasac_bipedal_walker(self):
+        self._test(
+            conf_file='tasac_bipedal_walker_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)

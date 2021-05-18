@@ -124,7 +124,7 @@ class TrainerConfig(object):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
-            eval_uncertainty (bool): whether to evluate uncertainty after training
+            eval_uncertainty (bool): whether to evluate uncertainty after training.
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
             update_counter_every_mini_batch (bool): whether to update counter

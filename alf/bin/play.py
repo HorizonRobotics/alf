@@ -54,11 +54,6 @@ def _define_flags():
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
-        'future_steps', 0, "If >0, display information from so many "
-        "number of future steps in addition to the current step "
-        "on the current frame. Otherwise only information from the "
-        "current step will be displayed.")
-    flags.DEFINE_integer(
         'append_blank_frames', 0,
         "If >0, wil append such number of blank frames at the "
         "end of each episode in the rendered video file.")
@@ -126,6 +121,7 @@ def play():
         action_spec=env.action_spec(),
         reward_spec=env.reward_spec(),
         config=config)
+    algorithm.set_path('')
     try:
         policy_trainer.play(
             FLAGS.root_dir,
@@ -136,7 +132,6 @@ def play():
             num_episodes=FLAGS.num_episodes,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
-            future_steps=FLAGS.future_steps,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(

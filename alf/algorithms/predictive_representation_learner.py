@@ -18,20 +18,19 @@ import torch
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import AlgStep, TimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import AlgStep, TimeStep, LossInfo, namedtuple
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
-from alf.nest import nest
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork, wrap_as_network
-from alf.utils import common, dist_utils, spec_utils, tensor_utils
+from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
 PredictiveRepresentationLearnerInfo = namedtuple(
     'PredictiveRepresentationLearnerInfo',
     [
-        # actual actions taken in the next unroll_steps + 1 steps
-        # [B, unroll_steps + 1, ...]
+        # actual actions taken in the next unroll_steps steps
+        # [B, unroll_steps, ...]
         'action',
 
         # The flag to indicate whether to include this target into loss
@@ -329,13 +328,13 @@ class PredictiveRepresentationLearner(Algorithm):
     def output_spec(self):
         return self._output_spec
 
-    def predict_step(self, time_step: TimeStep, state):
-        latent, state = self._encoding_net(time_step.observation, state)
+    def predict_step(self, inputs: TimeStep, state):
+        latent, state = self._encoding_net(inputs.observation, state)
         latent = self._postprocessor(latent)
         return AlgStep(output=latent, state=state)
 
-    def rollout_step(self, time_step: TimeStep, state):
-        latent, state = self._encoding_net(time_step.observation, state)
+    def rollout_step(self, inputs: TimeStep, state):
+        latent, state = self._encoding_net(inputs.observation, state)
         latent = self._postprocessor(latent)
         return AlgStep(output=latent, state=state)
 
@@ -425,12 +424,12 @@ class PredictiveRepresentationLearner(Algorithm):
             lambda *tensors: torch.cat(tensors, dim=0), *sim_latents)
         return sim_latent
 
-    def train_step(self, exp: TimeStep, state):
+    def train_step(self, root_inputs: TimeStep, state, rollout_info):
         # [B, num_unroll_steps + 1]
-        info = exp.rollout_info
+        info = rollout_info
         targets = common.as_list(info.target)
-        batch_size = exp.step_type.shape[0]
-        latent, state = self._encoding_net(exp.observation, state)
+        batch_size = root_inputs.step_type.shape[0]
+        latent, state = self._encoding_net(root_inputs.observation, state)
 
         sim_latent = self._multi_step_latent_rollout(
             latent, self._num_unroll_steps, info.action, state)
@@ -462,7 +461,8 @@ class PredictiveRepresentationLearner(Algorithm):
         return AlgStep(output=latent, state=state, info=loss_info)
 
     @torch.no_grad()
-    def preprocess_experience(self, experience: Experience):
+    def preprocess_experience(self, root_inputs, rollout_info,
+                              batch_info: BatchInfo):
         """Fill experience.rollout_info with PredictiveRepresentationLearnerInfo
 
         Note that the shape of experience is [B, T, ...].
@@ -473,13 +473,9 @@ class PredictiveRepresentationLearner(Algorithm):
         used as the target for the corresponding decoder.
 
         """
-        if self._num_unroll_steps == 0:
-            return self._preprocess_experience0(experience)
-
-        assert experience.batch_info != ()
-        batch_info: BatchInfo = experience.batch_info
-        replay_buffer: ReplayBuffer = experience.replay_buffer
-        mini_batch_length = experience.step_type.shape[1]
+        assert batch_info != ()
+        replay_buffer: ReplayBuffer = batch_info.replay_buffer
+        mini_batch_length = root_inputs.step_type.shape[1]
 
         with alf.device(replay_buffer.device):
             # [B, 1]
@@ -514,25 +510,13 @@ class PredictiveRepresentationLearner(Algorithm):
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
 
-            # [B, T, unroll_steps+1]
-            action = replay_buffer.get_field('action', env_ids, positions)
+            # [B, T, unroll_steps]
+            action = replay_buffer.get_field('prev_action', env_ids,
+                                             positions[:, :, 1:])
 
             rollout_info = PredictiveRepresentationLearnerInfo(
                 action=action, mask=mask, target=target)
 
         rollout_info = convert_device(rollout_info)
 
-        return experience._replace(rollout_info=rollout_info)
-
-    def _preprocess_experience0(self, experience: Experience):
-        target = alf.nest.map_structure(
-            lambda field: alf.nest.get_field(experience, field),
-            self._target_fields)
-        action = alf.nest.get_field(experience, 'action')
-        mask = torch.ones_like(experience.step_type, dtype=torch.bool)
-        rollout_info = PredictiveRepresentationLearnerInfo(
-            action=action, mask=mask, target=target)
-        # The shapes should be [B, T, unroll_steps+1, ...]
-        rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(2),
-                                              rollout_info)
-        return experience._replace(rollout_info=rollout_info)
+        return root_inputs, rollout_info

@@ -110,6 +110,7 @@ class Trainer(object):
         self._checkpointer = None
 
         self._evaluate = config.evaluate
+        self._eval_uncertainty = config.eval_uncertainty
         self._eval_interval = config.eval_interval
 
         self._summary_interval = config.summary_interval
@@ -314,6 +315,7 @@ class RLTrainer(Trainer):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
+        self._algorithm.set_path('')
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -504,6 +506,7 @@ class SLTrainer(Trainer):
         self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
         self._algorithm = config.algorithm_ctor(config=config)
+        self._algorithm.set_path('')
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)
@@ -520,8 +523,11 @@ class SLTrainer(Trainer):
             with record_time("time/train_iter"):
                 self._algorithm.train_iter()
 
-            if self._evaluate and (epoch_num + 1) % self._eval_interval == 0:
-                self._algorithm.evaluate()
+            if (epoch_num + 1) % self._eval_interval == 0:
+                if self._evaluate:
+                    self._algorithm.evaluate()
+                if self._eval_uncertainty:
+                    self._algorithm.eval_uncertainty()
 
             if epoch_num == begin_epoch_num:
                 self._summarize_training_setting()
@@ -533,6 +539,8 @@ class SLTrainer(Trainer):
             if (self._num_epochs and epoch_num >= self._num_epochs):
                 if self._evaluate:
                     self._algorithm.evaluate()
+                if self._eval_uncertainty:
+                    self._algorithm.eval_uncertainty()
                 break
 
             if self._num_epochs and epoch_num >= time_to_checkpoint:
@@ -573,11 +581,10 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
-    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
-                                         epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
-        recorder.capture_frame(time_step, policy_step, time_step.is_last())
+        recorder.capture_frame(policy_step.info, time_step.is_last())
     elif render:
         env.render(mode='human')
         time.sleep(sleep_time_per_step)
@@ -597,7 +604,6 @@ def play(root_dir,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
-         future_steps=0,
          append_blank_frames=0,
          render=True,
          ignored_parameter_prefixes=[]):
@@ -626,17 +632,6 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
-        future_steps (int): whether to encode some information from future steps
-            into the current frame. If future_steps is larger than zero,
-            then the related information (e.g. observation, reward, action etc.)
-            will be cached and the encoding of them to video frames is deferred
-            to the time when ``future_steps`` of future frames are available.
-            This defer mode is potentially useful to display for each frame
-            some information that expands beyond a single time step to the future.
-            Currently this mode only support offline rendering, i.e. rendering
-            and saving the video to ``record_file``. If a non-positive value is
-            provided, it is treated as not using the defer mode and the plots
-            for displaying future information will not be displayed.
         append_blank_frames (int): If >0, wil append such number of blank frames
             at the end of the episode in the rendered video file. A negative
             value has the same effects as 0 and no blank frames will be appended.
@@ -662,10 +657,7 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         recorder = VideoRecorder(
-            env,
-            future_steps=future_steps,
-            append_blank_frames=append_blank_frames,
-            path=record_file)
+            env, append_blank_frames=append_blank_frames, path=record_file)
     elif render:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
