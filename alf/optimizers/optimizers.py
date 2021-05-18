@@ -284,6 +284,8 @@ def wrap_optimizer(cls):
 
 Adam = alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam))
 
+# TODO: uncomment this after removing `adamw.py`
+#AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
 AdamW = alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW))
 
 SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
