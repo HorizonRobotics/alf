@@ -21,7 +21,7 @@ from torch.optim import _functional as F
 class AdamW(Optimizer):
     r"""Implements AdamW algorithm.
 
-    The current implementation of AdamW in PyTorch 1.8.1 has a bug introduced
+    The current implementation of AdamW in PyTorch 1.8 has a bug introduced
     during refactoring (https://github.com/pytorch/pytorch/pull/52944).
     This method is copied from the latest fix (#52944) which is now in pytorch
     repo and can be removed after upgrading to PyTorch versions including the fix.
