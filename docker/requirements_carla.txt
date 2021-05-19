@@ -9,7 +9,7 @@ numpy
 networkx
 opencv-python >= 3.4.1.15
 pathos == 0.2.4
-pillow==7.2.0
+pillow==8.1.1
 psutil
 pybullet == 2.5.0
 sphinx==2.4.4
