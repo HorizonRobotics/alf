@@ -20,7 +20,7 @@ from typing import Callable
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from . import adam_tf
+from . import adam_tf, adamw
 
 
 def _rbf_func(x):
@@ -87,7 +87,7 @@ def _score_func(x, alpha=1e-5):
 def wrap_optimizer(cls):
     """A helper function to construct torch optimizers with
     params as [{'params': []}]. After construction, new parameter
-    groups can be adde by using the add_param_group() method.
+    groups can be added by using the add_param_group() method.
 
     This wrapper also clips gradients first before calling ``step()``.
     """
@@ -284,7 +284,9 @@ def wrap_optimizer(cls):
 
 Adam = alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam))
 
-AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
+# TODO: uncomment this after removing `adamw.py`
+#AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
+AdamW = alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW))
 
 SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
 

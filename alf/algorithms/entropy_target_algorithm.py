@@ -149,8 +149,15 @@ class EntropyTargetAlgorithm(Algorithm):
 
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
-        self._slow_update_rate = torch.tensor(slow_update_rate)
-        self._fast_update_rate = torch.tensor(fast_update_rate)
+
+        # need to explicitly specify dtype to be the same as `self._update_rate`
+        # as required by the `torch.where` function later. This was not needed
+        # in lower version of pytorch (e.g. 1.4) as it will cast a np.float64
+        # to torch.float32.
+        self._slow_update_rate = torch.tensor(
+            slow_update_rate, dtype=torch.float32)
+        self._fast_update_rate = torch.tensor(
+            fast_update_rate, dtype=torch.float32)
 
     def rollout_step(self, distribution_and_step_type, state=None):
         """Rollout step.

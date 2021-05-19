@@ -370,7 +370,11 @@ class DiagMultivariateNormal(td.Independent):
             loc (Tensor): mean of the distribution
             scale (Tensor): standard deviation. Should have same shape as ``loc``.
         """
-        super().__init__(td.Normal(loc, scale), reinterpreted_batch_ndims=1)
+        # set validate_args to False here to enable the construction of Normal
+        # distribution with zero scale.
+        super().__init__(
+            td.Normal(loc, scale, validate_args=False),
+            reinterpreted_batch_ndims=1)
 
     @property
     def stddev(self):

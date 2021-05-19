@@ -348,50 +348,57 @@ class TestWithCycle(alf.test.TestCase):
 
             alg_2.root = alg_root
 
-            expected_state_dict = OrderedDict(
-                [('_sub_alg1._param_list.0', torch.tensor([1.])),
-                 ('_sub_alg2._param_list.0', torch.tensor([2.])),
-                 ('_sub_alg2._optimizers.0', {
-                     'state': {},
-                     'param_groups': [{
-                         'lr': 0.2,
-                         'betas': (0.9, 0.999),
-                         'eps': 1e-08,
-                         'weight_decay': 0,
-                         'amsgrad': False,
-                         'params': []
-                     },
-                                      {
-                                          'lr': 0.2,
-                                          'betas': (0.9, 0.999),
-                                          'eps': 1e-08,
-                                          'weight_decay': 0,
-                                          'amsgrad': False,
-                                          'params': [id(param_2)]
-                                      }]
-                 }), ('_param_list.0', torch.tensor([0.])),
-                 ('_optimizers.0', {
-                     'state': {},
-                     'param_groups': [
-                         {
-                             'lr': 0.1,
-                             'betas': (0.9, 0.999),
-                             'eps': 1e-08,
-                             'weight_decay': 0,
-                             'amsgrad': False,
-                             'params': []
-                         },
-                         {
-                             'lr': 0.1,
-                             'betas': (0.9, 0.999),
-                             'eps': 1e-08,
-                             'weight_decay': 0,
-                             'amsgrad': False,
-                             'params': [id(param_1),
-                                        id(param_root)]
-                         }
-                     ]
-                 })])
+            expected_state_dict = OrderedDict([
+                ('_sub_alg1._param_list.0', torch.tensor([1.])),
+                ('_sub_alg2._param_list.0', torch.tensor([2.])),
+                (
+                    '_sub_alg2._optimizers.0',
+                    {
+                        'state': {},
+                        'param_groups': [
+                            {
+                                'lr': 0.2,
+                                'betas': (0.9, 0.999),
+                                'eps': 1e-08,
+                                'weight_decay': 0,
+                                'amsgrad': False,
+                                'params': []
+                            },
+                            {
+                                'lr': 0.2,
+                                'betas': (0.9, 0.999),
+                                'eps': 1e-08,
+                                'weight_decay': 0,
+                                'amsgrad': False,
+                                'params': [0]  # order index instead of id
+                            }
+                        ]
+                    }),
+                ('_param_list.0', torch.tensor([0.])),
+                (
+                    '_optimizers.0',
+                    {
+                        'state': {},
+                        'param_groups': [
+                            {
+                                'lr': 0.1,
+                                'betas': (0.9, 0.999),
+                                'eps': 1e-08,
+                                'weight_decay': 0,
+                                'amsgrad': False,
+                                'params': []
+                            },
+                            {
+                                'lr': 0.1,
+                                'betas': (0.9, 0.999),
+                                'eps': 1e-08,
+                                'weight_decay': 0,
+                                'amsgrad': False,
+                                'params': [0, 1]  # order indices instead of id
+                            }
+                        ]
+                    })
+            ])
 
             # cycles are not allowed with explicit ignoring
             self.assertRaises(AssertionError, alg_root.state_dict)

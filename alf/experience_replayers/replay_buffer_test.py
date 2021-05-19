@@ -90,7 +90,8 @@ class ReplayBufferTest(RingBufferTest):
             torch.equal(
                 pos,
                 torch.tensor([[15, 16, 16, 14, 11, 11, 11, 16],
-                              [14, 16, 13, 10, 10, 10, 16, 14]])))
+                              [14, 16, 13, 10, 10, 10, 16, 14]],
+                             dtype=torch.int64)))
 
         # Verify _index is built correctly.
         # Note, the _index_pos 8 represents headless timesteps, which are
