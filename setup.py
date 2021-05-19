@@ -28,14 +28,14 @@ setup(
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
-        # Other versions may breaks classic control rendering. 1.5.11 is the
-        # version that works with python3.7 both in docker and local machine
-        'pyglet==1.5.11',
+        'pyglet==1.3.2',
         'matplotlib==3.4.1',
         'numpy',
         'opencv-python >=4.0, <=4.2',
         'pathos == 0.2.4',
-        'pillow',
+        # with python3.7, the default version of pillow (PIL) is 8.2.0,
+        # which breaks some pyglet based rendering in gym
+        'pillow==7.2.0',
         'psutil',
         'pybullet == 2.5.0',
         'rectangle-packer==2.0.0',
