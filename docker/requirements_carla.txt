@@ -3,7 +3,7 @@ cpplint
 clang-format == 9.0
 fasteners
 gym == 0.12.5
-pyglet==1.3.2
+pyglet == 1.3.2
 matplotlib
 numpy
 networkx

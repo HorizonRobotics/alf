@@ -22,8 +22,10 @@ class AdamW(Optimizer):
     """AdamW optimizer.
 
     The current implementation of AdamW in pytorch 1.8 has a bug introduced
-    during refactoring (https://github.com/pytorch/pytorch/pull/52944).
-    This method is copied from the latest fix (#52944).
+    during refactoring (https://github.com/pytorch/pytorch/pull/50411).
+    This method is copied from the latest fix (#52944), which has been merged
+    into pytorch repo after the release of pytorch 1.8.1
+    (https://github.com/pytorch/pytorch/pull/52944).
 
 
     TODO: remove this after upgrading to pytorch versions including fix (#52944).
