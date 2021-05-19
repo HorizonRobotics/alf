@@ -28,7 +28,9 @@ setup(
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
-        'pyglet == 1.3.2',  # higher version breaks classic control rendering
+        # Other versions may breaks classic control rendering. 1.5.11 is the
+        # version that works with python3.7 both in docker and local machine
+        'pyglet==1.5.11',
         'matplotlib==3.4.1',
         'numpy',
         'opencv-python >=4.0, <=4.2',

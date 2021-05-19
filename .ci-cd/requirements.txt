@@ -2,7 +2,7 @@ absl-py==0.7.0
 atari_py==0.1.7
 fasteners
 gym==0.12.5
-pyglet==1.3.2
+pyglet==1.5.11
 Box2D-kengz==2.3.3
 gym-retro
 matplotlib
