@@ -887,3 +887,33 @@ def check_numerics(nested):
                                      nested, nested_finite)
         assert all(alf.nest.flatten(nested_finite)), (
             "Some tensor in nested is not finite: %s" % bad)
+
+
+@gin.configurable
+def goal_real(g,
+              pos_dims=[0, 1],
+              yaw_dims=[11],
+              yaw_speed_dims=[7],
+              zero_dims=[4, 5, 6, 8, 9, 10]):
+    """Checks whether dimensions proposed by planner is realistic.
+
+    Args:
+        g (Tensor): goal tensor of shape ``[batch_size, goal_dims]``.
+        pos_dims (list[int]): position dimensions (bounded by arena size).
+        yaw_dims (list[int]); -pi to pi.
+        zero_dims (list[int]): dimensions expected to be close to zero, e.g. z-axis position.
+
+    returns:
+        Tensor: of shape ``[batch_size]`` of whether each sample contains a realistic goal.
+    """
+
+    def _get_dims(t, dims):
+        return t[(torch.arange(t.shape[0]).unsqueeze(1),
+                  torch.as_tensor(dims).unsqueeze(0))]
+
+    g = torch.abs(g)
+    real = torch.all(_get_dims(g, pos_dims) < 5.7 + 0.5, dim=1)
+    real &= torch.norm(_get_dims(g, zero_dims), dim=1) < 3
+    real &= torch.all(_get_dims(g, yaw_speed_dims) < 7.5, dim=1)
+    real &= torch.all(torch.abs(_get_dims(g, yaw_dims)) < 3.15 + 0.5, dim=1)
+    return real.unsqueeze(0)

@@ -192,26 +192,21 @@ class TDLoss(nn.Module):
                         observation = experience.observation
                         if (isinstance(observation, dict)
                                 and "desired_goal" in observation):
+                            o = observation["desired_goal"]
+                            b_len = observation["desired_goal"].shape[0]
+                            b_sz = observation["desired_goal"].shape[1]
                             if "aux_desired" in observation:
-                                o = observation["aux_desired"]
+                                o = torch.cat((o, observation["aux_desired"]),
+                                              dim=2)
                             elif observation["desired_goal"].shape[-1] > 2:
+                                # speed goal
                                 o = observation["desired_goal"][..., 2:]
                             else:
-                                o = torch.zeros(
-                                    (observation["desired_goal"].shape[0],
-                                     observation["desired_goal"].shape[1], 10))
+                                o = torch.zeros((b_len, b_sz, 10))
                             # take first n - 1 time steps for judging
-                            o = torch.abs(o[:-1, ...])
-                            aux_realistic = torch.norm(
-                                torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
-                                dim=2) < 3
-                            aux_realistic &= torch.abs(o[:, :, 5]) < 7.5
-                            aux_realistic &= torch.abs(o[:, :, 9]) < 3.15 + 0.5
-                            dist_th = 5.7 + 0.5
-                            aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 0]) < dist_th
-                            aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 1]) < dist_th
+                            o = torch.abs(o[:-1, ...]).reshape(
+                                (b_len - 1) * b_sz, -1)
+                            aux_realistic = alf.utils.common.goal_real(o)
                             real_rate = torch.mean(aux_realistic.float())
                             alf.summary.scalar("realistic_rate" + suffix,
                                                real_rate)

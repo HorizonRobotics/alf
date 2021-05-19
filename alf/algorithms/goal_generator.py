@@ -1470,13 +1470,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         return torch.any(self._unreal_batch(s))
 
     def _unreal_batch(self, s):
-        return ((torch.abs(s[:, 0]) > 5.7 + 0.5)
-                | (torch.abs(s[:, 1]) > 5.7 + 0.5)
-                | (abs(s[:, 7]) > 7.5)
-                | (abs(s[:, 11]) > 3.15 + 0.5)
-                |
-                (torch.norm(torch.cat(
-                    (s[:, 4:7], s[:, 8:11]), dim=1), dim=1) >= 3))
+        return ~common.goal_real(s)
 
     def post_process(self, observation, state, step_type, epsilon_greedy=1.):
         """Post process after update_condition and generate_goal calls.
