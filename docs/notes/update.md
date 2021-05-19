@@ -2,7 +2,7 @@
 
 ALF depends on a lot of third party software. The folloing is the workflow for
 updating 3rd party software. We will use ALF_ROOT to represent the directory of
-ALF source root, ALF_IMAGE_VERSION to represent the tag of the new docker image.
+ALF source root, ALF_IMAGE_TAG to represent the tag of the new docker image.
 ALF_IMAGE_TAG follows the following convention:
 ALF version-pytorch with version-python with version, e.g., 0.0.6-pytorch1.8-python3.7
 
