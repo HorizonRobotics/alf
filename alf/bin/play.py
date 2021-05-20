@@ -124,7 +124,7 @@ def play():
     algorithm.set_path('')
     try:
         policy_trainer.play(
-            FLAGS.root_dir,
+            common.abs_path(FLAGS.root_dir),
             env,
             algorithm,
             checkpoint_step=FLAGS.checkpoint_step or "latest",
@@ -152,7 +152,7 @@ def launch_snapshot_play():
     this function doesn't have any effect and the most up-to-date ALF will
     be used by play.
     """
-    root_dir = os.path.expanduser(FLAGS.root_dir)
+    root_dir = common.abs_path(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
 
     env_vars = common.get_alf_snapshot_env_vars(root_dir)

@@ -98,7 +98,7 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         Trainer._trainer_progress = _TrainerProgress()
-        root_dir = os.path.expanduser(config.root_dir)
+        root_dir = config.root_dir
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
@@ -643,7 +643,6 @@ def play(root_dir,
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
-    root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
