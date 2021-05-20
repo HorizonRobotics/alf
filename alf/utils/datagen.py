@@ -13,6 +13,7 @@
 # limitations under the License.
 """Utilities for supervised learning algorithms"""
 from collections import Counter
+import numpy as np
 
 import torch
 import torchvision
@@ -196,10 +197,11 @@ def _load_textdata(load_fn, train_bs, test_bs, max_vocab_size=None):
 
     def _data_process(raw_text_iter):
         data = [
-            torch.tensor([vocab[token] for token in tokenizer(item)],
-                         dtype=torch.int64) for item in raw_text_iter
+            np.array([vocab[token] for token in tokenizer(item)],
+                     dtype=np.int64) for item in raw_text_iter
         ]
-        return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
+        data = np.concatenate(tuple(filter(lambda t: t.size > 0, data)))
+        return torch.as_tensor(data, device='cpu')
 
     def _batchify(data, bsz):
         # Divide the dataset into bsz parts.
@@ -224,6 +226,8 @@ def _load_textdata(load_fn, train_bs, test_bs, max_vocab_size=None):
 def load_wikitext2(train_bs, test_bs):
     """Load WikiText2 data.
 
+    Note that all return Tensor are always in cpu.
+
     Args:
         train_bs (int): training batch size
         test_bs (int): validation/test batch size
@@ -241,6 +245,8 @@ def load_wikitext2(train_bs, test_bs):
 @alf.configurable
 def load_wikitext103(train_bs, test_bs, max_vocab_size=32768):
     """Load WikiText103 data.
+
+    Note that all return Tensor are always in cpu.
 
     Args:
         train_bs (int): training batch size
