@@ -276,7 +276,7 @@ class TestRSampleActionDistribution(alf.test.TestCase):
 class TestSoftTransforms(alf.test.TestCase):
     def test_soft_transforms(self):
         N = 100
-        x = torch.randn([N, N], dtype=torch.float32)
+        x = torch.randn([N, N], dtype=torch.float32, requires_grad=True)
         softplus = dist_utils.Softplus()
         softplus_x = softplus(x)
         softplus_x_ = torch.nn.functional.softplus(x)
@@ -323,6 +323,11 @@ class TestSoftTransforms(alf.test.TestCase):
         b = 1
         softclip = dist_utils.Softclip(-b, b, hinge_softness=1)
         self.assertTensorClose(softclip._inverse(softclip(x)), x, epsilon=1e-4)
+
+        y = softclip(x)
+        grad = torch.autograd.grad(y.sum(), x)[0]
+        self.assertTensorClose(
+            grad.log(), softclip.log_abs_det_jacobian(x, y), epsilon=1e-5)
 
 
 if __name__ == '__main__':

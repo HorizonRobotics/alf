@@ -251,11 +251,15 @@ def summarize_action_dist(action_distributions, name="action_dist"):
                                       dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
-            if not (isinstance(dist, td.Normal)
-                    or isinstance(dist, dist_utils.StableCauchy)):
+            if isinstance(dist, (td.Normal, dist_utils.StableCauchy)):
+                loc = dist.loc
+                log_scale = dist.scale.log()
+            elif isinstance(dist, td.Beta):
+                loc = dist.mean
+                log_scale = 0.5 * dist.variance.log()
+            else:
                 continue
-            loc = dist.loc
-            log_scale = dist.scale.log()
+
             action_dim = loc.shape[-1]
             for a in range(action_dim):
                 add_mean_hist_summary("%s_log_scale/%s/%s" % (name, i, a),

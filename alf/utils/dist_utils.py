@@ -381,6 +381,21 @@ class DiagMultivariateNormal(td.Independent):
         return self.base_dist.stddev
 
 
+class DiagMultivariateBeta(td.Independent):
+    def __init__(self, concentration1, concentration0):
+        """Create multivariate independent beta distribution.
+
+        Args:
+            concentration1 (float or Tensor): 1st concentration parameter of the
+                distribution (often referred to as alpha)
+            concentration0 (float or Tensor): 2nd concentration parameter of the
+                distribution (often referred to as beta)
+        """
+        super().__init__(
+            td.Beta(concentration1, concentration0),
+            reinterpreted_batch_ndims=1)
+
+
 class StableCauchy(td.Cauchy):
     def rsample(self, sample_shape=torch.Size(), clipping_value=0.49):
         r"""Overwrite Pytorch's Cauchy rsample for a more stable result. Basically
@@ -434,33 +449,70 @@ def _builder_transformed(base_builder, transforms, **kwargs):
     return td.TransformedDistribution(base_builder(**kwargs), transforms)
 
 
-def _get_builder(obj):
-    if type(obj) == td.Categorical:
-        if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
-            # This means that obj is constructed using probs
-            return td.Categorical, {'probs': obj.probs}
-        else:
-            return td.Categorical, {'logits': obj.logits}
-    elif type(obj) == td.Normal:
-        return td.Normal, {'loc': obj.mean, 'scale': obj.stddev}
-    elif type(obj) == StableCauchy:
-        return StableCauchy, {'loc': obj.loc, 'scale': obj.scale}
-    elif type(obj) == td.Independent:
-        builder, params = _get_builder(obj.base_dist)
-        new_builder = functools.partial(_builder_independent, builder,
-                                        obj.reinterpreted_batch_ndims)
-        return new_builder, params
-    elif type(obj) == DiagMultivariateNormal:
-        return DiagMultivariateNormal, {'loc': obj.mean, 'scale': obj.stddev}
-    elif type(obj) == DiagMultivariateCauchy:
-        return DiagMultivariateCauchy, {'loc': obj.loc, 'scale': obj.scale}
-    elif isinstance(obj, td.TransformedDistribution):
-        builder, params = _get_builder(obj.base_dist)
-        new_builder = functools.partial(_builder_transformed, builder,
-                                        obj.transforms)
-        return new_builder, params
+def _get_categorical_builder(obj: td.Categorical):
+    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
+        # This means that obj is constructed using probs
+        return td.Categorical, {'probs': obj.probs}
     else:
-        raise ValueError("Unsupported value type: %s" % type(obj))
+        return td.Categorical, {'logits': obj.logits}
+
+
+def _get_independent_builder(obj: td.Independent):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_independent, builder,
+                                    obj.reinterpreted_batch_ndims)
+    return new_builder, params
+
+
+def _get_transformed_builder(obj: td.TransformedDistribution):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_transformed, builder,
+                                    obj.transforms)
+    return new_builder, params
+
+
+_get_builder_map = {
+    td.Categorical:
+        _get_categorical_builder,
+    td.Normal:
+        lambda obj: (td.Normal, {
+            'loc': obj.mean,
+            'scale': obj.stddev
+        }),
+    StableCauchy:
+        lambda obj: (StableCauchy, {
+            'loc': obj.loc,
+            'scale': obj.scale
+        }),
+    td.Independent:
+        _get_independent_builder,
+    DiagMultivariateNormal:
+        lambda obj: (DiagMultivariateNormal, {
+            'loc': obj.mean,
+            'scale': obj.stddev
+        }),
+    DiagMultivariateCauchy:
+        lambda obj: (DiagMultivariateCauchy, {
+            'loc': obj.loc,
+            'scale': obj.scale
+        }),
+    td.TransformedDistribution:
+        _get_transformed_builder,
+    td.Beta:
+        lambda obj: (td.Beta, {
+            'concentration1': obj.concentration1,
+            'concentration0': obj.concentration0
+        }),
+    DiagMultivariateBeta:
+        lambda obj: (DiagMultivariateBeta, {
+            'concentration1': obj.base_dist.concentration1,
+            'concentration0': obj.base_dist.concentration0
+        }),
+}
+
+
+def _get_builder(obj):
+    return _get_builder_map[type(obj)](obj)
 
 
 def extract_distribution_parameters(dist: td.Distribution):
@@ -745,6 +797,13 @@ def get_mode(dist):
             mode = base_mode
             for transform in dist.transforms:
                 mode = transform(mode)
+    elif isinstance(dist, td.Beta):
+        alpha = dist.concentration1
+        beta = dist.concentration0
+        mode = torch.where((alpha > 1) & (beta > 1),
+                           (alpha - 1) / (alpha + beta - 2),
+                           torch.where(alpha < beta, torch.zeros(()),
+                                       torch.ones(())))
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))
