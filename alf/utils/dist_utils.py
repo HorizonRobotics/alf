@@ -798,7 +798,12 @@ def get_mode(dist):
             for transform in dist.transforms:
                 mode = transform(mode)
     elif isinstance(dist, td.Beta):
-        mode = dist.mean
+        alpha = dist.concentration1
+        beta = dist.concentration0
+        mode = torch.where((alpha > 1) & (beta > 1),
+                           (alpha - 1) / (alpha + beta - 2),
+                           torch.where(alpha < beta, torch.zeros(()),
+                                       torch.ones(())))
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))

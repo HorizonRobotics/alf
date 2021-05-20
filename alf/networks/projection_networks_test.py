@@ -21,7 +21,7 @@ import alf
 from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
-from alf.networks import BetaProjectionNetwork, DirichletProjectionNetwork
+from alf.networks import BetaProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.dist_utils import DistributionSpec
 import alf.utils.math_ops as math_ops
@@ -190,7 +190,6 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         dist, _ = net(embedding)
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
         samples = dist.sample()
-        print(samples)
         self.assertTrue(torch.all(samples >= -1))
         self.assertTrue(torch.all(samples <= 1))
         self.assertTrue(torch.any(samples <= 0))
