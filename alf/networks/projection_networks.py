@@ -550,7 +550,7 @@ class BetaProjectionNetwork(Network):
             activation (Callable): activation function to use in
                 dense layers.
             bias_init_value (): the default value is chosen so that, for softplus
-                activiation, the initial concentration will be close 1, which
+                activation, the initial concentration will be close 1, which
                 corresponds to uniform distribution.
         """
         super().__init__(
