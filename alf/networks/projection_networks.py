@@ -510,3 +510,65 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
             return squashed_dist
         else:
             return cauchy_dist
+
+
+def _get_transformer(action_spec):
+    """Transform from [0,1] to [action_low, action_high]."""
+    action_high = torch.as_tensor(action_spec.maximum)
+    action_low = torch.as_tensor(action_spec.minimum)
+    if ((action_low == 0) & (action_high == 1)).all():
+        return lambda x: x
+    else:
+        return lambda x: td.TransformedDistribution(
+            base_distribution=x,
+            transforms=td.AffineTransform(
+                loc=action_low, scale=action_high - action_low))
+
+
+@alf.configurable
+class BetaProjectionNetwork(Network):
+    """Beta projection network.
+
+    Its output is a distribution with independent beta distribution for each
+    action dimension. Since the support of beta distribution is [0, 1], we also
+    apply an affine transformation so the support fill the range specified by
+    ``action_spec``.
+    """
+
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 activation=nn.functional.softplus,
+                 projection_output_init_gain=0.0,
+                 bias_init_value=0.541324854612918,
+                 name="BetaProjectionNetwork"):
+        """
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            activation (Callable): activation function to use in
+                dense layers.
+            bias_init_value (): the default value is chosen so that, for softplus
+                activiation, the initial concentration will be close 1, which
+                corresponds to uniform distribution.
+        """
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        assert action_spec.ndim == 1, "Only support 1D action spec!"
+
+        self._transformer = _get_transformer(action_spec)
+
+        self._concentration_projection_layer = layers.FC(
+            input_size,
+            2 * action_spec.shape[0],
+            activation=activation,
+            bias_init_value=bias_init_value,
+            kernel_init_gain=projection_output_init_gain)
+
+    def forward(self, inputs, state=()):
+        concentration = self._concentration_projection_layer(inputs)
+        concentration10 = concentration.split(
+            concentration.shape[-1] // 2, dim=-1)
+        return self._transformer(
+            dist_utils.DiagMultivariateBeta(*concentration10)), state

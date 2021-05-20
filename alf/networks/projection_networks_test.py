@@ -21,6 +21,7 @@ import alf
 from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
+from alf.networks import BetaProjectionNetwork, DirichletProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.dist_utils import DistributionSpec
 import alf.utils.math_ops as math_ops
@@ -173,6 +174,27 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
         self.assertTrue(torch.all(dist.base_dist.scale > min_std))
         self.assertTrue(torch.all(dist.base_dist.scale < max_std))
+
+    def test_beta_projection_net(self):
+        """Test max and min stds for BetaProjectionNetwork."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        action_spec = BoundedTensorSpec((8, ),
+                                        minimum=-1.,
+                                        maximum=1.,
+                                        dtype=torch.float32)
+
+        net = BetaProjectionNetwork(
+            input_spec.shape[0], action_spec, projection_output_init_gain=.0)
+
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        samples = dist.sample()
+        print(samples)
+        self.assertTrue(torch.all(samples >= -1))
+        self.assertTrue(torch.all(samples <= 1))
+        self.assertTrue(torch.any(samples <= 0))
+        self.assertTrue(torch.any(samples >= 0))
 
 
 if __name__ == "__main__":
