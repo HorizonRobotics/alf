@@ -93,7 +93,7 @@ def train_eval(root_dir):
 
 def main(_):
     FLAGS.alsologtostderr = True
-    root_dir = os.path.expanduser(FLAGS.root_dir)
+    root_dir = common.abs_path(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
     logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
 
@@ -107,7 +107,7 @@ def main(_):
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)
-        train_eval(FLAGS.root_dir)
+        train_eval(root_dir)
     finally:
         alf.close_env()
 

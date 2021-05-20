@@ -1082,6 +1082,10 @@ def generate_alf_root_snapshot(alf_root, dest_path):
         dest_path (str): the path to generate a snapshot of ALF repo
     """
 
+    def _is_subdir(path, directory):
+        relative = os.path.relpath(path, directory)
+        return not relative.startswith(os.pardir)
+
     def rsync(src, target, includes):
         args = ['rsync', '-rI', '--include=*/']
         args += ['--include=%s' % i for i in includes]
@@ -1090,6 +1094,10 @@ def generate_alf_root_snapshot(alf_root, dest_path):
         # shell=True preserves string arguments
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
+
+    assert not _is_subdir(dest_path, alf_root), (
+        "Snapshot path '%s' is not allowed under ALF root! Use a different one!"
+        % dest_path)
 
     # these files are important for code status
     includes = ["*.py", "*.gin", "*.so", "*.json"]
@@ -1114,3 +1122,9 @@ def get_alf_snapshot_env_vars(root_dir):
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
+
+
+def abs_path(path):
+    """Given any path, return the absolute path with expanding the user.
+    """
+    return os.path.realpath(os.path.expanduser(path))
