@@ -9,12 +9,10 @@ numpy
 networkx
 opencv-python >= 3.4.1.15
 pathos == 0.2.4
-pillow
+pillow==7.2.0
 psutil
 pybullet == 2.5.0
 sphinx==2.4.4
 sphinxcontrib-napoleon==0.7
 sphinx-rtd-theme==0.4.3
 tensorboard == 2.1.0
-torch == 1.4.0
-torchvision == 0.5.0

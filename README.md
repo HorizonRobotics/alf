@@ -25,7 +25,14 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 
 ## Installation
 
-Python3.7 is currently supported by ALF. [Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After activating a virtual env, you can run the following commands to install ALF
+Python3.7 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3.7-dev is installed:
+
+```
+sudo apt install -y python3.7-dev
+```
+
+[Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After creating and activating a virtual env, you can run the following commands to install ALF:
+
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
@@ -42,7 +49,7 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 
 You can train any `.gin` file under `alf/examples` using the following command:
 ```bash
-python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
+cd alf/examples; python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
 * GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
 You can find sample gin configuration files for different tasks under directory
@@ -55,7 +62,7 @@ training from a previous checkpoint (if any).
 
 Or alternatively, train any `_conf.py` file under `alf/examples` as follows:
 ```bash
-python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
+cd alf/examples; python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
 ```
 * CONF_FILE follows ALF configuraion file format (basically python).
 Note that we are in the process of converting all `.gin` examples to `_conf.py`
@@ -70,6 +77,8 @@ After training, you can visualize the trained model using the following command:
 ```bash
 python -m alf.bin.play --root_dir=LOG_DIR
 ```
+
+**Troubleshooting**: if an error says that no configuration file is found, then probably you are not under `alf/examples`.
 
 ### A2C
 * [Cart pole](alf/examples/ac_cart_pole.gin). The training score took only 30 seconds to reach 200, using 8 environments.

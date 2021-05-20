@@ -102,7 +102,10 @@ RUN pip3 install -r /tmp/requirements.txt \
 
 RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git@50bbde3
 
-RUN pip3 install torch==1.4.0+cu100 torchvision==0.5.0+cu100 -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip3 install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchtext==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+
+
+RUN pip3 install setuptools==45.2.0
 
 # Uncomment below for hobot cluster usage
 #COPY ./set_env.sh /opt/set_env.sh
