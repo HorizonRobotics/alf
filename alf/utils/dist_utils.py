@@ -383,7 +383,7 @@ class DiagMultivariateNormal(td.Independent):
 
 class DiagMultivariateBeta(td.Independent):
     def __init__(self, concentration1, concentration0):
-        """Create multivariate normal distribution with diagonal variance.
+        """Create multivariate independent beta distribution.
 
         Args:
             concentration1 (float or Tensor): 1st concentration parameter of the
