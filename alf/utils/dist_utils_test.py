@@ -326,7 +326,8 @@ class TestSoftTransforms(alf.test.TestCase):
 
         y = softclip(x)
         grad = torch.autograd.grad(y.sum(), x)[0]
-        self.assertTensorClose(grad.log(), softclip.log_abs_det_jacobian(x, y))
+        self.assertTensorClose(
+            grad.log(), softclip.log_abs_det_jacobian(x, y), epsilon=1e-5)
 
 
 if __name__ == '__main__':
