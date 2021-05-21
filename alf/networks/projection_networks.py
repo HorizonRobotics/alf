@@ -519,10 +519,8 @@ def _get_transformer(action_spec):
     if ((action_low == 0) & (action_high == 1)).all():
         return lambda x: x
     else:
-        return lambda x: td.TransformedDistribution(
-            base_distribution=x,
-            transforms=td.AffineTransform(
-                loc=action_low, scale=action_high - action_low))
+        return lambda x: dist_utils.AffineTransformedDistribution(
+            base_dist=x, loc=action_low, scale=action_high - action_low)
 
 
 @alf.configurable
