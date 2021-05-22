@@ -1,7 +1,7 @@
 PyTorch Notes
 ************************************
 
-This note is used for doucmenting some useful PyTorch-related features,
+This note is used for documenting some useful PyTorch-related features,
 which can serve as a useful reference for future relevent development, either
 implementing algorithms in PyTorch or converting some eixsting code from
 TensorFlow to PyTorch, or PyTorch upgrade, from a lower to higher
