@@ -29,9 +29,22 @@ from alf.data_structures import namedtuple
 
 HOME = os.getenv("HOME")
 
+
 # A namedtuple that represents a curve with mean and upper/lower bounds
-MeanCurve = namedtuple(
-    "MeanCurve", ['x', 'y', 'min_y', 'max_y', 'name'], default_value=())
+class MeanCurve(
+        namedtuple(
+            "MeanCurve", ['x', 'y', 'min_y', 'max_y', 'name'],
+            default_value=())):
+    def normalized_auc(self):
+        """Return the averaged ``y``, ``min_y``, and ``max_y`` over the x-axis.
+        It can also approximate the normalized area under the curve.
+        """
+        return self.final_y(N=len(self.y))
+
+    def final_y(self, N=1):
+        """Return the final y values."""
+        return tuple(
+            map(np.mean, (self.y[-N:], self.min_y[-N:], self.max_y[-N:])))
 
 
 class MeanCurveReader(object):
@@ -52,10 +65,10 @@ class MeanCurveReader(object):
 
     def __init__(self,
                  event_file,
+                 x_steps,
                  name="MeanCurve",
                  smoothing=None,
-                 variance_mode="std",
-                 max_n_scalars=None):
+                 variance_mode="std"):
         """
         Args:
             event_file (str|list[str]): a string or a list of strings where
@@ -63,15 +76,13 @@ class MeanCurveReader(object):
                 "eval/" or "train/". The curves of these files will be averaged.
                 It's the user's responsibility to ensure that it's meaningful to
                 group these event files and show their mean and variance.
+            x_steps (list[int]): x steps whose y values will be plot
             name (str): name of the mean curve.
             smoothing (int | float): if None, no smoothing is applied; if int,
                 it's the window width of a Savitzky-Golay filter; if float,
                 it's the smoothing weight of a running average (higher -> smoother).
             variance_mode (str): how to compute the shaded region around the
                 mean curve, either "std" or "minmax".
-            max_n_scalars (int): the max number of points each curve will show,
-                *after* the curve has been fit to a function. If None, a default
-                value of 10000 will be used.
 
         Returns:
             MeanCurve: a mean curve structure.
@@ -81,29 +92,22 @@ class MeanCurveReader(object):
         else:
             assert len(event_file) > 0, "Empty event file list!"
 
-        if max_n_scalars is None:
-            max_n_scalars = 10000
-
-        x, ys = None, []
+        ys = []
         scalar_events_list = []
         for ef in event_file:
             event_acc = EventAccumulator(ef)
             event_acc.Reload()
             # 'scalar_events' is a list of ScalarEvent(wall_time, step, value)
             scalar_events = event_acc.Scalars(self._get_metric_name())
-            max_n_scalars = min(max_n_scalars, len(scalar_events))
             scalar_events_list.append(scalar_events)
 
         for scalar_events in scalar_events_list:
             steps, values = zip(*[(se.step, se.value) for se in scalar_events])
-            if x is None:
-                x = np.array(steps)
-            # new_x should be the same for every scalar_events
-            new_x, y = self._interpolate_and_smooth_if_necessary(
-                max_n_scalars, steps, values, x[0], x[-1], smoothing)
+            y = self._interpolate_and_smooth_if_necessary(
+                steps, values, x_steps, smoothing)
             ys.append(y)
 
-        x = new_x
+        x = x_steps
         y = np.array(list(map(np.mean, zip(*ys))))
         if len(ys) == 1:
             self._mean_curve = MeanCurve(x=x, y=y, min_y=y, max_y=y, name=name)
@@ -129,11 +133,9 @@ class MeanCurveReader(object):
         return self._mean_curve
 
     def _interpolate_and_smooth_if_necessary(self,
-                                             n_scalars,
                                              steps,
                                              values,
-                                             min_step,
-                                             max_step,
+                                             output_x,
                                              smoothing=None,
                                              kind="linear"):
         """First interpolate the ``(steps, values)`` pair to get a
@@ -147,11 +149,9 @@ class MeanCurveReader(object):
         some reference minmax steps.
 
         Args:
-            n_scalars (int): the number of output scalars
             steps (list[int]): x values
             values (list[float]): y values
-            min_step (float): min_x after interpolation
-            max_step (float): max_x after interpolation
+            output_x (list[int]): x values for the output curve
             smoothing (int | float): if None, no smoothing is applied; if int,
                 it's the window width of a Savitzky-Golay filter; if float,
                 it's the smoothing weight of a running average (higher -> smoother).
@@ -163,11 +163,8 @@ class MeanCurveReader(object):
             tuple: the first is the adjusted x values and the second is the
                 interpolated and smoothed y values.
         """
-        # evenly distribute the values along x axis
         func = interp1d(steps, values, kind=kind, fill_value='extrapolate')
-        delta_x = (max_step - min_step) / (n_scalars - 1)
-        new_x = np.arange(n_scalars) * delta_x + min_step
-        new_values = func(new_x)
+        new_values = func(output_x)
 
         if isinstance(smoothing, int):
             new_values = savgol_filter(new_values, smoothing, polyorder=1)
@@ -175,7 +172,7 @@ class MeanCurveReader(object):
             assert 0 < smoothing < 1
             new_values = ema_smooth(new_values, weight=smoothing)
 
-        return new_x, new_values
+        return new_values
 
 
 def ema_smooth(scalars, weight=0.6, speed=64., adaptive=False, mode="forward"):
@@ -511,6 +508,7 @@ if __name__ == "__main__":
     curve_readers = [[
         EnvironmentStepsReturnReader(
             event_file=glob.glob(_get_curve_path("%s_%s/*/eval" % (m, t))),
+            x_steps=np.arange(0, 5000000, 10000),
             name="%s_%s" % (m, t),
             smoothing=3) for t in tasks
     ] for m in methods]
