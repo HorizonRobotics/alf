@@ -177,3 +177,17 @@ but in PyTorch 1.8, its value becomes tensor(2.5000), and its dtype is
 ``torch.float32``. While this is a desirable feature in terms of preserving
 the precision, it could also lead to different results when running the same
 piece of code in different versions of PyTorch.
+
+Note that the promotion mechanism does not depend on the actual values of the
+tensor or whether the tensor is an array or scalar, when determining the minimum
+dtypes to be used after promotion. For example:
+
+.. code-block:: python
+    a1 = torch.tensor(4, dtype=torch.int64)
+    b1 = a1 / 2
+    a2 = torch.tensor([2, 4], dtype=torch.int64)
+    b2 = a2 / 2
+
+In PyTorch 1.8, both ``b1`` and ``b2`` have a dtype of ``torch.float32``.
+For more details on type promotion, please refer to `PyTorch document
+<https://pytorch.org/docs/stable/tensor_attributes.html#type-promotion-doc>`_.
