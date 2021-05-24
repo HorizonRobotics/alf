@@ -22,7 +22,7 @@ import torch.distributions as td
 
 import alf
 from alf.data_structures import LossInfo
-from alf.nest import is_namedtuple
+from alf.nest import is_namedtuple, is_nested, py_map_structure_with_path, map_structure
 from alf.utils import dist_utils
 from alf.summary import should_record_summaries
 
@@ -367,3 +367,69 @@ class record_time(object):
                                self._counter['time'] / self._counter['n'])
             self._counter['time'] = .0
             self._counter['n'] = 0
+
+
+def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
+    """Summarize the gradient of ``tensor`` during backward.
+
+    Args:
+        name (str): name of the summary
+        tensor (nested Tensor): tensor of which the gradient is to be summarized.
+        batch_dims (int): first so many dimensions are treated as batch dimensions
+        clone (bool): If True, ``tensor`` will first be cloned. This is useful
+            if ``tensor`` is used in multiple places and you only want to summarize
+            the gradient from one place. If False, the gradient will be the sum
+            from all gradients backpropped to ``tensor``.
+    Returns:
+        ``tensor`` or cloned ``tensor``: the cloned ``tensor`` should be used for
+            the downstream calculations.
+    """
+
+    def _hook(grad, name):
+        norm = grad.reshape(*grad.shape[0:batch_dims], -1).norm(dim=-1)
+        alf.summary.scalar(name + '/max_norm', norm.max())
+        alf.summary.scalar(name + '/avg_norm', norm.mean())
+
+    name = '/' + alf.summary.scope_name() + name
+    if not is_nested(tensor):
+        if clone:
+            tensor = tensor.clone()
+        tensor.register_hook(functools.partial(_hook, name=name))
+        return tensor
+    else:
+        if clone:
+            tensor = map_structure(torch.clone, tensor)
+
+        def _register_hook(path, x):
+            x.register_hook(functools.partial(_hook, name=name + '/' + path))
+
+        py_map_structure_with_path(_register_hook, tensor)
+        return tensor
+
+
+def summarize_distribution_gradient(name,
+                                    distribution,
+                                    batch_dims=1,
+                                    clone=False):
+    """Summarize the gradient of the parameters of ``distribution`` during backward.
+
+    Args:
+        name (str): name of the summary
+        distribution (nested Distribution): distribution of which the gradient is to be summarized.
+        batch_dims (int): first so many dimensions are treated as batch dimensions
+        clone (bool): If True, ``distribution`` will first be cloned. This is useful
+            if ``distribution`` is used in multiple places and you only want to summarize
+            the gradient from one place. If False, the gradient will be the sum
+            from all gradients backpropped to ``distribution``.
+    Returns:
+        ``distribution`` or cloned ``distribution``: the cloned ``distribution``
+            should be used for the downstream calculations.
+    """
+    dist_params = dist_utils.distributions_to_params(distribution)
+    if clone:
+        spec = dist_utils.extract_spec(distribution)
+        dist_params = map_structure(torch.clone, dist_params)
+        distribution = dist_utils.params_to_distributions(dist_params, spec)
+    summarize_tensor_gradients(
+        name, dist_params, batch_dims=batch_dims, clone=False)
+    return distribution

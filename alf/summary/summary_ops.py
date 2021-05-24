@@ -94,12 +94,22 @@ def _summary_wrapper(summary_func):
     @functools.wraps(summary_func)
     def wrapper(name, data, step=None, **kwargs):
         if should_record_summaries():
+            if isinstance(data, torch.Tensor):
+                data = data.detach()
             if step is None:
                 step = _global_counter
-            name = _scope_stack[-1] + name
+            if name.startswith('/'):
+                name = name[1:]
+            else:
+                name = _scope_stack[-1] + name
             summary_func(name, data, step, **kwargs)
 
     return wrapper
+
+
+def scope_name():
+    """Get the full name of the current summary scope."""
+    return _scope_stack[-1]
 
 
 def images(name, data, dataformat='NCHW', step=None, walltime=None):
