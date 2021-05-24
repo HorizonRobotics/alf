@@ -31,7 +31,7 @@ setup(
         'pyglet == 1.3.2',  # higher version breaks classic control rendering
         'matplotlib==3.4.1',
         'numpy',
-        'opencv-python >=4.0, <=4.2',
+        'opencv-python',
         'pathos == 0.2.4',
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
         # which breaks some pyglet based rendering in gym
