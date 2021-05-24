@@ -21,7 +21,6 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 |[RND](alf/algorithms/rnd_algorithm.py)|Intrinsic motivation/Exploration|Burda et al. "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)|
 |[EZGreedy](alf/algorithms/ez_greedy_agent.py)|Exploration|Dabney et al. "Temporally-Extended {\epsilon}-Greedy Exploration" [arXiv:2006.01782](https://arxiv.org/abs/2006.01782)|
 |[MuZero](alf/algorithms/muzero_algorithm.py)|Model-based RL|Schrittwieser et. al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)|
-|[PlaNet](alf/algorithms/recurrent_state_space_model.py)|Model-based RL|Hafner et al. "Learning Latent Dynamics for Planning from Pixels" [arXiv:1811.04551](https://arxiv.org/abs/1811.04551)|
 |[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
 |[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
 |[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks." [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
