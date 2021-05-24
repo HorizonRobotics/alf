@@ -398,7 +398,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  vae_weight=4.,
                  vae_weight_adaptive=False,
                  vae_penalize_above=0.,
-                 vae_threshold_adaptive=True,
+                 vae_threshold_adaptive=1.5,
                  vae_bias=0.,
                  vae_samples=1,
                  vae_decoder=None,
@@ -466,8 +466,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             vae_weight_adaptive (bool): if True, use log(her value mean) and her_vae_loss
                 to compute a weight for combining vae loss with log(value).
             vae_penalize_above (float): penalize vae_cost only if above this threshold.
-            vae_threshold_adaptive (bool): adaptive threshold based on mean + 3 * std of
-                vae loss distribution.
+            vae_threshold_adaptive (float): adaptive threshold based on mean + thd * std of
+                vae loss distribution.  When zero, not using adaptive threshold.
             vae_bias (float): additional penalty if cost above threshold.
             vae_samples (int): number of z samples to use in VAE.
             vae_decoder (nn.Module): decoder for the VAE.
@@ -616,7 +616,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._vae_weight = vae_weight
         self._vae_threshold_adaptive = vae_threshold_adaptive
         self._vae_loss_normalizer = None
-        if vae and (vae_threshold_adaptive or vae_weight_adaptive):
+        if vae and (vae_threshold_adaptive > 0 or vae_weight_adaptive):
             self._vae_loss_normalizer = \
                 alf.utils.normalizers.ScalarWindowNormalizer(
                     name="planner/vae_loss_normalizer")
@@ -751,8 +751,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             stddev = torch.sqrt(self._vae_loss_normalizer._m2_averager.get() -
                                 mean**2)
             # mean + 1.5 * stddev as the adaptive threshold.
-            if self._vae_threshold_adaptive:
-                self._vae_penalize_above = mean + 1.5 * stddev
+            if self._vae_threshold_adaptive > 0:
+                self._vae_penalize_above = mean + (
+                    self._vae_threshold_adaptive * stddev)
             if self._vae_weight_adaptive:
                 her_mean = self._her_value_normalizer._mean_averager.get()
                 self._vae_weight = 0.1 * math.log(her_mean) / math.log(
