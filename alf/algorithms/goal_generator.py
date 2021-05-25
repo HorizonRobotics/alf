@@ -1120,7 +1120,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 - new_state (nested Tensor): a potentially updated state.
         """
         info = {}
-        goals, costs, ts = self.get_goals_and_costs(observation, state, info)
+        goals, costs, ts = self.get_goals_and_costs(
+            observation, state, info=info)
         batch_size = goals.shape[0]
         if new_goal_mask is None:
             new_goal_mask = torch.ones((batch_size, 1), dtype=torch.bool)
