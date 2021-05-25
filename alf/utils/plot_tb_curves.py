@@ -35,9 +35,8 @@ class MeanCurve(
         namedtuple(
             "MeanCurve", ['x', 'y', 'min_y', 'max_y', 'name'],
             default_value=())):
-    def normalized_auc(self):
+    def average_y(self):
         """Return the averaged ``y``, ``min_y``, and ``max_y`` over the x-axis.
-        It can also approximate the normalized area under the curve.
         """
         return self.final_y(N=len(self.y))
 
