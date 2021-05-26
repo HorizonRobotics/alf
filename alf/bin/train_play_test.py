@@ -403,6 +403,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_her_fetchpush(self):
+        self._test(
+            conf_file='her_fetchpush.gin',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_diayn_pendulum(self):
         self._test(
             conf_file='diayn_pendulum.gin',

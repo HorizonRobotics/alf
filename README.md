@@ -13,6 +13,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [DDPG](alf/algorithms/ddpg_algorithm.py): Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)
 * [PPO](alf/algorithms/ppo_algorithm.py): Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
 * [SAC](alf/algorithms/sac_algorithm.py): Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)
+* [HER](alf/algorithms/data_transformer.py): Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495).  We enhanced it to allow variable length episodes by recording episode boundaries in an index of the replay buffer (see HindsightExperienceTransformer and ReplayBuffer).
 * [ICM](alf/algorithms/icm_algorithm.py): Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)
 * [MERLIN](alf/algorithms/merlin_algorithm.py): Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)
 * [Amortized SVGD](alf/algorithms/generator.py): Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent"[arXiv:1707.06626](https://arxiv.org/abs/1707.06626)
@@ -123,6 +124,11 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
   <img src="alf/examples/sac_fetchslide.png" width="300" height="200" alt="sac-fetchslide-training-curve"/> <img src="alf/examples/sac_fetchslide.gif" width="300" height="200" alf="sac-fetchslide-video"/>
 
 * [Fetch Environments (sparse rewards) w/ Action Repeat](alf/examples/sac_actrepeat_fetch/sac_actrepeat_fetch.gin). We are able to achieve even better performance than reported by DDPG + Hindsight Experience Replay in some cases simply by using SAC + Action Repeat with length 3 timesteps. See [this note](docs/notes/fetch_env_sac_actrepeat_notes.rst) to view learning curves, videos, and more details.
+
+### HER
+* [Goal Conditioned Target Navigation](alf/examples/her_target_navigation_states.gin). Need to install SocialRobot.
+
+<img src="alf/examples/sac_fetchslide.png" width="400" height="200" alt="sac-fetchslide-training-curve"/>
 
 ### ICM
 * [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin). Playing Super Mario only using intrinsic reward.

@@ -670,7 +670,18 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
 
 @alf.configurable
 class HindsightExperienceTransformer(DataTransformer):
-    """Randomly get `batch_size` hindsight relabeled trajectories.
+    """Randomly transform her_proportion of `batch_size` trajectories with hindsight relabel.
+
+        To use this class, add it to any existing data transformers, e.g. use this config if
+        ``ObservationNormalizer`` is an existing data transformer:
+
+        .. code-block:: python
+
+            ReplayBuffer.keep_episodic_info=True
+            HindsightExperienceTransformer.her_proportion=0.8
+            TrainerConfig.data_transformer_ctor=[@ObservationNormalizer, @HindsightExperienceTransformer]
+
+        See unit test for more details on behavior.
     """
 
     def __init__(self,
@@ -714,22 +725,21 @@ class HindsightExperienceTransformer(DataTransformer):
         Returns:
             Experience: the relabeled experience, with batch_info potentially changed.
         """
+        her_proportion = self._her_proportion
+        if her_proportion == 0:
+            return experience
         info = experience.batch_info
         assert info != (), "Hindsight requires batch_info to be populated"
         # buffer (ReplayBuffer) is needed for access to future achieved goals.
         buffer = info.replay_buffer
         assert buffer != (), "Hindsight requires replay_buffer to be populated"
         with alf.device(buffer.device):
-            experience = alf.nest.utils.clear_batch_info(experience)
+            experience = alf.data_structures.clear_batch_info(experience)
             info = info._replace(replay_buffer=())
             experience = experience._replace(batch_info=info)
             experience = convert_device(experience)
             info = experience.batch_info
             result = experience
-            her_proportion = self._her_proportion
-
-            if her_proportion == 0:
-                return result
 
             env_ids = info.env_ids
             start_pos = info.positions
@@ -801,7 +811,7 @@ class HindsightExperienceTransformer(DataTransformer):
         if alf.get_default_device() != buffer.device:
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=buffer)
-        result = alf.nest.utils.add_batch_info(result, info)
+        result = alf.data_structures.add_batch_info(result, info)
         return result
 
 

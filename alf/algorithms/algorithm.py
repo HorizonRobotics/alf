@@ -1147,13 +1147,13 @@ class Algorithm(AlgorithmInterface):
         if self._exp_replayer_type != "one_time":
             # The experience put in one_time replayer is already transformed
             # in unroll().
-            experience = alf.nest.utils.add_batch_info(
+            experience = alf.data_structures.add_batch_info(
                 experience, batch_info, self._exp_replayer.replay_buffer)
             experience = self.transform_experience(experience)
             # allow data_transformers to change batch_info
             if experience.batch_info != ():
                 batch_info = experience.batch_info
-            experience = alf.nest.utils.clear_batch_info(experience)
+            experience = alf.data_structures.clear_batch_info(experience)
         time_step = experience_to_time_step(experience)
         time_step, rollout_info = self.preprocess_experience(
             time_step, experience.rollout_info, batch_info)
