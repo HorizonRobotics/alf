@@ -616,7 +616,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._vae_weight = vae_weight
         self._vae_threshold_adaptive = vae_threshold_adaptive
         self._vae_loss_normalizer = None
-        if vae and (vae_threshold_adaptive > 0 or vae_weight_adaptive):
+        if vae and (vae_threshold_adaptive > -10 or vae_weight_adaptive):
             self._vae_loss_normalizer = \
                 alf.utils.normalizers.ScalarWindowNormalizer(
                     name="planner/vae_loss_normalizer")
@@ -751,7 +751,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             stddev = torch.sqrt(self._vae_loss_normalizer._m2_averager.get() -
                                 mean**2)
             # mean + 1.5 * stddev as the adaptive threshold.
-            if self._vae_threshold_adaptive > 0:
+            if self._vae_threshold_adaptive > -10:
                 self._vae_penalize_above = mean + (
                     self._vae_threshold_adaptive * stddev)
             if self._vae_weight_adaptive:
