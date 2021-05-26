@@ -87,7 +87,7 @@ RUN apt update && apt install -y --no-install-recommends \
     vim tree wget unzip git \
     libxml2 libxml2-dev libxslt1-dev libfreetype6-dev \
     dirmngr gnupg2 lsb-release \
-    xvfb kmod swig patchelf ffmpeg \
+    xvfb kmod swig patchelf ffmpeg rsync \
     libopenmpi-dev libcups2-dev libssl-dev \
     python3.7 python3-pip python3.7-dev python3-setuptools
 
