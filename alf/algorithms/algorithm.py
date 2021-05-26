@@ -1150,7 +1150,8 @@ class Algorithm(AlgorithmInterface):
             experience = self._add_batch_info(experience, batch_info)
             experience = self.transform_experience(experience)
             # allow data_transformers to change batch_info
-            batch_info = experience.batch_info
+            if experience.batch_info != ():
+                batch_info = experience.batch_info
             experience = self._clear_batch_info(experience)
         time_step = experience_to_time_step(experience)
         time_step, rollout_info = self.preprocess_experience(

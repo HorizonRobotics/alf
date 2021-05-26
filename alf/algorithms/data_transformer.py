@@ -15,7 +15,6 @@
 
 import copy
 from functools import partial
-import gin
 import numpy as np
 import torch
 from torch import nn
@@ -691,7 +690,7 @@ class HindsightExperienceTransformer(DataTransformer):
         self._reward_fn = reward_fn
 
     def transform_timestep(self, timestep: TimeStep, state):
-        pass
+        return timestep
 
     def transform_experience(self, experience: Experience):
         """Hindsight relabel experience
@@ -703,19 +702,13 @@ class HindsightExperienceTransformer(DataTransformer):
                 and batch_info.replay_buffer both populated.
 
         Returns:
-            tuple:
-                - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
-                - BatchInfo: Information about the batch. Its shapes are [batch_size].
-                    - env_ids: environment id for each sequence
-                    - positions: starting position in the replay buffer for each sequence.
-                    - importance_weights: priority divided by the average of all
-                        non-zero priorities in the buffer.
+            Experience: the relabeled experience, with batch_info potentially changed.
         """
         info = experience.batch_info
-        assert info != ()
+        assert info != (), "Hindsight requires batch_info to be populated"
         # buffer (ReplayBuffer) is needed for access to future achieved goals.
         buffer = info.replay_buffer
-        assert buffer != ()
+        assert buffer != (), "Hindsight requires replay_buffer to be populated"
         result = experience
         her_proportion = self._her_proportion
 
