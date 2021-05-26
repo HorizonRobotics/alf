@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import itertools
-import gin
 import torch
 
 from absl.testing import parameterized
@@ -28,18 +27,11 @@ from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
 class ReplayBufferTest(RingBufferTest):
     def tearDown(self):
-        gin.clear_config()
         super().tearDown()
 
     def test_replay_with_hindsight_relabel(self):
         self.max_length = 8
         torch.manual_seed(0)
-        configs = [
-            "HindsightExperienceTransformer.her_proportion=0.8",
-            'HindsightExperienceTransformer.achieved_goal_field="o.a"',
-            'HindsightExperienceTransformer.desired_goal_field="o.g"'
-        ]
-        gin.parse_config_files_and_bindings("", configs)
 
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
@@ -49,7 +41,11 @@ class ReplayBufferTest(RingBufferTest):
             step_type_field="t",
             with_replacement=True)
 
-        transform = HindsightExperienceTransformer(self.data_spec)
+        transform = HindsightExperienceTransformer(
+            self.data_spec,
+            her_proportion=0.8,
+            achieved_goal_field="o.a",
+            desired_goal_field="o.g")
 
         steps = [
             [

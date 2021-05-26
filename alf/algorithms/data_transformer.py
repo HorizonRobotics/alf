@@ -648,15 +648,24 @@ class RewardScaling(SimpleDataTransformer):
 
 
 @alf.configurable
-def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
+def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
+    """Giving -1/0 reward based on how close the achieved state is to the goal state.
+
+    Args:
+        achieved_goal (Tensor): achieved state, of shape ``[batch_size, batch_length, ...]``
+        goal (Tensor): goal state, of shape ``[batch_size, batch_length, ...]``
+        threshold (float): L2 distance threshold for the reward.
+
+    Returns:
+        Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
+    """
+
     if goal.dim() == 2:  # when goals are 1-dimentional
         assert achieved_goal.dim() == goal.dim()
         achieved_goal = achieved_goal.unsqueeze(2)
         goal = goal.unsqueeze(2)
-    return torch.where(
-        torch.norm(achieved_goal - goal, dim=2) < threshold,
-        torch.zeros(1, dtype=torch.float32, device=device),
-        -torch.ones(1, dtype=torch.float32, device=device))
+    return -(torch.norm(achieved_goal - goal, dim=2) >= threshold).to(
+        torch.float32)
 
 
 @alf.configurable
@@ -758,10 +767,10 @@ class HindsightExperienceTransformer(DataTransformer):
                                      torch.arange(batch_length).unsqueeze(0))
             relabed_goal[her_batch_index_tuple] = future_ag
 
-        # recompute rewards
-        result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-        relabeled_rewards = self._reward_fn(
-            result_ag, relabed_goal, device=buffer.device)
+            # recompute rewards
+            result_ag = alf.nest.get_field(result, self._achieved_goal_field)
+            relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
+
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_before_relabel",

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from absl.testing import parameterized
-import gin
 import torch
 
 import alf
@@ -205,12 +204,6 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
         num_envs = 2
         max_length = 100
         torch.manual_seed(0)
-        configs = [
-            "HindsightExperienceTransformer.her_proportion=0.8",
-            'HindsightExperienceTransformer.achieved_goal_field="o.a"',
-            'HindsightExperienceTransformer.desired_goal_field="o.g"'
-        ]
-        gin.parse_config_files_and_bindings("", configs)
 
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
@@ -219,7 +212,11 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
             keep_episodic_info=True,
             step_type_field="t")
 
-        transform = HindsightExperienceTransformer(self.data_spec)
+        transform = HindsightExperienceTransformer(
+            self.data_spec,
+            her_proportion=0.8,
+            achieved_goal_field="o.a",
+            desired_goal_field="o.g")
         assert len(transform.transform_timestep((), ())) == 2
 
         # insert data
