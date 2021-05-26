@@ -23,6 +23,7 @@ from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
 from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
 
 class ReplayBufferTest(RingBufferTest):
@@ -34,10 +35,9 @@ class ReplayBufferTest(RingBufferTest):
         self.max_length = 8
         torch.manual_seed(0)
         configs = [
-            "hindsight_relabel_fn.her_proportion=0.8",
-            'hindsight_relabel_fn.achieved_goal_field="o.a"',
-            'hindsight_relabel_fn.desired_goal_field="o.g"',
-            "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
+            "HindsightExperienceTransformer.her_proportion=0.8",
+            'HindsightExperienceTransformer.achieved_goal_field="o.a"',
+            'HindsightExperienceTransformer.desired_goal_field="o.g"'
         ]
         gin.parse_config_files_and_bindings("", configs)
 
@@ -48,6 +48,8 @@ class ReplayBufferTest(RingBufferTest):
             keep_episodic_info=True,
             step_type_field="t",
             with_replacement=True)
+
+        transform = HindsightExperienceTransformer(self.data_spec)
 
         steps = [
             [
@@ -121,7 +123,9 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(list(dist), [1, 0, 1, 0])
 
         # Test HER relabeled experiences
-        res = replay_buffer.get_batch(5, 2)[0]
+        res, info = replay_buffer.get_batch(5, 2)
+        res = res._replace(batch_info=info)
+        res = transform.transform_experience(res)
 
         self.assertEqual(list(res.o["g"].shape), [5, 2])
 
@@ -224,10 +228,9 @@ class ReplayBufferTest(RingBufferTest):
         max_length = 100
         torch.manual_seed(0)
         configs = [
-            "hindsight_relabel_fn.her_proportion=0.8",
-            'hindsight_relabel_fn.achieved_goal_field="o.a"',
-            'hindsight_relabel_fn.desired_goal_field="o.g"',
-            "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
+            "HindsightExperienceTransformer.her_proportion=0.8",
+            'HindsightExperienceTransformer.achieved_goal_field="o.a"',
+            'HindsightExperienceTransformer.desired_goal_field="o.g"'
         ]
         gin.parse_config_files_and_bindings("", configs)
 
@@ -237,6 +240,9 @@ class ReplayBufferTest(RingBufferTest):
             max_length=max_length,
             keep_episodic_info=True,
             step_type_field="t")
+
+        transform = HindsightExperienceTransformer(self.data_spec)
+
         # insert data
         max_steps = 1000
         # generate step_types with certain density of episode ends
@@ -278,7 +284,9 @@ class ReplayBufferTest(RingBufferTest):
                 r_orig = replay_buffer._buffer.reward.clone()
 
                 # HER relabel experience
-                res = replay_buffer.get_batch(sample_steps, 2)[0]
+                res, info = replay_buffer.get_batch(sample_steps, 2)
+                res = res._replace(batch_info=info)
+                res = transform.transform_experience(res)
 
                 self.assertEqual(list(res.o["g"].shape), [sample_steps, 2])
 

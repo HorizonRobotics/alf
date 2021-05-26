@@ -26,7 +26,9 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "reward"])
+di_fields = ["env_id", "x", "t", "o", "reward", "batch_info"]
+
+DataItem = namedtuple("DataItem", di_fields, defaults=((), ) * len(di_fields))
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
