@@ -135,7 +135,7 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 ### HER
 * [Goal Conditioned Target Navigation](alf/examples/her_target_navigation_states.gin). Need to install SocialRobot.
 
-<img src="alf/examples/sac_fetchslide.png" width="400" height="200" alt="sac-fetchslide-training-curve"/>
+<img src="alf/examples/her_target_navigation_states.png" width="500" height="200" alt="sac-fetchslide-training-curve"/>
 
 ### ICM
 * [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin). Playing Super Mario only using intrinsic reward.
