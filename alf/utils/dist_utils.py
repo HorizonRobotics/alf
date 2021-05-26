@@ -486,12 +486,12 @@ class DiagMultivariateCauchy(td.Independent):
         return self.base_dist.scale
 
 
-def _builder_independent(base_builder, reinterpreted_batch_ndims, **kwargs):
-    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims)
+def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
+    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms, **kwargs):
-    return td.TransformedDistribution(base_builder(**kwargs), transforms)
+def _builder_transformed(base_builder, transforms_, **kwargs):
+    return td.TransformedDistribution(base_builder(**kwargs), transforms_)
 
 
 def _get_categorical_builder(obj: td.Categorical):
@@ -517,7 +517,7 @@ def _get_transformed_builder(obj: td.TransformedDistribution):
 
 
 def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):
-    # 'loc' and 'scale' may confilct the name in kwargs. So we add suffix '_'.
+    # 'loc' and 'scale' may conflict with the names in kwargs. So we add suffix '_'.
     return AffineTransformedDistribution(base_builder(**kwargs), loc_, scale_)
 
 
