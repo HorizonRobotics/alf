@@ -381,6 +381,40 @@ class DiagMultivariateNormal(td.Independent):
         return self.base_dist.stddev
 
 
+class Beta(td.Beta):
+    r"""Beta distribution parameterized by ``concentration1`` and ``concentration0``.
+
+    Note: we need to wrap ``td.Beta`` so that ``self.concentration1`` and
+    ``self.concentration0`` are the actual tensors passed in to construct the
+    distribution. This is important in certain situation. For example, if you want
+    to register a hood to process the gradient to ``concentration1`` and ``concentration0``,
+    ``td.Beta.concentration0.register_hook()`` will not work because gradient will
+    not be backpropped to ``td.Beta.concentration0`` since it is sliced from
+    ``td.Dirichlet.concentration`` and gradient will only be backpropped to
+    ``td.Dirichlet.concentration`` instead of ``td.Beta.concentration0`` or
+    ``td.Beta.concentration1``.
+
+    Args:
+        concentration1 (float or Tensor): 1st concentration parameter of the distribution
+            (often referred to as alpha)
+        concentration0 (float or Tensor): 2nd concentration parameter of the distribution
+            (often referred to as beta)
+    """
+
+    def __init__(self, concentration1, concentration0, validate_args=None):
+        self._concentration1 = concentration1
+        self._concentration0 = concentration0
+        super().__init__(concentration1, concentration0, validate_args)
+
+    @property
+    def concentration0(self):
+        return self._concentration0
+
+    @property
+    def concentration1(self):
+        return self._concentration1
+
+
 class DiagMultivariateBeta(td.Independent):
     def __init__(self, concentration1, concentration0):
         """Create multivariate independent beta distribution.
@@ -392,8 +426,7 @@ class DiagMultivariateBeta(td.Independent):
                 distribution (often referred to as beta)
         """
         super().__init__(
-            td.Beta(concentration1, concentration0),
-            reinterpreted_batch_ndims=1)
+            Beta(concentration1, concentration0), reinterpreted_batch_ndims=1)
 
 
 class StableCauchy(td.Cauchy):
@@ -498,8 +531,8 @@ _get_builder_map = {
         }),
     td.TransformedDistribution:
         _get_transformed_builder,
-    td.Beta:
-        lambda obj: (td.Beta, {
+    Beta:
+        lambda obj: (Beta, {
             'concentration1': obj.concentration1,
             'concentration0': obj.concentration0
         }),
@@ -797,7 +830,7 @@ def get_mode(dist):
             mode = base_mode
             for transform in dist.transforms:
                 mode = transform(mode)
-    elif isinstance(dist, td.Beta):
+    elif isinstance(dist, Beta):
         alpha = dist.concentration1
         beta = dist.concentration0
         mode = torch.where((alpha > 1) & (beta > 1),
