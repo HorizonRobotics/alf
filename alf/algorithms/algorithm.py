@@ -1147,12 +1147,13 @@ class Algorithm(AlgorithmInterface):
         if self._exp_replayer_type != "one_time":
             # The experience put in one_time replayer is already transformed
             # in unroll().
-            experience = self._add_batch_info(experience, batch_info)
+            experience = alf.nest.utils.add_batch_info(
+                experience, batch_info, self._exp_replayer.replay_buffer)
             experience = self.transform_experience(experience)
             # allow data_transformers to change batch_info
             if experience.batch_info != ():
                 batch_info = experience.batch_info
-            experience = self._clear_batch_info(experience)
+            experience = alf.nest.utils.clear_batch_info(experience)
         time_step = experience_to_time_step(experience)
         time_step, rollout_info = self.preprocess_experience(
             time_step, experience.rollout_info, batch_info)
@@ -1338,17 +1339,6 @@ class Algorithm(AlgorithmInterface):
             lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
-
-    def _add_batch_info(self, experience, batch_info):
-        if batch_info is not None:
-            experience = experience._replace(
-                batch_info=batch_info,
-                replay_buffer=self._exp_replayer.replay_buffer)
-        return experience._replace(rollout_info_field='rollout_info')
-
-    def _clear_batch_info(self, experience):
-        return experience._replace(
-            batch_info=(), replay_buffer=(), rollout_info_field=())
 
     def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)

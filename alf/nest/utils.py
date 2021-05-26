@@ -257,6 +257,27 @@ def convert_device(nests, device=None):
         raise NotImplementedError("Unknown device %s" % d)
 
 
+def add_batch_info(experience, batch_info, buffer=()):
+    """Add batch_info and rollout_info_field string to experience.
+    """
+    if batch_info is not None:
+        if buffer == () and batch_info.replay_buffer != ():
+            buffer = batch_info.replay_buffer
+        experience = experience._replace(
+            batch_info=batch_info, replay_buffer=buffer)
+    return experience._replace(rollout_info_field='rollout_info')
+
+
+def clear_batch_info(experience):
+    """Clear batch_info and rollout_info_field string from experience.
+
+    Useful as certain nest functions like convert_device do not skip
+    non-tensor objects in nests.
+    """
+    return experience._replace(
+        batch_info=(), replay_buffer=(), rollout_info_field=())
+
+
 def grad(nested, objective, retain_graph=False):
     """Compute the gradients of an ``objective`` `w.r.t` each variable in
     ``nested``. It will simply call ``torch.autograd.grad`` after flattening the

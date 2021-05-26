@@ -220,6 +220,7 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
             step_type_field="t")
 
         transform = HindsightExperienceTransformer(self.data_spec)
+        assert len(transform.transform_timestep((), ())) == 2
 
         # insert data
         max_steps = 1000

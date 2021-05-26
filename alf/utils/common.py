@@ -670,6 +670,17 @@ def get_action_spec():
     return _env.action_spec()
 
 
+@gin.configurable
+def get_reward_spec():
+    """Get the specs of the reward tensors of the global environment.
+    Returns:
+        nested TensorSpec: a spec that describes the shape and dtype of each reward
+        tensor.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env.reward_spec()
+
+
 def get_env():
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env
