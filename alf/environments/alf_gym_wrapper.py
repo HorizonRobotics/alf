@@ -29,12 +29,18 @@ import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec, torch_dtype_to_str
 
 
-def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
+def tensor_spec_from_gym_space(space,
+                               simplify_box_bounds=True,
+                               float_dtype=np.float32):
     """
-    Mostly adapted from ``spec_from_gym_space`` in
-    ``tf_agents.environments.gym_wrapper``. Instead of using a ``dtype_map``
-    as default data types, it always uses dtypes of gym spaces since gym is now
-    updated to support this.
+    Construct tensor spec from gym space.
+
+    Args:
+        space (gym.Space): An instance of OpenAI gym Space.
+        simplify_box_bounds (bool): if True, will try to simplify redundant
+            arrays to make logging and debugging less verbose when printed out.
+        float_dtype (np.float32 | npfloat64 | None): the dtype to be used for
+            the floating numbers. If None, it will use dtypes of gym spaces.
     """
 
     # We try to simplify redundant arrays to make logging and debugging less
@@ -66,14 +72,20 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
         return BoundedTensorSpec(
             shape=shape, dtype=space.dtype.name, minimum=0, maximum=1)
     elif isinstance(space, gym.spaces.Box):
-        minimum = np.asarray(space.low, dtype=space.dtype)
-        maximum = np.asarray(space.high, dtype=space.dtype)
+
+        if float_dtype is not None and "float" in space.dtype.name:
+            dtype = np.dtype(float_dtype)
+        else:
+            dtype = space.dtype
+
+        minimum = np.asarray(space.low, dtype=dtype)
+        maximum = np.asarray(space.high, dtype=dtype)
         if simplify_box_bounds:
             minimum = try_simplify_array_to_value(minimum)
             maximum = try_simplify_array_to_value(maximum)
         return BoundedTensorSpec(
             shape=space.shape,
-            dtype=space.dtype.name,
+            dtype=dtype.name,
             minimum=minimum,
             maximum=maximum)
     elif isinstance(space, gym.spaces.Tuple):
