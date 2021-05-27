@@ -39,7 +39,7 @@ def tensor_spec_from_gym_space(space,
         space (gym.Space): An instance of OpenAI gym Space.
         simplify_box_bounds (bool): if True, will try to simplify redundant
             arrays to make logging and debugging less verbose when printed out.
-        float_dtype (np.float32 | npfloat64 | None): the dtype to be used for
+        float_dtype (np.float32 | np.float64 | None): the dtype to be used for
             the floating numbers. If None, it will use dtypes of gym spaces.
     """
 
