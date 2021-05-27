@@ -73,7 +73,7 @@ class GymWrapperSpecTest(alf.test.TestCase):
             np.testing.assert_array_equal(-np.ones((3, 4)), spec.minimum)
             np.testing.assert_array_equal(np.ones((3, 4)), spec.maximum)
 
-            # test if float_dtype is specified, the dtype will match
+            # test if float_dtype is specified, the spec's dtype will match
             # the specified one, regardless of the dtype of space
             for float_dtype in (np.float32, np.float64):
                 spec = alf_gym_wrapper.tensor_spec_from_gym_space(
@@ -130,7 +130,7 @@ class GymWrapperSpecTest(alf.test.TestCase):
             np.testing.assert_array_equal(np.array([-1.0, -2.0]), spec.minimum)
             np.testing.assert_array_equal(np.array([2.0, 4.0]), spec.maximum)
 
-            # test if float_dtype is specified, the dtype will match
+            # test if float_dtype is specified, the spec's dtype will match
             # the specified one, regardless of the dtype of space
             for float_dtype in (np.float32, np.float64):
                 spec = alf_gym_wrapper.tensor_spec_from_gym_space(
