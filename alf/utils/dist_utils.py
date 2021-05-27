@@ -933,7 +933,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     :math:`-\log(p(x))` where :math:`x` is an unbiased sample of :math:`p`.
     However, the gradient of :math:`-\log(p(x))` is not an unbiased estimator
     of the gradient of entropy. So we also calculate a value whose gradient is
-    an unbiased estimator of the gradient of entropy. See :doc:`notes/subtleties_of_estimating_entropy`
+    an unbiased estimator of the gradient of entropy. See ``notes/subtleties_of_estimating_entropy.py``
     for detail.
 
     Args:
