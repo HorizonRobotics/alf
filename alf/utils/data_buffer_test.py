@@ -26,7 +26,12 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "reward"])
+DataItem = alf.data_structures.namedtuple(
+    "DataItem", [
+        "env_id", "x", "t", "o", "reward", "discount", "step_type",
+        "rollout_info"
+    ],
+    default_value=())
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
@@ -55,7 +60,9 @@ def get_batch(env_ids, dim, t, x):
             "a": a,
             "g": g
         }),
-        reward=r)
+        reward=r,
+        discount=torch.ones_like(r),
+        step_type=torch.ones(batch_size, dtype=torch.int32, device="cpu"))
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -74,7 +81,9 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                 "g": alf.TensorSpec(shape=(), dtype=torch.float32)
             }),
-            reward=alf.TensorSpec(shape=(), dtype=torch.float32))
+            reward=alf.TensorSpec(shape=(), dtype=torch.float32),
+            discount=alf.TensorSpec(shape=(), dtype=torch.float32),
+            step_type=alf.TensorSpec(shape=(), dtype=torch.int32))
 
     @parameterized.named_parameters([
         ('test_sync', False),

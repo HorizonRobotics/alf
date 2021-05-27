@@ -37,15 +37,25 @@ class CEMOptimizerTest(alf.test.TestCase):
             init_mean=0.,
             init_var=20.)
 
-        def _costs(time_step, state, samples, info=None):
+        def _costs(time_step,
+                   state,
+                   samples,
+                   info=None,
+                   use_target_networks=False,
+                   use_replica_min=True):
             batch_size = time_step.observation.shape[0]
             costs = torch.sum(
                 samples.reshape(batch_size, pop_size, -1),
                 dim=2)  # sum of all action values
             return -costs
 
-        def _costs_agg_dist(time_step, state, samples, squared=True,
-                            info=None):
+        def _costs_agg_dist(time_step,
+                            state,
+                            samples,
+                            squared=True,
+                            info=None,
+                            use_target_networks=False,
+                            use_replica_min=True):
             batch_size = time_step.observation.shape[0]
             start = time_step.achieved_goal.reshape(
                 batch_size, 1, 1, act_dim).expand(batch_size, pop_size, 1,
