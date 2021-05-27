@@ -92,7 +92,10 @@ def zeros_from_spec(nested_spec, batch_size):
         shape = [batch_size]
 
     def _zero_tensor(spec):
-        return spec.zeros(shape)
+        res = spec.zeros(shape)
+        if res.dtype == torch.float64:
+            res = res.float()
+        return res
 
     param_spec = dist_utils.to_distribution_param_spec(nested_spec)
     params = nest.map_structure(_zero_tensor, param_spec)

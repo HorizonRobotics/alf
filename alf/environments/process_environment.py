@@ -32,9 +32,11 @@ import alf.nest as nest
 
 def array_to_tensor(data):
     def _array_to_cpu_tensor(obj):
-        return torch.as_tensor(
+        obj = torch.as_tensor(
             obj, device='cpu') if isinstance(obj,
                                              (np.ndarray, np.number)) else obj
+        return  obj.float() if isinstance(obj, torch.Tensor) and obj.dtype == torch.float64 else obj
+
 
     return nest.map_structure(_array_to_cpu_tensor, data)
 
