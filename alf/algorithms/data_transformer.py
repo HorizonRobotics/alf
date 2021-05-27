@@ -13,6 +13,7 @@
 # limitations under the License.
 """Data transformers for transforming data from environment or replay buffer."""
 
+from absl import logging
 import copy
 from functools import partial
 import numpy as np
@@ -644,6 +645,181 @@ class RewardScaling(SimpleDataTransformer):
     def _transform(self, timestep_or_exp):
         return timestep_or_exp._replace(
             reward=timestep_or_exp.reward * self._scale)
+
+
+@alf.configurable
+def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
+    """Giving -1/0 reward based on how close the achieved state is to the goal state.
+
+    Args:
+        achieved_goal (Tensor): achieved state, of shape ``[batch_size, batch_length, ...]``
+        goal (Tensor): goal state, of shape ``[batch_size, batch_length, ...]``
+        threshold (float): L2 distance threshold for the reward.
+
+    Returns:
+        Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
+    """
+
+    if goal.dim() == 2:  # when goals are 1-dimentional
+        assert achieved_goal.dim() == goal.dim()
+        achieved_goal = achieved_goal.unsqueeze(2)
+        goal = goal.unsqueeze(2)
+    return -(torch.norm(achieved_goal - goal, dim=2) >= threshold).to(
+        torch.float32)
+
+
+@alf.configurable
+class HindsightExperienceTransformer(DataTransformer):
+    """Randomly transform her_proportion of `batch_size` trajectories with hindsight relabel.
+
+        This transformer assumes that input observation is a dict of at least two fields:
+        1) an ``achieved_goal`` field, indicating the current state of the environment, and
+        2) a ``desired_goal`` field, indicating the desired state of the environment.
+        The achieved_goal from a future timestep will be used to relabel the desired_goal
+        of the current timestep.
+        The exact field names can be provided via arguments to the class ``__init__``.
+
+        To use this class, add it to any existing data transformers, e.g. use this config if
+        ``ObservationNormalizer`` is an existing data transformer:
+
+        .. code-block:: python
+
+            ReplayBuffer.keep_episodic_info=True
+            HindsightExperienceTransformer.her_proportion=0.8
+            TrainerConfig.data_transformer_ctor=[@ObservationNormalizer, @HindsightExperienceTransformer]
+
+        See unit test for more details on behavior.
+    """
+
+    def __init__(self,
+                 transformed_observation_spec,
+                 her_proportion=0.8,
+                 achieved_goal_field="observation.achieved_goal",
+                 desired_goal_field="observation.desired_goal",
+                 reward_fn=l2_dist_close_reward_fn):
+        """
+        Args:
+            her_proportion (float): proportion of hindsight relabeled experience.
+            achieved_goal_field (str): path to the achieved_goal field in the
+                exp nest.
+            desired_goal_field (str): path to the desired_goal field in the
+                exp nest.
+            reward_fn (Callable): function to recompute reward based on
+                achieve_goal and desired_goal.  Default gives reward 0 when
+                L2 distance less than 0.05 and -1 otherwise, same as is done in
+                suite_robotics environments.
+        """
+        super().__init__(
+            transformed_observation_spec=transformed_observation_spec,
+            state_spec=())
+        self._her_proportion = her_proportion
+        self._achieved_goal_field = achieved_goal_field
+        self._desired_goal_field = desired_goal_field
+        self._reward_fn = reward_fn
+
+    def transform_timestep(self, timestep: TimeStep, state):
+        return timestep, state
+
+    def transform_experience(self, experience: Experience):
+        """Hindsight relabel experience
+        Note: The environments where the sampels are from are ordered in the
+            returned batch.
+
+        Args:
+            experience (Experience): experience sampled from replay buffer with batch_info
+                and batch_info.replay_buffer both populated.
+
+        Returns:
+            Experience: the relabeled experience, with batch_info potentially changed.
+        """
+        her_proportion = self._her_proportion
+        if her_proportion == 0:
+            return experience
+        info = experience.batch_info
+        assert info != (), "Hindsight requires batch_info to be populated"
+        # buffer (ReplayBuffer) is needed for access to future achieved goals.
+        buffer = info.replay_buffer
+        assert buffer != (), "Hindsight requires replay_buffer to be populated"
+        with alf.device(buffer.device):
+            experience = alf.data_structures.clear_batch_info(experience)
+            info = info._replace(replay_buffer=())
+            experience = experience._replace(batch_info=info)
+            experience = convert_device(experience)
+            info = experience.batch_info
+            result = experience
+
+            env_ids = info.env_ids
+            start_pos = info.positions
+            shape = result.reward.shape
+            batch_size, batch_length = shape[:2]
+            # TODO: add support for batch_length > 2.
+            assert batch_length == 2, shape
+
+            # relabel only these sampled indices
+            her_cond = torch.rand(batch_size) < her_proportion
+            (her_indices, ) = torch.where(her_cond)
+            (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
+
+            last_step_pos = start_pos[her_indices] + batch_length - 1
+            last_env_ids = env_ids[her_indices]
+            # Get x, y indices of LAST steps
+            dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + buffer._name + ".mean_steps_to_episode_end",
+                    torch.mean(dist.type(torch.float32)))
+
+            # get random future state
+            future_idx = last_step_pos + (torch.rand(*dist.shape) *
+                                          (dist + 1)).to(torch.int64)
+            future_ag = buffer.get_field(self._achieved_goal_field,
+                                         last_env_ids, future_idx).unsqueeze(1)
+
+            # relabel desired goal
+            result_desired_goal = alf.nest.get_field(result,
+                                                     self._desired_goal_field)
+            relabed_goal = result_desired_goal.clone()
+            her_batch_index_tuple = (her_indices.unsqueeze(1),
+                                     torch.arange(batch_length).unsqueeze(0))
+            relabed_goal[her_batch_index_tuple] = future_ag
+
+            # recompute rewards
+            result_ag = alf.nest.get_field(result, self._achieved_goal_field)
+            relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
+
+        if alf.summary.should_record_summaries():
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".reward_mean_before_relabel",
+                torch.mean(result.reward[her_indices][:-1]))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".reward_mean_after_relabel",
+                torch.mean(relabeled_rewards[her_indices][:-1]))
+        # assert reward function is the same as used by the environment.
+        if not torch.allclose(relabeled_rewards[non_her_indices],
+                              result.reward[non_her_indices]):
+            not_close = torch.abs(relabeled_rewards[non_her_indices] -
+                                  result.reward[non_her_indices]) > 0.01
+            msg = ("hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
+                   "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
+                   + "\n{}").format(
+                       relabeled_rewards[non_her_indices][not_close],
+                       result.reward[non_her_indices][not_close],
+                       result_ag[non_her_indices][not_close],
+                       result_desired_goal[non_her_indices][not_close],
+                       env_ids[non_her_indices][not_close[:, 0]],
+                       start_pos[non_her_indices][not_close[:, 0]])
+            logging.warning(msg)
+            # assert False, msg
+            relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
+
+        result = alf.nest.transform_nest(
+            result, self._desired_goal_field, lambda _: relabed_goal)
+        result = result._replace(reward=relabeled_rewards)
+        if alf.get_default_device() != buffer.device:
+            result, info = convert_device((result, info))
+        info = info._replace(replay_buffer=buffer)
+        result = alf.data_structures.add_batch_info(result, info)
+        return result
 
 
 def create_data_transformer(data_transformer_ctor, observation_spec):

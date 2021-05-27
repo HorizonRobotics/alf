@@ -384,6 +384,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_her_target_navigation(self):
+        self._test(
+            conf_file='her_target_navigation_states.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
@@ -394,6 +400,12 @@ class TrainPlayTest(alf.test.TestCase):
     def test_ddpg_fetchslide(self):
         self._test(
             conf_file="ddpg_fetchslide.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_her_fetchpush(self):
+        self._test(
+            conf_file='her_fetchpush.gin',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
