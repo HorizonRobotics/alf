@@ -139,6 +139,7 @@ older versions of PyTorch (e.g. 1.4) will convert ``np.float64`` to ``torch.floa
 in the example below:
 
 .. code-block:: python
+
     # with PyTorch 1.4
     x = torch.rand(2, 3)       # torch.float32
     a = np.log(2)              # numpy.float64
@@ -168,6 +169,7 @@ PyTorch 1.4.
 For example:
 
 .. code-block:: python
+
     a = torch.tensor(5, dtype=torch.int64)
     b = a / 2
 
@@ -183,6 +185,7 @@ tensor or whether the tensor is an array or scalar, when determining the minimum
 dtypes to be used after promotion. For example:
 
 .. code-block:: python
+
     a1 = torch.tensor(4, dtype=torch.int64)
     b1 = a1 / 2
     a2 = torch.tensor([2, 4], dtype=torch.int64)

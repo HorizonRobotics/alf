@@ -279,7 +279,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             tau (float): a value in (0, 1) for softly updating the population
                 mean and variance:
 
-                .. code_block:: python
+                .. code-block:: python
 
                     mean = (1 - tau) * mean + tau * new_mean
                     var = (1 - tau) * var + tau * new_var

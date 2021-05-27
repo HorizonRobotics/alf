@@ -41,6 +41,7 @@ def reverse_cumsum(x, dim):
         x (Tensor): the tensor to compute the reverse cumsum on
         dim (int): the value indicating the dimension along which to calculate
             the reverse cumsum
+
     Returns:
         the reverse cumsumed tensor. It has the same shape as x.
     """
