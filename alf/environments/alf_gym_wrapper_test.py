@@ -61,7 +61,8 @@ class GymWrapperSpecTest(alf.test.TestCase):
     def test_tensor_spec_from_gym_space_box_scalars(self):
         for dtype in (np.float32, np.float64):
             box_space = gym.spaces.Box(-1.0, 1.0, (3, 4), dtype=dtype)
-            spec = alf_gym_wrapper.tensor_spec_from_gym_space(box_space)
+            spec = alf_gym_wrapper.tensor_spec_from_gym_space(
+                box_space, float_dtype=dtype)
 
             torch_dtype = getattr(torch, np.dtype(dtype).name)
             self.assertEqual((3, 4), spec.shape)
