@@ -712,6 +712,8 @@ def hindsight_relabel_fn(buffer,
                          result,
                          info,
                          her_proportion,
+                         add_noise_to_goals=False,
+                         combine_position_speed_reward=True,
                          use_original_goals_from_info=0.,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
@@ -722,7 +724,8 @@ def hindsight_relabel_fn(buffer,
                          action_dim=0,
                          relabel_final_goal=0.,
                          sparse_reward=False,
-                         reward_fn=l2_dist_close_reward_fn):
+                         reward_fn=l2_dist_close_reward_fn,
+                         threshold=.05):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
     Note: The environments where the sampels are from are ordered in the
@@ -733,6 +736,8 @@ def hindsight_relabel_fn(buffer,
         result (nest): of tensors of the sampled exp
         info (BatchInfo): of the sampled result
         her_proportion (float): proportion of hindsight relabeled experience.
+        add_noise_to_goals (bool): whether to perturb relabeled goals according to
+            threshold.
         use_original_goals_from_info (float): if positive, use the stored
             original goal in rollout_info.goal_generator.original_goal field
             as the desired_goal of the experience.
@@ -818,8 +823,33 @@ def hindsight_relabel_fn(buffer,
     relabeled_goal = result_desired_goal.clone()
     her_batch_index_tuple = (her_indices.unsqueeze(1),
                              torch.arange(batch_length).unsqueeze(0))
+
+    def _add_noise(t):
+        if not add_noise_to_goals:
+            return t
+        bs, bl, dim = t.shape
+        # rejection sample from unit ball
+        assert dim < 20, "Cannot rejection sample from high dim ball yet."
+        n_samples, i = 0, 0
+        while n_samples == 0:
+            _sample = torch.rand((bs * 2, dim))
+            in_ball = torch.norm(_sample, dim=1) < 1.
+            if torch.any(in_ball):
+                sample = _sample[in_ball]
+                nsample = sample.shape[0]
+                if nsample < bs:
+                    sample = sample.expand(bs // nsample + 1, nsample,
+                                           dim).reshape(-1, dim)
+                if sample.shape[0] > bs:
+                    sample = sample[:bs, :]
+                break
+            assert i < 10, "shouldn't take 10 iterations"
+            i += 1
+        return t + threshold * sample.reshape(bs, 1, dim)
+
     if has_her:
-        relabeled_goal[her_batch_index_tuple] = future_ag[her_indices]
+        relabeled_goal[her_batch_index_tuple] = _add_noise(
+            future_ag[her_indices])
     full_her_data = {}
     full_her_data["desired_goal"] = future_ag
     if control_aux:
@@ -828,7 +858,8 @@ def hindsight_relabel_fn(buffer,
         achieved_aux = alf.nest.get_field(buffer._buffer, aux_achieved_field)
         future_aux = achieved_aux[(last_env_ids, future_idx)].unsqueeze(1)
         if has_her:
-            relabeled_aux[her_batch_index_tuple] = future_aux[her_indices]
+            relabeled_aux[her_batch_index_tuple] = _add_noise(
+                future_aux[her_indices])
         full_her_data["aux_desired"] = future_aux
     info = info._replace(
         her=her_cond, full_her_data=full_her_data, future_distance=future_dist)
@@ -844,7 +875,9 @@ def hindsight_relabel_fn(buffer,
         _result_ag,
         _relabeled_goal,
         multi_dim_goal_reward=multi_dim_goal_reward,
-        device=buffer._device)
+        device=buffer._device,
+        combine_position_speed_reward=combine_position_speed_reward,
+        threshold=threshold)
 
     if relabel_final_goal > 0:
         # NOTE: both original and HER experience are being relabeled
