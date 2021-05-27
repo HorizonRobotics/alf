@@ -61,14 +61,25 @@ class GymWrapperSpecTest(alf.test.TestCase):
     def test_tensor_spec_from_gym_space_box_scalars(self):
         for dtype in (np.float32, np.float64):
             box_space = gym.spaces.Box(-1.0, 1.0, (3, 4), dtype=dtype)
+
+            # test if float_dtype is not specified, the spec's dtype
+            # will match that of the space
             spec = alf_gym_wrapper.tensor_spec_from_gym_space(
-                box_space, float_dtype=dtype)
+                box_space, float_dtype=None)
 
             torch_dtype = getattr(torch, np.dtype(dtype).name)
             self.assertEqual((3, 4), spec.shape)
             self.assertEqual(torch_dtype, spec.dtype)
             np.testing.assert_array_equal(-np.ones((3, 4)), spec.minimum)
             np.testing.assert_array_equal(np.ones((3, 4)), spec.maximum)
+
+            # test if float_dtype is specified, the dtype will match
+            # the specified one, regardless of the dtype of space
+            for float_dtype in (np.float32, np.float64):
+                spec = alf_gym_wrapper.tensor_spec_from_gym_space(
+                    box_space, float_dtype=float_dtype)
+                torch_float_dtype = getattr(torch, np.dtype(float_dtype).name)
+                self.assertEqual(torch_float_dtype, spec.dtype)
 
     def test_tensor_spec_from_gym_space_box_scalars_simplify_bounds(self):
         box_space = gym.spaces.Box(-1.0, 1.0, (3, 4))
@@ -107,13 +118,25 @@ class GymWrapperSpecTest(alf.test.TestCase):
         for dtype in (np.float32, np.float64):
             box_space = gym.spaces.Box(
                 np.array([-1.0, -2.0]), np.array([2.0, 4.0]), dtype=dtype)
-            spec = alf_gym_wrapper.tensor_spec_from_gym_space(box_space)
+
+            # test if float_dtype is not specified, the spec's dtype
+            # will match that of the space
+            spec = alf_gym_wrapper.tensor_spec_from_gym_space(
+                box_space, float_dtype=None)
 
             torch_dtype = getattr(torch, np.dtype(dtype).name)
             self.assertEqual((2, ), spec.shape)
             self.assertEqual(torch_dtype, spec.dtype)
             np.testing.assert_array_equal(np.array([-1.0, -2.0]), spec.minimum)
             np.testing.assert_array_equal(np.array([2.0, 4.0]), spec.maximum)
+
+            # test if float_dtype is specified, the dtype will match
+            # the specified one, regardless of the dtype of space
+            for float_dtype in (np.float32, np.float64):
+                spec = alf_gym_wrapper.tensor_spec_from_gym_space(
+                    box_space, float_dtype=float_dtype)
+                torch_float_dtype = getattr(torch, np.dtype(float_dtype).name)
+                self.assertEqual(torch_float_dtype, spec.dtype)
 
     def test_tensor_spec_from_gym_space_tuple(self):
         tuple_space = gym.spaces.Tuple((gym.spaces.Discrete(2),
