@@ -200,9 +200,10 @@ class TDLoss(nn.Module):
                                               dim=2)
                             elif observation["desired_goal"].shape[-1] > 2:
                                 # speed goal
-                                o = observation["desired_goal"][..., 2:]
+                                o = observation["desired_goal"]
                             else:
-                                o = torch.zeros((b_len, b_sz, 10))
+                                # no goal generator
+                                o = torch.zeros((b_len, b_sz, 100))
                             # take first n - 1 time steps for judging
                             o = torch.abs(o[:-1, ...]).reshape(
                                 (b_len - 1) * b_sz, -1)
