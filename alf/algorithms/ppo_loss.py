@@ -37,7 +37,8 @@ class PPOLoss(ActorCriticLoss):
                  importance_ratio_clipping=0.2,
                  log_prob_clipping=0.0,
                  check_numerics=False,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 name='PPOLoss'):
         """
         Implement the simplified surrogate loss in equation (9) of `Proximal
         Policy Optimization Algorithms <https://arxiv.org/abs/1707.06347>`_.
@@ -76,6 +77,7 @@ class PPOLoss(ActorCriticLoss):
                 values.
             check_numerics (bool):  If true, checking for ``NaN/Inf`` values. For
                 debugging only.
+            name (str):
         """
 
         super(PPOLoss, self).__init__(
@@ -88,14 +90,15 @@ class PPOLoss(ActorCriticLoss):
             advantage_clip=advantage_clip,
             entropy_regularization=entropy_regularization,
             td_loss_weight=td_loss_weight,
-            debug_summaries=debug_summaries)
+            debug_summaries=debug_summaries,
+            name=name)
 
         self._importance_ratio_clipping = importance_ratio_clipping
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
 
     def _pg_loss(self, info, advantages):
-        scope = alf.summary.scope(self.__class__.__name__)
+        scope = alf.summary.scope(self._name)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
             action_distribution=info.action_distribution,
             collect_action_distribution=info.rollout_action_distribution,
