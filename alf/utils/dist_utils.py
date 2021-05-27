@@ -13,20 +13,18 @@
 # limitations under the License.
 
 import functools
-import gin
-import hashlib
+import numbers
 import numpy as np
 import math
 import torch
 import torch.distributions as td
 from torch.distributions import constraints
+from torch.distributions.distribution import Distribution
 import torch.nn as nn
 
 import alf
 import alf.nest as nest
-import alf.nest.utils as nest_utils
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import common, spec_utils
 
 
 def get_invertable(cls):
@@ -387,7 +385,7 @@ class Beta(td.Beta):
     Note: we need to wrap ``td.Beta`` so that ``self.concentration1`` and
     ``self.concentration0`` are the actual tensors passed in to construct the
     distribution. This is important in certain situation. For example, if you want
-    to register a hood to process the gradient to ``concentration1`` and ``concentration0``,
+    to register a hook to process the gradient to ``concentration1`` and ``concentration0``,
     ``td.Beta.concentration0.register_hook()`` will not work because gradient will
     not be backpropped to ``td.Beta.concentration0`` since it is sliced from
     ``td.Dirichlet.concentration`` and gradient will only be backpropped to
@@ -427,6 +425,53 @@ class DiagMultivariateBeta(td.Independent):
         """
         super().__init__(
             Beta(concentration1, concentration0), reinterpreted_batch_ndims=1)
+
+
+class AffineTransformedDistribution(td.TransformedDistribution):
+    r"""Transform via the pointwise affine mapping :math:`y = \text{loc} + \text{scale} \times x`.
+
+    The reason of not using ``td.TransformedDistribution`` is that we can implement
+    ``entropy``, ``mean``, ``variance`` and ``stddev`` for ``AffineTransforma``.
+    """
+
+    def __init__(self, base_dist: td.Distribution, loc, scale):
+        """
+        Args:
+            loc (Tensor or float): Location parameter.
+            scale (Tensor or float): Scale parameter.
+        """
+        super().__init__(
+            base_distribution=base_dist,
+            transforms=AffineTransform(loc, scale))
+        self.loc = loc
+        self.scale = scale
+
+        # broadcase scale to event_shape if necessary
+        s = torch.ones(base_dist.event_shape) * scale
+        self._log_abs_scale = s.abs().log().sum()
+
+    def entropy(self):
+        """Returns entropy of distribution, batched over batch_shape.
+
+        Returns:
+            Tensor of shape batch_shape.
+        """
+        return self._log_abs_scale + self.base_dist.entropy()
+
+    @property
+    def mean(self):
+        """Returns the mean of the distribution."""
+        return self.scale * self.base_dist.mean() + self.loc
+
+    @property
+    def variance(self):
+        """Returns the variance of the distribution."""
+        raise self.scale**self.scale * self.base_dist.variance()
+
+    @property
+    def stddev(self):
+        """Returns the variance of the distribution."""
+        raise self.scale * self.base_dist.stddev()
 
 
 class StableCauchy(td.Cauchy):
@@ -474,12 +519,12 @@ class DiagMultivariateCauchy(td.Independent):
         return self.base_dist.scale
 
 
-def _builder_independent(base_builder, reinterpreted_batch_ndims, **kwargs):
-    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims)
+def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
+    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms, **kwargs):
-    return td.TransformedDistribution(base_builder(**kwargs), transforms)
+def _builder_transformed(base_builder, transforms_, **kwargs):
+    return td.TransformedDistribution(base_builder(**kwargs), transforms_)
 
 
 def _get_categorical_builder(obj: td.Categorical):
@@ -501,6 +546,18 @@ def _get_transformed_builder(obj: td.TransformedDistribution):
     builder, params = _get_builder(obj.base_dist)
     new_builder = functools.partial(_builder_transformed, builder,
                                     obj.transforms)
+    return new_builder, params
+
+
+def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):
+    # 'loc' and 'scale' may conflict with the names in kwargs. So we add suffix '_'.
+    return AffineTransformedDistribution(base_builder(**kwargs), loc_, scale_)
+
+
+def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_affine_transformed, builder,
+                                    obj.loc, obj.scale)
     return new_builder, params
 
 
@@ -531,6 +588,8 @@ _get_builder_map = {
         }),
     td.TransformedDistribution:
         _get_transformed_builder,
+    AffineTransformedDistribution:
+        _get_affine_transformed_builder,
     Beta:
         lambda obj: (Beta, {
             'concentration1': obj.concentration1,
@@ -956,7 +1015,11 @@ def entropy_with_fallback(distributions, return_sum=True):
     """
 
     def _compute_entropy(dist: td.Distribution):
-        if isinstance(dist, td.TransformedDistribution):
+        if isinstance(dist, AffineTransformedDistribution):
+            entropy, entropy_for_gradient = _compute_entropy(dist.base_dist)
+            entropy = entropy + dist._log_abs_scale
+            entropy_for_gradient = entropy_for_gradient + dist._log_abs_scale
+        elif isinstance(dist, td.TransformedDistribution):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)

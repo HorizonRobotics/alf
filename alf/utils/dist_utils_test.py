@@ -15,6 +15,7 @@
 from absl import logging
 from absl.testing import parameterized
 from collections import namedtuple
+import math
 import torch
 import torch.distributions as td
 
@@ -152,6 +153,29 @@ class DistributionSpecTest(alf.test.TestCase):
 
         self.assertTensorEqual(x, x_recovered)
         self.assertTrue(x is x_recovered)
+
+    def test_affine_transformed(self):
+        normal_dist = dist_utils.DiagMultivariateNormal(
+            torch.tensor([[1., 2.], [2., 2.]]),
+            torch.tensor([[2., 3.], [1., 1.]]))
+        dist = dist_utils.AffineTransformedDistribution(
+            base_dist=normal_dist, loc=1, scale=2)
+        self.assertEqual(dist.entropy(),
+                         normal_dist.entropy() + math.log(2) * 2)
+        spec = dist_utils.DistributionSpec.from_distribution(dist)
+
+        params1 = {
+            'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
+            'scale': torch.tensor([[2., 4.], [2., 1.]])
+        }
+        dist1 = spec.build_distribution(params1)
+        self.assertEqual(type(dist1), dist_utils.AffineTransformedDistribution)
+        self.assertEqual(dist1.event_shape, dist.event_shape)
+        self.assertEqual(
+            type(dist1.base_dist), dist_utils.DiagMultivariateNormal)
+        self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
+        self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
+        self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
 
 
 class TestConversions(alf.test.TestCase):
