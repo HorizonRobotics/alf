@@ -672,6 +672,13 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
 class HindsightExperienceTransformer(DataTransformer):
     """Randomly transform her_proportion of `batch_size` trajectories with hindsight relabel.
 
+        This transformer assumes that input observation is a dict of at least two fields:
+        1) an ``achieved_goal`` field, indicating the current state of the environment, and
+        2) a ``desired_goal`` field, indicating the desired state of the environment.
+        The achieved_goal from a future timestep will be used to relabel the desired_goal
+        of the current timestep.
+        The exact field names can be provided via arguments to the class ``__init__``.
+
         To use this class, add it to any existing data transformers, e.g. use this config if
         ``ObservationNormalizer`` is an existing data transformer:
 
@@ -693,7 +700,7 @@ class HindsightExperienceTransformer(DataTransformer):
         """
         Args:
             her_proportion (float): proportion of hindsight relabeled experience.
-            achieved_goal_field (str): path to the achieved_goal field in
+            achieved_goal_field (str): path to the achieved_goal field in the
                 exp nest.
             desired_goal_field (str): path to the desired_goal field in the
                 exp nest.
