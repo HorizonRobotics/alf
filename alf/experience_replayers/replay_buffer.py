@@ -812,18 +812,6 @@ def hindsight_relabel_fn(buffer,
             "replayer/" + buffer._name + ".mean_steps_to_episode_end",
             torch.mean(dist.float()))
 
-    # get random future state
-    future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(torch.int64)
-    future_idx = buffer.circular(last_step_pos + future_dist)
-    achieved_goals = alf.nest.get_field(buffer._buffer, achieved_goal_field)
-    future_ag = achieved_goals[(last_env_ids, future_idx)].unsqueeze(1)
-
-    # relabel desired goal
-    result_desired_goal = alf.nest.get_field(result, desired_goal_field)
-    relabeled_goal = result_desired_goal.clone()
-    her_batch_index_tuple = (her_indices.unsqueeze(1),
-                             torch.arange(batch_length).unsqueeze(0))
-
     def _add_noise(t):
         if not add_noise_to_goals:
             return t
@@ -847,19 +835,31 @@ def hindsight_relabel_fn(buffer,
             i += 1
         return t + threshold * sample.reshape(bs, 1, dim)
 
+    # get random future state
+    future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(torch.int64)
+    future_idx = buffer.circular(last_step_pos + future_dist)
+    achieved_goals = alf.nest.get_field(buffer._buffer, achieved_goal_field)
+    future_ag = _add_noise(achieved_goals[(last_env_ids,
+                                           future_idx)].unsqueeze(1))
+
+    # relabel desired goal
+    result_desired_goal = alf.nest.get_field(result, desired_goal_field)
+    relabeled_goal = result_desired_goal.clone()
+    her_batch_index_tuple = (her_indices.unsqueeze(1),
+                             torch.arange(batch_length).unsqueeze(0))
     if has_her:
-        relabeled_goal[her_batch_index_tuple] = _add_noise(
-            future_ag[her_indices])
+        relabeled_goal[her_batch_index_tuple] = future_ag[her_indices]
+
     full_her_data = {}
     full_her_data["desired_goal"] = future_ag
     if control_aux:
         relabeled_aux = alf.nest.get_field(result, aux_desired_field).clone()
         result_achaux = alf.nest.get_field(result, aux_achieved_field)
         achieved_aux = alf.nest.get_field(buffer._buffer, aux_achieved_field)
-        future_aux = achieved_aux[(last_env_ids, future_idx)].unsqueeze(1)
+        future_aux = _add_noise(achieved_aux[(last_env_ids,
+                                              future_idx)].unsqueeze(1))
         if has_her:
-            relabeled_aux[her_batch_index_tuple] = _add_noise(
-                future_aux[her_indices])
+            relabeled_aux[her_batch_index_tuple] = future_aux[her_indices]
         full_her_data["aux_desired"] = future_aux
     info = info._replace(
         her=her_cond, full_her_data=full_her_data, future_distance=future_dist)
@@ -970,10 +970,25 @@ def hindsight_relabel_fn(buffer,
     if alf.summary.should_record_summaries():
         alf.summary.scalar("replayer/" + buffer._name + ".future_distance",
                            torch.mean(future_dist.float()))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".achieved_reward_transition",
+            torch.mean((relabeled_rewards[:, 1] - relabeled_rewards[:, 0] >
+                        0).float()))
         if has_her:
+            her_reward = relabeled_rewards[~end[:, 0] & her_cond]
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
-                torch.mean(relabeled_rewards[her_indices][:, 1:]))
+                torch.mean(her_reward[:, 1:]))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".achieved_reward_transition_her",
+                torch.mean((her_reward[:, 1] - her_reward[:, 0] > 0).float()))
+        if torch.any(rollout_cond):
+            rollout_reward = relabeled_rewards[~end[:, 0] & rollout_cond]
+            alf.summary.scalar(
+                "replayer/" + buffer._name +
+                ".achieved_reward_transition_rollout",
+                torch.mean(
+                    (rollout_reward[:, 1] - rollout_reward[:, 0] > 0).float()))
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",
