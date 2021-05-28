@@ -1187,11 +1187,31 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/distance_subgoal_to_goal." + common.exe_mode_name(),
                 torch.mean(dist_subgoal_g))
+            if self._use_aux_achieved and self.control_aux:
+                aux_desired = goals[:, -1, self._action_dim:]
+                aux_dist = torch.norm(
+                    aux_desired - observation["aux_achieved"], dim=1)
+                alf.summary.scalar(
+                    "planner/distance_full_aux." + common.exe_mode_name(),
+                    torch.mean(aux_dist))
+                dist_ag_sg_aux = torch.norm(
+                    subgoal[:, self._action_dim:] -
+                    observation["aux_achieved"],
+                    dim=1)[new_goal_mask.squeeze(1)]
+                alf.summary.scalar(
+                    "planner/distance_ag_to_subgoal_aux." +
+                    common.exe_mode_name(), torch.mean(dist_ag_sg_aux))
+                dist_sg_g_aux = torch.norm(
+                    subgoal[:, self._action_dim:] - aux_desired,
+                    dim=1)[new_goal_mask.squeeze(1)]
+                alf.summary.scalar(
+                    "planner/distance_subgoal_to_goal_aux." +
+                    common.exe_mode_name(), torch.mean(dist_sg_g_aux))
 
         if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
-        # _value_fn relies on calling Q function with predicted action, but
-        # with aux_control, lower level policy's input doesn't contain
+        # TODO: _value_fn relies on calling Q function with predicted action,
+        # but with aux_control, lower level policy's input doesn't contain
         # aux_desired, and cannot predict action.
         # Properly handle this case of init_costs would probably add
         # another CEM process to predict goal aux dimensions first,
