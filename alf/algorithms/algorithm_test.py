@@ -78,7 +78,7 @@ class AlgorithmTest(alf.test.TestCase):
         self.assertEqual(info[0]['parameters'],
                          [alg_root.get_param_name(param_1)])
 
-        alg_1 = MyAlg(params=[param_1, param_1])
+        alg_1 = MyAlg(params=[param_1, param_1], name="alg_1")
         alg_root = MyAlg(
             optimizer=alf.optimizers.Adam(lr=0.25),
             sub_algs=[alg_1, alg_1],
@@ -128,6 +128,7 @@ class AlgorithmTest(alf.test.TestCase):
         self.assertRaises(AssertionError, alg_root.get_optimizer_info)
 
         # Test duplicated handling detection
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.25), [alg_1])
         alg_2.root = None
         alg_2.p = param_1
         self.assertRaises(AssertionError, alg_root.get_optimizer_info)
@@ -137,14 +138,33 @@ class AlgorithmTest(alf.test.TestCase):
         alg_2.ignored_param = param_1
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
-        self.assertEqual(info[0]['optimizer'], 'None')
         self.assertEqual(info[0]['parameters'],
-                         [alg_root.get_param_name(param_1)])
-        self.assertEqual(info[1]['parameters'],
                          [alg_root.get_param_name(param_2)])
+        self.assertEqual(info[1]['parameters'],
+                         [alg_root.get_param_name(param_1)])
 
         # test __repr__
         logging.info("\n" + repr(alg_root))
+
+    def test_get_optimizer_info2(self):
+        # test shared module in used by sub-algorithms
+        layer = alf.layers.FC(2, 3)
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = MyAlg(params=[param_1], name="alg_1")
+        alg_1.layer = layer
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        alg_2 = MyAlg(params=[param_2], name="alg_2")
+        alg_2.layer = layer
+        alg_root = MyAlg(
+            sub_algs=[alg_1, alg_2],
+            optimizer=alf.optimizers.Adam(lr=0.25),
+            name="root")
+        info = json.loads(alg_root.get_optimizer_info())
+        self.assertEqual(
+            set(info[0]['parameters']),
+            set(
+                alg_root.get_param_name(p)
+                for p in [param_1, param_2] + list(layer.parameters())))
 
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))

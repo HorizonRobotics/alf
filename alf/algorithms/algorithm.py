@@ -70,7 +70,8 @@ class Algorithm(AlgorithmInterface):
         """Each algorithm can have a default optimimzer. By default, the parameters
         and/or modules under an algorithm are optimized by the default
         optimizer. One can also specify an optimizer for a set of parameters
-        and/or modules using add_optimizer.
+        and/or modules using add_optimizer. You can find out which parameter is
+        handled by which optimizer using ``get_optimizer_info()``.
 
         A requirement for this optimizer structure to work is that there is no
         algorithm which is a submodule of a non-algorithm module. Currently,
@@ -390,11 +391,11 @@ class Algorithm(AlgorithmInterface):
 
     def _trainable_attributes_to_ignore(self):
         """Algorithms can overwrite this function to provide which class
-        member names should be ignored when getting trainable variables, to
-        avoid being assigned with multiple optimizers.
+        member names should be ignored when getting trainable parameters, to
+        avoid being assigned to the default optimizer.
 
         For example, if in your algorithm you've created a member ``self._vars``
-        pointing to the variables of a module for some purpose, you can avoid
+        pointing to the parameters of a module for some purpose, you can avoid
         assigning an optimizer to ``self._vars`` (because the module will be assigned
         with one) by doing:
 
@@ -470,46 +471,53 @@ class Algorithm(AlgorithmInterface):
             tuple:
 
             - list of parameters not handled by any optimizers under this algorithm
-            - list of parameters not handled under this algorithm
+            - list of parameters handled under this algorithm
         """
         default_optimizer = self.default_optimizer
-        new_params = []
+        new_params = set()
         handled = set()
-        duplicate_error = "Parameter %s is handled by muliple optimizers."
+        duplicate_error = "Parameter %s is handled by multiple optimizers."
 
         def _add_params_to_optimizer(params, opt):
             existing_params = _get_optimizer_params(opt)
             params = list(filter(lambda p: p not in existing_params, params))
             if params:
                 opt.add_param_group({'params': params})
+            return params
 
         for child in self._get_children():
             if child in handled:
                 continue
             assert id(child) != id(self), "Child should not be self"
-            handled.add(child)
             if isinstance(child, Algorithm):
                 params, child_handled = child._setup_optimizers_()
                 for m in child_handled:
-                    assert m not in handled, duplicate_error % m
+                    assert m not in handled, duplicate_error % self.get_param_name(
+                        m)
                     handled.add(m)
             elif isinstance(child, nn.Module):
-                params = child.parameters()
+                params = list(child.parameters())
             elif isinstance(child, nn.Parameter):
                 params = [child]
             optimizer = self._module_to_optimizer.get(child, None)
             if optimizer is None:
-                new_params.extend(params)
+                new_params.update(params)
                 if default_optimizer is not None:
                     self._module_to_optimizer[child] = default_optimizer
             else:
-                _add_params_to_optimizer(params, optimizer)
+                for m in params:
+                    assert m not in handled, duplicate_error % self.get_param_name(
+                        m)
+                params = _add_params_to_optimizer(params, optimizer)
+                handled.update(params)
 
+        new_params.difference_update(handled)
         if default_optimizer is not None:
-            _add_params_to_optimizer(new_params, default_optimizer)
+            new_params = _add_params_to_optimizer(new_params,
+                                                  default_optimizer)
             return [], handled
         else:
-            return new_params, handled
+            return list(new_params), handled
 
     def optimizers(self, recurse=True, include_ignored_attributes=False):
         """Get all the optimizers used by this algorithm.
@@ -564,7 +572,7 @@ class Algorithm(AlgorithmInterface):
         """Return the information about the parameters not being optimized.
 
         Note: the difference of this with the parameters contained in the optimizer
-        'None' from get_optimizer_info() is that get_optimizer_info() does not
+        'None' from ``get_optimizer_info()`` is that ``get_optimizer_info()`` does not
         traverse all the parameters (e.g., parameters in list, tuple, dict, or set).
 
         Returns:
