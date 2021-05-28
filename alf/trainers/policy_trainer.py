@@ -319,11 +319,10 @@ class RLTrainer(Trainer):
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
-        # This unwrapped env will only be created when training with gin files.
         if self._evaluate or (isinstance(
                 env,
                 alf.environments.parallel_environment.ParallelAlfEnvironment)
-                              and common.get_conf_file().endswith(".gin")):
+                              and config.create_unwrapped_env):
             self._unwrapped_env = self._create_environment(
                 nonparallel=True,
                 random_seed=self._random_seed,

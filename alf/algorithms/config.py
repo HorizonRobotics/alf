@@ -34,6 +34,7 @@ class TrainerConfig(object):
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
+                 create_unwrapped_env=True,
                  load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
@@ -112,6 +113,13 @@ class TrainerConfig(object):
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
+            create_unwrapped_env (bool): whether to create an unwrapped env. Note
+                that this flag is only effective when no evaluation is needed and
+                the env is a ``ParallelAlfEnvironment`` instance. Default to ``True``.
+                For envs that consume lots of resources, this flag can be set to
+                ``False`` if no evaluation is needed to save resources. The decision
+                of creating an unwrapped env won't affect training; it's used to
+                correctly display inoperative configurations in subprocesses.
             load_checkpoint_strict (bool): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by module's
                 ``torch.nn.Module.state_dict`` function. If True, will
@@ -197,6 +205,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
+        self.create_unwrapped_env = create_unwrapped_env
         self.load_checkpoint_strict = load_checkpoint_strict
         self.evaluate = evaluate
         self.eval_interval = eval_interval
