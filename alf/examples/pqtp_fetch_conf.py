@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import alf
-from alf.algorithms.tasac_algorithm import PqtpAlgorithm
+from alf.algorithms.taac_algorithm import PqtpAlgorithm
 
-import tasac_fetch_conf
+import taac_fetch_conf
 
 alf.config('Agent', rl_algorithm_cls=PqtpAlgorithm)

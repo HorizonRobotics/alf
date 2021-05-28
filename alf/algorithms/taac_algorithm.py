@@ -45,25 +45,25 @@ Tau = namedtuple(
     ],
     default_value=None)
 
-TasacState = namedtuple("TasacState", ["tau", "repeats"], default_value=())
+TaacState = namedtuple("TaacState", ["tau", "repeats"], default_value=())
 
-TasacCriticInfo = namedtuple(
-    "TasacCriticInfo", ["critics", "target_critic", "value_loss"],
+TaacCriticInfo = namedtuple(
+    "TaacCriticInfo", ["critics", "target_critic", "value_loss"],
     default_value=())
 
-TasacActorInfo = namedtuple(
-    "TasacActorInfo",
+TaacActorInfo = namedtuple(
+    "TaacActorInfo",
     ["actor_loss", "b1_a_entropy", "beta_entropy", "adv", "value_loss"],
     default_value=())
 
-TasacInfo = namedtuple(
-    "TasacInfo", [
+TaacInfo = namedtuple(
+    "TaacInfo", [
         "reward", "step_type", "tau", "discount", "action_distribution",
         "rollout_b", "b", "actor", "critic", "alpha", "repeats"
     ],
     default_value=())
 
-TasacLossInfo = namedtuple('TasacLossInfo', ('actor', 'critic', 'alpha'))
+TaacLossInfo = namedtuple('TaacLossInfo', ('actor', 'critic', 'alpha'))
 
 Distributions = namedtuple("Distributions", ["beta_dist", "b1_a_dist"])
 
@@ -113,9 +113,9 @@ def _discounted_return(rewards, values, is_lasts, discounts):
 
 
 @alf.configurable
-class TASACTDLoss(nn.Module):
+class TAACTDLoss(nn.Module):
     r"""This TD loss implements the compare-through multi-step Q operator
-    :math:`\mathcal{T}^{\pi^{\text{ta}}}` proposed in the TASAC paper. For a sampled
+    :math:`\mathcal{T}^{\pi^{\text{ta}}}` proposed in the TAAC paper. For a sampled
     trajectory, it compares the beta action :math:`\tilde{b}_n` sampled from the
     current policy with the historical rollout beta action :math:`b_n` step by step,
     and uses the minimum :math:`n` that has :math:`\tilde{b}_n\lor b_n=1` as the
@@ -126,7 +126,7 @@ class TASACTDLoss(nn.Module):
                  gamma=0.99,
                  td_error_loss_fn=losses.element_wise_squared_loss,
                  debug_summaries=False,
-                 name="TASACTDLoss"):
+                 name="TAACTDLoss"):
         """
         Args:
             gamma (float|list[float]): A discount factor for future rewards. For
@@ -158,7 +158,7 @@ class TASACTDLoss(nn.Module):
         time dimension and the second dimesion is the batch dimension.
 
         Args:
-            info (TasacInfo): TasacInfo collected from train_step().
+            info (TaacInfo): TaacInfo collected from train_step().
             value (torch.Tensor): the tensor for the value at each time
                 step. The loss is between this and the calculated return.
             target_value (torch.Tensor): the tensor for the value at each time
@@ -225,12 +225,12 @@ class TASACTDLoss(nn.Module):
 
 
 @alf.configurable
-class TasacAlgorithmBase(OffPolicyAlgorithm):
-    r"""Temporally abstract soft actor-critic algorithm.
+class TaacAlgorithmBase(OffPolicyAlgorithm):
+    r"""Temporally abstract actor-critic algorithm.
 
-    In a nutsell, for inference TASAC adds a second stage that chooses between a
+    In a nutsell, for inference TAAC adds a second stage that chooses between a
     candidate trajectory :math:`\hat{\tau}` output by an SAC actor and the previous
-    trajectory :math:`\tau^-`. For policy evaluation, TASAC uses a compare-through Q
+    trajectory :math:`\tau^-`. For policy evaluation, TAAC uses a compare-through Q
     operator for TD backup by re-using state-action sequences that have shared
     actions between rollout and training. For policy improvement, the
     new actor gradient is approximated by multiplying a scaling factor to the
@@ -249,6 +249,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
+                 reward_weights=None,
                  num_critic_replicas=2,
                  epsilon_greedy=None,
                  env=None,
@@ -262,7 +263,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                  debug_summaries=False,
                  b1_advantage_clipping=None,
                  target_entropy=None,
-                 name="TasacAlgorithmBase"):
+                 name="TaacAlgorithmBase"):
         r"""
         Args:
             observation_spec (nested TensorSpec): representing the observations.
@@ -274,6 +275,10 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                 actions.
             critic_network_cls (Callable): is used to construct critic network.
                 for estimating ``Q(s,a)`` given that the action is continuous.
+            reward_weights (None|list[float]): this is only used when the reward is
+                multidimensional. In that case, the weighted sum of the q values
+                is used for training the actor if reward_weights is not None.
+                Otherwise, the sum of the q values is used.
             num_critic_replicas (int): number of critics to be used. Default is 2.
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
@@ -292,7 +297,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
             target_update_period (int): Period for soft update of the target
                 networks.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
-                constructor. If ``None``, a default ``TASACTDLoss`` will be used.
+                constructor. If ``None``, a default ``TAACTDLoss`` will be used.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
@@ -325,7 +330,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
         log_alpha = (nn.Parameter(torch.zeros(())),
                      nn.Parameter(torch.zeros(())))
 
-        train_state_spec = TasacState(
+        train_state_spec = TaacState(
             tau=Tau(a=action_spec, v=action_spec, u=action_spec),
             repeats=TensorSpec(shape=(), dtype=torch.int64))
         super().__init__(
@@ -333,6 +338,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
             action_spec,
             reward_spec=reward_spec,
             train_state_spec=train_state_spec,
+            reward_weights=reward_weights,
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -353,7 +359,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
             name='target_critic_networks')
 
         if critic_loss_ctor is None:
-            critic_loss_ctor = TASACTDLoss
+            critic_loss_ctor = TAACTDLoss
         critic_loss_ctor = functools.partial(
             critic_loss_ctor, debug_summaries=debug_summaries)
         # Have different names to separate their summary curves
@@ -473,7 +479,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                        (beta_entropy - self._target_entropy[0]).detach())
         return alpha_loss
 
-    def _calc_critic_loss(self, info: TasacInfo):
+    def _calc_critic_loss(self, info: TaacInfo):
         critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
@@ -567,7 +573,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
 
         return LossInfo(
             loss=actor_loss,
-            extra=TasacActorInfo(
+            extra=TaacActorInfo(
                 actor_loss=actor_loss,
                 adv=q_values2[:, 1] - q_values2[:, 0],
                 b1_a_entropy=b1_a_entropy,
@@ -601,7 +607,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
             rollout_tau,
             replica_min=False,
             apply_reward_weights=False)
-        return TasacCriticInfo(critics=critics, target_critic=target_critic)
+        return TaacCriticInfo(critics=critics, target_critic=target_critic)
 
     def predict_step(self, inputs: TimeStep, state):
         ap_out, new_state = self._predict_action(
@@ -612,7 +618,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
         return AlgStep(
             output=self._tau2action(new_state.tau),
             state=new_state,
-            info=TasacInfo(action_distribution=ap_out.dists, b=ap_out.b))
+            info=TaacInfo(action_distribution=ap_out.dists, b=ap_out.b))
 
     def rollout_step(self, inputs: TimeStep, state):
         ap_out, new_state = self._predict_action(
@@ -620,7 +626,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
         return AlgStep(
             output=self._tau2action(new_state.tau),
             state=new_state,
-            info=TasacInfo(
+            info=TaacInfo(
                 action_distribution=ap_out.dists,
                 tau=new_state.tau,  # for critic training
                 b=ap_out.b,
@@ -635,7 +641,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                 alf.summary.scalar("rollout_repeats/mean",
                                    torch.mean(repeats.to(torch.float32)))
 
-    def train_step(self, inputs: TimeStep, state, rollout_info: TasacInfo):
+    def train_step(self, inputs: TimeStep, state, rollout_info: TaacInfo):
         self._training_started.fill_(True)
 
         ap_out, new_state = self._predict_action(
@@ -656,7 +662,7 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
                                               b1_tau, beta_dist)
         alpha_loss = self._alpha_train_step(beta_entropy, b1_a_entropy)
 
-        info = TasacInfo(
+        info = TaacInfo(
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
@@ -670,10 +676,10 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
         return AlgStep(
             output=self._tau2action(new_state.tau), state=new_state, info=info)
 
-    def after_update(self, root_inputs, info: TasacInfo):
+    def after_update(self, root_inputs, info: TaacInfo):
         self._update_target()
 
-    def calc_loss(self, info: TasacInfo):
+    def calc_loss(self, info: TaacInfo):
         critic_loss = self._calc_critic_loss(info)
         alpha_loss = info.alpha
         actor_loss = info.actor
@@ -695,25 +701,25 @@ class TasacAlgorithmBase(OffPolicyAlgorithm):
 
         return LossInfo(
             loss=actor_loss.loss + alpha_loss + critic_loss.loss,
-            extra=TasacLossInfo(
+            extra=TaacLossInfo(
                 actor=actor_loss.extra,
                 critic=critic_loss.extra,
                 alpha=alpha_loss))
 
 
-class TasacAlgorithm(TasacAlgorithmBase):
+class TaacAlgorithm(TaacAlgorithmBase):
     r"""Model temporal abstraction by action repetition. See
 
-        "TASAC: Temporally Abstract Soft Actor-Critic for Continuous Control",
+        "TAAC: Temporally Abstract Actor-Critic for Continuous Control",
         Yu et al., arXiv 2021.
 
     for algorithm details.
     """
 
-    def __init__(self, name="TasacAlgorithm", *args, **kwargs):
-        """See ``TasacAlgorithmBase`` for argument description.
+    def __init__(self, name="TaacAlgorithm", *args, **kwargs):
+        """See ``TaacAlgorithmBase`` for argument description.
         """
-        super(TasacAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super(TaacAlgorithm, self).__init__(*args, name=name, **kwargs)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        actor_network_cls, critic_network_cls):
@@ -756,7 +762,7 @@ class TasacAlgorithm(TasacAlgorithmBase):
 
 
 @alf.configurable
-class PqtpAlgorithm(TasacAlgorithmBase):
+class PqtpAlgorithm(TaacAlgorithmBase):
     r"""Pqtp: Piecewise quadratic trajectory policy for continuous control.
 
     For a quadratic trajectory, let :math:`a` be the action, :math:`u` be the
@@ -788,7 +794,7 @@ class PqtpAlgorithm(TasacAlgorithmBase):
     """
 
     def __init__(self, name="PtpAlgorithm", *args, **kargs):
-        """See ``TasacAlgorithmBase`` for argument description.
+        """See ``TaacAlgorithmBase`` for argument description.
         """
         super(PqtpAlgorithm, self).__init__(*args, name=name, **kargs)
 

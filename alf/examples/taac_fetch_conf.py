@@ -18,14 +18,14 @@ sys.path.append("./benchmarks/fetch")
 from functools import partial
 
 import alf
-from alf.algorithms.tasac_algorithm import TasacAlgorithm
+from alf.algorithms.taac_algorithm import TaacAlgorithm
 from alf.utils import dist_utils
 
 import sac_conf
 import fetch_conf
 
 alf.config(
-    'TasacAlgorithmBase',
+    'TaacAlgorithmBase',
     actor_network_cls=fetch_conf.actor_distribution_network_cls,
     critic_network_cls=fetch_conf.critic_network_cls,
     target_update_tau=0.05,
@@ -36,9 +36,9 @@ alf.config(
                         dist_utils.calc_default_target_entropy, min_prob=0.2)))
 
 alf.config(
-    'Agent', rl_algorithm_cls=TasacAlgorithm, optimizer=fetch_conf.optimizer)
+    'Agent', rl_algorithm_cls=TaacAlgorithm, optimizer=fetch_conf.optimizer)
 
-alf.config('TASACTDLoss', gamma=0.98)
+alf.config('TAACTDLoss', gamma=0.98)
 
 # training config
 alf.config('TrainerConfig', mini_batch_length=4)
