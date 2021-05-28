@@ -27,23 +27,83 @@ plt.style.use('seaborn-dark')
 import alf.nest as nest
 from alf.data_structures import namedtuple
 
-HOME = os.getenv("HOME")
+
+def _compute_y_interval(interval_mode, ys):
+    """Given several aligned y curves, compute a y value interval at each x.
+
+    ``interval_mode`` should be one of the four options: 1) "std", 2) "minmax",
+    and 3) "CI_X". The last one means confidence interval, where 'X'
+    should be one of ``(80,85,90,95,99)`` indicating the confidence level (percentage).
+
+    Returns:
+        tuple - a triplet of mean of y, lower interval bound, and upper interval bound
+    """
+    CI_Z = {"80": 1.282, "85": 1.440, "90": 1.645, "95": 1.960, "99": 2.576}
+
+    def _get_ci_z(interval_mode):
+        """Get the corresponding Z value used in confidence interval computation."""
+        # mode -> "CI_X" where X is the percentage
+        ci_level = interval_mode.split("_")[1]
+        assert ci_level in CI_Z, "Invalid level value %s!" % ci_level
+        return CI_Z[ci_level]
+
+    y = np.array(list(map(np.mean, zip(*ys))))
+    std = np.array(list(map(np.std, zip(*ys))))
+    if interval_mode == "std":
+        min_y, max_y = y - std, y + std
+    elif interval_mode == "minmax":
+        min_y = np.array(list(map(np.min, zip(*ys))))
+        max_y = np.array(list(map(np.max, zip(*ys))))
+    elif interval_mode.startswith("CI_"):
+        z = _get_ci_z(interval_mode)
+        margin_err = std / np.sqrt(len(ys)) * z
+        min_y, max_y = y - margin_err, y + margin_err
+    else:
+        raise ValueError("Invalid interval mode: %s" % interval_mode)
+
+    return y, min_y, max_y
 
 
-# A namedtuple that represents a curve with mean and upper/lower bounds
 class MeanCurve(
         namedtuple(
-            "MeanCurve", ['x', 'y', 'min_y', 'max_y', 'name'],
-            default_value=())):
-    def average_y(self):
-        """Return the averaged ``y``, ``min_y``, and ``max_y`` over the x-axis.
+            "MeanCurve",
+            ['x', 'y', 'min_y', 'max_y', 'ay', 'min_ay', 'max_ay', 'name'],
+            default_value=None)):
+    @classmethod
+    def from_curves(cls, x, ys, interval_mode="std", name="MeanCurve"):
+        """Compute various curve statistics from a set of individual curves ``ys``
+        and a common ``x``, and create a class instance.
+
+        Args:
+            x (np.array): x steps
+            ys (list[np.array]): a list of curves
+            interval_mode (str): mode for computing error margin around the mean
+                y curve. Should be one of the four options: 1) "std", 2) "minmax",
+                and 3) "CI_X". The last one means confidence interval, where 'X'
+                should be one of ``(80,85,90,95,99)`` indicating the confidence
+                level (percentage).
+            name (str):
         """
-        return self.final_y(N=len(self.y))
+        # mean curve, lower and upper curve
+        y, min_y, max_y = _compute_y_interval(interval_mode, ys)
+        ays = [np.mean(y, keepdims=True) for y in ys]
+        # mean average_y, lower and upper average_y
+        # average_y can be used to indicate the changing trend of y
+        ay, min_ay, max_ay = map(lambda z: z.squeeze(-1),
+                                 _compute_y_interval(interval_mode, ays))
+        return cls(
+            x=x,
+            y=y,
+            min_y=min_y,
+            max_y=max_y,
+            ay=ay,
+            min_ay=min_ay,
+            max_ay=max_ay,
+            name=name)
 
     def final_y(self, N=1):
-        """Return the final y values."""
         return tuple(
-            map(np.mean, (self.y[-N:], self.min_y[-N:], self.max_y[-N:])))
+            map(lambda y: np.mean(y[-N:]), (self.y, self.min_y, self.max_y)))
 
 
 class MeanCurveReader(object):
@@ -65,9 +125,9 @@ class MeanCurveReader(object):
     def __init__(self,
                  event_file,
                  x_steps,
-                 name="MeanCurve",
+                 name="MeanCurveReader",
                  smoothing=None,
-                 variance_mode="std"):
+                 interval_mode="std"):
         """
         Args:
             event_file (str|list[str]): a string or a list of strings where
@@ -80,8 +140,10 @@ class MeanCurveReader(object):
             smoothing (int | float): if None, no smoothing is applied; if int,
                 it's the window width of a Savitzky-Golay filter; if float,
                 it's the smoothing weight of a running average (higher -> smoother).
-            variance_mode (str): how to compute the shaded region around the
-                mean curve, either "std" or "minmax".
+            interval_mode (str): should be one of the four options: 1) "std", 2) "minmax",
+                and 3) "CI_X". The last one means confidence interval, where 'X'
+                should be one of ``(80,85,90,95,99)`` indicating the confidence
+                level (percentage).
 
         Returns:
             MeanCurve: a mean curve structure.
@@ -104,24 +166,11 @@ class MeanCurveReader(object):
             steps, values = zip(*[(se.step, se.value) for se in scalar_events])
             y = self._interpolate_and_smooth_if_necessary(
                 steps, values, x_steps, smoothing)
-            ys.append(y)
+            ys.append(np.array(y))
 
         x = x_steps
-        y = np.array(list(map(np.mean, zip(*ys))))
-        if len(ys) == 1:
-            self._mean_curve = MeanCurve(x=x, y=y, min_y=y, max_y=y, name=name)
-        else:
-            # compute mean and variance
-            if variance_mode == "std":
-                std = np.array(list(map(np.std, zip(*ys))))
-                min_y, max_y = y - std, y + std
-            elif variance_mode == "minmax":
-                min_y = np.array(list(map(np.min, zip(*ys))))
-                max_y = np.array(list(map(np.max, zip(*ys))))
-            else:
-                raise ValueError("Invalid variance mode: %s" % variance_mode)
-            self._mean_curve = MeanCurve(
-                x=x, y=y, min_y=min_y, max_y=max_y, name=name)
+        self._mean_curve = MeanCurve.from_curves(
+            x=x, ys=ys, interval_mode=interval_mode, name=name)
         self._name = name
 
     @property
@@ -287,40 +336,49 @@ class MeanCurveGroupReader(object):
     suitable for one method on multiple tasks, each task with multiple runs.
     To aggregate across tasks, each task must be provided with a performance
     range :math:`(y_0, y_1)` that will be used to normalize performance for that
-    task as :math:`\frac{y - y_0}{y_1 - y_0}`.
+    task as :math:`\frac{y - y_0}{y_1 - y_0}`. If the ranges are not provided,
+    no normalization will be done.
+
+    The aggregation is simply averaging the statistics of individual ``MeanCurve``.
     """
 
-    def __init__(self, mean_curve_readers, task_performance_ranges, name):
+    def __init__(self,
+                 mean_curve_readers,
+                 task_performance_ranges=None,
+                 name="MeanCurveGroupReader"):
         """
         Args:
             mean_curve_readers (list[MeanCurveReader]): a list of
-                ``MeanCurveReader`` of multiple tasks for one method.
+                ``MeanCurveReader`` of multiple tasks for one method. It's the
+                user's responsibility to ensure that it's meaningful to
+                group these task event files and show their mean and variance.
             task_performance_ranges (list[tuple(float)]): a list of tuples, where
                 each tuple is a pair of floats used for normalizing the corresponding
-                task.
+                task. If None, each tuple will be set to ``(0,1)`` (no effect).
             name (str): name of the method
         """
 
         def _normalize(y, y0, y1):
             return (y - y0) / (y1 - y0)
 
+        if task_performance_ranges is None:
+            task_performance_ranges = [(0., 1.)] * len(mean_curve_readers)
+
         assert len(mean_curve_readers) == len(task_performance_ranges)
         curves = [reader() for reader in mean_curve_readers]
-        y, min_y, max_y = [], [], []
+
+        agg_vals = dict(y=[], min_y=[], max_y=[], ay=[], min_ay=[], max_ay=[])
 
         for c, (y0, y1) in zip(curves, task_performance_ranges):
             assert len(c.x) == len(curves[0].x)
-            y.append(_normalize(c.y, y0, y1))
-            min_y.append(_normalize(c.min_y, y0, y1))
-            max_y.append(_normalize(c.max_y, y0, y1))
+            for key in agg_vals.keys():
+                agg_vals[key].append(_normalize(getattr(c, key), y0, y1))
+
+        for key, val in agg_vals.items():
+            agg_vals[key] = np.mean(val, axis=0)
 
         self._mean_curve = MeanCurve(
-            x=curves[0].x,
-            name=curves[0].name,
-            y=np.mean(y, axis=0),
-            min_y=np.mean(min_y,
-                          axis=0),  # TODO: might have a better way than mean()
-            max_y=np.mean(max_y, axis=0))
+            x=curves[0].x, name=curves[0].name, **agg_vals)
 
         self._x_label = mean_curve_readers[0].x_label
         self._name = name
@@ -368,6 +426,7 @@ class CurvesPlotter(object):
                  std_alpha=0.3,
                  bg_color=None,
                  grid_color=None,
+                 plot_mean_only=False,
                  legend_kwargs=dict(loc="best"),
                  title=None):
         r"""
@@ -404,6 +463,8 @@ class CurvesPlotter(object):
                 a curve.
             bg_color (str): the background color of the figure
             grid_color (str): color of the dashed grid lines
+            plot_mean_only (bool): Whether only plot the mean curve without
+                shaded regions.
             legend_kwargs (dict): kwargs for plotting the legend. If None, then
                 no legend will be plotted.
             title (str): title of the figure
@@ -449,12 +510,13 @@ class CurvesPlotter(object):
                 lw=linewidth,
                 linestyle=linestyle[i],
                 label=c.name)
-            ax.fill_between(
-                x,
-                _clip_y(c.max_y),
-                _clip_y(c.min_y),
-                facecolor=color,
-                alpha=std_alpha)
+            if not plot_mean_only:
+                ax.fill_between(
+                    x,
+                    _clip_y(c.max_y),
+                    _clip_y(c.min_y),
+                    facecolor=color,
+                    alpha=std_alpha)
 
         if legend_kwargs is not None:
             ax.legend(**legend_kwargs)
@@ -496,7 +558,7 @@ class CurvesPlotter(object):
 
 
 def _get_curve_path(dir):
-    return os.path.join(HOME, "tensorboard_curves", dir)
+    return os.path.join(os.getenv("HOME"), "tensorboard_curves", dir)
 
 
 if __name__ == "__main__":
