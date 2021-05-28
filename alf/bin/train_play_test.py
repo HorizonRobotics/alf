@@ -611,6 +611,7 @@ class TrainPlayTest(alf.test.TestCase):
     def test_pqtp_fetch(self):
         self._test(
             conf_file='pqtp_fetch_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_taac_bipedal_walker(self):
@@ -621,6 +622,7 @@ class TrainPlayTest(alf.test.TestCase):
     def test_taac_fetch(self):
         self._test(
             conf_file='taac_fetch_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)

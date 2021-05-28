@@ -26,6 +26,7 @@ from alf.optimizers import AdamTF
 
 alf.config(
     "create_environment",
+    env_name="FetchPush-v1",
     env_load_fn=suite_robotics.load,
     num_parallel_environments=38)
 
