@@ -495,6 +495,12 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='off_policy_ac_cart_pole.gin',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
+    def test_pltp_fetch(self):
+        self._test(
+            conf_file='pltp_fetch_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_ppo_bullet_humanoid(self):
         self._test(
             conf_file='ppo_bullet_humanoid.gin',
@@ -531,6 +537,12 @@ class TrainPlayTest(alf.test.TestCase):
         self._test(
             conf_file='ppo_rnd_mrevenge.gin',
             extra_train_params=PPO_TRAIN_PARAMS)
+
+    def test_pqtp_fetch(self):
+        self._test(
+            conf_file='pqtp_fetch_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_rnd_super_mario(self):
@@ -606,12 +618,6 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sarsa_sac_pendulum(self):
         self._test(
             conf_file='sarsa_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_pqtp_fetch(self):
-        self._test(
-            conf_file='pqtp_fetch_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_taac_bipedal_walker(self):

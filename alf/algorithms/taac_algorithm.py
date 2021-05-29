@@ -533,7 +533,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         # This should be a determinisitc function converting b1_a to b1_tau
         b1_tau = self._action2tau(b1_a, state.tau)
 
-        # compute Q(s, b0_action) and Q(s, action)
+        # compute Q(s, tau^-) and Q(s, \hat{tau})
         with torch.no_grad():
             q_0 = self._compute_critics(self._critic_networks, observation,
                                         b0_tau)
@@ -758,45 +758,44 @@ class TaacAlgorithm(TaacAlgorithmBase):
         return Tau(a=a, v=a, u=a)
 
     def _tau2action(self, tau):
+        """``tau.a`` is already squashed."""
         return tau.a
 
 
 @alf.configurable
-class PqtpAlgorithm(TaacAlgorithmBase):
-    r"""Pqtp: Piecewise quadratic trajectory policy for continuous control.
+class PltpAlgorithm(TaacAlgorithmBase):
+    r"""Pltp: Piecewise linear trajectory policy for continuous control.
 
-    For a quadratic trajectory, let :math:`a` be the action, :math:`u` be the
-    first derivative, and :math:`v` be the second derivative. Its dynamics is:
+    For a linear trajectory, let :math:`a` be the action and :math:`v` the
+    first derivative. Its dynamics is:
 
     .. math::
 
         \begin{array}{ll}
-            u_{t+1} &\leftarrow u_t\\
-            v_{t+1} &\leftarrow u_{t+1} + v_t\\
-            a_{t+1} &\leftarrow \frac{v_t + v_{t+1}}{2} + a_t\\
+            v_{t+1} &\leftarrow v_t\\
+            a_{t+1} &\leftarrow v_{t+1} + a_t\\
         \end{array}
 
-    Pqtp's trajectory is piece-wise quadratic. Each time the policy decides whether
-    to repeat the previous quadratic traj or generate a new one. Importantly,
+    Pltp's trajectory is piece-wise linear. Each time the policy decides whether
+    to repeat the previous linear traj or generate a new one. Importantly,
     to generate a new one the policy doesn't directly generate the entire set of
-    three parameters :math:`(a,u,v)` because this will result in bad exploration
+    two parameters :math:`(a,v)` because this will result in bad exploration
     in the action space. Instead,
 
     .. math::
 
         \begin{array}{ll}
             a_{t+1} &\sim \pi\\
-            v_{t+1} &\leftarrow 2(a_{t+1} - a_t)\\
-            u_{t+1} &\leftarrow v_{t+1}\\
+            v_{t+1} &\leftarrow a_{t+1} - a_t\\
         \end{array}
 
-    where the last two steps assume resetting :math:`v_t` to zero.
+    Note that the above dynamics will be computed in the unsquashed action space.
     """
 
-    def __init__(self, name="PtpAlgorithm", *args, **kargs):
+    def __init__(self, name="PltpAlgorithm", *args, **kwargs):
         """See ``TaacAlgorithmBase`` for argument description.
         """
-        super(PqtpAlgorithm, self).__init__(*args, name=name, **kargs)
+        super(PltpAlgorithm, self).__init__(*args, name=name, **kwargs)
 
         assert (
             np.all(self._action_spec.minimum == -1)
@@ -812,6 +811,95 @@ class PqtpAlgorithm(TaacAlgorithmBase):
         # clip to prevent infy gradients
         y = torch.clamp(yy, -self._inv_squash_clip, self._inv_squash_clip)
         return 0.5 * torch.log((1 + y) / (1 - y))
+
+    def _make_networks(self, observation_spec, action_spec, reward_spec,
+                       actor_network_cls, critic_network_cls):
+        def _make_parallel(net):
+            return net.make_parallel(self._num_critic_replicas)
+
+        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
+        # Because traj contains quantities in linear space, we first squash them
+        # with tanh to (-1,1) for input normalization
+        tau_embedding = nest.map_structure(
+            lambda _: torch.nn.Sequential(
+                alf.layers.Lambda(torch.tanh),
+                alf.layers.FC(
+                    action_spec.numel,
+                    observation_spec.numel,
+                    activation=torch.relu_)), Tau())
+        tau_mask = Tau(a=True, v=True, u=False)
+
+        actor_network = actor_network_cls(
+            input_tensor_spec=(observation_spec, tau_spec),
+            input_preprocessors=(alf.layers.Detach(), tau_embedding),
+            preprocessing_combiner=nest_utils.NestConcat(
+                nest_mask=(True, tau_mask)),
+            action_spec=action_spec)
+        critic_network = critic_network_cls(
+            input_tensor_spec=(observation_spec, tau_spec),
+            action_input_processors=tau_embedding,
+            action_preprocessing_combiner=nest_utils.NestConcat(
+                nest_mask=tau_mask))
+        critic_networks = _make_parallel(critic_network)
+
+        return critic_networks, actor_network
+
+    @torch.no_grad()
+    def _update_tau(self, tau):
+        """Compute next action on a linear trajectory specified by a pair of
+        ('action', 'action derivative').
+        """
+        return tau._replace(a=tau.a + tau.v)
+
+    def _action2tau(self, a, tau):
+        """Given a new action at the next step and the current traj ``tau``, infer
+        the new traj's first derivative.
+        """
+        a = self._atanh(a)  # unsquash
+        v = a - tau.a
+        return Tau(a=a, v=v, u=v)
+
+    def _tau2action(self, tau):
+        return tau.a.tanh()
+
+
+@alf.configurable
+class PqtpAlgorithm(PltpAlgorithm):
+    r"""Pqtp: Piecewise quadratic trajectory policy for continuous control.
+
+    For a quadratic trajectory, let :math:`a` be the action, :math:`u` be the
+    second derivative, and :math:`v` be the first derivative. Its dynamics is:
+
+    .. math::
+
+        \begin{array}{ll}
+            u_{t+1} &\leftarrow u_t\\
+            v_{t+1} &\leftarrow u_{t+1} + v_t\\
+            a_{t+1} &\leftarrow \frac{v_t + v_{t+1}}{2} + a_t\\
+        \end{array}
+
+    Pqtp's trajectory is piece-wise quadratic. Each time the policy decides whether
+    to repeat the previous quadratic traj or generate a new one. Importantly,
+    to generate a new one the policy doesn't directly generate the entire set of
+    three parameters :math:`(a,v,u)` because this will result in bad exploration
+    in the action space. Instead,
+
+    .. math::
+
+        \begin{array}{ll}
+            a_{t+1} &\sim \pi\\
+            v_{t+1} &\leftarrow 2(a_{t+1} - a_t)\\
+            u_{t+1} &\leftarrow v_{t+1}\\
+        \end{array}
+
+    where the last two steps assume resetting :math:`v_t` to zero.
+    Note that the above dynamics will be computed in the unsquashed action space.
+    """
+
+    def __init__(self, name="PqtpAlgorithm", *args, **kwargs):
+        """See ``TaacAlgorithmBase`` for argument description.
+        """
+        super(PqtpAlgorithm, self).__init__(*args, name=name, **kwargs)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        actor_network_cls, critic_network_cls):
@@ -844,8 +932,8 @@ class PqtpAlgorithm(TaacAlgorithmBase):
 
     @torch.no_grad()
     def _update_tau(self, tau):
-        """Compute next action on a quadratic curve specified by the triplet of
-        action, action derivative, and action second derivative.
+        """Compute next action on a quadratic trajectory specified by a triplet
+        of ('action', 'action derivative', and 'action second derivative').
         """
         # normal update
         v_ = tau.v + tau.u
@@ -853,6 +941,10 @@ class PqtpAlgorithm(TaacAlgorithmBase):
         a_ = tau.a + da
 
         def _compute_reflection(b, traj):
+            """The reason for reflecting the quadratic trajectory is to prevent
+            saturation at action boundaries after squashing. With reflection,
+            the squashed trajectory will be periodic.
+            """
             a, v, u = traj.a, traj.v, traj.u
             b2_4ac = v**2 + 2 * u * (b - a)
             # two roots for a quadratic equation
@@ -886,7 +978,10 @@ class PqtpAlgorithm(TaacAlgorithmBase):
         return Tau(a=a_.reshape(*shape), v=v_.reshape(*shape), u=tau.u)
 
     def _action2tau(self, a, tau):
-        a = self._atanh(a)  # linear space
+        """Given a new action at the next step and the current traj ``tau``, infer
+        the new traj's second derivative, assuming resetting ``tau.v`` to 0 first.
+        """
+        a = self._atanh(a)  # unsquash
         v_ = torch.zeros_like(tau.v)
         #v_ = traj_state.v
 
