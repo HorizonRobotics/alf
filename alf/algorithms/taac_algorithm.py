@@ -789,7 +789,8 @@ class PltpAlgorithm(TaacAlgorithmBase):
             v_{t+1} &\leftarrow a_{t+1} - a_t\\
         \end{array}
 
-    Note that the above dynamics will be computed in the unsquashed action space.
+    For :math:`a\in[0,1]` and :math:`v\in[0,1]`, the actual dynamics is
+    :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
     def __init__(self, name="PltpAlgorithm", *args, **kwargs):
@@ -803,30 +804,16 @@ class PltpAlgorithm(TaacAlgorithmBase):
         ), ("Only support actions in [-1, 1]! Consider using env wrappers to "
             "scale your action space first.")
 
-        self._inv_squash_clip = 0.999
-        self._inv_squash_range = self._atanh(
-            torch.tensor(self._inv_squash_clip))
-
-    def _atanh(self, yy):
-        # clip to prevent infy gradients
-        y = torch.clamp(yy, -self._inv_squash_clip, self._inv_squash_clip)
-        return 0.5 * torch.log((1 + y) / (1 - y))
-
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        actor_network_cls, critic_network_cls):
         def _make_parallel(net):
             return net.make_parallel(self._num_critic_replicas)
 
         tau_spec = nest.map_structure(lambda _: action_spec, Tau())
-        # Because traj contains quantities in linear space, we first squash them
-        # with tanh to (-1,1) for input normalization
         tau_embedding = nest.map_structure(
             lambda _: torch.nn.Sequential(
-                alf.layers.Lambda(torch.tanh),
-                alf.layers.FC(
-                    action_spec.numel,
-                    observation_spec.numel,
-                    activation=torch.relu_)), Tau())
+                alf.layers.FC(action_spec.numel, observation_spec.numel)),
+            Tau())
         tau_mask = Tau(a=True, v=True, u=False)
 
         actor_network = actor_network_cls(
@@ -837,7 +824,6 @@ class PltpAlgorithm(TaacAlgorithmBase):
             action_spec=action_spec)
         critic_network = critic_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
-            action_input_processors=tau_embedding,
             action_preprocessing_combiner=nest_utils.NestConcat(
                 nest_mask=tau_mask))
         critic_networks = _make_parallel(critic_network)
@@ -849,18 +835,18 @@ class PltpAlgorithm(TaacAlgorithmBase):
         """Compute next action on a linear trajectory specified by a pair of
         ('action', 'action derivative').
         """
-        return tau._replace(a=tau.a + tau.v)
+        a = torch.clamp(tau.a + 2. * tau.v, min=-1., max=1.)
+        return tau._replace(a=a)
 
     def _action2tau(self, a, tau):
         """Given a new action at the next step and the current traj ``tau``, infer
         the new traj's first derivative.
         """
-        a = self._atanh(a)  # unsquash
-        v = a - tau.a
+        v = (a - tau.a) / 2.
         return Tau(a=a, v=v, u=v)
 
     def _tau2action(self, tau):
-        return tau.a.tanh()
+        return tau.a
 
 
 @alf.configurable
@@ -875,7 +861,7 @@ class PqtpAlgorithm(PltpAlgorithm):
         \begin{array}{ll}
             u_{t+1} &\leftarrow u_t\\
             v_{t+1} &\leftarrow u_{t+1} + v_t\\
-            a_{t+1} &\leftarrow \frac{v_t + v_{t+1}}{2} + a_t\\
+            a_{t+1} &\leftarrow v_{t+1} + a_t\\
         \end{array}
 
     Pqtp's trajectory is piece-wise quadratic. Each time the policy decides whether
@@ -888,12 +874,15 @@ class PqtpAlgorithm(PltpAlgorithm):
 
         \begin{array}{ll}
             a_{t+1} &\sim \pi\\
-            v_{t+1} &\leftarrow 2(a_{t+1} - a_t)\\
+            v_{t+1} &\leftarrow a_{t+1} - a_t\\
             u_{t+1} &\leftarrow v_{t+1}\\
         \end{array}
 
     where the last two steps assume resetting :math:`v_t` to zero.
-    Note that the above dynamics will be computed in the unsquashed action space.
+
+    For :math:`a\in[0,1]`, :math:`v\in[0,1]`, and :math:`u\in[0,1]`, the actual
+    dynamics is :math:`v_{t+1}\leftarrow \max(\min(v_t+2u_{t+1},1),-1)` and
+    :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
     def __init__(self, name="PqtpAlgorithm", *args, **kwargs):
@@ -907,15 +896,10 @@ class PqtpAlgorithm(PltpAlgorithm):
             return net.make_parallel(self._num_critic_replicas)
 
         tau_spec = nest.map_structure(lambda _: action_spec, Tau())
-        # Because traj contains quantities in linear space, we first squash them
-        # with tanh to (-1,1) for input normalization
         tau_embedding = nest.map_structure(
             lambda _: torch.nn.Sequential(
-                alf.layers.Lambda(torch.tanh),
-                alf.layers.FC(
-                    action_spec.numel,
-                    observation_spec.numel,
-                    activation=torch.relu_)), Tau())
+                alf.layers.FC(action_spec.numel, observation_spec.numel)),
+            Tau())
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
@@ -924,7 +908,6 @@ class PqtpAlgorithm(PltpAlgorithm):
             action_spec=action_spec)
         critic_network = critic_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
-            action_input_processors=tau_embedding,
             action_preprocessing_combiner=nest_utils.NestConcat())
         critic_networks = _make_parallel(critic_network)
 
@@ -936,58 +919,17 @@ class PqtpAlgorithm(PltpAlgorithm):
         of ('action', 'action derivative', and 'action second derivative').
         """
         # normal update
-        v_ = tau.v + tau.u
-        da = (v_ + tau.v) / 2.
-        a_ = tau.a + da
-
-        def _compute_reflection(b, traj):
-            """The reason for reflecting the quadratic trajectory is to prevent
-            saturation at action boundaries after squashing. With reflection,
-            the squashed trajectory will be periodic.
-            """
-            a, v, u = traj.a, traj.v, traj.u
-            b2_4ac = v**2 + 2 * u * (b - a)
-            # two roots for a quadratic equation
-            dt1 = (-v - torch.sqrt(b2_4ac)) / u
-            dt2 = (-v + torch.sqrt(b2_4ac)) / u
-            # dt is the delta time taken to reach the boundary ``b``
-            dt = torch.where(((b - a) * u < 0) ^ (u > 0), dt2, dt1)
-
-            # reflect at the boundary ``b``
-            vr = -(v + u * dt)
-            v_ = vr + (1 - dt) * u
-            a_ = b + (vr + v_) / 2. * (1 - dt)
-            return a_, v_
-
-        # test which actions will go beyond the range after updating
-        clipped = (a_ > self._inv_squash_range) | (a_ <
-                                                   -self._inv_squash_range)
-        # obtain the boundary ``a_`` is going to reach
-        b = self._inv_squash_range * (
-            2 * (a_ > self._inv_squash_range).to(torch.float32) - 1)
-
-        shape = a_.shape
-        # conditional_update only accepts 1d cond bool tensor
-        a_, v_ = conditional_update(
-            target=(a_.reshape(-1), v_.reshape(-1)),
-            cond=clipped.reshape(-1),
-            func=_compute_reflection,
-            b=b.reshape(-1),
-            traj=nest.map_structure(lambda x: x.reshape(-1), tau))
-
-        return Tau(a=a_.reshape(*shape), v=v_.reshape(*shape), u=tau.u)
+        v = torch.clamp(tau.v + tau.u * 2., min=-1., max=1.)
+        a = torch.clamp(tau.a + v * 2., min=-1., max=1.)
+        return Tau(a=a, v=v, u=tau.u)
 
     def _action2tau(self, a, tau):
         """Given a new action at the next step and the current traj ``tau``, infer
         the new traj's second derivative, assuming resetting ``tau.v`` to 0 first.
         """
-        a = self._atanh(a)  # unsquash
-        v_ = torch.zeros_like(tau.v)
-        #v_ = traj_state.v
-
-        v = 2 * (a - tau.a) - v_
-        u = v - v_
+        v = (a - tau.a) / 2.
+        u = v / 2.
         return Tau(a=a, v=v, u=u)
 
     def _tau2action(self, tau):
-        return tau.a.tanh()
+        return tau.a
