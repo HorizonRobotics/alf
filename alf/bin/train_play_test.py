@@ -495,9 +495,9 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='off_policy_ac_cart_pole.gin',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
-    def test_pltp_fetch(self):
+    def test_taacl_fetch(self):
         self._test(
-            conf_file='pltp_fetch_conf.py',
+            conf_file='taacl_fetch_conf.py',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
@@ -538,9 +538,9 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='ppo_rnd_mrevenge.gin',
             extra_train_params=PPO_TRAIN_PARAMS)
 
-    def test_pqtp_fetch(self):
+    def test_taacq_fetch(self):
         self._test(
-            conf_file='pqtp_fetch_conf.py',
+            conf_file='taacq_fetch_conf.py',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 

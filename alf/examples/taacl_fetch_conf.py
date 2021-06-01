@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import alf
-from alf.algorithms.taac_algorithm import PltpAlgorithm
+from alf.algorithms.taac_algorithm import TaacLAlgorithm
 
 import taac_fetch_conf
 
-alf.config('Agent', rl_algorithm_cls=PltpAlgorithm)
+alf.config('Agent', rl_algorithm_cls=TaacLAlgorithm)

@@ -408,6 +408,31 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         """Compute action given a trajectory."""
         raise NotImplementedError()
 
+    def _make_networks_impl(self, observation_spec, action_spec, reward_spec,
+                            actor_network_cls, critic_network_cls, tau_mask):
+        def _make_parallel(net):
+            return net.make_parallel(self._num_critic_replicas)
+
+        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
+        tau_embedding = nest.map_structure(
+            lambda _: torch.nn.Sequential(
+                alf.layers.FC(action_spec.numel, observation_spec.numel)),
+            Tau())
+
+        actor_network = actor_network_cls(
+            input_tensor_spec=(observation_spec, tau_spec),
+            input_preprocessors=(alf.layers.Detach(), tau_embedding),
+            preprocessing_combiner=nest_utils.NestConcat(
+                nest_mask=(True, tau_mask)),
+            action_spec=action_spec)
+        critic_network = critic_network_cls(
+            input_tensor_spec=(observation_spec, tau_spec),
+            action_preprocessing_combiner=nest_utils.NestConcat(
+                nest_mask=tau_mask))
+        critic_networks = _make_parallel(critic_network)
+
+        return critic_networks, actor_network
+
     def _predict_action(self,
                         time_step,
                         state,
@@ -721,33 +746,10 @@ class TaacAlgorithm(TaacAlgorithmBase):
         """
         super(TaacAlgorithm, self).__init__(*args, name=name, **kwargs)
 
-    def _make_networks(self, observation_spec, action_spec, reward_spec,
-                       actor_network_cls, critic_network_cls):
-        def _make_parallel(net):
-            return net.make_parallel(
-                self._num_critic_replicas * reward_spec.numel)
-
-        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
-        tau_embedding = Tau(
-            a=alf.layers.FC(action_spec.numel, observation_spec.numel),
-            v=alf.layers.Lambda(math_ops.identity),
-            u=alf.layers.Lambda(math_ops.identity))
+    def _make_networks(self, *args):
         tau_mask = Tau(a=True, v=False, u=False)
-
-        # computes the action probability conditioned on s and a^-
-        actor_network = actor_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            input_preprocessors=(alf.layers.Detach(), tau_embedding),
-            preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=(True, tau_mask)),
-            action_spec=action_spec)
-        critic_network = critic_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            action_preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=tau_mask))
-        critic_networks = _make_parallel(critic_network)
-
-        return critic_networks, actor_network
+        args = args + (tau_mask, )
+        return self._make_networks_impl(*args)
 
     def _update_tau(self, tau):
         """Return a constant trajectory."""
@@ -763,8 +765,8 @@ class TaacAlgorithm(TaacAlgorithmBase):
 
 
 @alf.configurable
-class PltpAlgorithm(TaacAlgorithmBase):
-    r"""Pltp: Piecewise linear trajectory policy for continuous control.
+class TaacLAlgorithm(TaacAlgorithmBase):
+    r"""TaacL: Piecewise linear trajectory policy for continuous control.
 
     For a linear trajectory, let :math:`a` be the action and :math:`v` the
     first derivative. Its dynamics is:
@@ -776,7 +778,7 @@ class PltpAlgorithm(TaacAlgorithmBase):
             a_{t+1} &\leftarrow v_{t+1} + a_t\\
         \end{array}
 
-    Pltp's trajectory is piece-wise linear. Each time the policy decides whether
+    TaacL's trajectory is piece-wise linear. Each time the policy decides whether
     to repeat the previous linear traj or generate a new one. Importantly,
     to generate a new one the policy doesn't directly generate the entire set of
     two parameters :math:`(a,v)` because this will result in bad exploration
@@ -793,10 +795,10 @@ class PltpAlgorithm(TaacAlgorithmBase):
     :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
-    def __init__(self, name="PltpAlgorithm", *args, **kwargs):
+    def __init__(self, name="TaacLAlgorithm", *args, **kwargs):
         """See ``TaacAlgorithmBase`` for argument description.
         """
-        super(PltpAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super(TaacLAlgorithm, self).__init__(*args, name=name, **kwargs)
 
         assert (
             np.all(self._action_spec.minimum == -1)
@@ -804,31 +806,10 @@ class PltpAlgorithm(TaacAlgorithmBase):
         ), ("Only support actions in [-1, 1]! Consider using env wrappers to "
             "scale your action space first.")
 
-    def _make_networks(self, observation_spec, action_spec, reward_spec,
-                       actor_network_cls, critic_network_cls):
-        def _make_parallel(net):
-            return net.make_parallel(self._num_critic_replicas)
-
-        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
-        tau_embedding = nest.map_structure(
-            lambda _: torch.nn.Sequential(
-                alf.layers.FC(action_spec.numel, observation_spec.numel)),
-            Tau())
+    def _make_networks(self, *args):
         tau_mask = Tau(a=True, v=True, u=False)
-
-        actor_network = actor_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            input_preprocessors=(alf.layers.Detach(), tau_embedding),
-            preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=(True, tau_mask)),
-            action_spec=action_spec)
-        critic_network = critic_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            action_preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=tau_mask))
-        critic_networks = _make_parallel(critic_network)
-
-        return critic_networks, actor_network
+        args = args + (tau_mask, )
+        return self._make_networks_impl(*args)
 
     @torch.no_grad()
     def _update_tau(self, tau):
@@ -850,8 +831,8 @@ class PltpAlgorithm(TaacAlgorithmBase):
 
 
 @alf.configurable
-class PqtpAlgorithm(PltpAlgorithm):
-    r"""Pqtp: Piecewise quadratic trajectory policy for continuous control.
+class TaacQAlgorithm(TaacLAlgorithm):
+    r"""TaacQ: Piecewise quadratic trajectory policy for continuous control.
 
     For a quadratic trajectory, let :math:`a` be the action, :math:`u` be the
     second derivative, and :math:`v` be the first derivative. Its dynamics is:
@@ -864,7 +845,7 @@ class PqtpAlgorithm(PltpAlgorithm):
             a_{t+1} &\leftarrow v_{t+1} + a_t\\
         \end{array}
 
-    Pqtp's trajectory is piece-wise quadratic. Each time the policy decides whether
+    TaacQ's trajectory is piece-wise quadratic. Each time the policy decides whether
     to repeat the previous quadratic traj or generate a new one. Importantly,
     to generate a new one the policy doesn't directly generate the entire set of
     three parameters :math:`(a,v,u)` because this will result in bad exploration
@@ -885,33 +866,15 @@ class PqtpAlgorithm(PltpAlgorithm):
     :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
-    def __init__(self, name="PqtpAlgorithm", *args, **kwargs):
+    def __init__(self, name="TaacQAlgorithm", *args, **kwargs):
         """See ``TaacAlgorithmBase`` for argument description.
         """
-        super(PqtpAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super(TaacQAlgorithm, self).__init__(*args, name=name, **kwargs)
 
-    def _make_networks(self, observation_spec, action_spec, reward_spec,
-                       actor_network_cls, critic_network_cls):
-        def _make_parallel(net):
-            return net.make_parallel(self._num_critic_replicas)
-
-        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
-        tau_embedding = nest.map_structure(
-            lambda _: torch.nn.Sequential(
-                alf.layers.FC(action_spec.numel, observation_spec.numel)),
-            Tau())
-
-        actor_network = actor_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            input_preprocessors=(alf.layers.Detach(), tau_embedding),
-            preprocessing_combiner=nest_utils.NestConcat(),
-            action_spec=action_spec)
-        critic_network = critic_network_cls(
-            input_tensor_spec=(observation_spec, tau_spec),
-            action_preprocessing_combiner=nest_utils.NestConcat())
-        critic_networks = _make_parallel(critic_network)
-
-        return critic_networks, actor_network
+    def _make_networks(self, *args):
+        tau_mask = Tau(a=True, v=True, u=True)
+        args = args + (tau_mask, )
+        return self._make_networks_impl(*args)
 
     @torch.no_grad()
     def _update_tau(self, tau):

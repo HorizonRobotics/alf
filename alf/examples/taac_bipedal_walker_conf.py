@@ -16,7 +16,7 @@ from functools import partial
 
 import alf
 from alf.algorithms.data_transformer import RewardNormalizer
-from alf.algorithms.taac_algorithm import TaacAlgorithm, PltpAlgorithm, PqtpAlgorithm
+from alf.algorithms.taac_algorithm import TaacAlgorithm, TaacLAlgorithm, TaacQAlgorithm
 from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
 from alf.optimizers import AdamTF
 from alf.utils import dist_utils, math_ops
@@ -54,7 +54,7 @@ alf.config(
                     partial(
                         dist_utils.calc_default_target_entropy, min_prob=0.1)))
 
-alg = TaacAlgorithm  # PltpAlgorithm PqtpAlgorithm
+alg = TaacAlgorithm  # TaacLAlgorithm TaacQAlgorithm
 alf.config('Agent', rl_algorithm_cls=alg, optimizer=AdamTF(lr=5e-4))
 
 # training config
