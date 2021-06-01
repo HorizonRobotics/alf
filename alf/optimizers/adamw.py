@@ -15,7 +15,6 @@
 import torch
 
 from torch.optim import Optimizer
-from torch.optim import _functional as F
 
 
 class AdamW(Optimizer):
@@ -148,7 +147,7 @@ class AdamW(Optimizer):
                 # record the step after step update
                 state_steps.append(state['step'])
 
-            F.adamw(
+            torch.optim._functional.adamw(
                 params_with_grad,
                 grads,
                 exp_avgs,
