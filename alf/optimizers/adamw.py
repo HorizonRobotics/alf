@@ -147,7 +147,7 @@ class AdamW(Optimizer):
                 # record the step after step update
                 state_steps.append(state['step'])
 
-            torch.optim._functional.F.adamw(
+            torch.optim._functional.adamw(
                 params_with_grad,
                 grads,
                 exp_avgs,
