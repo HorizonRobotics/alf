@@ -354,7 +354,7 @@ class MeanCurveGroupReader(object):
                 group these task event files and show their mean and variance.
             task_performance_ranges (list[tuple(float)]): a list of tuples, where
                 each tuple is a pair of floats used for normalizing the corresponding
-                task. If None, each tuple will be set to ``(0,1)`` (no effect).
+                task. If None, no normalization will be performed.
             name (str): name of the method
         """
 
