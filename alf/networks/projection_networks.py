@@ -555,7 +555,7 @@ class BetaProjectionNetwork(Network):
             grad_clip (float): if provided, the L2-norm of the gradient of concentration
                 will be clipped to be no more than ``grad_clip``.
             min_concentration (float): there may be issue of numerical stability
-                if the calulated concentration is very close to 0. A posibitive
+                if the calculated concentration is very close to 0. A positive
                 value of this may help to alleviate it.
         """
         super().__init__(
