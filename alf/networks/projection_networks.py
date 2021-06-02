@@ -537,8 +537,10 @@ class BetaProjectionNetwork(Network):
                  input_size,
                  action_spec,
                  activation=nn.functional.softplus,
+                 min_concentration=0.,
                  projection_output_init_gain=0.0,
                  bias_init_value=0.541324854612918,
+                 grad_clip=0.01,
                  name="BetaProjectionNetwork"):
         """
         Args:
@@ -547,9 +549,14 @@ class BetaProjectionNetwork(Network):
                 of the output distribution.
             activation (Callable): activation function to use in
                 dense layers.
-            bias_init_value (): the default value is chosen so that, for softplus
+            bias_init_value (float): the default value is chosen so that, for softplus
                 activation, the initial concentration will be close 1, which
                 corresponds to uniform distribution.
+            grad_clip (float): if provided, the L2-norm of the gradient of concentration
+                will be clipped to be no more than ``grad_clip``.
+            min_concentration (float): there may be issue of numerical stability
+                if the calculated concentration is very close to 0. A positive
+                value of this may help to alleviate it.
         """
         super().__init__(
             input_tensor_spec=TensorSpec((input_size, )), name=name)
@@ -563,9 +570,16 @@ class BetaProjectionNetwork(Network):
             activation=activation,
             bias_init_value=bias_init_value,
             kernel_init_gain=projection_output_init_gain)
+        self._grad_clip = grad_clip
+        self._min_concentration = min_concentration
 
     def forward(self, inputs, state=()):
         concentration = self._concentration_projection_layer(inputs)
+        if self._min_concentration != 0:
+            concentration = concentration + self._min_concentration
+        if self._grad_clip is not None and inputs.requires_grad:
+            concentration.register_hook(lambda x: x / (x.norm(
+                dim=1, keepdim=True) * (1 / self._grad_clip)).clamp(1.))
         concentration10 = concentration.split(
             concentration.shape[-1] // 2, dim=-1)
         return self._transformer(
