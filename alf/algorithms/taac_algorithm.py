@@ -14,12 +14,12 @@
 
 from enum import Enum
 import functools
+import numpy as np
+from typing import Callable
 
 import torch
 import torch.nn as nn
 import torch.distributions as td
-import numpy as np
-from typing import Callable
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -549,7 +549,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             b1_a = dist_utils.rsample_action_distribution(b1_a_dist)
 
         b0_tau = self._update_tau(state.tau)
-        # This should be a determinisitc function converting b1_a to b1_tau
+        # This should be a deterministic function converting b1_a to b1_tau
         b1_tau = self._action2tau(b1_a, state.tau)
 
         # compute Q(s, tau^-) and Q(s, \hat{tau})

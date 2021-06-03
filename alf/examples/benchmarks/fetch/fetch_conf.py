@@ -19,10 +19,10 @@ learning rate, etc) to be shared by different algorithms to be evaluted.
 from functools import partial
 
 import alf
-from alf.environments import suite_robotics
-from alf.utils.math_ops import clipped_exp
 from alf.algorithms.data_transformer import RewardNormalizer
+from alf.environments import suite_robotics
 from alf.optimizers import AdamTF
+from alf.utils.math_ops import clipped_exp
 
 alf.config(
     "create_environment",
