@@ -258,7 +258,7 @@ class Trainer(object):
         try:
             recovered_global_step = checkpointer.load()
             self._trainer_progress.update()
-        except Exception as e:
+        except RuntimeError as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
                  "Typically this is caused by using a wrong checkpoint. \n"
