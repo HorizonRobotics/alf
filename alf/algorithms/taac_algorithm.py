@@ -406,7 +406,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
     def _make_networks_impl(self, observation_spec, action_spec, reward_spec,
                             actor_network_cls, critic_network_cls, tau_mask):
         def _make_parallel(net):
-            return net.make_parallel(self._num_critic_replicas)
+            return net.make_parallel(
+                self._num_critic_replicas * reward_spec.numel)
 
         tau_spec = nest.map_structure(lambda m: action_spec if m else (),
                                       tau_mask)
@@ -725,6 +726,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 alpha=alpha_loss))
 
 
+@alf.configurable
 class TaacAlgorithm(TaacAlgorithmBase):
     r"""Model temporal abstraction by action repetition. See
 
