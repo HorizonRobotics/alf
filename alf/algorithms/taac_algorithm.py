@@ -43,7 +43,7 @@ Tau = namedtuple(
         "v",  # The current first derivative of action (not used by action repetition)
         "u"  # The current second derivative of action (not used by action repetition)
     ],
-    default_value=None)
+    default_value=())
 
 TaacState = namedtuple("TaacState", ["tau", "repeats"], default_value=())
 
@@ -323,7 +323,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
 
-        critic_networks, actor_network = self._make_networks(
+        tau_spec, critic_networks, actor_network = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
             critic_network_cls)
 
@@ -331,8 +331,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                      nn.Parameter(torch.zeros(())))
 
         train_state_spec = TaacState(
-            tau=Tau(a=action_spec, v=action_spec, u=action_spec),
-            repeats=TensorSpec(shape=(), dtype=torch.int64))
+            tau=tau_spec, repeats=TensorSpec(shape=(), dtype=torch.int64))
         super().__init__(
             observation_spec,
             action_spec,
@@ -404,34 +403,29 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         ``tau``."""
         raise NotImplementedError()
 
-    def _tau2action(self, tau):
-        """Compute action given a trajectory."""
-        raise NotImplementedError()
-
     def _make_networks_impl(self, observation_spec, action_spec, reward_spec,
                             actor_network_cls, critic_network_cls, tau_mask):
         def _make_parallel(net):
             return net.make_parallel(self._num_critic_replicas)
 
-        tau_spec = nest.map_structure(lambda _: action_spec, Tau())
+        tau_spec = nest.map_structure(lambda m: action_spec if m else (),
+                                      tau_mask)
         tau_embedding = nest.map_structure(
             lambda _: torch.nn.Sequential(
                 alf.layers.FC(action_spec.numel, observation_spec.numel)),
-            Tau())
+            tau_spec)
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
             input_preprocessors=(alf.layers.Detach(), tau_embedding),
-            preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=(True, tau_mask)),
+            preprocessing_combiner=nest_utils.NestConcat(),
             action_spec=action_spec)
         critic_network = critic_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
-            action_preprocessing_combiner=nest_utils.NestConcat(
-                nest_mask=tau_mask))
+            action_preprocessing_combiner=nest_utils.NestConcat())
         critic_networks = _make_parallel(critic_network)
 
-        return critic_networks, actor_network
+        return tau_spec, critic_networks, actor_network
 
     def _predict_action(self,
                         time_step,
@@ -641,7 +635,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             epsilon_greedy=self._epsilon_greedy,
             mode=Mode.predict)
         return AlgStep(
-            output=self._tau2action(new_state.tau),
+            output=new_state.tau.a,
             state=new_state,
             info=TaacInfo(action_distribution=ap_out.dists, b=ap_out.b))
 
@@ -649,7 +643,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         ap_out, new_state = self._predict_action(
             inputs, state, mode=Mode.rollout)
         return AlgStep(
-            output=self._tau2action(new_state.tau),
+            output=new_state.tau.a,
             state=new_state,
             info=TaacInfo(
                 action_distribution=ap_out.dists,
@@ -698,8 +692,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             b=ap_out.b,
             alpha=alpha_loss,
             repeats=state.repeats)
-        return AlgStep(
-            output=self._tau2action(new_state.tau), state=new_state, info=info)
+        return AlgStep(output=new_state.tau.a, state=new_state, info=info)
 
     def after_update(self, root_inputs, info: TaacInfo):
         self._update_target()
@@ -757,11 +750,7 @@ class TaacAlgorithm(TaacAlgorithmBase):
 
     def _action2tau(self, a, tau):
         """Return a constant trajectory."""
-        return Tau(a=a, v=a, u=a)
-
-    def _tau2action(self, tau):
-        """``tau.a`` is already squashed."""
-        return tau.a
+        return Tau(a=a)
 
 
 @alf.configurable
@@ -824,10 +813,7 @@ class TaacLAlgorithm(TaacAlgorithmBase):
         the new traj's first derivative.
         """
         v = (a - tau.a) / 2.
-        return Tau(a=a, v=v, u=v)
-
-    def _tau2action(self, tau):
-        return tau.a
+        return Tau(a=a, v=v)
 
 
 @alf.configurable
@@ -881,7 +867,6 @@ class TaacQAlgorithm(TaacLAlgorithm):
         """Compute next action on a quadratic trajectory specified by a triplet
         of ('action', 'action derivative', and 'action second derivative').
         """
-        # normal update
         v = torch.clamp(tau.v + tau.u * 2., min=-1., max=1.)
         a = torch.clamp(tau.a + v * 2., min=-1., max=1.)
         return Tau(a=a, v=v, u=tau.u)
@@ -893,6 +878,3 @@ class TaacQAlgorithm(TaacLAlgorithm):
         v = (a - tau.a) / 2.
         u = v / 2.
         return Tau(a=a, v=v, u=u)
-
-    def _tau2action(self, tau):
-        return tau.a
