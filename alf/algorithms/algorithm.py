@@ -38,7 +38,7 @@ from .data_transformer import IdentityDataTransformer
 
 
 def _get_optimizer_params(optimizer: torch.optim.Optimizer):
-    return set(sum([g['params'] for g in optimizer.param_groups], []))
+    return sum([g['params'] for g in optimizer.param_groups], [])
 
 
 def _flatten_module(module):
@@ -474,12 +474,15 @@ class Algorithm(AlgorithmInterface):
             - list of parameters handled under this algorithm
         """
         default_optimizer = self.default_optimizer
-        new_params = set()
-        handled = set()
+        # The reason of using dict instead of set to hold the parameters is that
+        # dict is guaranteed to preserve the insertion order so that we can get
+        # deterministic ordering of the parameters.
+        new_params = dict()
+        handled = dict()
         duplicate_error = "Parameter %s is handled by multiple optimizers."
 
         def _add_params_to_optimizer(params, opt):
-            existing_params = _get_optimizer_params(opt)
+            existing_params = set(_get_optimizer_params(opt))
             params = list(filter(lambda p: p not in existing_params, params))
             if params:
                 opt.add_param_group({'params': params})
@@ -494,14 +497,14 @@ class Algorithm(AlgorithmInterface):
                 for m in child_handled:
                     assert m not in handled, duplicate_error % self.get_param_name(
                         m)
-                    handled.add(m)
+                    handled[m] = 1
             elif isinstance(child, nn.Module):
                 params = list(child.parameters())
             elif isinstance(child, nn.Parameter):
                 params = [child]
             optimizer = self._module_to_optimizer.get(child, None)
             if optimizer is None:
-                new_params.update(params)
+                new_params.update((p, 1) for p in params)
                 if default_optimizer is not None:
                     self._module_to_optimizer[child] = default_optimizer
             else:
@@ -509,15 +512,17 @@ class Algorithm(AlgorithmInterface):
                     assert m not in handled, duplicate_error % self.get_param_name(
                         m)
                 params = _add_params_to_optimizer(params, optimizer)
-                handled.update(params)
+                handled.update((p, 1) for p in params)
 
-        new_params.difference_update(handled)
+        for p in handled:
+            if p in new_params:
+                del new_params[p]
         if default_optimizer is not None:
-            new_params = _add_params_to_optimizer(new_params,
+            new_params = _add_params_to_optimizer(new_params.keys(),
                                                   default_optimizer)
-            return [], handled
+            return [], list(handled.keys())
         else:
-            return list(new_params), handled
+            return list(new_params.keys()), list(handled.keys())
 
     def optimizers(self, recurse=True, include_ignored_attributes=False):
         """Get all the optimizers used by this algorithm.

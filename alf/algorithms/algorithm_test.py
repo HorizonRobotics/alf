@@ -20,7 +20,7 @@ import torch.nn as nn
 
 import alf
 from alf.data_structures import LossInfo
-from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.algorithm import Algorithm, _get_optimizer_params
 
 
 class MyAlg(Algorithm):
@@ -165,6 +165,33 @@ class AlgorithmTest(alf.test.TestCase):
             set(
                 alg_root.get_param_name(p)
                 for p in [param_1, param_2] + list(layer.parameters())))
+
+    def test_optimizer_params(self):
+        # test that the order of parameters is deterministic
+        opt1 = alf.optimizers.Adam(lr=0.25)
+        alg_1 = MyAlg(optimizer=opt1)
+        alg_1.a = nn.Parameter(torch.rand(1, 4))
+        alg_1.b = nn.Parameter(torch.rand(2, 4))
+        alg_1.c = nn.Parameter(torch.rand(3, 4))
+        alg_1.d = nn.Parameter(torch.rand(4, 4))
+        alg_1.e = nn.Parameter(torch.rand(5, 4))
+        alg_1.f = nn.Parameter(torch.rand(6, 4))
+        alg_1.get_optimizer_info()
+        params1 = _get_optimizer_params(opt1)
+        shapes1 = [p.shape for p in params1]
+
+        opt2 = alf.optimizers.Adam(lr=0.25)
+        alg_2 = MyAlg(optimizer=opt2)
+        alg_2.a = nn.Parameter(torch.rand(1, 4))
+        alg_2.b = nn.Parameter(torch.rand(2, 4))
+        alg_2.c = nn.Parameter(torch.rand(3, 4))
+        alg_2.d = nn.Parameter(torch.rand(4, 4))
+        alg_2.e = nn.Parameter(torch.rand(5, 4))
+        alg_2.f = nn.Parameter(torch.rand(6, 4))
+        alg_2.get_optimizer_info()
+        params2 = _get_optimizer_params(opt2)
+        shapes2 = [p.shape for p in params2]
+        self.assertEqual(shapes1, shapes2)
 
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
