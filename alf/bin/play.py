@@ -50,7 +50,6 @@ def _define_flags():
         "the number of training steps which is used to "
         "specify the checkpoint to be loaded. If None, the latest checkpoint under "
         "train_dir will be used.")
-    flags.DEFINE_float('epsilon_greedy', 0., "probability of sampling action.")
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
@@ -128,7 +127,6 @@ def play():
             env,
             algorithm,
             checkpoint_step=FLAGS.checkpoint_step or "latest",
-            epsilon_greedy=FLAGS.epsilon_greedy,
             num_episodes=FLAGS.num_episodes,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
