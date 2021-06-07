@@ -163,8 +163,7 @@ class TrainerConfig(object):
                 it's set to the replayer's ``batch_size``. Only used by
                 ``OffPolicyAlgorithm``.
             mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch. If None, it's set to ``unroll_length``.
-                Only used by ``OffPolicyAlgorithm``.
+                sample in the minibatch. Only used by ``OffPolicyAlgorithm``.
             whole_replay_buffer_training (bool): whether use all data in replay
                 buffer to perform one update. Only used by ``OffPolicyAlgorithm``.
             clear_replay_buffer (bool): whether use all data in replay buffer to

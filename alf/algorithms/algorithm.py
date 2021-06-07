@@ -1139,26 +1139,22 @@ class Algorithm(AlgorithmInterface):
                     self._exp_replayer.clear()
                 num_updates = config.num_updates_per_train_iter
                 batch_info = None
-                mini_batch_length = None
             else:
-                mini_batch_length = config.mini_batch_length
-                if mini_batch_length is None:
-                    common.warning_once(
-                        "No mini_batch_length is specified for off-policy training,"
-                        " unroll_length=%s is used instead" %
-                        config.unroll_length)
-                    mini_batch_length = config.unroll_length
+                assert config.mini_batch_length is not None, (
+                    "No mini_batch_length is specified for off-policy training"
+                )
                 experience, batch_info = self._exp_replayer.replay(
                     sample_batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
-                    mini_batch_length=mini_batch_length)
+                    mini_batch_length=config.mini_batch_length)
                 num_updates = 1
 
         with record_time("time/train"):
             return self._train_experience(
                 experience, batch_info, num_updates, mini_batch_size,
-                mini_batch_length, (config.update_counter_every_mini_batch
-                                    and update_global_counter))
+                config.mini_batch_length,
+                (config.update_counter_every_mini_batch
+                 and update_global_counter))
 
     def _train_experience(self, experience, batch_info, num_updates,
                           mini_batch_size, mini_batch_length,
