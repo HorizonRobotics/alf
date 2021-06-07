@@ -31,12 +31,16 @@ Currently, ALF uses separate processes to launch multiple environments. Because
 vscode does not support debug for `multiprocessing
 <https://github.com/microsoft/ptvsd/issues/1706>`_, in order to debug in vscode,
 you need to make ALF not to start separate processes by setting the following
-gin config:
+config:
 
 .. code-block:: python
 
   create_environment.num_parallel_environments=1
-  Trainer._create_environment.nonparallel=True
+  create_environment.nonparallel=True
+  TrainerConfig.evaluate=False
+
+The last line ``evaluate=False`` is to make it safe for rare simulators which
+crash when two unwrapped (thread) envs coexist in the main process.
 
 Training scheme
 ---------------
@@ -278,7 +282,7 @@ may not be named so). ``ContinuousActionClip`` can often help the algorithm to
 obtain higher rewards at the beginning of training because the evironment may
 calculate reward using an out-of-bound action without clipping. But sometimes,
 using this wrapper can hurt the final performance. You can disable it by setting
-the following in gin-config:
+the following in the config:
 
 .. code-block:: python
 
