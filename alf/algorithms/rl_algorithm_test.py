@@ -165,7 +165,7 @@ class RLAlgorithmTest(unittest.TestCase):
         # root_dir is not used. We have to give it a value because
         # it is a required argument of TrainerConfig.
         config = TrainerConfig(
-            root_dir='/tmp/rl_algorithm_test', unroll_length=5, num_envs=1)
+            root_dir='/tmp/rl_algorithm_test', unroll_length=5)
         env = MyEnv(batch_size=3)
         alg = MyAlg(
             observation_spec=env.observation_spec(),
@@ -199,7 +199,6 @@ class RLAlgorithmTest(unittest.TestCase):
         config = TrainerConfig(
             root_dir=root_dir,
             unroll_length=5,
-            num_envs=1,
             num_updates_per_train_iter=1,
             mini_batch_length=5,
             mini_batch_size=3,

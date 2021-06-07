@@ -1110,6 +1110,8 @@ class Algorithm(AlgorithmInterface):
           for every update in ``num_updates_per_train_iter``, the data will
           be shuffled and divided into
           ``buffer_size//(mini_batch_size * mini_batch_length)`` "mini-updates".
+          If ``mini_batch_length`` is None, then ``unroll_length`` will be used
+          for this calculation.
 
         Args:
             update_global_counter (bool): controls whether this function changes
@@ -1138,6 +1140,9 @@ class Algorithm(AlgorithmInterface):
                 num_updates = config.num_updates_per_train_iter
                 batch_info = None
             else:
+                assert config.mini_batch_length is not None, (
+                    "No mini_batch_length is specified for off-policy training"
+                )
                 experience, batch_info = self._exp_replayer.replay(
                     sample_batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),

@@ -47,7 +47,6 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=steps_per_episode,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = PolicyUnittestEnv
 
