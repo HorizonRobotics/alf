@@ -109,9 +109,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_size=64,
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
-            clear_replay_buffer=False,
-            num_envs=1,
-        )
+            clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
         env = env_class(
@@ -191,7 +189,6 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = PolicyUnittestEnv
 
@@ -250,7 +247,6 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = MixedPolicyUnittestEnv
 
