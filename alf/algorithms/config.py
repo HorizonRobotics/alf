@@ -62,8 +62,7 @@ class TrainerConfig(object):
                  priority_replay_alpha=0.7,
                  priority_replay_beta=0.4,
                  priority_replay_eps=1e-6,
-                 clear_replay_buffer=True,
-                 num_envs=1):
+                 clear_replay_buffer=True):
         """
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -185,7 +184,6 @@ class TrainerConfig(object):
                 This is only useful if ``prioritized_sampling`` is enabled for
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
-            num_envs (int): the number of environments to run asynchronously.
         """
         assert priority_replay_beta >= 0.0, ("importance_weight_beta should "
                                              "be non-negative be")
@@ -233,4 +231,3 @@ class TrainerConfig(object):
         self.priority_replay_alpha = priority_replay_alpha
         self.priority_replay_beta = priority_replay_beta
         self.priority_replay_eps = priority_replay_eps
-        self.num_envs = num_envs
