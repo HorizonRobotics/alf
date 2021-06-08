@@ -99,10 +99,10 @@ def tensor_spec_from_gym_space(space,
 
 
 def _as_array(nested):
-    """Convert numbers in ``nested`` to np.ndarray."""
+    """Convert scalars in ``nested`` to np.ndarray."""
 
     def __as_array(x):
-        if isinstance(x, numbers.Number):
+        if np.isscalar(x):
             return np.array(x)
         return x
 
@@ -214,7 +214,7 @@ class AlfGymWrapper(AlfEnvironment):
         observation, reward, self._done, self._info = self._gym_env.step(
             action)
         observation = self._to_spec_dtype_observation(observation)
-        self._info = nest.map_structure(_as_array, self._info)
+        self._info = _as_array(self._info)
 
         if self._done:
             return ds.termination(
