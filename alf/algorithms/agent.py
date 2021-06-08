@@ -118,6 +118,7 @@ class Agent(OnPolicyAlgorithm):
         self._final_goal = False
         ## 1. goal generator
         if goal_generator is not None:
+            goal_generator._config = config
             self._final_goal = (isinstance(goal_generator,
                                            SubgoalPlanningGoalGenerator)
                                 and goal_generator._final_goal)
@@ -145,8 +146,7 @@ class Agent(OnPolicyAlgorithm):
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
         self._is_on_policy = rl_algorithm.is_on_policy()
-        if goal_generator is not None and isinstance(
-                goal_generator, SubgoalPlanningGoalGenerator):
+        if isinstance(goal_generator, SubgoalPlanningGoalGenerator):
 
             def _value(obs,
                        states=(),
@@ -343,7 +343,8 @@ class Agent(OnPolicyAlgorithm):
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
-        if self._goal_generator is not None:
+        if (self._goal_generator is not None
+                and "full_plan" in rl_step.info._fields):
             info = info._replace(
                 rl=rl_step.info._replace(
                     full_plan=goal_step.state.full_plan,
