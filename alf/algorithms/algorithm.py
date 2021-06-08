@@ -1264,7 +1264,7 @@ class Algorithm(AlgorithmInterface):
                 # have a bug when n is a large number, generating negative or
                 # very large values that cause out of bound kernel error
                 # https://github.com/pytorch/vision/issues/3816
-                indices = np.random.permutation(batch_size)
+                indices = torch.as_tensor(np.random.permutation(batch_size))
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
                 if batch_info is not None:
