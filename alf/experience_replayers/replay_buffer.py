@@ -982,6 +982,17 @@ def hindsight_relabel_fn(buffer,
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".achieved_reward_transition_her",
                 torch.mean((her_reward[:, 1] - her_reward[:, 0] > 0).float()))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".goal_distance_her",
+                torch.mean(
+                    torch.norm(result_ag - relabeled_goal, dim=2)[her_cond]))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".achieved_goal_moved_dist",
+            torch.mean(torch.norm(result_ag[:, 0] - result_ag[:, 1], dim=1)))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".achieved_goal_moved_rate",
+            torch.mean((torch.norm(result_ag[:, 0] - result_ag[:, 1], dim=1) >
+                        1.e-5).float()))
         if torch.any(rollout_cond):
             rollout_reward = relabeled_rewards[~end[:, 0] & rollout_cond]
             alf.summary.scalar(
@@ -989,13 +1000,18 @@ def hindsight_relabel_fn(buffer,
                 ".achieved_reward_transition_rollout",
                 torch.mean(
                     (rollout_reward[:, 1] - rollout_reward[:, 0] > 0).float()))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".goal_distance_rollout",
+                torch.mean(
+                    torch.norm(result_ag - relabeled_goal,
+                               dim=2)[rollout_cond]))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
+                torch.mean(relabeled_rewards[rollout_cond][:, 1:]))
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",
                 torch.mean(relabeled_rewards[orig_reward_cond][:, 1:]))
-        alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
-            torch.mean(relabeled_rewards[rollout_cond][:, 1:]))
         if relabel_final_goal > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".relabel_final_goal_rate",

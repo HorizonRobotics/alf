@@ -238,10 +238,13 @@ class CEMOptimizer(TrajOptimizer):
 
             # if (i + 1) % (self._iterations / 5) == 0:
             #     logging.warning(
-            #         "%d: distr means: %s", i,
+            #         "%d: distr means: %s, var: %s", i,
             #         str(
             #             distr.loc.reshape(batch_size, self._planning_horizon,
-            #                               self._action_dim)))
+            #                               self._action_dim)),
+            #         str(
+            #             distr.scale.reshape(batch_size, self._planning_horizon,
+            #                                 self._action_dim)))
             if i == self._iterations - 1:
                 min_ind = torch.argmin(costs, dim=1).long()
                 solution = samples[(torch.arange(batch_size), min_ind)]

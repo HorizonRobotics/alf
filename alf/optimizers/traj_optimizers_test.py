@@ -37,25 +37,21 @@ class CEMOptimizerTest(alf.test.TestCase):
             init_mean=0.,
             init_var=20.)
 
-        def _costs(time_step,
-                   state,
-                   samples,
-                   info=None,
-                   use_target_networks=False,
-                   use_replica_min=True):
+        def _costs(time_step, state, samples, **kwargs):
             batch_size = time_step.observation.shape[0]
             costs = torch.sum(
                 samples.reshape(batch_size, pop_size, -1),
                 dim=2)  # sum of all action values
             return -costs
 
-        def _costs_agg_dist(time_step,
-                            state,
-                            samples,
-                            squared=True,
-                            info=None,
-                            use_target_networks=False,
-                            use_replica_min=True):
+        def _costs_correlated(time_step, state, samples, **kwargs):
+            batch_size = time_step.observation.shape[0]
+            s = samples.reshape(batch_size, pop_size, planning_horizon, -1)
+            # x1, x2 dims are correlated (exactly the same to get lowest cost)
+            costs = torch.sum(torch.abs(s[:, :, :, 0] - s[:, :, :, 1]), dim=2)
+            return costs
+
+        def _costs_agg_dist(time_step, state, samples, squared=True, **kwargs):
             batch_size = time_step.observation.shape[0]
             start = time_step.achieved_goal.reshape(
                 batch_size, 1, 1, act_dim).expand(batch_size, pop_size, 1,
@@ -78,8 +74,15 @@ class CEMOptimizerTest(alf.test.TestCase):
             observation=torch.zeros(batch_size, ),
             achieved_goal=0,
             desired_goal=0)
+        opt.set_cost(_costs_correlated)
+        solution, _unused_costs = opt.obtain_solution(fake_item, ())
+        self.assertEqual(solution.shape,
+                         (batch_size, planning_horizon, act_dim))
+        self.assertTensorClose(
+            solution[:, :, 0], solution[:, :, 1], epsilon=1e-1)
+
         opt.set_cost(_costs)
-        solution, _costs = opt.obtain_solution(fake_item, ())
+        solution, _unused_costs = opt.obtain_solution(fake_item, ())
         self.assertEqual(solution.shape,
                          (batch_size, planning_horizon, act_dim))
         self.assertTensorClose(solution, torch.Tensor([10.0]), epsilon=1e-1)
@@ -91,7 +94,7 @@ class CEMOptimizerTest(alf.test.TestCase):
             achieved_goal=start,
             desired_goal=end)
         opt.set_cost(_costs_agg_dist)
-        solution, _costs = opt.obtain_solution(item, ())
+        solution, _unused_costs = opt.obtain_solution(item, ())
         self.assertTensorClose(
             solution.reshape(-1, act_dim),
             start +

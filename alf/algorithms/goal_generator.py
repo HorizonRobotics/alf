@@ -1339,7 +1339,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             batch_size = step_type.shape[0]
             new_goal = state.full_plan[(torch.arange(batch_size),
                                         cap_subgoals_index.squeeze().long())]
-            new_sg_steps = torch.where(next_subgoal | state.plan_success,
+            new_sg_steps = torch.where(next_subgoal,
                                        torch.zeros_like(sg_steps), sg_steps)
             # Reset plan steps counter if subgoal is reached.
             steps_since_last_plan = torch.where(
