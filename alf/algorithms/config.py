@@ -22,6 +22,7 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  ml_type='rl',
+                 env_name=None,
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
@@ -37,6 +38,7 @@ class TrainerConfig(object):
                  load_checkpoint_strict=True,
                  evaluate=False,
                  num_evals=None,
+                 remote_eval=False,
                  eval_interval=10,
                  epsilon_greedy=0.,
                  eval_uncertainty=False,
@@ -68,6 +70,7 @@ class TrainerConfig(object):
         Args:
             root_dir (str): directory for saving summary and checkpoints
             ml_type (str): type of learning task, one of ['rl', 'sl']
+            env_name (str): name of the environment
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             data_transformer_ctor (Callable|list[Callable]): Function(s)
@@ -133,6 +136,7 @@ class TrainerConfig(object):
             num_evals (int): how many evaluations are needed throughout the training.
                 If not None, an automatically calculated ``eval_interval`` will
                 replace ``config.eval_interval``.
+            remote_eval (bool): A bool to remote evluate during training
             eval_interval (int): evaluate every so many iteration
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
@@ -200,6 +204,7 @@ class TrainerConfig(object):
         assert ml_type in ('rl', 'sl')
         self.root_dir = root_dir
         self.ml_type = ml_type
+        self.env_name = env_name
         self.algorithm_ctor = algorithm_ctor
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
@@ -216,6 +221,7 @@ class TrainerConfig(object):
         self.load_checkpoint_strict = load_checkpoint_strict
         self.evaluate = evaluate
         self.num_evals = num_evals
+        self.remote_eval = remote_eval
         self.eval_interval = eval_interval
         self.epsilon_greedy = epsilon_greedy
         self.eval_uncertainty = eval_uncertainty

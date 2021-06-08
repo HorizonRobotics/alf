@@ -87,3 +87,35 @@ class StepMetric(nn.Module):
                 alf.summary.scalar(name=step_tag, data=res, step=step)
 
         alf.nest.py_map_structure_with_path(_gen_summary, result)
+
+    def gen_summaries_from_result(self,
+                                  result,
+                                  train_step=None,
+                                  step_metrics=()):
+        """Generates summaries against train_step and all step_metrics.
+
+        Args:
+            train_step: (Optional) Step counter for training iterations. If None, no
+                metric is generated against the global step.
+            step_metrics: (Optional) zip of iterables of metric names and steps to 
+                generate summaries against.
+        """
+        prefix = self._prefix
+
+        if not (isinstance(result, dict) or alf.nest.is_namedtuple(result)):
+            result = {self.name: result}
+
+        def _gen_summary(name, res):
+            tag = os.path.join(prefix, name)
+            if train_step is not None:
+                alf.summary.scalar(name=tag, data=res, step=train_step)
+            for metric_name, metric_step in step_metrics:
+                # Skip plotting the metrics against itself.
+                if self.name == metric_name:
+                    continue
+                step_tag = '{}_vs_{}/{}'.format(prefix, metric_name, name)
+                # Summaries expect the step value to be an int64.
+                step = metric_step.to(torch.int64)
+                alf.summary.scalar(name=step_tag, data=res, step=step)
+
+        alf.nest.py_map_structure_with_path(_gen_summary, result)

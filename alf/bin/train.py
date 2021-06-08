@@ -50,11 +50,23 @@ from absl import flags
 from absl import logging
 import os
 import pathlib
+import ray
 import torch
 
 from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
+
+ray.init(
+    # If true, then output from all of the worker processes on all nodes will be directed to the driver.
+    log_to_driver=True,
+    logging_level=logging.INFO,
+    webui_host='127.0.0.1',
+    # Need to set redis memory for
+    # fast loading of buffer.
+    # Not sure why.
+    redis_max_memory=1073741824  # 1g
+)
 
 
 def _define_flags():
