@@ -602,6 +602,9 @@ class RLAlgWrapper(RLAlgorithm):
         super().set_path(path)
         self._algorithm.set_path(path)
 
+    def predict_step(self, inputs: TimeStep, state):
+        return self._algorithm.predict_step(inputs, state)
+
     def rollout_step(self, inputs: TimeStep, state):
         return self._algorithm.rollout_step(inputs, state)
 

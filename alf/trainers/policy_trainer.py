@@ -470,7 +470,6 @@ class RLTrainer(Trainer):
                 time_step=time_step,
                 policy_state=policy_state,
                 trans_state=trans_state,
-                epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
             policy_state = policy_step.state
 
@@ -578,7 +577,6 @@ def _step(algorithm,
           time_step,
           policy_state,
           trans_state,
-          epsilon_greedy,
           metrics,
           render=False,
           recorder=None,
@@ -607,7 +605,6 @@ def play(root_dir,
          env,
          algorithm,
          checkpoint_step="latest",
-         epsilon_greedy=0.,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -631,10 +628,6 @@ def play(root_dir,
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
             the most recent checkpoint named 'latest' will be loaded.
-        epsilon_greedy (float): a floating value in [0,1], representing the
-            chance of action sampling instead of taking argmax. This can
-            help prevent a dead loop in some deterministic environment like
-            Breakout.
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -688,7 +681,6 @@ def play(root_dir,
             time_step=time_step,
             policy_state=policy_state,
             trans_state=trans_state,
-            epsilon_greedy=epsilon_greedy,
             metrics=metrics,
             render=render,
             recorder=recorder,

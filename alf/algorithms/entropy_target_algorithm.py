@@ -159,6 +159,9 @@ class EntropyTargetAlgorithm(Algorithm):
         self._fast_update_rate = torch.tensor(
             fast_update_rate, dtype=torch.float32)
 
+    def predict_step(self, distribution_and_step_type, state):
+        return AlgStep()
+
     def rollout_step(self, distribution_and_step_type, state=None):
         """Rollout step.
 
@@ -403,6 +406,9 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         self._algs_flattened = alf.nest.flatten(algs)
         if alf.nest.is_nested(algs):
             self._nested_algs = alf.nest.utils.make_nested_module(algs)
+
+    def predict_step(self, distribution_and_step_type, state):
+        return AlgStep()
 
     def rollout_step(self, distribution_and_step_type, state):
         if self.on_policy:
