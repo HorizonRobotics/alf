@@ -122,6 +122,10 @@ class ActorDistributionNetwork(Network):
             self._projection_net_module_list = nn.ModuleList(
                 nest.flatten(self._projection_net))
 
+    @property
+    def projection_net(self):
+        return self._projection_net
+
     def forward(self, observation, state=()):
         """Computes an action distribution given an observation.
 
