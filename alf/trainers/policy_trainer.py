@@ -283,7 +283,6 @@ class RLTrainer(Trainer):
         """
         super().__init__(config)
 
-        self._envs = []
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
         assert (self._num_iterations + self._num_env_steps > 0
@@ -323,10 +322,8 @@ class RLTrainer(Trainer):
                 env,
                 alf.environments.parallel_environment.ParallelAlfEnvironment)
                               and config.create_unwrapped_env):
-            self._unwrapped_env = self._create_environment(
-                nonparallel=True,
-                random_seed=self._random_seed,
-                register=False)
+            self._unwrapped_env = create_environment(
+                nonparallel=True, seed=self._random_seed)
         else:
             self._unwrapped_env = None
         self._eval_env = None
@@ -351,32 +348,15 @@ class RLTrainer(Trainer):
             self._eval_summary_writer = alf.summary.create_summary_writer(
                 self._eval_dir, flush_secs=config.summaries_flush_secs)
 
-    @gin.configurable('alf.trainers.RLTrainer._create_environment')
-    def _create_environment(self,
-                            nonparallel=False,
-                            random_seed=None,
-                            register=True):
-        """Create and register an env."""
-        env = create_environment(nonparallel=nonparallel, seed=random_seed)
-        if register:
-            self._register_env(env)
-        return env
-
-    def _register_env(self, env):
-        """Register env so that later its resource will be recycled."""
-        self._envs.append(env)
-
     def _close_envs(self):
         """Close all envs to release their resources."""
-        for env in self._envs:
-            env.close()
         alf.close_env()
         if self._unwrapped_env is not None:
             self._unwrapped_env.close()
 
     def _train(self):
-        for env in self._envs:
-            env.reset()
+        env = alf.get_env()
+        env.reset()
         if self._eval_env:
             self._eval_env.reset()
 
