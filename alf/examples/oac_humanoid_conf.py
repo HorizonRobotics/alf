@@ -20,6 +20,7 @@ from alf.algorithms.oac_algorithm import OacAlgorithm, OacNormalProjectionNetwor
 from alf.nest.utils import NestConcat
 from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
 from alf.optimizers import Adam, AdamTF
+from alf.utils.dist_utils import calc_default_target_entropy
 from alf.utils.math_ops import clipped_exp
 from alf.utils.losses import element_wise_squared_loss
 
@@ -27,9 +28,7 @@ import sac_conf
 
 # environment config
 alf.config(
-    'create_environment',
-    env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+    'create_environment', env_name="Humanoid-v2", num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -41,18 +40,22 @@ actor_network_cls = partial(
         OacNormalProjectionNetwork,
         state_dependent_std=True,
         scale_distribution=True,
-        std_transform=clipped_exp))
+        std_transform=partial(
+            clipped_exp, clip_value_min=-10, clip_value_max=2)))
 
 critic_network_cls = partial(
     CriticNetwork, joint_fc_layer_params=fc_layer_params)
+
+alf.config('calc_default_target_entropy', min_prob=0.184)
 
 alf.config(
     'OacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    explore=False,
+    explore=True,
     explore_delta=6.,
     target_update_tau=0.005,
+    use_parallel_network=True,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4))
@@ -74,9 +77,9 @@ alf.config(
     num_checkpoints=5,
     evaluate=True,
     eval_interval=5000,
-    num_eval_episodes=10,
+    num_eval_episodes=50,
     debug_summaries=True,
-    random_seed=0,
+    random_seed=1,
     summarize_grads_and_vars=True,
     summary_interval=2000,
     replay_buffer_length=1000000)
