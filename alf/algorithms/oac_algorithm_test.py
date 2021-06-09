@@ -33,8 +33,9 @@ from alf.utils.math_ops import clipped_exp
 
 
 class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, 3), (False, 3))
-    def test_oac_algorithm(self, explore=True, reward_dim=3):
+    @parameterized.parameters(True, False)
+    def test_oac_algorithm(self, explore=True):
+        reward_dim = 3
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -100,7 +101,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             name="MyOAC")
 
         eval_env.reset()
-        for i in range(600):
+        for i in range(650):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue
