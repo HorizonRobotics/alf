@@ -770,9 +770,9 @@ class HindsightExperienceTransformer(DataTransformer):
                     torch.mean(dist.type(torch.float32)))
 
             # get random future state
-            future_idx = last_step_pos + (torch.rand(*dist.shape) *
-                                          (dist + 1)).to(torch.int64)
-            future_ag = buffer.get_field(self._achieved_goal_field,
+           future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(torch.int64)
+           future_idx = buffer.circular(last_step_pos + future_dist)
+           future_ag = buffer.get_field(self._achieved_goal_field,
                                          last_env_ids, future_idx).unsqueeze(1)
 
             # relabel desired goal
@@ -794,6 +794,9 @@ class HindsightExperienceTransformer(DataTransformer):
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_after_relabel",
                 torch.mean(relabeled_rewards[her_indices][:-1]))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".future_distance",
+                torch.mean(future_dist.float()))
         # assert reward function is the same as used by the environment.
         if not torch.allclose(relabeled_rewards[non_her_indices],
                               result.reward[non_her_indices]):
@@ -817,7 +820,7 @@ class HindsightExperienceTransformer(DataTransformer):
         result = result._replace(reward=relabeled_rewards)
         if alf.get_default_device() != buffer.device:
             result, info = convert_device((result, info))
-        info = info._replace(replay_buffer=buffer)
+        info = info._replace(replay_buffer=buffer, future_distance=future_dist)
         result = alf.data_structures.add_batch_info(result, info)
         return result
 
