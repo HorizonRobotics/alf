@@ -43,7 +43,7 @@ DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
     "DdpgInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic"
+        "actor_loss", "critic", "batch_info"
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
@@ -338,7 +338,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 discount=inputs.discount,
                 action_distribution=policy_step.output,
                 critic=critic_info,
-                actor_loss=policy_step.info))
+                actor_loss=policy_step.info,
+                batch_info=rollout_info.batch_info))
 
     def calc_loss(self, info: DdpgInfo):
         critic_losses = [None] * self._num_critic_replicas
@@ -364,6 +365,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss=critic_loss + actor_loss.loss,
             priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
+
+    def preprocess_experience(self, exp, rollout_info, batch_info):
+        """Add batch_info into rollout_info.
+        """
+        batch_info = batch_info._replace(
+            replay_buffer=(), importance_weights=())
+        batch_info = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
+        return exp, rollout_info._replace(batch_info=batch_info)
 
     def after_update(self, root_inputs, info: DdpgInfo):
         self._update_target()

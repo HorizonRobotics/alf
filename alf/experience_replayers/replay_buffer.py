@@ -29,16 +29,20 @@ from alf.utils import checkpoint_utils
 
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
-BatchInfo = namedtuple(
-    "BatchInfo",
-    ["env_ids", "positions", "importance_weights", "replay_buffer", "future_distance"],
-    default_value=())
+# her (Tensor): of shape (batch_size, ) indicating which transitions are relabeled
+#   with hindsight.
 # future_distance (Tensor): of shape (batch_size, batch_length), is the distance from
 #   the transition's end state to the sampled future state in terms of number of
 #   environment steps.
+BatchInfo = namedtuple(
+    "BatchInfo", [
+        "env_ids", "positions", "importance_weights", "replay_buffer", "her",
+        "future_distance"
+    ],
+    default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class ReplayBuffer(RingBuffer):
     """Replay buffer with RingBuffer as implementation.
 

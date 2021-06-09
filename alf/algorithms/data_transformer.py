@@ -760,8 +760,9 @@ class HindsightExperienceTransformer(DataTransformer):
             (her_indices, ) = torch.where(her_cond)
             (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
 
-            last_step_pos = start_pos[her_indices] + batch_length - 1
-            last_env_ids = env_ids[her_indices]
+            has_her = torch.any(her_cond)
+            last_step_pos = start_pos + batch_length - 1
+            last_env_ids = env_ids
             # Get x, y indices of LAST steps
             dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
             if alf.summary.should_record_summaries():
@@ -770,33 +771,35 @@ class HindsightExperienceTransformer(DataTransformer):
                     torch.mean(dist.type(torch.float32)))
 
             # get random future state
-           future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(torch.int64)
-           future_idx = buffer.circular(last_step_pos + future_dist)
-           future_ag = buffer.get_field(self._achieved_goal_field,
+            future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(
+                torch.int64)
+            future_idx = buffer.circular(last_step_pos + future_dist)
+            future_ag = buffer.get_field(self._achieved_goal_field,
                                          last_env_ids, future_idx).unsqueeze(1)
 
             # relabel desired goal
             result_desired_goal = alf.nest.get_field(result,
                                                      self._desired_goal_field)
-            relabed_goal = result_desired_goal.clone()
+            relabeled_goal = result_desired_goal.clone()
             her_batch_index_tuple = (her_indices.unsqueeze(1),
                                      torch.arange(batch_length).unsqueeze(0))
-            relabed_goal[her_batch_index_tuple] = future_ag
+            if has_her:
+                relabeled_goal[her_batch_index_tuple] = future_ag[her_indices]
 
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-            relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
+            relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
 
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_before_relabel",
                 torch.mean(result.reward[her_indices][:-1]))
-            alf.summary.scalar(
-                "replayer/" + buffer._name + ".reward_mean_after_relabel",
-                torch.mean(relabeled_rewards[her_indices][:-1]))
-            alf.summary.scalar(
-                "replayer/" + buffer._name + ".future_distance",
-                torch.mean(future_dist.float()))
+            if has_her:
+                alf.summary.scalar(
+                    "replayer/" + buffer._name + ".reward_mean_after_relabel",
+                    torch.mean(relabeled_rewards[her_indices][:-1]))
+            alf.summary.scalar("replayer/" + buffer._name + ".future_distance",
+                               torch.mean(future_dist.float()))
         # assert reward function is the same as used by the environment.
         if not torch.allclose(relabeled_rewards[non_her_indices],
                               result.reward[non_her_indices]):
@@ -816,11 +819,12 @@ class HindsightExperienceTransformer(DataTransformer):
             relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
 
         result = alf.nest.transform_nest(
-            result, self._desired_goal_field, lambda _: relabed_goal)
+            result, self._desired_goal_field, lambda _: relabeled_goal)
         result = result._replace(reward=relabeled_rewards)
         if alf.get_default_device() != buffer.device:
             result, info = convert_device((result, info))
-        info = info._replace(replay_buffer=buffer, future_distance=future_dist)
+        info = info._replace(
+            her=her_cond, replay_buffer=buffer, future_distance=future_dist)
         result = alf.data_structures.add_batch_info(result, info)
         return result
 

@@ -158,13 +158,11 @@ class TDLoss(nn.Module):
 
         if self._improve_w_goal_return:
             batch_length, batch_size = returns.shape[:2]
-            her_cond = experience.batch_info.her.unsqueeze(0).expand(
-                batch_length, batch_size)
+            her_cond = info.batch_info.her
             if her_cond != () and torch.any(her_cond):
                 goal_return = torch.pow(
                     self._gamma * torch.ones(her_cond.shape),
-                    experience.batch_info.future_distance.unsqueeze(0).expand(
-                        batch_length, batch_size))
+                    info.batch_info.future_distance)
                 returns_0 = returns
                 # Multi-dim reward:
                 if len(returns.shape) > 2:
