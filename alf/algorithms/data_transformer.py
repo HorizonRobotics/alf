@@ -773,7 +773,7 @@ class HindsightExperienceTransformer(DataTransformer):
             # get random future state
             future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(
                 torch.int64)
-            future_idx = buffer.circular(last_step_pos + future_dist)
+            future_idx = last_step_pos + future_dist
             future_ag = buffer.get_field(self._achieved_goal_field,
                                          last_env_ids, future_idx).unsqueeze(1)
 
