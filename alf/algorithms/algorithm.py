@@ -18,6 +18,7 @@ import copy
 from collections import OrderedDict
 import itertools
 import json
+import numpy as np
 import os
 import psutil
 import torch
@@ -1258,7 +1259,12 @@ class Algorithm(AlgorithmInterface):
 
         for u in range(num_updates):
             if mini_batch_size < batch_size:
-                indices = torch.randperm(batch_size)
+                # here we use numpy random.permutation to generate the permuted
+                # indices, as the cuda version of torch.randperm(n) seems to
+                # have a bug when n is a large number, generating negative or
+                # very large values that cause out of bound kernel error
+                # https://github.com/pytorch/vision/issues/3816
+                indices = torch.as_tensor(np.random.permutation(batch_size))
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
                 if batch_info is not None:
