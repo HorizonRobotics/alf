@@ -1,0 +1,3 @@
+include 'her_fetchpush.gin'
+
+suite_robotics.load.sparse_reward=True

@@ -1,0 +1,3 @@
+include 'her_fetchpush_sparserwd.gin'
+
+TDLoss.improve_w_goal_return=True
