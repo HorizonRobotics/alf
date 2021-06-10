@@ -1259,12 +1259,13 @@ class Algorithm(AlgorithmInterface):
 
         for u in range(num_updates):
             if mini_batch_size < batch_size:
-                # here we use numpy random.permutation to generate the permuted
-                # indices, as the cuda version of torch.randperm(n) seems to
-                # have a bug when n is a large number, generating negative or
-                # very large values that cause out of bound kernel error
-                # https://github.com/pytorch/vision/issues/3816
-                indices = torch.as_tensor(np.random.permutation(batch_size))
+                # here we use the cpu version of torch.randperm(n) to generate
+                # the permuted indices, as the cuda version of torch.randperm(n)
+                # seems to have a bug when n is a large number, generating
+                # negative or very large values that cause out of bound kernel
+                # error: https://github.com/pytorch/pytorch/issues/59756
+                indices = alf.nest.utils.convert_device(
+                    torch.randperm(batch_size, device='cpu'))
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
                 if batch_info is not None:
