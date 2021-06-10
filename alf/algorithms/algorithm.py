@@ -1264,7 +1264,7 @@ class Algorithm(AlgorithmInterface):
                 # seems to have a bug when n is a large number, generating
                 # negative or very large values that cause out of bound kernel
                 # error: https://github.com/pytorch/pytorch/issues/59756
-                indices = torch.as_tensor(
+                indices = alf.nest.utils.convert_device(
                     torch.randperm(batch_size, device='cpu'))
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
