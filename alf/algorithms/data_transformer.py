@@ -821,10 +821,10 @@ class HindsightExperienceTransformer(DataTransformer):
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabeled_goal)
         result = result._replace(reward=relabeled_rewards)
+        info = info._replace(her=her_cond, future_distance=future_dist)
         if alf.get_default_device() != buffer.device:
             result, info = convert_device((result, info))
-        info = info._replace(
-            her=her_cond, replay_buffer=buffer, future_distance=future_dist)
+        info = info._replace(replay_buffer=buffer)
         result = alf.data_structures.add_batch_info(result, info)
         return result
 
