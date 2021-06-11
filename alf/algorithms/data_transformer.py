@@ -23,6 +23,7 @@ from typing import Iterable
 
 import alf
 from alf.data_structures import AlgStep, Experience, namedtuple, StepType, TimeStep
+from alf.environments import suite_socialbot
 from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.nest.utils import convert_device
 from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
@@ -797,19 +798,21 @@ class HindsightExperienceTransformer(DataTransformer):
             # Cut off episode for any goal reached.
             end = reward_achieved
             discount = torch.where(end, torch.tensor(0.), result.discount)
-            step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
+            step_type = torch.where(end, torch.tensor(StepType.LAST),
                                     result.step_type)
-            if sparse_reward:
+            if self._sparse_reward:
                 # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
                 # achieved but env ended episode due to position goal achieved.
                 # -1/0 reward doesn't end episode on achieving position goal, and
                 # doesn't need to do this relabeling.
-                mid = (result.step_type == ds.StepType.LAST
-                       ) & ~reward_achieved & (
-                           result.reward[..., 0] > 0
-                       )  # assumes no multi dim goal reward.
+                goal_reward = result.reward
+                if len(result.reward.shape) > 2:
+                    goal_reward = result.reward[..., 0]
+                mid = (
+                    result.step_type == StepType.LAST) & ~reward_achieved & (
+                        goal_reward > 0)  # assumes no multi dim goal reward.
                 discount = torch.where(mid, torch.tensor(1.), discount)
-                step_type = torch.where(mid, torch.tensor(ds.StepType.MID),
+                step_type = torch.where(mid, torch.tensor(StepType.MID),
                                         step_type)
 
             if alf.summary.should_record_summaries():
@@ -825,7 +828,7 @@ class HindsightExperienceTransformer(DataTransformer):
             result = result._replace(discount=discount)
             result = result._replace(step_type=step_type)
 
-            if sparse_reward:
+            if self._sparse_reward:
                 relabeled_rewards = suite_socialbot.transform_reward_tensor(
                     relabeled_rewards)
 
