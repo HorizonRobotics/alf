@@ -208,11 +208,13 @@ def get_env_load_fn(gin_file):
     assert False, "NO ENV LOAD FN in {}.".format(gin_file)
 
 
-def create_run_yaml(tag):
+def create_run_yaml(tag, gazebo=False):
     out_fn = None
     with open('run.yaml', 'r') as f_in:
         data = f_in.read()
         out_data = data.replace('RUNTAG', tag)
+        out_data = out_data.replace('RUNSCRIPT',
+                                    "run-gazebo.sh" if gazebo else "run.sh")
         out_data = out_data.replace('__gpu_per_worker__', '1')
         alf_v = '0.0.6-mujoco200-cu10'
         out_data = out_data.replace('__alf_version__', alf_v)
@@ -857,7 +859,8 @@ def main(argv):
 
     if FLAGS.cluster:
         os.chdir('/home/users/le.zhao/test_gail/alf_submit/gail')
-        run_yaml = create_run_yaml(run_tag)
+        run_yaml = create_run_yaml(
+            run_tag, gazebo=gin_file_tag in SOCIAL_BOT_GIN_TAGS)
         print("========================================")
         print('Submitting:\n' + command)
         command = 'traincli submit -f {}'.format(run_yaml)
