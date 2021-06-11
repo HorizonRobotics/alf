@@ -17,6 +17,7 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/random_py_environment.py
 """
 import numpy as np
+import torch
 
 import alf.data_structures as ds
 from alf.environments import alf_environment
@@ -42,7 +43,8 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
                  seed=42,
                  render_size=(2, 2, 3),
                  min_duration=0,
-                 max_duration=None):
+                 max_duration=None,
+                 use_tensor_time_step=False):
         """Initializes the environment.
 
         Args:
@@ -65,6 +67,8 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
                 episode during which the episode can not terminate.
             max_duration (int): Optional number of steps after which the episode
                 terminates regarless of the termination probability.
+            use_tensor_time_step (bool): convert all quantities in time_step
+                to torch.tensor if True. Otherwise use numpy data types.
 
         Raises:
             ValueError: If batch_size argument is not None and does not match the
@@ -106,6 +110,8 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         self._max_duration = max_duration
         self._rng = np.random.RandomState(seed)
         self._render_size = render_size
+        self._use_tensor_time_step = use_tensor_time_step
+
         super(RandomAlfEnvironment, self).__init__()
 
     def env_info_spec(self):
@@ -157,7 +163,10 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
 
     def _step(self, action):
         if self._done:
-            return self.reset()
+            time_step = self.reset()
+            if self._use_tensor_time_step:
+                time_step = nest.map_structure(torch.as_tensor, time_step)
+            return time_step
 
         if self._action_spec:
             nest.assert_same_structure(self._action_spec, action)
@@ -192,6 +201,9 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
                 reward,
                 discount=self._discount,
                 env_id=self._env_id)
+
+        if self._use_tensor_time_step:
+            time_step = nest.map_structure(torch.as_tensor, time_step)
 
         return time_step
 

@@ -80,7 +80,7 @@ class AlfEnvironmentBaseWrapperTest(parameterized.TestCase):
         self.assertEqual(1, mock_env.close.call_count)
 
 
-class TimeLimitWrapperTest(alf.test.TestCase):
+class TimeLimitWrapperTest(parameterized.TestCase, alf.test.TestCase):
     def test_limit_duration_wrapped_env_forwards_calls(self):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = alf_gym_wrapper.AlfGymWrapper(cartpole_env)
@@ -114,6 +114,33 @@ class TimeLimitWrapperTest(alf.test.TestCase):
         self.assertTrue(time_step.is_last())
         self.assertNotEqual(None, time_step.discount)
         self.assertNotEqual(0.0, time_step.discount)
+
+    @parameterized.parameters(True, False)
+    def test_all_step_types_same_as_env(self, use_tensor_time_step):
+        obs_spec = ts.BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = ts.BoundedTensorSpec((1, ), torch.int64, -10, 10)
+        env = RandomAlfEnvironment(
+            obs_spec,
+            action_spec,
+            reward_fn=lambda *_: torch.tensor(1.0, dtype=torch.float32),
+            use_tensor_time_step=use_tensor_time_step)
+
+        env = alf_wrappers.AlfEnvironmentBaseWrapper(env)
+        duration = 2
+        env = alf_wrappers.TimeLimit(env, duration)
+
+        env.reset()
+        action = action_spec.sample()
+        step_types = []
+        for i in range(duration):
+            time_step = env.step(action)
+            step_types.append(time_step.step_type)
+
+        self.assertTrue(time_step.is_last())
+        if use_tensor_time_step:
+            self.assertTrue(all(map(torch.is_tensor, step_types)))
+        else:
+            self.assertTrue(all(map(ds._is_numpy_array, step_types)))
 
     def test_extra_env_methods_work(self):
         cartpole_env = gym.make('CartPole-v1')
