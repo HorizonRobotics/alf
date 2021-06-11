@@ -696,6 +696,7 @@ class HindsightExperienceTransformer(DataTransformer):
                  her_proportion=0.8,
                  achieved_goal_field="observation.achieved_goal",
                  desired_goal_field="observation.desired_goal",
+                 sparse_reward=False,
                  reward_fn=l2_dist_close_reward_fn):
         """
         Args:
@@ -704,6 +705,7 @@ class HindsightExperienceTransformer(DataTransformer):
                 exp nest.
             desired_goal_field (str): path to the desired_goal field in the
                 exp nest.
+            sparse_reward (bool): Whether to transform reward from -1/0 to 0/1.
             reward_fn (Callable): function to recompute reward based on
                 achieve_goal and desired_goal.  Default gives reward 0 when
                 L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -715,6 +717,7 @@ class HindsightExperienceTransformer(DataTransformer):
         self._her_proportion = her_proportion
         self._achieved_goal_field = achieved_goal_field
         self._desired_goal_field = desired_goal_field
+        self._sparse_reward = sparse_reward
         self._reward_fn = reward_fn
 
     def transform_timestep(self, timestep: TimeStep, state):
@@ -789,6 +792,42 @@ class HindsightExperienceTransformer(DataTransformer):
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
+
+            reward_achieved = relabeled_rewards >= 0
+            # Cut off episode for any goal reached.
+            end = reward_achieved
+            discount = torch.where(end, torch.tensor(0.), result.discount)
+            step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
+                                    result.step_type)
+            if sparse_reward:
+                # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
+                # achieved but env ended episode due to position goal achieved.
+                # -1/0 reward doesn't end episode on achieving position goal, and
+                # doesn't need to do this relabeling.
+                mid = (result.step_type == ds.StepType.LAST
+                       ) & ~reward_achieved & (
+                           result.reward[..., 0] > 0
+                       )  # assumes no multi dim goal reward.
+                discount = torch.where(mid, torch.tensor(1.), discount)
+                step_type = torch.where(mid, torch.tensor(ds.StepType.MID),
+                                        step_type)
+
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + buffer._name +
+                    ".discount_mean_before_relabel",
+                    torch.mean(result.discount[:, 1:]))
+                alf.summary.scalar(
+                    "replayer/" + buffer._name
+                    + ".discount_mean_after_relabel",
+                    torch.mean(discount[:, 1:]))
+
+            result = result._replace(discount=discount)
+            result = result._replace(step_type=step_type)
+
+            if sparse_reward:
+                relabeled_rewards = suite_socialbot.transform_reward_tensor(
+                    relabeled_rewards)
 
         if alf.summary.should_record_summaries():
             alf.summary.scalar(

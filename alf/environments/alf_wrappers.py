@@ -124,7 +124,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
 
         Args:
             env (AlfEnvironment): An AlfEnvironment instance to wrap.
-            duration (int): time limit, usually set to be the max_eposode_steps
+            duration (int): time limit, usually set to be the max_episode_steps
                 of the environment.
         """
         super(TimeLimit, self).__init__(env)
@@ -145,7 +145,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
         if self._num_steps >= self._duration:
             time_step = time_step._replace(step_type=StepType.LAST)
 
-        if time_step.is_last():
+        if time_step.is_last().any():
             self._num_steps = None
 
         return time_step

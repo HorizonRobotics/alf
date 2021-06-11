@@ -24,7 +24,9 @@ from fasteners.process_lock import InterProcessLock
 import functools
 import gin
 import gym
+import numpy as np
 import socket
+import torch
 
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
@@ -39,10 +41,55 @@ def is_available():
 
 
 @gin.configurable
+def transform_reward(reward, reward_cap=1.):
+    goal_reward = reward
+    if isinstance(reward, (np.ndarray, list)):
+        goal_reward = reward[0]
+    goal_reward = (goal_reward >= 0) * reward_cap
+    if isinstance(reward, (np.ndarray, list)):
+        reward[0] = goal_reward
+    else:
+        reward = goal_reward
+    return reward
+
+
+def transform_reward_tensor(reward):
+    goal_reward = reward
+    if reward.ndim > 2:
+        goal_reward = reward[:, :, 0]
+    goal_reward = torch.where(goal_reward >= 0, torch.ones(()), torch.zeros(
+        ()))
+    if reward.ndim > 2:
+        reward[:, :, 0] = goal_reward
+    else:
+        reward = goal_reward
+    return reward
+
+
+class SparseReward(gym.Wrapper):
+    """Convert the original :math:`-1/0` rewards to :math:`0/1`.
+    """
+
+    def __init__(self, env):
+        gym.Wrapper.__init__(self, env)
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        goal_reward = reward
+        if isinstance(reward, (np.ndarray, list)):
+            goal_reward = reward[0]
+        if goal_reward == 0:
+            done = True
+        reward = transform_reward(reward)
+        return ob, reward, done, info
+
+
+@gin.configurable
 def load(environment_name,
          env_id=None,
          port=None,
          wrap_with_process=False,
+         sparse_reward=False,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
@@ -57,6 +104,7 @@ def load(environment_name,
         env_id (int): (optional) ID of the environment.
         port (int): Port used for the environment
         wrap_with_process (bool): Whether wrap environment in a new process
+        sparse_reward (bool): Whether to use 0/1 instead of -1/0 reward.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): If None the max_episode_steps will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
@@ -84,6 +132,8 @@ def load(environment_name,
 
     def env_ctor(port, env_id=None):
         gym_env = gym_spec.make(port=port)
+        if sparse_reward:
+            gym_env = SparseReward(gym_env)
         return suite_gym.wrap_env(
             gym_env,
             env_id=env_id,
