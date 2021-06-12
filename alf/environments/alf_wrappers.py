@@ -130,6 +130,9 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
         super(TimeLimit, self).__init__(env)
         self._duration = duration
         self._num_steps = None
+        assert self.batch_size is None or self.batch_size == 1, (
+            "does not support batched environment with batch size larger than one"
+        )
 
     def _reset(self):
         self._num_steps = 0
@@ -143,7 +146,12 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
 
         self._num_steps += 1
         if self._num_steps >= self._duration:
-            time_step = time_step._replace(step_type=StepType.LAST)
+            if _is_numpy_array(time_step.step_type):
+                time_step = time_step._replace(step_type=StepType.LAST)
+            else:
+                time_step = time_step._replace(
+                    step_type=torch.full_like(time_step.step_type, StepType.
+                                              LAST))
 
         if time_step.is_last():
             self._num_steps = None
