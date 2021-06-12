@@ -83,6 +83,8 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
+        assert len(kwargs) > 0, ("**kwargs should not be provided when "
+                                 "'prefix_or_dict' is a str")
         prefix = prefix_or_dict
         configs = dict([(prefix + '.' + k, v) for k, v in kwargs.items()])
     elif isinstance(prefix_or_dict, dict):
@@ -579,7 +581,8 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     else:
         fn_or_cls = _make_wrapper(fn_or_cls, configs, signature, has_self=0)
 
-    if fn_or_cls.__module__ != '<run_path>':
+    if fn_or_cls.__module__ != '<run_path>' and os.environ.get(
+            'ALF_USE_GIN', "1") == "1":
         # If a file is executed using runpy.run_path(), the module name is
         # '<run_path>', which is not an acceptable name by gin.
         return gin.configurable(
