@@ -16,7 +16,7 @@ from functools import partial
 import torch
 
 import alf
-from alf.algorithms.oac_algorithm import OacAlgorithm, OacNormalProjectionNetwork
+from alf.algorithms.oac_algorithm import OacAlgorithm
 from alf.nest.utils import NestConcat
 from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
 from alf.optimizers import Adam, AdamTF
@@ -29,7 +29,7 @@ import sac_conf
 alf.config(
     'create_environment',
     env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+    num_parallel_environments=5)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -38,7 +38,7 @@ actor_network_cls = partial(
     ActorDistributionNetwork,
     fc_layer_params=fc_layer_params,
     continuous_projection_net_ctor=partial(
-        OacNormalProjectionNetwork,
+        NormalProjectionNetwork,
         state_dependent_std=True,
         scale_distribution=True,
         std_transform=clipped_exp))
@@ -50,7 +50,7 @@ alf.config(
     'OacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    explore=False,
+    explore=True,
     explore_delta=6.,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
@@ -66,17 +66,17 @@ alf.config(
     'TrainerConfig',
     initial_collect_steps=10000,
     mini_batch_length=2,
-    unroll_length=1,
+    unroll_length=200,
     unroll_with_grad=True,
     mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_iterations=2500000,
-    num_checkpoints=5,
+    num_updates_per_train_iter=1000,
+    num_iterations=2500,
+    num_checkpoints=1,
     evaluate=True,
-    eval_interval=5000,
-    num_eval_episodes=10,
+    eval_interval=1,
+    num_eval_episodes=5,
     debug_summaries=True,
     random_seed=0,
     summarize_grads_and_vars=True,
-    summary_interval=2000,
+    summary_interval=1,
     replay_buffer_length=1000000)

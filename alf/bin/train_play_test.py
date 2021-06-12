@@ -151,6 +151,11 @@ MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 MBRL_TRAIN_PARAMS = _to_conf_params(MBRL_TRAIN_CONF)
 
+OAC_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
+    'TrainerConfig.unroll_with_grad=True',
+]
+OAC_TRAIN_PARAMS = _to_conf_params(OAC_TRAIN_CONF)
+
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
@@ -611,6 +616,20 @@ class TrainPlayTest(alf.test.TestCase):
         self._test(
             conf_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.ski(SKIP_TODO_MESSAGE)
+    def test_oac_halfcheetah(self):
+        self._test(
+            conf_file='oac_halfcheetah_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_play_params=OAC_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_oac_humanoid(self):
+        self._test(
+            conf_file='oac_humanoid_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OAC_TRAIN_PARAMS)
 
     @classmethod
     def tearDownClass(cls):

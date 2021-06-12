@@ -31,42 +31,6 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
 
 
-class OacNormalProjectionNetwork(NormalProjectionNetwork):
-    """NormalProjectionNetwork for OacAlgorithm. 
-
-    Differences between NormalProjectionNetwork:
-
-    1. If squashed, normal_dist outputs both the squashed_dist and the normal_dist
-    before squash.
-
-    2. Wrap _normal_dist for external use.
-
-    """
-
-    def _normal_dist(self, means, stds):
-        normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
-        if self._scale_distribution:
-            # The transformed distribution can also do reparameterized sampling
-            # i.e., `.has_rsample=True`
-            # Note that in some cases kl_divergence might no longer work for this
-            # distribution! Assuming the same `transforms`, below will work:
-            # ````
-            # kl_divergence(Independent, Independent)
-            #
-            # kl_divergence(TransformedDistribution(Independent, transforms),
-            #               TransformedDistribution(Independent, transforms))
-            # ````
-            squashed_dist = td.TransformedDistribution(
-                base_distribution=normal_dist, transforms=self._transforms)
-            # return squashed_dist
-            return squashed_dist, normal_dist
-        else:
-            return normal_dist
-
-    def normal_dist(self, means, stds):
-        return self._normal_dist(means, stds)
-
-
 @alf.configurable
 class OacAlgorithm(SacAlgorithm):
     """Optimistic Actor Critic algorithm, described in:
@@ -109,14 +73,15 @@ class OacAlgorithm(SacAlgorithm):
         Refer to SacAlgorithm for Args besides the following.
 
         Args:
-            explore (bool): whether to use the explore policy in rollout_step. Only
-                continuous action space is supported when `explore` is True.
+            explore (bool): default is True for OAC algorithm, where 
+                'unroll_with_grad' has to be True in the 'TrainerConfig' 
+                and only continuous action space is supported.
+                When 'explore' is False, OAC is the same as SAC. 
             explore_delta (float): parameter controlling how optimistic in shifting
                 the mean of the target policy to get the mean of the explore policy.
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
         """
-
         super().__init__(
             observation_spec,
             action_spec,
@@ -167,9 +132,12 @@ class OacAlgorithm(SacAlgorithm):
         new_state = SacActionState()
         action_dist, actor_network_state = self._actor_network(
             observation, state=state.actor_network)
-        assert isinstance(action_dist, tuple), (
-            "both squashed dist and original normal dist are expected.")
-        action_dist, normal_dist = action_dist
+        assert isinstance(action_dist, td.TransformedDistribution), (
+            "Squashed distribution is expected from actor_network.")
+        assert isinstance(
+            action_dist.base_dist, dist_utils.DiagMultivariateNormal
+        ), ("the base distribution should be diagonal multivariate normal.")
+        normal_dist = action_dist.base_dist
         unsquashed_mean = normal_dist.mean
         unsquashed_std = normal_dist.stddev
         unsquashed_var = normal_dist.variance
@@ -188,8 +156,12 @@ class OacAlgorithm(SacAlgorithm):
         if explore:
             critic_action = normal_dist.mean.detach().clone()
             critic_action.requires_grad = True
+            transformed_action = critic_action
+            for transform in action_dist.transforms:
+                transformed_action = transform(transformed_action)
             critics, critic_state = self._critic_networks(
-                (observation, critic_action), state=state.critic)
+                (observation, transformed_action), state=state.critic)
+            new_state = new_state._replace(critic=critic_state)
             critics = critics.view(-1)
             q_mean = critics.mean()
             q_std = torch.abs(critics[0] - critics[1]) / 2.0
@@ -197,8 +169,11 @@ class OacAlgorithm(SacAlgorithm):
             dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
                                               dqda, unsquashed_var)
-            action_dist, _ = self._actor_network.projection_net.normal_dist(
-                shifted_mean, unsquashed_std)
+            normal_dist = dist_utils.DiagMultivariateNormal(
+                loc=shifted_mean, scale=unsquashed_std)
+            action_dist = td.TransformedDistribution(
+                base_distribution=normal_dist,
+                transforms=action_dist.transforms)
             action = dist_utils.rsample_action_distribution(action_dist)
         else:
             if eps_greedy_sampling:
