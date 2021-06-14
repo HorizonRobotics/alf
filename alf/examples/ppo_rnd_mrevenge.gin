@@ -22,20 +22,18 @@ create_environment.num_parallel_environments = 128
 
 # RND config
 keep_stacked_frames=1
-encoder/TensorSpec.shape=(%keep_stacked_frames, 84, 84)
 encoder/EncodingNetwork.activation=@torch.tanh
-encoder/EncodingNetwork.input_tensor_spec=@encoder/TensorSpec()
+encoder/EncodingNetwork.input_tensor_spec=@TensorSpec(shape=(%keep_stacked_frames, 84, 84))
 encoder/EncodingNetwork.conv_layer_params = ((64, 5, 5), (64, 2, 2), (64, 2, 2))
 
-target/TensorSpec.shape=(1024,)
 embedding_dim=1000
 
 pred/EncodingNetwork.activation=@torch.tanh
-pred/EncodingNetwork.input_tensor_spec=@target/TensorSpec()
+pred/EncodingNetwork.input_tensor_spec=@TensorSpec(shape=(1024,))
 pred/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
 
 target/EncodingNetwork.activation=@torch.tanh
-target/EncodingNetwork.input_tensor_spec=@target/TensorSpec()
+target/EncodingNetwork.input_tensor_spec=@TensorSpec(shape=(1024,))
 target/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
 
 RNDAlgorithm.encoder_net=@encoder/EncodingNetwork()
