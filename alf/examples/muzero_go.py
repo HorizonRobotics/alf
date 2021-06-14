@@ -26,7 +26,7 @@ def _encode_action(action, height, width):
     return action[..., :-1].reshape(action.shape[0], 1, height, width)
 
 
-@gin.configurable
+@alf.configurable
 class RepresentationNet(alf.networks.Network):
     def __init__(self, input_tensor_spec, num_blocks=16, filters=256):
         super().__init__(input_tensor_spec, name="RepresentationNet")
@@ -74,7 +74,7 @@ class RepresentationNet(alf.networks.Network):
         return out, ()
 
 
-@gin.configurable
+@alf.configurable
 class DynamicsNet(alf.networks.Network):
     def __init__(self, input_tensor_spec, num_blocks=16, filters=256):
         super().__init__(input_tensor_spec, name="DynamicsNet")
@@ -103,7 +103,7 @@ class DynamicsNet(alf.networks.Network):
         return self._model(input), ()
 
 
-@gin.configurable
+@alf.configurable
 class PredictionNet(alf.networks.Network):
     def __init__(self,
                  observation_spec,

@@ -55,7 +55,7 @@ def transform_space(observation_space, field, func):
         space=observation_space, levels=field.split('.') if field else [])
 
 
-@gin.configurable
+@alf.configurable
 class BaseObservationWrapper(gym.ObservationWrapper):
     """Base observation Wrapper
 
@@ -117,7 +117,7 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         raise NotImplementedError("transform_observation is not implemented")
 
 
-@gin.configurable
+@alf.configurable
 class ImageChannelFirst(BaseObservationWrapper):
     """Make images in observations channel_first. """
 
@@ -173,7 +173,7 @@ class ImageChannelFirst(BaseObservationWrapper):
         return np_array.copy()
 
 
-@gin.configurable
+@alf.configurable
 class FrameStack(BaseObservationWrapper):
     """Stack previous `stack_size` frames, applied to Gym env.
 
@@ -252,7 +252,7 @@ class FrameStack(BaseObservationWrapper):
         return super().reset()
 
 
-@gin.configurable
+@alf.configurable
 class FrameSkip(gym.Wrapper):
     """
     Repeat same action n times and return the last observation
@@ -297,7 +297,7 @@ class FrameSkip(gym.Wrapper):
         return getattr(self.env, name)
 
 
-@gin.configurable
+@alf.configurable
 class FrameResize(BaseObservationWrapper):
     def __init__(self, env, width=84, height=84, fields=None):
         """Create a FrameResize instance
@@ -331,7 +331,7 @@ class FrameResize(BaseObservationWrapper):
         return obs
 
 
-@gin.configurable
+@alf.configurable
 class FrameGrayScale(BaseObservationWrapper):
     """Gray scale image observation"""
 
@@ -357,7 +357,7 @@ class FrameGrayScale(BaseObservationWrapper):
         return np.expand_dims(obs, -1)
 
 
-@gin.configurable
+@alf.configurable
 class DMAtariPreprocessing(gym.Wrapper):
     """
     Derived from tf_agents AtariPreprocessing. Three differences:
@@ -580,7 +580,7 @@ def _nested_space_to_gym_space(space):
         return space
 
 
-@gin.configurable
+@alf.configurable
 class ContinuousActionClip(gym.ActionWrapper):
     """Clip continuous actions according to the action space.
 
@@ -624,7 +624,7 @@ class ContinuousActionClip(gym.ActionWrapper):
         return action
 
 
-@gin.configurable
+@alf.configurable
 class ContinuousActionMapping(gym.ActionWrapper):
     """Map continuous actions to a desired action space, while keeping discrete
     actions unchanged."""
@@ -671,7 +671,7 @@ class ContinuousActionMapping(gym.ActionWrapper):
         return action
 
 
-@gin.configurable
+@alf.configurable
 class NormalizedAction(ContinuousActionMapping):
     """Normalize actions to ``[-1, 1]``. This normalized action space is
     friendly to algorithms that computes action entropy, e.g., SAC."""
@@ -680,7 +680,7 @@ class NormalizedAction(ContinuousActionMapping):
         super().__init__(env, low=-1., high=1.)
 
 
-@gin.configurable
+@alf.configurable
 class NonEpisodicEnv(gym.Wrapper):
     """Make a gym environment non-episodic by always setting ``done=False``."""
 

@@ -49,7 +49,7 @@ DdpgInfo = namedtuple(
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
 
-@gin.configurable
+@alf.configurable
 class DdpgAlgorithm(OffPolicyAlgorithm):
     """Deep Deterministic Policy Gradient (DDPG).
 

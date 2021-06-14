@@ -27,7 +27,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 
 
-@gin.configurable
+@alf.configurable
 class VariationalAutoEncoder(Algorithm):
     r"""VariationalAutoEncoder encodes data into diagonal multivariate gaussian,
     performs sampling with reparametrization trick, and returns KL divergence

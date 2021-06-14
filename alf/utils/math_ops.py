@@ -23,7 +23,7 @@ import alf
 nest_map = alf.nest.map_structure
 
 
-@gin.configurable
+@alf.configurable
 def identity(x):
     """PyTorch doesn't have an identity activation. This can be used as a
     placeholder.
@@ -31,7 +31,7 @@ def identity(x):
     return x
 
 
-@gin.configurable
+@alf.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
     """ Clip value to the range [`clip_value_min`, `clip_value_max`]
     then compute exponential
@@ -69,7 +69,7 @@ def add_ignore_empty(x, y):
         return x + y
 
 
-@gin.configurable
+@alf.configurable
 def swish(x):
     """Swish activation.
 

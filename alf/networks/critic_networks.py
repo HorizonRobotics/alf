@@ -53,7 +53,7 @@ def _check_action_specs_for_critic_networks(
     nest.map_structure(_check_individual, action_spec, action_input_processors)
 
 
-@gin.configurable
+@alf.configurable
 class CriticNetwork(Network):
     """Creates an instance of ``CriticNetwork`` for estimating action-value of
     continuous or discrete actions. The action-value is defined as the expected
@@ -241,7 +241,7 @@ class ParallelCriticNetwork(Network):
         return action_value, state
 
 
-@gin.configurable
+@alf.configurable
 class CriticRNNNetwork(Network):
     """Creates an instance of ``CriticRNNNetwork`` for estimating action-value
     of continuous or discrete actions. The action-value is defined as the

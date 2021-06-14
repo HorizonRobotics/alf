@@ -90,7 +90,7 @@ class ExperienceReplayer(nn.Module):
         """
 
 
-@gin.configurable
+@alf.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
     """
     A simple one-time experience replayer. For each incoming `exp`,

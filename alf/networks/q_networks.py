@@ -27,7 +27,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 import alf.utils.math_ops as math_ops
 
 
-@gin.configurable
+@alf.configurable
 class QNetwork(Network):
     """Create an instance of QNetwork."""
 
@@ -165,7 +165,7 @@ class ParallelQNetwork(Network):
         return action_value, state
 
 
-@gin.configurable
+@alf.configurable
 class QRNNNetwork(Network):
     """Create a RNN-based that outputs temporally correlated q-values."""
 

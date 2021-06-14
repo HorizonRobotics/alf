@@ -30,7 +30,7 @@ from .encoding_networks import EncodingNetwork
 from .projection_networks import NormalProjectionNetwork
 
 
-@gin.configurable
+@alf.configurable
 class DynamicsNetwork(Network):
     """Create an instance of DynamicsNetwork."""
 

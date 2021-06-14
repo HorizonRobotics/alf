@@ -19,7 +19,7 @@ from tf_agents import specs
 import gin.tf
 
 
-@gin.configurable
+@alf.configurable
 class TextEncodeNetwork(network.Network):
     def __init__(self, vocab_size, seq_len, embed_size, lstm_size):
         """Create an instance of `TextEncodeNetwork`
@@ -61,7 +61,7 @@ class TextEncodeNetwork(network.Network):
         return self._model(inputs), network_state
 
 
-@gin.configurable
+@alf.configurable
 class TextDecodeNetwork(network.Network):
     def __init__(self, vocab_size, code_len, seq_len, lstm_size):
         """Create an instance of `TextDecodeNetwork`

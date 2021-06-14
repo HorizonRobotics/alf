@@ -22,7 +22,7 @@ from alf.networks.memory import FIFOMemory
 from alf.nest.utils import NestConcat
 
 
-@gin.configurable
+@alf.configurable
 class TransformerNetwork(PreprocessorNetwork):
     """A Network composed of Memory and TransformerBlock.
 

@@ -29,7 +29,7 @@ GoalState = namedtuple("GoalState", ["goal"], default_value=())
 GoalInfo = namedtuple("GoalInfo", ["goal", "loss"], default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class RandomCategoricalGoalGenerator(RLAlgorithm):
     """Random Goal Generation Module.
 

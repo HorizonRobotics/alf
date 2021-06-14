@@ -24,7 +24,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
 
-@gin.configurable
+@alf.configurable
 class SimpleFC(nn.Linear):
     """
     A simple FC layer that record its output before activation.
@@ -55,7 +55,7 @@ class SimpleFC(nn.Linear):
         return self._activation(self._hidden_neurons)
 
 
-@gin.configurable
+@alf.configurable
 class ReluMLP(Network):
     """
     A MLP with relu activations. Diagonals of input-output Jacobian
@@ -189,13 +189,13 @@ class ReluMLP(Network):
         return J
 
     def compute_vjp(self, inputs, vec):
-        """Compute vector-Jacobian product. 
+        """Compute vector-Jacobian product.
 
         Args:
             inputs (Tensor): size (self._input_size) or (B, self._input_size)
             vec (Tensor): the vector for which the vector-Jacobian product
                 is computed. Must be of size (self._output_size) or
-                (B, self._output_size). 
+                (B, self._output_size).
 
         Returns:
             vjp (Tensor): size (self._input_size) or (B, self._input_size).

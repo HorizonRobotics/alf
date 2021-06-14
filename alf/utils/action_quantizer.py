@@ -21,7 +21,7 @@ import functools
 import torch
 
 
-@gin.configurable
+@alf.configurable
 class ActionQuantizer(object):
     def __init__(self,
                  action_spec,

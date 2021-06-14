@@ -103,7 +103,7 @@ def get_ac_networks(conv_layer_params=None,
     return actor, value
 
 
-@gin.configurable
+@alf.configurable
 def get_actor_network(conv_layer_params=None,
                       num_embedding_dims=None,
                       fc_layer_params=None,
@@ -121,7 +121,7 @@ def get_actor_network(conv_layer_params=None,
     return a
 
 
-@gin.configurable
+@alf.configurable
 def get_value_network(conv_layer_params=None,
                       num_embedding_dims=None,
                       fc_layer_params=None,

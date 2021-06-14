@@ -72,7 +72,7 @@ class ActionScalarization(gym.Wrapper):
         return self.env.step(action)
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          discount=1.0,

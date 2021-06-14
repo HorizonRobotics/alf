@@ -22,7 +22,7 @@ from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
 
 
-@gin.configurable
+@alf.configurable
 def load(game,
          env_args=dict(),
          discount=1.0,

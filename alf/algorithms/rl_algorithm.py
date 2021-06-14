@@ -30,7 +30,7 @@ from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
 
-@gin.configurable
+@alf.configurable
 class RLAlgorithm(Algorithm):
     """Abstract base class for RL Algorithms.
 

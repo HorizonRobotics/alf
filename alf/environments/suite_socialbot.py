@@ -38,7 +38,7 @@ def is_available():
     return social_bot is not None
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          port=None,

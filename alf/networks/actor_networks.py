@@ -30,7 +30,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
 
 
-@gin.configurable
+@alf.configurable
 class ActorNetwork(PreprocessorNetwork):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
@@ -167,7 +167,7 @@ class ActorNetwork(PreprocessorNetwork):
         return output_actions, state
 
 
-@gin.configurable
+@alf.configurable
 class ActorRNNNetwork(PreprocessorNetwork):
     def __init__(self,
                  input_tensor_spec: TensorSpec,

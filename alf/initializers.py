@@ -21,7 +21,7 @@ import torch.nn as nn
 import alf.utils.math_ops as math_ops
 
 
-@gin.configurable
+@alf.configurable
 def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
     """Compute the gain in a numerical way by integration. Assume :math:`y` is
     the output, :math:`w` is the weight (mean=0, std=1), and :math:`x` is the
@@ -73,7 +73,7 @@ def _calculate_gain(nonlinearity, nonlinearity_param=0.01):
         return nn.init.calculate_gain(nonlinearity, nonlinearity_param)
 
 
-@gin.configurable
+@alf.configurable
 def variance_scaling_init(tensor,
                           gain=1.0,
                           mode="fan_in",

@@ -58,7 +58,7 @@ class SparseReward(gym.Wrapper):
         return ob, reward + 1, done, info
 
 
-@gin.configurable
+@alf.configurable
 class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
     """
@@ -84,7 +84,7 @@ class SuccessWrapper(gym.Wrapper):
         return obs, reward, done, info
 
 
-@gin.configurable
+@alf.configurable
 class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
@@ -105,7 +105,7 @@ class ObservationClipWrapper(gym.ObservationWrapper):
             return np.clip(observation, self.min_v, self.max_v)
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          concat_desired_goal=True,

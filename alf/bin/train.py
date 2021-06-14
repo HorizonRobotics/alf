@@ -73,7 +73,7 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
-@gin.configurable
+@alf.configurable
 def train_eval(root_dir):
     """Train and evaluate algorithm
 

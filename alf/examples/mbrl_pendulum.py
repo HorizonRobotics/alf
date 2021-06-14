@@ -18,7 +18,7 @@ import torch
 # implement the respective reward functions for desired environments here
 
 
-@gin.configurable
+@alf.configurable
 def reward_function_for_pendulum(obs, action):
     """Function for computing reward for gym Pendulum environment. It takes
         as input:

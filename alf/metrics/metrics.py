@@ -283,7 +283,7 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
             return [reward[..., i] for i in range(reward.shape[-1])]
 
 
-@gin.configurable
+@alf.configurable
 class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
     """Metric for computing the average discounted episodic return.
     It is calculated according to the following formula:

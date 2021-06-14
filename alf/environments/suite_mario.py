@@ -40,7 +40,7 @@ def is_available():
     return True
 
 
-@gin.configurable
+@alf.configurable
 def load(game,
          env_id=None,
          state=None,
