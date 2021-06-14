@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from collections import deque
-import gin
 import math
 
 import carla

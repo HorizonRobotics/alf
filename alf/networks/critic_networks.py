@@ -13,13 +13,13 @@
 # limitations under the License.
 """CriticNetworks"""
 
-import gin
 import functools
 import math
 
 import torch
 import torch.nn as nn
 
+import alf
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.initializers import variance_scaling_init

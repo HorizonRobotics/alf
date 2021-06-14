@@ -13,9 +13,10 @@
 # limitations under the License.
 """Various function/classes related to loss computation."""
 
-import gin
 import torch
 import torch.nn.functional as F
+
+import alf
 
 
 @alf.configurable

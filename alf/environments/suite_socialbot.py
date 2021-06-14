@@ -22,10 +22,10 @@ except ImportError:
 import contextlib
 from fasteners.process_lock import InterProcessLock
 import functools
-import gin
 import gym
 import socket
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 

@@ -13,10 +13,10 @@
 # limitations under the License.
 
 import functools
-import gin
 import gym
 import numpy as np
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 

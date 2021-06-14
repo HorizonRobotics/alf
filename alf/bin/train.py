@@ -48,7 +48,6 @@ replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_pa
 from absl import app
 from absl import flags
 from absl import logging
-import gin
 import os
 import pathlib
 import torch

@@ -16,7 +16,7 @@ import gin
 import tensorflow as tf
 
 
-@alf.configurable
+@gin.configurable
 def split_observation_fn(o):
 
     dimo = o.get_shape().as_list()[-1]

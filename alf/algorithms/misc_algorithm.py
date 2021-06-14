@@ -30,7 +30,7 @@ from alf.data_structures import ActionTimeStep
 MISCInfo = namedtuple("MISCInfo", ["reward"])
 
 
-@alf.configurable
+@gin.configurable
 class MISCAlgorithm(Algorithm):
     """Mutual Information-based State Control (MISC)
     Author: Rui Zhao

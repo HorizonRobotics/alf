@@ -32,7 +32,7 @@ import functools
 import numpy as np
 import gym
 
-import gin
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 

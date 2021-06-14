@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import math
 
 import torch
 import torch.nn as nn
 
+import alf
 import alf.utils.math_ops as math_ops
 
 

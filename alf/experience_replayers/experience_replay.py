@@ -17,7 +17,6 @@ buffers for off-policy drivers in the future.
 """
 
 import abc
-import gin
 import six
 import torch
 from torch import nn

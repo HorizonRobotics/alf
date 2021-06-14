@@ -17,7 +17,6 @@ from absl import logging
 from collections import deque, OrderedDict
 import copy
 import cv2
-import gin
 import gym
 import numpy as np
 import random

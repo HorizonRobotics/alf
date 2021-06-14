@@ -13,8 +13,6 @@
 # limitations under the License.
 """Variational auto encoder."""
 
-import gin
-
 import torch
 import torch.nn as nn
 

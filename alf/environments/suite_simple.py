@@ -15,8 +15,8 @@
 
 import gym
 import numpy as np
-import gin
 
+import alf
 from alf.environments import suite_gym
 from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.gym_wrappers import FrameSkip, FrameStack

@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from collections import namedtuple
-import gin
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  StepType, TimeStep)

@@ -15,10 +15,11 @@
 
 from absl import logging
 import numpy as np
-import gin
 import functools
 
 import torch
+
+import alf
 
 
 @alf.configurable

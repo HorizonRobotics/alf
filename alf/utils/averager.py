@@ -13,8 +13,6 @@
 # limitations under the License.
 """Classes for doing moving average."""
 
-import gin
-
 import torch
 import torch.nn as nn
 

@@ -14,7 +14,6 @@
 
 from absl import flags
 from absl import logging
-import gin
 import pprint
 import sys
 import torch
@@ -31,8 +30,6 @@ class SuiteCarlaTest(alf.test.TestCase):
         super().setUp()
         if not suite_carla.is_available():
             self.skipTest('suite_carla is not available.')
-        else:
-            gin.clear_config()
 
     def test_carla(self):
         env = suite_carla.CarlaEnvironment(4, 'Town01')

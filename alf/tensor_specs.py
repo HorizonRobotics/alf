@@ -16,10 +16,11 @@
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
 
-import gin
 import numpy as np
 
 import torch
+
+import alf
 
 
 def torch_dtype_to_str(dtype):

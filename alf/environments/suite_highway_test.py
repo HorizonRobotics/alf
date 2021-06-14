@@ -14,7 +14,6 @@
 
 from absl.testing import parameterized
 import functools
-import gin
 import torch
 
 import alf
@@ -29,8 +28,6 @@ class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
         super().setUp()
         if not suite_highway.is_available():
             self.skipTest('suite_highway is not available.')
-        else:
-            gin.clear_config()
 
     def tearDown(self):
         super().tearDown()

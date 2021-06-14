@@ -15,7 +15,6 @@
 
 from absl import logging
 from collections import OrderedDict
-import gin
 import numpy as np
 import sys
 import time

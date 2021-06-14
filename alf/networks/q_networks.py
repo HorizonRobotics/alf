@@ -13,12 +13,12 @@
 # limitations under the License.
 """QNetworks"""
 
-import gin
 import functools
 
 import torch
 import torch.nn as nn
 
+import alf
 import alf.nest as nest
 import alf.layers as layers
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork

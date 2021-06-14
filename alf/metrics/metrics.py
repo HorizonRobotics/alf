@@ -16,7 +16,6 @@
 Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
-import gin
 import torch
 
 import alf

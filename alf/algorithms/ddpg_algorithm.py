@@ -14,7 +14,6 @@
 """Deep Deterministic Policy Gradient (DDPG)."""
 
 import functools
-import gin
 import numpy as np
 
 import torch

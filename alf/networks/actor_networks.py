@@ -13,7 +13,6 @@
 # limitations under the License.
 """ActorNetworks"""
 
-import gin
 import functools
 import math
 

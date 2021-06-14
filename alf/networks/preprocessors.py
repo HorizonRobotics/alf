@@ -23,7 +23,6 @@ input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
 
 """
 import abc
-import gin
 
 import torch
 import torch.nn as nn
