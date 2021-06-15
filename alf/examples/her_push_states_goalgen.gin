@@ -1,14 +1,11 @@
 include 'her_target_navigation_states_goalgen.gin'
 include 'her_push_states.gin'
 
-aux_dim=12
-SubgoalPlanningGoalGenerator.aux_dim=%aux_dim
-decoder/EncodingNetwork.last_layer_size=@vae_output_dims(%observation_spec, %aux_dim)
-
 # Judging whether goals are real, should only be used for tensorboard plotting.
 # 0, 1: obj x, y position; 2 3 4: agent vel, 5, 6, 7: angular vel;
 # 8, 9, 10: agent position; 11, 12, 13: agent pose.
+# if Task.use_obj_pose, 14: obj z position, 15-17: obj roll pitch yaw
 goal_real.pos_dims=[0, 1, 8, 9]
-goal_real.yaw_dims=[13]
+goal_real.yaw_dims=[13, 17]
 goal_real.yaw_speed_dims=[7]
-goal_real.zero_dims=[4, 5, 6, 10, 11, 12]
+goal_real.zero_dims=[4, 5, 6, 10, 11, 12, 14, 15, 16]

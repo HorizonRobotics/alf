@@ -422,6 +422,8 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'hindsight_relabel_fn.add_noise_to_goals',
         "cobj":
             'PushReachTask.close_to_agent',
+        "objpose":
+            'PushReachTask.use_obj_pose',
         'goalgen':
             'Agent.goal_generator',  #@SubgoalPlanningGoalGenerator()
         'numsg':
@@ -501,7 +503,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         'xyaux':
             task + '.xy_only_aux',
         'auxdim':
-            'SubgoalPlanningGoalGenerator.aux_dim',
+            'aux_dim',
         'ctrlaux': [
             'SubgoalPlanningGoalGenerator.control_aux',
             # 'vae_output_spec.control_aux',

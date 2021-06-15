@@ -912,6 +912,11 @@ def goal_real(g,
                   torch.as_tensor(dims).unsqueeze(0))]
 
     g = torch.abs(g)
+    ndim = g.shape[1]
+    pos_dims = list(filter(lambda x: x < ndim, pos_dims))
+    yaw_dims = list(filter(lambda x: x < ndim, yaw_dims))
+    yaw_speed_dims = list(filter(lambda x: x < ndim, yaw_speed_dims))
+    zero_dims = list(filter(lambda x: x < ndim, zero_dims))
     real = torch.all(_get_dims(g, pos_dims) < 5.7 + 0.5, dim=1)
     real &= torch.norm(_get_dims(g, zero_dims), dim=1) < 3
     real &= torch.all(_get_dims(g, yaw_speed_dims) < 7.5, dim=1)

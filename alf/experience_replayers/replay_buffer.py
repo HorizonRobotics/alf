@@ -986,13 +986,16 @@ def hindsight_relabel_fn(buffer,
                 "replayer/" + buffer._name + ".goal_distance_her",
                 torch.mean(
                     torch.norm(result_ag - relabeled_goal, dim=2)[her_cond]))
+        moved_dist = torch.norm(result_ag[:, 0] - result_ag[:, 1], dim=1)
         alf.summary.scalar(
             "replayer/" + buffer._name + ".achieved_goal_moved_dist",
-            torch.mean(torch.norm(result_ag[:, 0] - result_ag[:, 1], dim=1)))
+            torch.mean(moved_dist))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".achieved_goal_moved_dist_max",
+            torch.max(moved_dist))
         alf.summary.scalar(
             "replayer/" + buffer._name + ".achieved_goal_moved_rate",
-            torch.mean((torch.norm(result_ag[:, 0] - result_ag[:, 1], dim=1) >
-                        1.e-5).float()))
+            torch.mean((moved_dist > 1.e-5).float()))
         if torch.any(rollout_cond):
             rollout_reward = relabeled_rewards[~end[:, 0] & rollout_cond]
             alf.summary.scalar(

@@ -317,9 +317,11 @@ def _remove_goal_keys(d):
 
 @gin.configurable
 def vae_output_dims(observation_spec,
-                    aux_dim,
                     include_obs_dims=True,
                     use_projection_net=False):
+    aux_dim = 0
+    if "aux_achieved" in observation_spec:
+        aux_dim = observation_spec["aux_achieved"].numel
     if include_obs_dims:
         dims = [aux_dim]
         dims += [x.numel for x in alf.nest.flatten(observation_spec)]
@@ -412,7 +414,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  min_goal_cost_to_use_plan=0.,
                  speed_goal=False,
                  use_aux_achieved=False,
-                 aux_dim=0,
                  control_aux=False,
                  use_vae_in_target=False,
                  gou_stddev=0.,
@@ -482,7 +483,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             speed_goal (bool): whether goal includes speed pose etc..
             use_aux_achieved (bool): whether to plan auxiliary achieved states like
                 agent's speed, pose etc. in the field ``aux_achieved``.
-            aux_dim (int): number of dimensions to plan for ``aux_achieved`` field.
             control_aux (bool): whether to output aux_achieved as part of goal,
                 in which case, goal generator needs to output aux_desired as part of
                 observation.  This is achieved by concatenating ``desired_goal``
@@ -521,6 +521,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if speed_goal:
             assert not control_aux and not use_aux_achieved
         self._use_aux_achieved = use_aux_achieved
+        aux_dim = 0
+        if "aux_achieved" in observation_spec:
+            aux_dim = observation_spec["aux_achieved"].numel
         self._aux_dim = aux_dim
         self._control_aux = control_aux
         if control_aux:
