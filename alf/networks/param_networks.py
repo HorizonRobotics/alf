@@ -14,10 +14,10 @@
 """Networks with input parameters."""
 
 import functools
-import gin
 import torch
 import torch.nn as nn
 
+import alf
 from alf.initializers import variance_scaling_init
 from alf.layers import ParamFC, ParamConv2D
 from alf.networks.network import Network
@@ -25,7 +25,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
 
-@gin.configurable
+@alf.configurable
 class ParamConvNet(Network):
     def __init__(self,
                  input_channels,
@@ -45,7 +45,7 @@ class ParamConvNet(Network):
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
@@ -113,17 +113,17 @@ class ParamConvNet(Network):
         return self._param_length
 
     def set_parameters(self, theta, reinitialize=False):
-        """Distribute parameters to corresponding layers. 
+        """Distribute parameters to corresponding layers.
 
         Args:
-            theta (torch.Tensor): with shape ``[D] (groups=1)`` 
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
                                         or ``[B, D] (groups=B)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
-                - ``D``: length of parameters, should be self.param_length 
+                - ``D``: length of parameters, should be self.param_length
                 When the shape of inputs is ``[D]``, it will be unsqueezed
                 to ``[1, D]``.
-            reinitialize (bool): whether to reinitialize parameters of 
+            reinitialize (bool): whether to reinitialize parameters of
                 each layer.
         """
         if theta.ndim == 1:
@@ -159,7 +159,7 @@ class ParamConvNet(Network):
         return x, state
 
 
-@gin.configurable
+@alf.configurable
 class ParamNetwork(Network):
     def __init__(self,
                  input_tensor_spec,
@@ -170,9 +170,9 @@ class ParamNetwork(Network):
                  last_layer_param=None,
                  last_activation=None,
                  name="ParamNetwork"):
-        """A network with Fc and conv2D layers that does not maintain its own 
-        network parameters, but accepts them from users. If the given parameter 
-        tensor has an extra batch dimension (first dimension), it performs 
+        """A network with Fc and conv2D layers that does not maintain its own
+        network parameters, but accepts them from users. If the given parameter
+        tensor has an extra batch dimension (first dimension), it performs
         parallel operations.
 
         Args:
@@ -180,18 +180,18 @@ class ParamNetwork(Network):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
@@ -295,17 +295,17 @@ class ParamNetwork(Network):
         return self._param_length
 
     def set_parameters(self, theta, reinitialize=False):
-        """Distribute parameters to corresponding layers. 
+        """Distribute parameters to corresponding layers.
 
         Args:
-            theta (torch.Tensor): with shape ``[D] (groups=1)`` 
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
                                         or ``[B, D] (groups=B)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
-                - ``D``: length of parameters, should be self.param_length 
+                - ``D``: length of parameters, should be self.param_length
                 When the shape of inputs is ``[D]``, it will be unsqueezed
                 to ``[1, D]``.
-            reinitialize (bool): whether to reinitialize parameters of 
+            reinitialize (bool): whether to reinitialize parameters of
                 each layer.
         """
         if theta.ndim == 1:

@@ -13,7 +13,6 @@
 # limitations under the License.
 """MdqCriticNetworks"""
 
-import gin
 import functools
 import math
 import numpy as np
@@ -33,7 +32,7 @@ import alf.utils.math_ops as math_ops
 from alf.utils.action_quantizer import ActionQuantizer
 
 
-@gin.configurable
+@alf.configurable
 class MdqCriticNetwork(Network):
     """Create an instance of MdqCriticNetwork for estimating action-value
     of continuous actions and action sampling used in the MDQ algorithm."""

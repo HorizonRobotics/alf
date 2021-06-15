@@ -13,8 +13,6 @@
 # limitations under the License.
 """Classes for doing moving average."""
 
-import gin
-
 import torch
 import torch.nn as nn
 
@@ -37,7 +35,7 @@ def average_outer_dims(tensor, spec):
     return tensor.mean(dim=list(range(outer_dims)))
 
 
-@gin.configurable
+@alf.configurable
 class WindowAverager(nn.Module):
     def __init__(self,
                  tensor_spec: TensorSpec,
@@ -102,7 +100,7 @@ class WindowAverager(nn.Module):
         return self.get()
 
 
-@gin.configurable
+@alf.configurable
 class ScalarWindowAverager(WindowAverager):
     """WindowAverager for scalar value"""
 
@@ -123,7 +121,7 @@ class ScalarWindowAverager(WindowAverager):
             name=name)
 
 
-@gin.configurable
+@alf.configurable
 class EMAverager(nn.Module):
     r"""Class for exponential moving average. Suppose the update rate is
     :math:`\alpha`, and the quantity to be averaged is denoted as :math:`x`, then
@@ -212,7 +210,7 @@ class EMAverager(nn.Module):
         return self.get()
 
 
-@gin.configurable
+@alf.configurable
 class ScalarEMAverager(EMAverager):
     """EMAverager for scalar value"""
 
@@ -233,7 +231,7 @@ class ScalarEMAverager(EMAverager):
             name=name)
 
 
-@gin.configurable
+@alf.configurable
 class AdaptiveAverager(EMAverager):
     """Averager with adaptive update_rate.
 
@@ -276,7 +274,7 @@ class AdaptiveAverager(EMAverager):
         super().update(tensor)
 
 
-@gin.configurable
+@alf.configurable
 class ScalarAdaptiveAverager(AdaptiveAverager):
     """AdaptiveAverager for scalar value."""
 

@@ -13,12 +13,13 @@
 # limitations under the License.
 """Various function/classes related to loss computation."""
 
-import gin
 import torch
 import torch.nn.functional as F
 
+import alf
 
-@gin.configurable
+
+@alf.configurable
 def element_wise_huber_loss(x, y):
     """Elementwise Huber loss.
 
@@ -31,7 +32,7 @@ def element_wise_huber_loss(x, y):
     return F.smooth_l1_loss(y, x, reduction="none")
 
 
-@gin.configurable
+@alf.configurable
 def element_wise_squared_loss(x, y):
     """Elementwise squared loss.
 

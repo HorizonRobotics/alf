@@ -14,7 +14,6 @@
 
 from absl import logging
 from functools import partial
-import gin
 import torch
 
 import alf

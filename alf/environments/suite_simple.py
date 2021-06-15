@@ -15,14 +15,14 @@
 
 import gym
 import numpy as np
-import gin
 
+import alf
 from alf.environments import suite_gym
 from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
 
 
-@gin.configurable
+@alf.configurable
 def load(game,
          env_args=dict(),
          discount=1.0,

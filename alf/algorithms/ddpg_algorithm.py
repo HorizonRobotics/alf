@@ -14,7 +14,6 @@
 """Deep Deterministic Policy Gradient (DDPG)."""
 
 import functools
-import gin
 import numpy as np
 
 import torch
@@ -49,7 +48,7 @@ DdpgInfo = namedtuple(
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
 
-@gin.configurable
+@alf.configurable
 class DdpgAlgorithm(OffPolicyAlgorithm):
     """Deep Deterministic Policy Gradient (DDPG).
 

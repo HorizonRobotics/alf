@@ -15,13 +15,14 @@
 
 from absl import logging
 import numpy as np
-import gin
 import functools
 
 import torch
 
+import alf
 
-@gin.configurable
+
+@alf.configurable
 class ActionQuantizer(object):
     def __init__(self,
                  action_spec,

@@ -273,7 +273,7 @@ def run_under_record_context(func,
     summary_writer.close()
 
 
-@gin.configurable
+@alf.configurable
 def cast_transformer(observation, dtype=torch.float32):
     """Cast observation
 
@@ -292,7 +292,7 @@ def cast_transformer(observation, dtype=torch.float32):
     return alf.nest.map_structure(_cast, observation)
 
 
-@gin.configurable
+@alf.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max).
 
@@ -590,7 +590,7 @@ def set_global_env(env):
     _env = env
 
 
-@gin.configurable
+@alf.configurable
 def get_raw_observation_spec(field=None):
     """Get the ``TensorSpec`` of observations provided by the global environment.
 
@@ -616,7 +616,7 @@ def set_transformed_observation_spec(spec):
     _transformed_observation_spec = spec
 
 
-@gin.configurable
+@alf.configurable
 def get_observation_spec(field=None):
     """Get the spec of observation transformed by data transformers.
 
@@ -639,7 +639,7 @@ def get_observation_spec(field=None):
     return specs
 
 
-@gin.configurable
+@alf.configurable
 def get_states_shape():
     """Get the tensor shape of internal states of the agent provided by
       the global environment.
@@ -657,7 +657,7 @@ def get_states_shape():
         return 0
 
 
-@gin.configurable
+@alf.configurable
 def get_action_spec():
     """Get the specs of the tensors expected by ``step(action)`` of the global
     environment.
@@ -670,7 +670,7 @@ def get_action_spec():
     return _env.action_spec()
 
 
-@gin.configurable
+@alf.configurable
 def get_reward_spec():
     """Get the specs of the reward tensors of the global environment.
     Returns:
@@ -686,7 +686,7 @@ def get_env():
     return _env
 
 
-@gin.configurable
+@alf.configurable
 def get_vocab_size():
     """Get the vocabulary size of observations provided by the global environment.
 
@@ -705,7 +705,7 @@ def get_vocab_size():
         return 0
 
 
-@gin.configurable
+@alf.configurable
 def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
     """Automatically compute target entropy given the action spec. Currently
     support discrete actions only.
@@ -969,7 +969,7 @@ def mark_rollout(func):
     return _func
 
 
-@gin.configurable
+@alf.configurable
 def flattened_size(spec):
     """Return the size of the vector if spec.shape is flattened.
 

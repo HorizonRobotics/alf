@@ -19,8 +19,6 @@ import time
 import torch
 from typing import Callable
 
-import gin
-
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
@@ -30,7 +28,7 @@ from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
 
-@gin.configurable
+@alf.configurable
 class RLAlgorithm(Algorithm):
     """Abstract base class for RL Algorithms.
 

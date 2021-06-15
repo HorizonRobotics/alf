@@ -15,7 +15,6 @@
 
 from absl import logging
 import functools
-import gin
 import math
 import numpy as np
 import torch
@@ -157,7 +156,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 critic, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
- 
+
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
             voting (str): types of voting results from sampled functions,
@@ -172,7 +171,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                   expensive, but in some cases the convergence seems faster
                   than svgd approaches.
             function_vi (bool): whether to use function value based par_vi.
-            num_train_classes (int): number of classes in training set. 
+            num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -272,7 +271,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         Args:
             train_loader (torch.utils.data.DataLoader): training data loader
             test_loader (torch.utils.data.DataLoader): testing data loader
-            outlier_data_loaders (tuple[torch.utils.data.DataLoader): 
+            outlier_data_loaders (tuple[torch.utils.data.DataLoader):
                 (trainloader, testloader) for outlier datasets
             entropy_regularization (float): weight of particle VI repulsive
                 term.
@@ -546,12 +545,12 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     def eval_uncertainty(self):
         """Function to evaluate the epistemic uncertainty of the ensemble.
         This method computes the following metrics:
-        
+
         * AUROC (AUC) evaluates the separability of model predictions with
           respect to the training data and a prespecified outlier dataset.
           AUC is computed with respect to the entropy in the averaged
-          softmax probabilities, as well as the sum of the variance of 
-          the softmax probabilities over the ensemble. 
+          softmax probabilities, as well as the sum of the variance of
+          the softmax probabilities over the ensemble.
         """
 
         with torch.no_grad():

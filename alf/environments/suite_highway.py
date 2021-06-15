@@ -17,11 +17,11 @@
 """
 
 import collections
-import gin
 import gym
 import gym.spaces
 import numpy as np
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, gym_wrappers, process_environment
 
 try:
@@ -72,7 +72,7 @@ class ActionScalarization(gym.Wrapper):
         return self.env.step(action)
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          discount=1.0,

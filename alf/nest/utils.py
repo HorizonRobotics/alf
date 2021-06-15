@@ -14,7 +14,6 @@
 """Some nest utils functions."""
 
 import abc
-import gin
 
 import torch
 import torch.nn as nn
@@ -70,7 +69,7 @@ class NestCombiner(abc.ABC, nn.Module):
         return ret
 
 
-@gin.configurable
+@alf.configurable
 class NestConcat(NestCombiner):
     def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
         """A combiner for selecting from the tensors in a nest and then
@@ -106,7 +105,7 @@ class NestConcat(NestCombiner):
             return torch.cat(tensors, dim=self._dim)
 
 
-@gin.configurable
+@alf.configurable
 class NestSum(NestCombiner):
     def __init__(self, average=False, activation=None, name="NestSum"):
         """Add all tensors in a nest together. It assumes that all tensors have
@@ -131,7 +130,7 @@ class NestSum(NestCombiner):
         return self._activation(ret)
 
 
-@gin.configurable
+@alf.configurable
 class NestMultiply(NestCombiner):
     def __init__(self, activation=None, name="NestMultiply"):
         """Element-wise multiply all tensors in a nest. It assumes that all

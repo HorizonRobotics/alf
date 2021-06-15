@@ -41,7 +41,6 @@ You may also want to set a different value of ``--num_test_steps`` to test more 
 from absl import app
 from absl import flags
 from absl import logging
-import gin
 import os
 import tempfile
 import torch

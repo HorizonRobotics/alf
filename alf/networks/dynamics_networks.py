@@ -13,13 +13,14 @@
 # limitations under the License.
 """DynamicsNetwork"""
 
-import gin
 import functools
 import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import alf
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
@@ -30,7 +31,7 @@ from .encoding_networks import EncodingNetwork
 from .projection_networks import NormalProjectionNetwork
 
 
-@gin.configurable
+@alf.configurable
 class DynamicsNetwork(Network):
     """Create an instance of DynamicsNetwork."""
 

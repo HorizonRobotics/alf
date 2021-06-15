@@ -39,7 +39,6 @@ Make sure you are using python3.7
 
 from collections import OrderedDict
 from absl import logging
-import gin
 import math
 import numpy as np
 import os
@@ -1064,9 +1063,6 @@ def _exec(command):
     ret = stream.read()
     stream.close()
     return ret
-
-
-gin.constant('CarlaEnvironment.REWARD_DIMENSION', Player.REWARD_DIMENSION)
 
 
 @alf.configurable

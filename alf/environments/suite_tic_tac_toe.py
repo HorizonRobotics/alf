@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import torch
 
 import alf
@@ -178,7 +177,7 @@ class TicTacToeEnvironment(AlfEnvironment):
             raise ValueError("Unsupported render mode %s" % mode)
 
 
-@gin.configurable(whitelist=[])
+@alf.configurable(whitelist=[])
 def load(name='', batch_size=1):
     """Load TicTacToeEnvironment
 

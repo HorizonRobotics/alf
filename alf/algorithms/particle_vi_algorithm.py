@@ -13,7 +13,6 @@
 # limitations under the License.
 """A generic generator."""
 
-import gin
 import numpy as np
 import torch
 
@@ -87,7 +86,7 @@ class ParVIAlgorithm(Algorithm):
                 critic, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
- 
+
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -392,7 +391,7 @@ class ParVIAlgorithm(Algorithm):
                      entropy_regularization,
                      transform_func=None):
         """
-        Compute particle gradients via minmax svgd (Fisher Neural Sampler). 
+        Compute particle gradients via minmax svgd (Fisher Neural Sampler).
         """
         if transform_func is not None:
             aug_particles, extra_particles = transform_func(particles)

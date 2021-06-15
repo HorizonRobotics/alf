@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import torch
 import torch.nn as nn
 
@@ -22,7 +21,7 @@ from alf.networks.memory import FIFOMemory
 from alf.nest.utils import NestConcat
 
 
-@gin.configurable
+@alf.configurable
 class TransformerNetwork(PreprocessorNetwork):
     """A Network composed of Memory and TransformerBlock.
 

@@ -18,7 +18,6 @@
 import abc
 import copy
 import functools
-import gin
 import inspect
 import six
 import torch

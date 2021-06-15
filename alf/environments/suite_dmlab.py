@@ -13,10 +13,10 @@
 # limitations under the License.
 
 import functools
-import gin
 import gym
 import numpy as np
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
@@ -35,7 +35,7 @@ def is_available():
     return deepmind_lab is not None
 
 
-@gin.configurable
+@alf.configurable
 def action_discretize(action_spec,
                       look_left_right_pixels_per_frame=(-20, 20),
                       look_down_up_pixels_per_frame=(-10, 10),
@@ -124,7 +124,7 @@ def action_discretize(action_spec,
     return actions
 
 
-@gin.configurable
+@alf.configurable
 class DeepmindLabEnv(gym.Env):
     metadata = {'render.modes': ['rgb_array']}
 
@@ -190,7 +190,7 @@ class DeepmindLabEnv(gym.Env):
             super().render(mode=mode)  # just raise an exception
 
 
-@gin.configurable
+@alf.configurable
 def load(scene,
          env_id=None,
          discount=1.0,

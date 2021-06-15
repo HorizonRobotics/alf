@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from collections import namedtuple
-import gin
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  StepType, TimeStep)
@@ -30,7 +30,7 @@ DynamicsState = namedtuple(
 DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"], default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class DynamicsLearningAlgorithm(Algorithm):
     """Base Dynamics Learning Module
 
@@ -160,7 +160,7 @@ class DynamicsLearningAlgorithm(Algorithm):
         return LossInfo(scalar_loss=scalar_loss.loss, extra=scalar_loss.loss)
 
 
-@gin.configurable
+@alf.configurable
 class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
     """Deterministic Dynamics Learning Module
 
@@ -354,7 +354,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         return AlgStep(output=(), state=state, info=info)
 
 
-@gin.configurable
+@alf.configurable
 class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
     """Stochastic Dynamics Learning Module
 

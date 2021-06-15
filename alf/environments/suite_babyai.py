@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import gym
 import numpy as np
 import re
@@ -249,6 +248,3 @@ class BabyAIWrapper(gym.Wrapper):
                 observation['mission'] = np.int64(0)
 
         return observation
-
-
-gin.constant('BabyAIWrapper.VOCAB_SIZE', BabyAIWrapper.VOCAB_SIZE)

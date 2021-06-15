@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import functools
-import gin
 import gym
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.gym_wrappers import FrameSkip
 from alf.environments.mario_wrappers import MarioXReward, \
@@ -40,7 +40,7 @@ def is_available():
     return True
 
 
-@gin.configurable
+@alf.configurable
 def load(game,
          env_id=None,
          state=None,

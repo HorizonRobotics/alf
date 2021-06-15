@@ -22,10 +22,10 @@ except ImportError:
 import contextlib
 from fasteners.process_lock import InterProcessLock
 import functools
-import gin
 import gym
 import socket
 
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
@@ -38,7 +38,7 @@ def is_available():
     return social_bot is not None
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          port=None,

@@ -48,7 +48,6 @@ replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_pa
 from absl import app
 from absl import flags
 from absl import logging
-import gin
 import os
 import pathlib
 import torch
@@ -73,7 +72,7 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
-@gin.configurable
+@alf.configurable
 def train_eval(root_dir):
     """Train and evaluate algorithm
 

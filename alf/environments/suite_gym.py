@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import collections
-import gin
 import gym
 import gym.spaces
 
