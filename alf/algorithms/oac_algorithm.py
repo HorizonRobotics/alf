@@ -162,9 +162,9 @@ class OacAlgorithm(SacAlgorithm):
             critics, critic_state = self._critic_networks(
                 (observation, transformed_action), state=state.critic)
             new_state = new_state._replace(critic=critic_state)
-            critics = critics.view(-1)
-            q_mean = critics.mean()
-            q_std = torch.abs(critics[0] - critics[1]) / 2.0
+            assert critics.ndim == 2
+            q_mean = critics.mean(dim=1)
+            q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
             q_ub = q_mean + self._beta_ub * q_std
             dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,

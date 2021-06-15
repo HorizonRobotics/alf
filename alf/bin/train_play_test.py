@@ -617,7 +617,7 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.ski(SKIP_TODO_MESSAGE)
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_oac_halfcheetah(self):
         self._test(
             conf_file='oac_halfcheetah_conf.py',

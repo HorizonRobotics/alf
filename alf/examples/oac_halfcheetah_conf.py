@@ -29,7 +29,7 @@ import sac_conf
 alf.config(
     'create_environment',
     env_name="HalfCheetah-v2",
-    num_parallel_environments=5)
+    num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -66,17 +66,17 @@ alf.config(
     'TrainerConfig',
     initial_collect_steps=10000,
     mini_batch_length=2,
-    unroll_length=200,
+    unroll_length=1000,
     unroll_with_grad=True,
     mini_batch_size=256,
     num_updates_per_train_iter=1000,
     num_iterations=2500,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=1,
+    eval_interval=10,
     num_eval_episodes=5,
-    debug_summaries=True,
+    debug_summaries=False,
     random_seed=0,
-    summarize_grads_and_vars=True,
+    summarize_grads_and_vars=False,
     summary_interval=1,
     replay_buffer_length=1000000)
