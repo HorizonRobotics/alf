@@ -246,7 +246,7 @@ class ProcessEnvironment(object):
         """
         try:
             alf.set_default_device("cpu")
-            env = env_constructor(env_id)
+            env = env_constructor(env_id=env_id)
             action_spec = env.action_spec()
             conn.send(self._READY)  # Ready.
             while True:

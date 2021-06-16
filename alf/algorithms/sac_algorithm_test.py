@@ -109,9 +109,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_size=64,
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
-            clear_replay_buffer=False,
-            num_envs=1,
-        )
+            clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
         env = env_class(
@@ -154,6 +152,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             critic_network_cls=critic_network,
             use_parallel_network=use_parallel_network,
             use_entropy_reward=reward_dim == 1,
+            epsilon_greedy=0.1,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
@@ -190,7 +189,6 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = PolicyUnittestEnv
 
@@ -213,6 +211,7 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             action_spec=action_spec,
             q_network_cls=q_network,
             use_parallel_network=use_parallel_network,
+            epsilon_greedy=0.1,
             env=env,
             config=config,
             critic_optimizer=alf.optimizers.Adam(lr=1e-3),
@@ -248,7 +247,6 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = MixedPolicyUnittestEnv
 
@@ -284,6 +282,7 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
             actor_network_cls=actor_network,
             q_network_cls=q_network,
             use_parallel_network=use_parallel_network,
+            epsilon_greedy=0.1,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),

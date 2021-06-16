@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from collections import deque
-import gin
 import math
 
 import carla
@@ -71,7 +70,7 @@ class PIDController(object):
         self._integral = 0.
 
 
-@gin.configurable(blacklist=['vehicle', 'step_time'])
+@alf.configurable(blacklist=['vehicle', 'step_time'])
 class VehicleController(object):
     """A simple vehicle controller using PID controller."""
 

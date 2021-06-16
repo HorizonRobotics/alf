@@ -13,8 +13,6 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
-import gin
-
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
@@ -28,7 +26,11 @@ ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
 
 ActorCriticInfo = namedtuple(
-    "ActorCriticInfo", ["action_distribution", "value"], default_value=())
+    "ActorCriticInfo", [
+        "step_type", "discount", "reward", "action", "action_distribution",
+        "value"
+    ],
+    default_value=())
 
 
 @alf.configurable
@@ -41,6 +43,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
+                 epsilon_greedy=None,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,
@@ -58,6 +61,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
                 Algorithm.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -78,7 +86,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (torch.optim.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
-            """
+        """
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         value_network = value_network_ctor(input_tensor_spec=observation_spec)
@@ -107,33 +119,38 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def predict_step(self, time_step: TimeStep, state: ActorCriticState,
-                     epsilon_greedy):
+    def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
         action_dist, actor_state = self._actor_network(
-            time_step.observation, state=state.actor)
+            inputs.observation, state=state.actor)
 
-        action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        action = dist_utils.epsilon_greedy_sample(action_dist,
+                                                  self._epsilon_greedy)
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout_step(self, time_step: TimeStep, state: ActorCriticState):
+    def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
         value, value_state = self._value_network(
-            time_step.observation, state=state.value)
+            inputs.observation, state=state.value)
 
         action_distribution, actor_state = self._actor_network(
-            time_step.observation, state=state.actor)
+            inputs.observation, state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
-                value=value, action_distribution=action_distribution))
+                action=common.detach(action),
+                value=value,
+                step_type=inputs.step_type,
+                reward=inputs.reward,
+                discount=inputs.discount,
+                action_distribution=action_distribution))
 
-    def calc_loss(self, experience, train_info: ActorCriticInfo):
+    def calc_loss(self, info: ActorCriticInfo):
         """Calculate loss."""
-        return self._loss(experience, train_info)
+        return self._loss(info)

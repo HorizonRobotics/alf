@@ -13,20 +13,18 @@
 # limitations under the License.
 
 import functools
-import gin
-import hashlib
+import numbers
 import numpy as np
 import math
 import torch
 import torch.distributions as td
 from torch.distributions import constraints
+from torch.distributions.distribution import Distribution
 import torch.nn as nn
 
 import alf
 import alf.nest as nest
-import alf.nest.utils as nest_utils
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import common, spec_utils
 
 
 def get_invertable(cls):
@@ -56,6 +54,171 @@ ExpTransform = get_invertable(td.ExpTransform)
 PowerTransform = get_invertable(td.PowerTransform)
 SigmoidTransform = get_invertable(td.SigmoidTransform)
 SoftmaxTransform = get_invertable(td.SoftmaxTransform)
+
+
+@alf.configurable
+class Softplus(td.Transform):
+    r"""Transform via the mapping :math:`\text{Softplus}(x) = \log(1 + \exp(x))`.
+
+    Code adapted from `pyro <https://docs.pyro.ai/en/latest/_modules/pyro/distributions/transforms/softplus.html>`_
+    and `tensorflow <https://github.com/tensorflow/probability/blob/v0.12.2/tensorflow_probability/python/bijectors/softplus.py#L61-L189>`_.
+    """
+    domain = constraints.real
+    codomain = constraints.positive
+    bijective = True
+    sign = +1
+
+    def __init__(self, hinge_softness=1.):
+        """
+        Args:
+            hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                0 to identity.
+        """
+        super().__init__(cache_size=1)
+        self._hinge_softness = float(hinge_softness)
+        assert self._hinge_softness > 0, "Must be a positive softness number!"
+
+    def __eq__(self, other):
+        return (isinstance(other, Softplus)
+                and self._hinge_softness == other._hinge_softness)
+
+    def _call(self, x):
+        return nn.functional.softplus(x, beta=1. / self._hinge_softness)
+
+    def _inverse(self, y):
+        return (y / self._hinge_softness).expm1().log() * self._hinge_softness
+
+    def log_abs_det_jacobian(self, x, y):
+        return -nn.functional.softplus(-x / self._hinge_softness)
+
+
+@alf.configurable
+def Softlower(low, hinge_softness=1.):
+    """Create a Softlower transform by composing the Softplus and Affine
+    transforms. Mathematically, ``softlower(x, low) = softplus(x - low) + low``.
+
+    Args:
+        low (float|Tensor): the lower bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to identity.
+    """
+    return td.transforms.ComposeTransform([
+        AffineTransform(loc=-low, scale=1.),
+        Softplus(hinge_softness=hinge_softness),
+        AffineTransform(loc=low, scale=1.)
+    ])
+
+
+@alf.configurable
+def Softupper(high, hinge_softness=1.):
+    """Create a Softupper transform by composing the Softplus and Affine
+    transforms. Mathematically, ``softupper(x, high) = -softplus(high - x) + high``.
+
+    Args:
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                identity to ``high``.
+    """
+    return td.transforms.ComposeTransform([
+        AffineTransform(loc=high, scale=-1.),
+        Softplus(hinge_softness=hinge_softness),
+        AffineTransform(loc=high, scale=-1.)
+    ])
+
+
+@alf.configurable
+def SoftclipTF(low, high, hinge_softness=1.):
+    """Create a Softclip transform by composing Softlower, Softupper, and Affine
+    transforms, adapted from `tensorflow <https://www.tensorflow.org/probability/api_docs/python/tfp/bijectors/SoftClip>`_.
+    Mathematically,
+
+    .. code-block:: python
+
+        clipped = softupper(softlower(x, low), high)
+        softclip(x) = (clipped - high) / (high - softupper(low, high)) * (high - low) + high
+
+    The second scaling step is beause we will have
+    ``softupper(low, high) < low`` due to distortion of softplus, so we need to
+    shrink the interval slightly by ``(high - low) / (high - softupper(low, high))``
+    to preserve the lower bound. Due to this rescaling, the bijector can be mildly
+    asymmetric.
+
+    Args:
+        low (float|Tensor): the lower bound
+        high (float|Tensor): the upper bound
+        hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to ``high``.
+    """
+    if not isinstance(low, torch.Tensor):
+        low = torch.tensor(low)
+    assert torch.all(high > low), "Invalid clipping range"
+
+    # Compute the clipped value of ``low`` upper bounded by ``high``
+    softupper_high_at_low = Softupper(high, hinge_softness=hinge_softness)(low)
+    return td.transforms.ComposeTransform([
+        Softlower(low=low, hinge_softness=hinge_softness),
+        Softupper(high=high, hinge_softness=hinge_softness),  # clipped
+        AffineTransform(loc=-high, scale=1.),
+        AffineTransform(
+            loc=high, scale=(high - low) / (high - softupper_high_at_low))
+    ])
+
+
+@alf.configurable
+class Softclip(td.Transform):
+    r"""Transform via the mapping defined in ``alf.math_ops.softclip()``.
+    Unlike ``SoftclipTF``, this transform is symmetric regarding the lower and
+    upper bound when squashing.
+    """
+    domain = constraints.real
+    codomain = constraints.real
+    bijective = True
+    sign = +1
+
+    def __init__(self, low, high, hinge_softness=1.):
+        """
+        Args:
+            low (float): the lower bound
+            high (float): the upper bound
+            hinge_softness (float): this positive parameter changes the transition
+                slope. A higher softness results in a smoother transition from
+                ``low`` to ``high``.
+        """
+        super().__init__(cache_size=1)
+        self._hinge_softness = float(hinge_softness)
+        assert self._hinge_softness > 0, "Must be a positive softness number!"
+        self._l = float(low)
+        self._h = float(high)
+        self.codomain = constraints.interval(self._l, self._h)
+
+    def __eq__(self, other):
+        return (isinstance(other, Softclip)
+                and self._hinge_softness == other._hinge_softness
+                and self._l == other._l and self._h == other._h)
+
+    def _call(self, x):
+        return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
+
+    def _inverse(self, y):
+        """``y`` should be in ``[self._l, self._h]``. Note that when ``y`` is
+        close to boundaries, this inverse function might have numerical issues.
+        Since we use ``cache_size=1`` in the init function, here we don't clip
+        ``y``.
+        """
+        s = self._hinge_softness
+        return (y + s * (((self._l - y) / s).expm1() / (
+            (y - self._h) / s).expm1()).log())
+
+    def log_abs_det_jacobian(self, x, y):
+        r"""Compute ``log|dy/dx|``.
+        """
+        s = self._hinge_softness
+        return (1 - 1 / (1 + ((x - self._l) / s).exp()) - 1 / (1 + (
+            (self._h - x) / s).exp())).log()
 
 
 @alf.configurable
@@ -205,11 +368,110 @@ class DiagMultivariateNormal(td.Independent):
             loc (Tensor): mean of the distribution
             scale (Tensor): standard deviation. Should have same shape as ``loc``.
         """
-        super().__init__(td.Normal(loc, scale), reinterpreted_batch_ndims=1)
+        # set validate_args to False here to enable the construction of Normal
+        # distribution with zero scale.
+        super().__init__(
+            td.Normal(loc, scale, validate_args=False),
+            reinterpreted_batch_ndims=1)
 
     @property
     def stddev(self):
         return self.base_dist.stddev
+
+
+class Beta(td.Beta):
+    r"""Beta distribution parameterized by ``concentration1`` and ``concentration0``.
+
+    Note: we need to wrap ``td.Beta`` so that ``self.concentration1`` and
+    ``self.concentration0`` are the actual tensors passed in to construct the
+    distribution. This is important in certain situation. For example, if you want
+    to register a hook to process the gradient to ``concentration1`` and ``concentration0``,
+    ``td.Beta.concentration0.register_hook()`` will not work because gradient will
+    not be backpropped to ``td.Beta.concentration0`` since it is sliced from
+    ``td.Dirichlet.concentration`` and gradient will only be backpropped to
+    ``td.Dirichlet.concentration`` instead of ``td.Beta.concentration0`` or
+    ``td.Beta.concentration1``.
+
+    Args:
+        concentration1 (float or Tensor): 1st concentration parameter of the distribution
+            (often referred to as alpha)
+        concentration0 (float or Tensor): 2nd concentration parameter of the distribution
+            (often referred to as beta)
+    """
+
+    def __init__(self, concentration1, concentration0, validate_args=None):
+        self._concentration1 = concentration1
+        self._concentration0 = concentration0
+        super().__init__(concentration1, concentration0, validate_args)
+
+    @property
+    def concentration0(self):
+        return self._concentration0
+
+    @property
+    def concentration1(self):
+        return self._concentration1
+
+
+class DiagMultivariateBeta(td.Independent):
+    def __init__(self, concentration1, concentration0):
+        """Create multivariate independent beta distribution.
+
+        Args:
+            concentration1 (float or Tensor): 1st concentration parameter of the
+                distribution (often referred to as alpha)
+            concentration0 (float or Tensor): 2nd concentration parameter of the
+                distribution (often referred to as beta)
+        """
+        super().__init__(
+            Beta(concentration1, concentration0), reinterpreted_batch_ndims=1)
+
+
+class AffineTransformedDistribution(td.TransformedDistribution):
+    r"""Transform via the pointwise affine mapping :math:`y = \text{loc} + \text{scale} \times x`.
+
+    The reason of not using ``td.TransformedDistribution`` is that we can implement
+    ``entropy``, ``mean``, ``variance`` and ``stddev`` for ``AffineTransforma``.
+    """
+
+    def __init__(self, base_dist: td.Distribution, loc, scale):
+        """
+        Args:
+            loc (Tensor or float): Location parameter.
+            scale (Tensor or float): Scale parameter.
+        """
+        super().__init__(
+            base_distribution=base_dist,
+            transforms=AffineTransform(loc, scale))
+        self.loc = loc
+        self.scale = scale
+
+        # broadcase scale to event_shape if necessary
+        s = torch.ones(base_dist.event_shape) * scale
+        self._log_abs_scale = s.abs().log().sum()
+
+    def entropy(self):
+        """Returns entropy of distribution, batched over batch_shape.
+
+        Returns:
+            Tensor of shape batch_shape.
+        """
+        return self._log_abs_scale + self.base_dist.entropy()
+
+    @property
+    def mean(self):
+        """Returns the mean of the distribution."""
+        return self.scale * self.base_dist.mean() + self.loc
+
+    @property
+    def variance(self):
+        """Returns the variance of the distribution."""
+        raise self.scale**self.scale * self.base_dist.variance()
+
+    @property
+    def stddev(self):
+        """Returns the variance of the distribution."""
+        raise self.scale * self.base_dist.stddev()
 
 
 class StableCauchy(td.Cauchy):
@@ -257,41 +519,92 @@ class DiagMultivariateCauchy(td.Independent):
         return self.base_dist.scale
 
 
-def _builder_independent(base_builder, reinterpreted_batch_ndims, **kwargs):
-    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims)
+def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
+    return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms, **kwargs):
-    return td.TransformedDistribution(base_builder(**kwargs), transforms)
+def _builder_transformed(base_builder, transforms_, **kwargs):
+    return td.TransformedDistribution(base_builder(**kwargs), transforms_)
+
+
+def _get_categorical_builder(obj: td.Categorical):
+    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
+        # This means that obj is constructed using probs
+        return td.Categorical, {'probs': obj.probs}
+    else:
+        return td.Categorical, {'logits': obj.logits}
+
+
+def _get_independent_builder(obj: td.Independent):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_independent, builder,
+                                    obj.reinterpreted_batch_ndims)
+    return new_builder, params
+
+
+def _get_transformed_builder(obj: td.TransformedDistribution):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_transformed, builder,
+                                    obj.transforms)
+    return new_builder, params
+
+
+def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):
+    # 'loc' and 'scale' may conflict with the names in kwargs. So we add suffix '_'.
+    return AffineTransformedDistribution(base_builder(**kwargs), loc_, scale_)
+
+
+def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
+    builder, params = _get_builder(obj.base_dist)
+    new_builder = functools.partial(_builder_affine_transformed, builder,
+                                    obj.loc, obj.scale)
+    return new_builder, params
+
+
+_get_builder_map = {
+    td.Categorical:
+        _get_categorical_builder,
+    td.Normal:
+        lambda obj: (td.Normal, {
+            'loc': obj.mean,
+            'scale': obj.stddev
+        }),
+    StableCauchy:
+        lambda obj: (StableCauchy, {
+            'loc': obj.loc,
+            'scale': obj.scale
+        }),
+    td.Independent:
+        _get_independent_builder,
+    DiagMultivariateNormal:
+        lambda obj: (DiagMultivariateNormal, {
+            'loc': obj.mean,
+            'scale': obj.stddev
+        }),
+    DiagMultivariateCauchy:
+        lambda obj: (DiagMultivariateCauchy, {
+            'loc': obj.loc,
+            'scale': obj.scale
+        }),
+    td.TransformedDistribution:
+        _get_transformed_builder,
+    AffineTransformedDistribution:
+        _get_affine_transformed_builder,
+    Beta:
+        lambda obj: (Beta, {
+            'concentration1': obj.concentration1,
+            'concentration0': obj.concentration0
+        }),
+    DiagMultivariateBeta:
+        lambda obj: (DiagMultivariateBeta, {
+            'concentration1': obj.base_dist.concentration1,
+            'concentration0': obj.base_dist.concentration0
+        }),
+}
 
 
 def _get_builder(obj):
-    if type(obj) == td.Categorical:
-        if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
-            # This means that obj is constructed using probs
-            return td.Categorical, {'probs': obj.probs}
-        else:
-            return td.Categorical, {'logits': obj.logits}
-    elif type(obj) == td.Normal:
-        return td.Normal, {'loc': obj.mean, 'scale': obj.stddev}
-    elif type(obj) == StableCauchy:
-        return StableCauchy, {'loc': obj.loc, 'scale': obj.scale}
-    elif type(obj) == td.Independent:
-        builder, params = _get_builder(obj.base_dist)
-        new_builder = functools.partial(_builder_independent, builder,
-                                        obj.reinterpreted_batch_ndims)
-        return new_builder, params
-    elif type(obj) == DiagMultivariateNormal:
-        return DiagMultivariateNormal, {'loc': obj.mean, 'scale': obj.stddev}
-    elif type(obj) == DiagMultivariateCauchy:
-        return DiagMultivariateCauchy, {'loc': obj.loc, 'scale': obj.scale}
-    elif isinstance(obj, td.TransformedDistribution):
-        builder, params = _get_builder(obj.base_dist)
-        new_builder = functools.partial(_builder_transformed, builder,
-                                        obj.transforms)
-        return new_builder, params
-    else:
-        raise ValueError("Unsupported value type: %s" % type(obj))
+    return _get_builder_map[type(obj)](obj)
 
 
 def extract_distribution_parameters(dist: td.Distribution):
@@ -576,6 +889,13 @@ def get_mode(dist):
             mode = base_mode
             for transform in dist.transforms:
                 mode = transform(mode)
+    elif isinstance(dist, Beta):
+        alpha = dist.concentration1
+        beta = dist.concentration0
+        mode = torch.where((alpha > 1) & (beta > 1),
+                           (alpha - 1) / (alpha + beta - 2),
+                           torch.where(alpha < beta, torch.zeros(()),
+                                       torch.ones(())))
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))
@@ -613,7 +933,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     :math:`-\log(p(x))` where :math:`x` is an unbiased sample of :math:`p`.
     However, the gradient of :math:`-\log(p(x))` is not an unbiased estimator
     of the gradient of entropy. So we also calculate a value whose gradient is
-    an unbiased estimator of the gradient of entropy. See :doc:`notes/subtleties_of_estimating_entropy`
+    an unbiased estimator of the gradient of entropy. See ``notes/subtleties_of_estimating_entropy.py``
     for detail.
 
     Args:
@@ -695,7 +1015,11 @@ def entropy_with_fallback(distributions, return_sum=True):
     """
 
     def _compute_entropy(dist: td.Distribution):
-        if isinstance(dist, td.TransformedDistribution):
+        if isinstance(dist, AffineTransformedDistribution):
+            entropy, entropy_for_gradient = _compute_entropy(dist.base_dist)
+            entropy = entropy + dist._log_abs_scale
+            entropy_for_gradient = entropy_for_gradient + dist._log_abs_scale
+        elif isinstance(dist, td.TransformedDistribution):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)

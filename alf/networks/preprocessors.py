@@ -23,7 +23,6 @@ input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
 
 """
 import abc
-import gin
 
 import torch
 import torch.nn as nn
@@ -35,7 +34,7 @@ from alf.networks.network import Network
 import alf.utils.math_ops as math_ops
 
 
-@gin.configurable
+@alf.configurable
 class EmbeddingPreprocessor(Network):
     """A preprocessor that converts the input to an embedding vector. This can
     be used when the input is a discrete scalar, or a continuous vector to be

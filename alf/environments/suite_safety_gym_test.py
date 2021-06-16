@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import functools
-import gin
 import torch
 
 import alf
@@ -27,8 +26,6 @@ class SuiteSafetyGymTest(alf.test.TestCase):
         super().setUp()
         if not suite_safety_gym.is_available():
             self.skipTest('suite_safety_gym is not available.')
-        else:
-            gin.clear_config()
 
     def tearDown(self):
         super().tearDown()

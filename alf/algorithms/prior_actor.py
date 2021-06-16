@@ -13,7 +13,6 @@
 # limitations under the License.
 """Prior action policies for KL regularized RL."""
 
-import gin
 import numpy as np
 import torch
 import torch.distributions as td
@@ -21,8 +20,7 @@ from torch.distributions import Categorical, Independent, Uniform
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import AlgStep, Experience, TimeStep, StepType
-from alf.networks import Network
+from alf.data_structures import AlgStep, TimeStep, StepType
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
@@ -75,38 +73,7 @@ class TruncatedNormal(td.Distribution):
         raise NotImplementedError()
 
 
-class MixtureSameFamily(td.Distribution):
-    """
-    ``MixtureSameFamily`` was introduced in pytorch 1.5. Since we are currently
-    using pytorch 1.4, here we only implement a subset of its functions. See
-    `<https://pytorch.org/docs/stable/distributions.html#mixturesamefamily>`_
-    for full description of it.
-
-    TODO: remove this after upgrading to pytorch 1.5.
-    """
-
-    def __init__(self,
-                 mixture_distribution,
-                 component_distribution,
-                 validate_args=None):
-        self._mixture_distribution = mixture_distribution
-        self._component_distribution = component_distribution
-        event_shape = component_distribution.event_shape
-        self._event_ndims = len(event_shape)
-        super().__init__(
-            batch_shape=component_distribution.batch_shape[:-1],
-            event_shape=event_shape,
-            validate_args=validate_args)
-
-    def log_prob(self, x):
-        """Log-probability of sample ``x``."""
-        x = x.unsqueeze(-1 - self._event_ndims)
-        log_prob_x = self._component_distribution.log_prob(x)  # [S, B, k]
-        log_mix_prob = self._mixture_distribution.logits  # [B, k]
-        return torch.logsumexp(log_prob_x + log_mix_prob, dim=-1)  # [S, B]
-
-
-@gin.configurable
+@alf.configurable
 class SameActionPriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
@@ -186,23 +153,23 @@ class SameActionPriorActor(Algorithm):
         components = TruncatedNormal(loc, spec['scale'], spec['minimum'],
                                      spec['maximum'])
         return Independent(
-            base_distribution=MixtureSameFamily(mix, components),
+            base_distribution=td.MixtureSameFamily(mix, components),
             reinterpreted_batch_ndims=prev_action.ndim - 1)
 
-    def predict_step(self, time_step: TimeStep, state):
+    def predict_step(self, inputs: TimeStep, state):
         """Calculate the disribution of the next action.
 
         Args:
-            time_step (TimeStep): time step structure
+            inputs (TimeStep): time step structure
         Returns:
             AlgStep:
             - output (Distribution): the distribution of the action
             - state: ()
             - info: ()
         """
-        flat_prev_action = alf.nest.flatten(time_step.prev_action)
+        flat_prev_action = alf.nest.flatten(inputs.prev_action)
         dists = [
-            self._make_dist(time_step.step_type, prev_action,
+            self._make_dist(inputs.step_type, prev_action,
                             spec) for prev_action, spec in zip(
                                 flat_prev_action, self._prepared_specs)
         ]
@@ -211,14 +178,14 @@ class SameActionPriorActor(Algorithm):
             state=(),
             info=())
 
-    def rollout_step(self, time_step: TimeStep, state):
-        return self.predict_step(time_step, state)
+    def rollout_step(self, inputs: TimeStep, state):
+        return self.predict_step(inputs, state)
 
-    def train_step(self, exp: Experience, state):
-        return self.predict_step(exp, state)
+    def train_step(self, inputs: TimeStep, state, unroll_info=()):
+        return self.predict_step(inputs, state)
 
 
-@gin.configurable
+@alf.configurable
 class UniformPriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
@@ -268,10 +235,10 @@ class UniformPriorActor(Algorithm):
             base_distribution=Uniform(low, high),
             reinterpreted_batch_ndims=prev_action.ndim - 1)
 
-    def predict_step(self, time_step: TimeStep, state):
-        flat_prev_action = alf.nest.flatten(time_step.prev_action)
+    def predict_step(self, inputs: TimeStep, state):
+        flat_prev_action = alf.nest.flatten(inputs.prev_action)
         dists = [
-            self._make_dist(time_step.step_type, prev_action,
+            self._make_dist(inputs.step_type, prev_action,
                             spec) for prev_action, spec in zip(
                                 flat_prev_action, self._prepared_specs)
         ]
@@ -280,8 +247,8 @@ class UniformPriorActor(Algorithm):
             state=(),
             info=())
 
-    def rollout_step(self, time_step: TimeStep, state):
-        return self.predict_step(time_step, state)
+    def rollout_step(self, inputs: TimeStep, state):
+        return self.predict_step(inputs, state)
 
-    def train_step(self, exp: Experience, state):
-        return self.predict_step(exp, state)
+    def train_step(self, inputs: TimeStep, state, rollout_info=None):
+        return self.predict_step(inputs, state)

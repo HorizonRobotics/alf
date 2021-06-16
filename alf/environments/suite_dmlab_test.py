@@ -14,7 +14,6 @@
 
 from absl.testing import parameterized
 import functools
-import gin
 
 import alf
 from alf.environments import gym_wrappers, suite_dmlab, alf_environment
@@ -26,8 +25,6 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         super().setUp()
         if not suite_dmlab.is_available():
             self.skipTest('suite_dmlab is not available.')
-        else:
-            gin.clear_config()
 
     def tearDown(self):
         super().tearDown()
@@ -36,20 +33,20 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
         dict(
             scene='nav_maze_random_goal_03',
-            action_config=['action_discretize.jump=()'],
+            action_config={'action_discretize.jump': ()},
             action_length=9),
         dict(
             scene='lt_chasm',
-            action_config=[
-                'action_discretize.look_down_up_pixels_per_frame="range(-90,90,5)"',
-                'action_discretize.crouch=()'
-            ],
+            action_config={
+                'action_discretize.look_down_up_pixels_per_frame':
+                    range(-90, 90, 5),
+                'action_discretize.crouch': ()
+            },
             action_length=42),
     )
     def test_action_discretize(self, scene, action_config, action_length):
-        with gin.unlock_config():
-            gin.clear_config()
-            gin.parse_config(action_config)
+        alf.reset_configs()
+        alf.pre_config(action_config)
         self._env = suite_dmlab.DeepmindLabEnv(scene=scene)
         self.assertEqual(self._env.action_space.n, action_length)
 

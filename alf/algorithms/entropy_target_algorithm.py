@@ -14,8 +14,6 @@
 """An algorithm for adjusting entropy regularization strength."""
 from absl import logging
 import copy
-import gin
-import math
 import numpy as np
 import torch
 from typing import Callable
@@ -29,7 +27,7 @@ from alf.utils.dist_utils import calc_default_target_entropy, entropy_with_fallb
 from alf.utils.schedulers import ConstantScheduler
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
-EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
+EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
 
 
 @alf.configurable
@@ -151,10 +149,20 @@ class EntropyTargetAlgorithm(Algorithm):
 
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
-        self._slow_update_rate = torch.tensor(slow_update_rate)
-        self._fast_update_rate = torch.tensor(fast_update_rate)
 
-    def rollout_step(self, distribution, step_type, on_policy_training):
+        # need to explicitly specify dtype to be the same as `self._update_rate`
+        # as required by the `torch.where` function later. This was not needed
+        # in lower version of pytorch (e.g. 1.4) as it will cast a np.float64
+        # to torch.float32.
+        self._slow_update_rate = torch.tensor(
+            slow_update_rate, dtype=torch.float32)
+        self._fast_update_rate = torch.tensor(
+            fast_update_rate, dtype=torch.float32)
+
+    def predict_step(self, distribution_and_step_type, state):
+        return AlgStep()
+
+    def rollout_step(self, distribution_and_step_type, state=None):
         """Rollout step.
 
         Args:
@@ -167,12 +175,15 @@ class EntropyTargetAlgorithm(Algorithm):
             AlgStep: ``info`` field is ``LossInfo``, other fields are empty. All
             fields are empty If ``on_policy_training=False``.
         """
-        if on_policy_training:
-            return self.train_step(distribution, step_type)
+        if self.on_policy:
+            return self.train_step(distribution_and_step_type)
         else:
             return AlgStep()
 
-    def train_step(self, distribution, step_type):
+    def train_step(self,
+                   distribution_and_step_type,
+                   state=None,
+                   rollout_info=None):
         """Train step.
 
         Args:
@@ -182,20 +193,21 @@ class EntropyTargetAlgorithm(Algorithm):
         Returns:
             AlgStep: ``info`` field is ``LossInfo``, other fields are empty.
         """
+        distribution, step_type = distribution_and_step_type
         entropy, entropy_for_gradient = entropy_with_fallback(distribution)
         return AlgStep(
             output=(),
             state=(),
             info=EntropyTargetInfo(
+                step_type=step_type,
                 loss=LossInfo(
                     loss=-entropy_for_gradient,
                     extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
-    def calc_loss(self, experience, info: EntropyTargetInfo, valid_mask=None):
+    def calc_loss(self, info: EntropyTargetInfo, valid_mask=None):
         """Calculate loss.
 
         Args:
-            experience (Experience): experience for gradient update
             info (EntropyTargetInfo): for computing loss.
             valid_mask (tensor): valid mask to be applied on time steps.
 
@@ -203,7 +215,7 @@ class EntropyTargetAlgorithm(Algorithm):
             LossInfo:
         """
         loss_info = info.loss
-        mask = (experience.step_type != StepType.LAST).type(torch.float32)
+        mask = (info.step_type != StepType.LAST).type(torch.float32)
         if valid_mask:
             mask = mask * (valid_mask).type(torch.float32)
         entropy = -loss_info.extra.neg_entropy * mask
@@ -395,22 +407,32 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         if alf.nest.is_nested(algs):
             self._nested_algs = alf.nest.utils.make_nested_module(algs)
 
-    def rollout_step(self, distribution, step_type, on_policy_training):
-        if on_policy_training:
-            return self.train_step(distribution, step_type)
+    def predict_step(self, distribution_and_step_type, state):
+        return AlgStep()
+
+    def rollout_step(self, distribution_and_step_type, state):
+        if self.on_policy:
+            return self.train_step(distribution_and_step_type)
         else:
             return AlgStep()
 
-    def train_step(self, distribution, step_type):
+    def train_step(self,
+                   distribution_and_step_type,
+                   state=None,
+                   rollout_info=None):
+        distribution, step_type = distribution_and_step_type
         infos = alf.nest.map_structure(
-            lambda alg, dist: alg.train_step(dist, step_type).info, self._algs,
-            distribution)
-        return AlgStep(output=(), state=(), info=infos)
+            lambda alg, dist: alg.train_step((dist, step_type)).info._replace(
+                step_type=()), self._algs, distribution)
+        return AlgStep(output=(), state=(), info=(step_type, infos))
 
-    def calc_loss(self, experience, info: EntropyTargetInfo, valid_mask=None):
+    def calc_loss(self, info: EntropyTargetInfo, valid_mask=None):
+        step_type, info = info
         info_flattened = alf.nest.flatten_up_to(self._algs, info)
         loss_infos = list(
-            map(lambda alg, inf: alg.calc_loss(experience, inf, valid_mask),
+            map(
+                lambda alg, inf: alg.calc_loss(
+                    inf._replace(step_type=step_type), valid_mask),
                 self._algs_flattened, info_flattened))
         loss = sum(loss_info.loss for loss_info in loss_infos)
         extra = alf.nest.pack_sequence_as(

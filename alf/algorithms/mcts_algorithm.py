@@ -13,7 +13,6 @@
 # limitations under the License.
 """Monte-Carlo Tree Search."""
 
-import gin
 import torch
 import torch.distributions as td
 import torch.nn.functional as F
@@ -138,7 +137,7 @@ MCTSInfo = namedtuple(
     "MCTSInfo", ["candidate_actions", "value", "candidate_action_policy"])
 
 
-@gin.configurable
+@alf.configurable
 class MCTSAlgorithm(OffPolicyAlgorithm):
     r"""Monte-Carlo Tree Search algorithm.
 
@@ -721,7 +720,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
     return p, i
 
 
-@gin.configurable
+@alf.configurable
 def create_atari_mcts(observation_spec, action_spec):
     """Helper function for creating MCTSAlgorithm for atari games."""
 
@@ -748,7 +747,7 @@ def create_atari_mcts(observation_spec, action_spec):
         visit_softmax_temperature_fn=visit_softmax_temperature)
 
 
-@gin.configurable
+@alf.configurable
 class VisitSoftmaxTemperatureByMoves(object):
     def __init__(self, move_temperature_pairs=[(29, 1.0), (10000, 0.0001)]):
         """Scheduling the temperature by move.
@@ -772,7 +771,7 @@ class VisitSoftmaxTemperatureByMoves(object):
         return t
 
 
-@gin.configurable
+@alf.configurable
 def create_board_game_mcts(observation_spec,
                            action_spec,
                            dirichlet_alpha: float,
@@ -804,7 +803,7 @@ def create_board_game_mcts(observation_spec,
         is_two_player_game=True)
 
 
-@gin.configurable
+@alf.configurable
 def create_go_mcts(observation_spec, action_spec, debug_summaries):
     return create_board_game_mcts(
         observation_spec,
@@ -813,7 +812,7 @@ def create_go_mcts(observation_spec, action_spec, debug_summaries):
         debug_summaries=debug_summaries)
 
 
-@gin.configurable
+@alf.configurable
 def create_chess_mcts(observation_spec, action_spec, debug_summaries):
     return create_board_game_mcts(
         observation_spec,
@@ -822,7 +821,7 @@ def create_chess_mcts(observation_spec, action_spec, debug_summaries):
         debug_summaries=debug_summaries)
 
 
-@gin.configurable
+@alf.configurable
 def create_shogi_mcts(observation_spec, action_spec, debug_summaries):
     return create_board_game_mcts(
         observation_spec,
@@ -831,7 +830,7 @@ def create_shogi_mcts(observation_spec, action_spec, debug_summaries):
         debug_summaries=debug_summaries)
 
 
-@gin.configurable
+@alf.configurable
 def create_control_mcts(observation_spec,
                         action_spec,
                         num_simulations=50,
@@ -862,7 +861,7 @@ def create_control_mcts(observation_spec,
         debug_summaries=debug_summaries)
 
 
-@gin.configurable
+@alf.configurable
 class VisitSoftmaxTemperatureByProgress(object):
     def __init__(self,
                  progress_temperature_pairs=[(0.5, 1.0), (0.75, 0.5), (1,

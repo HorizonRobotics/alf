@@ -15,7 +15,6 @@
 
 from absl import logging
 from collections import OrderedDict
-import gin
 import numpy as np
 import sys
 import time
@@ -474,7 +473,7 @@ class GoBoard(object):
         return occupied, suicidal, repeated
 
 
-@gin.configurable(blacklist=['batch_size'])
+@alf.configurable(blacklist=['batch_size'])
 class GoEnvironment(AlfEnvironment):
     """Go environment.
 
@@ -862,7 +861,7 @@ class GoEnvironment(AlfEnvironment):
             raise ValueError("Unsupported render mode: %s" % mode)
 
 
-@gin.configurable(whitelist=[])
+@alf.configurable(whitelist=[])
 def load(name='', batch_size=1):
     """Load GoEnvironment.
 

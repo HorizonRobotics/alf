@@ -94,12 +94,37 @@ def _summary_wrapper(summary_func):
     @functools.wraps(summary_func)
     def wrapper(name, data, step=None, **kwargs):
         if should_record_summaries():
+            if isinstance(data, torch.Tensor):
+                data = data.detach()
             if step is None:
                 step = _global_counter
-            name = _scope_stack[-1] + name
+            if name.startswith('/'):
+                name = name[1:]
+            else:
+                name = _scope_stack[-1] + name
             summary_func(name, data, step, **kwargs)
 
     return wrapper
+
+
+def scope_name():
+    """Get the full name of the current summary scope."""
+    return _scope_stack[-1]
+
+
+def images(name, data, dataformat='NCHW', step=None, walltime=None):
+    """Add image data to summary.
+
+    Args:
+        name (str): Data identifier
+        data (Tensor | numpy.array): image data
+        dataformat (str): one of ('NCHW', 'NHWC', 'CHW', 'HWC', 'HW', 'WH')
+        step (int): Global step value to record. None for using ``get_global_counter()``
+        walltime (float): Optional override default walltime (time.time())
+            seconds after epoch of event
+    """
+    _summary_writer_stack[-1].add_images(
+        name, data, step, walltime=walltime, dataformats=dataformat)
 
 
 @_summary_wrapper
@@ -211,8 +236,7 @@ def get_global_counter():
 
 
 def reset_global_counter():
-    """Reset the global counter to zero
-    """
+    """Reset the global counter to zero."""
     _global_counter.fill(0)
 
 
@@ -250,11 +274,11 @@ def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):
 
     Args:
         summary_dir (str) – Save directory location.
+        flush_secs (int) – How often, in seconds, to flush the pending events
+            and summaries to disk. Default is every 10 seconds.
         max_queue (int) – Size of the queue for pending events and summaries
             before one of the ‘add’ calls forces a flush to disk.
             Default is ten items.
-        flush_secs (int) – How often, in seconds, to flush the pending events
-            and summaries to disk. Default is every 10 seconds.
     Returns:
         SummaryWriter
     """

@@ -15,7 +15,6 @@
 """Test for suite_gym. Adapted from tf_agent suite_gym_test. """
 
 import functools
-import gin
 
 import alf
 from alf.environments import suite_gym
@@ -26,7 +25,6 @@ from alf.environments.alf_environment import AlfEnvironment
 
 class SuiteGymTest(alf.test.TestCase):
     def tearDown(self):
-        gin.clear_config()
         super(SuiteGymTest, self).tearDown()
 
     def test_load_adds_time_limit_steps(self):

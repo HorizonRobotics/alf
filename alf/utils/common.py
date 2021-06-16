@@ -273,7 +273,7 @@ def run_under_record_context(func,
     summary_writer.close()
 
 
-@gin.configurable
+@alf.configurable
 def cast_transformer(observation, dtype=torch.float32):
     """Cast observation
 
@@ -292,7 +292,7 @@ def cast_transformer(observation, dtype=torch.float32):
     return alf.nest.map_structure(_cast, observation)
 
 
-@gin.configurable
+@alf.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max).
 
@@ -590,7 +590,7 @@ def set_global_env(env):
     _env = env
 
 
-@gin.configurable
+@alf.configurable
 def get_raw_observation_spec(field=None):
     """Get the ``TensorSpec`` of observations provided by the global environment.
 
@@ -616,7 +616,7 @@ def set_transformed_observation_spec(spec):
     _transformed_observation_spec = spec
 
 
-@gin.configurable
+@alf.configurable
 def get_observation_spec(field=None):
     """Get the spec of observation transformed by data transformers.
 
@@ -639,7 +639,7 @@ def get_observation_spec(field=None):
     return specs
 
 
-@gin.configurable
+@alf.configurable
 def get_states_shape():
     """Get the tensor shape of internal states of the agent provided by
       the global environment.
@@ -657,7 +657,7 @@ def get_states_shape():
         return 0
 
 
-@gin.configurable
+@alf.configurable
 def get_action_spec():
     """Get the specs of the tensors expected by ``step(action)`` of the global
     environment.
@@ -670,12 +670,23 @@ def get_action_spec():
     return _env.action_spec()
 
 
+@alf.configurable
+def get_reward_spec():
+    """Get the specs of the reward tensors of the global environment.
+    Returns:
+        nested TensorSpec: a spec that describes the shape and dtype of each reward
+        tensor.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env.reward_spec()
+
+
 def get_env():
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env
 
 
-@gin.configurable
+@alf.configurable
 def get_vocab_size():
     """Get the vocabulary size of observations provided by the global environment.
 
@@ -694,7 +705,7 @@ def get_vocab_size():
         return 0
 
 
-@gin.configurable
+@alf.configurable
 def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
     """Automatically compute target entropy given the action spec. Currently
     support discrete actions only.
@@ -767,7 +778,7 @@ def warning_once(msg, *args):
     """
     caller = logging.get_absl_logger().findCaller()
     count = logging._get_next_log_count_per_token(caller)
-    logging.log_if(logging.WARNING, msg, not (count % (1 << 62)), *args)
+    logging.log_if(logging.WARNING, msg, count == 0, *args)
 
 
 def set_random_seed(seed):
@@ -958,7 +969,7 @@ def mark_rollout(func):
     return _func
 
 
-@gin.configurable
+@alf.configurable
 def flattened_size(spec):
     """Return the size of the vector if spec.shape is flattened.
 
@@ -1082,6 +1093,10 @@ def generate_alf_root_snapshot(alf_root, dest_path):
         dest_path (str): the path to generate a snapshot of ALF repo
     """
 
+    def _is_subdir(path, directory):
+        relative = os.path.relpath(path, directory)
+        return not relative.startswith(os.pardir)
+
     def rsync(src, target, includes):
         args = ['rsync', '-rI', '--include=*/']
         args += ['--include=%s' % i for i in includes]
@@ -1090,6 +1105,10 @@ def generate_alf_root_snapshot(alf_root, dest_path):
         # shell=True preserves string arguments
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
+
+    assert not _is_subdir(dest_path, alf_root), (
+        "Snapshot path '%s' is not allowed under ALF root! Use a different one!"
+        % dest_path)
 
     # these files are important for code status
     includes = ["*.py", "*.gin", "*.so", "*.json"]
@@ -1114,3 +1133,9 @@ def get_alf_snapshot_env_vars(root_dir):
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
+
+
+def abs_path(path):
+    """Given any path, return the absolute path with expanding the user.
+    """
+    return os.path.realpath(os.path.expanduser(path))

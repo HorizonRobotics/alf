@@ -19,8 +19,8 @@ os.system("pip install -e ./alf/nest/cnest")
 
 setup(
     name='alf',
-    version='0.0.1',
-    python_requires='>3.6.0',
+    version='0.0.6',
+    python_requires='>=3.7.0',
     install_requires=[
         'atari_py == 0.1.7',
         'cpplint',
@@ -31,9 +31,11 @@ setup(
         'pyglet == 1.3.2',  # higher version breaks classic control rendering
         'matplotlib==3.4.1',
         'numpy',
-        'opencv-python >=4.0, <=4.2',
+        'opencv-python',
         'pathos == 0.2.4',
-        'pillow',
+        # with python3.7, the default version of pillow (PIL) is 8.2.0,
+        # which breaks some pyglet based rendering in gym
+        'pillow==7.2.0',
         'psutil',
         'pybullet == 2.5.0',
         'rectangle-packer==2.0.0',
@@ -41,9 +43,10 @@ setup(
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard == 2.1.0',
-        'torch == 1.4.0',
-        'torchvision == 0.5.0',
-    ],  # And any other dependencies foo needs
+        'torch == 1.8.1',
+        'torchvision == 0.9.1',
+        'torchtext == 0.9.1',
+    ],  # And any other dependencies alf needs
     package_data={'': ['*.gin']},
     packages=find_packages(),
 )

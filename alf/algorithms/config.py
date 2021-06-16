@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import alf
 
 
@@ -34,6 +33,7 @@ class TrainerConfig(object):
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
+                 create_unwrapped_env=True,
                  load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
@@ -61,8 +61,7 @@ class TrainerConfig(object):
                  priority_replay_alpha=0.7,
                  priority_replay_beta=0.4,
                  priority_replay_eps=1e-6,
-                 clear_replay_buffer=True,
-                 num_envs=1):
+                 clear_replay_buffer=True):
         """
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -112,6 +111,13 @@ class TrainerConfig(object):
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
+            create_unwrapped_env (bool): whether to create an unwrapped env. Note
+                that this flag is only effective when no evaluation is needed and
+                the env is a ``ParallelAlfEnvironment`` instance. Default to ``True``.
+                For envs that consume lots of resources, this flag can be set to
+                ``False`` if no evaluation is needed to save resources. The decision
+                of creating an unwrapped env won't affect training; it's used to
+                correctly display inoperative configurations in subprocesses.
             load_checkpoint_strict (bool): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by module's
                 ``torch.nn.Module.state_dict`` function. If True, will
@@ -155,8 +161,7 @@ class TrainerConfig(object):
                 it's set to the replayer's ``batch_size``. Only used by
                 ``OffPolicyAlgorithm``.
             mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch. If None, it's set to ``unroll_length``.
-                Only used by ``OffPolicyAlgorithm``.
+                sample in the minibatch. Only used by ``OffPolicyAlgorithm``.
             whole_replay_buffer_training (bool): whether use all data in replay
                 buffer to perform one update. Only used by ``OffPolicyAlgorithm``.
             clear_replay_buffer (bool): whether use all data in replay buffer to
@@ -178,7 +183,6 @@ class TrainerConfig(object):
                 This is only useful if ``prioritized_sampling`` is enabled for
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
-            num_envs (int): the number of environments to run asynchronously.
         """
         assert priority_replay_beta >= 0.0, ("importance_weight_beta should "
                                              "be non-negative be")
@@ -197,6 +201,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
+        self.create_unwrapped_env = create_unwrapped_env
         self.load_checkpoint_strict = load_checkpoint_strict
         self.evaluate = evaluate
         self.eval_interval = eval_interval
@@ -225,4 +230,3 @@ class TrainerConfig(object):
         self.priority_replay_alpha = priority_replay_alpha
         self.priority_replay_beta = priority_replay_beta
         self.priority_replay_eps = priority_replay_eps
-        self.num_envs = num_envs

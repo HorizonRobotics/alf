@@ -242,6 +242,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  action_spec,
                  memory: MemoryWithUsage,
                  reward_spec=TensorSpec(()),
+                 epsilon_greedy=None,
                  num_read_keys=1,
                  lstm_size=(256, 256),
                  latent_dim=200,
@@ -257,6 +258,11 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             memory (MemoryWithUsage): the memory module from ``MemoryBasedPredictor``
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             num_read_keys (int): number of keys for reading memory.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers
@@ -267,6 +273,10 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                 constructor: loss_class(debug_summaries)
             name (str): name of the algorithm.
         """
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._epsilon_greedy = epsilon_greedy
         rnn = LSTMEncodingNetwork(
             input_tensor_spec=alf.TensorSpec((latent_dim, )),
             hidden_size=lstm_size,
@@ -334,19 +344,24 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         action = dist_utils.sample_action_distribution(action_distribution)
 
         info = ActorCriticInfo(
-            action_distribution=action_distribution, value=value)
+            action=common.detach(action),
+            reward=time_step.reward,
+            step_type=time_step.step_type,
+            discount=time_step.discount,
+            action_distribution=action_distribution,
+            value=value)
         return AlgStep(output=action, state=state, info=info)
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state):
         action_distribution, state = self._get_action(time_step.observation,
                                                       state)
         action = dist_utils.epsilon_greedy_sample(action_distribution,
-                                                  epsilon_greedy)
+                                                  self._epsilon_greedy)
         return AlgStep(output=action, state=state, info=())
 
-    def calc_loss(self, experience, train_info: ActorCriticInfo):
+    def calc_loss(self, train_info: ActorCriticInfo):
         """Calculate loss."""
-        loss = self._loss(experience, train_info)
+        loss = self._loss(train_info)
         return loss._replace(loss=self._loss_weight * loss.loss)
 
 
@@ -461,25 +476,24 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state):
         mbp_step = self._mbp.predict_step(
             inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
         mba_step = self._mba.predict_step(
             time_step=time_step._replace(observation=mbp_step.output),
-            state=state.mba_state,
-            epsilon_greedy=epsilon_greedy)
+            state=state.mba_state)
         return AlgStep(
             output=mba_step.output,
             state=MerlinState(
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=())
 
-    def calc_loss(self, experience, train_info: MerlinInfo):
+    def calc_loss(self, info: MerlinInfo):
         """Calculate loss."""
-        self.summarize_reward("reward", experience.reward)
-        mbp_loss_info = self._mbp.calc_loss(experience, train_info.mbp_info)
-        mba_loss_info = self._mba.calc_loss(experience, train_info.mba_info)
+        self.summarize_reward("reward", info.mba_info.reward)
+        mbp_loss_info = self._mbp.calc_loss(info.mbp_info)
+        mba_loss_info = self._mba.calc_loss(info.mba_info)
 
         return LossInfo(
             loss=mbp_loss_info.loss + mba_loss_info.loss,

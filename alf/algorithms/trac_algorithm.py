@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Trusted Region Actor critic algorithm."""
-import gin
 import numpy as np
 import torch
 import torch.distributions as td
 
 import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import Experience, namedtuple, StepType, TimeStep
 from alf.optimizers.trusted_updater import TrustedUpdater
 from alf.utils import common, dist_utils, math_ops
@@ -37,7 +36,7 @@ TracInfo = namedtuple(
 
 
 @alf.configurable
-class TracAlgorithm(OnPolicyAlgorithm):
+class TracAlgorithm(RLAlgorithm):
     """Trust-region actor-critic.
 
     It compares the action distributions after the SGD with the action
@@ -83,8 +82,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_spec=action_spec,
             debug_summaries=debug_summaries)
 
-        self._is_on_policy = ac_algorithm.is_on_policy()
-
         assert hasattr(ac_algorithm, '_actor_network')
 
         super().__init__(
@@ -92,6 +89,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             env=env,
+            is_on_policy=ac_algorithm.on_policy,
             config=config,
             train_state_spec=ac_algorithm.train_state_spec,
             predict_state_spec=ac_algorithm.predict_state_spec,
@@ -110,12 +108,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
 
-    def is_on_policy(self):
-        return self._is_on_policy
-
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        return self._ac_algorithm.predict_step(time_step, state,
-                                               epsilon_greedy)
+    def predict_step(self, time_step: TimeStep, state):
+        return self._ac_algorithm.predict_step(time_step, state)
 
     def _make_policy_step(self, time_step, state, policy_step):
         assert (
@@ -144,37 +138,30 @@ class TracAlgorithm(OnPolicyAlgorithm):
         policy_step = self._ac_algorithm.rollout_step(time_step, state)
         return self._make_policy_step(time_step, state, policy_step)
 
-    def train_step(self, exp: Experience, state):
-        ac_info = exp.rollout_info.ac._replace(
-            action_distribution=exp.rollout_info.action_distribution)
-        exp = exp._replace(rollout_info=ac_info)
-        policy_step = self._ac_algorithm.train_step(exp, state)
+    def train_step(self, exp: Experience, state, rollout_info):
+        ac_info = rollout_info.ac._replace(
+            action_distribution=rollout_info.action_distribution)
+        policy_step = self._ac_algorithm.train_step(exp, state, ac_info)
         return self._make_policy_step(exp, state, policy_step)
 
-    def calc_loss(self, experience, train_info: TracInfo):
+    def calc_loss(self, info: TracInfo):
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
                 list(self._ac_algorithm._actor_network.parameters()))
-        rollout_ac_info = ()
-        if experience.rollout_info is not ():
-            rollout_ac_info = experience.rollout_info.ac._replace(
-                action_distribution=experience.rollout_info.
-                action_distribution)
-        ac_info = train_info.ac._replace(
-            action_distribution=train_info.action_distribution)
-        return self._ac_algorithm.calc_loss(
-            experience._replace(rollout_info=rollout_ac_info), ac_info)
+        ac_info = info.ac._replace(
+            action_distribution=info.action_distribution)
+        return self._ac_algorithm.calc_loss(ac_info)
 
-    def after_update(self, experience, train_info: TracInfo):
+    def after_update(self, root_inputs, info: TracInfo):
         """Adjust actor parameter according to KL-divergence."""
         action_param = dist_utils.distributions_to_params(
-            train_info.action_distribution)
+            info.action_distribution)
         exp_array = TracExperience(
-            observation=train_info.observation,
-            step_type=experience.step_type,
+            observation=info.observation,
+            step_type=root_inputs.step_type,
             action_param=action_param,
-            prev_action=train_info.prev_action,
-            state=train_info.state)
+            prev_action=info.prev_action,
+            state=info.state)
         dists, steps = self._trusted_updater.adjust_step(
             lambda: self._calc_change(exp_array), self._action_dist_clips)
 
@@ -184,9 +171,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
                     alf.summary.scalar("unadjusted_action_dist/%s" % i, d)
                 alf.summary.scalar("adjust_steps", steps)
 
-        ac_info = train_info.ac._replace(
-            action_distribution=train_info.action_distribution)
-        self._ac_algorithm.after_update(experience, ac_info)
+        ac_info = info.ac._replace(
+            action_distribution=info.action_distribution)
+        self._ac_algorithm.after_update(root_inputs, ac_info)
 
     @torch.no_grad()
     def _calc_change(self, exp_array):
@@ -239,8 +226,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 observation=exp.observation,
                 step_type=exp.step_type,
                 prev_action=exp.prev_action)
-            policy_step = self._ac_algorithm.predict_step(
-                time_step=time_step, state=state, epsilon_greedy=1.0)
+            policy_step = self._ac_algorithm.predict_step(time_step, state)
             assert (
                 alf.nest.is_namedtuple(policy_step.info)
                 and "action_distribution" in policy_step.info._fields
@@ -255,10 +241,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
         total_dists = nest_map(lambda d: torch.sqrt(d / size), total_dists)
         return total_dists
 
-    def preprocess_experience(self, exp: Experience):
-        ac_info = exp.rollout_info.ac._replace(
-            action_distribution=exp.rollout_info.action_distribution)
-        new_exp = self._ac_algorithm.preprocess_experience(
-            exp._replace(rollout_info=ac_info))
-        return new_exp._replace(
-            rollout_info=exp.rollout_info._replace(ac=new_exp.rollout_info))
+    def preprocess_experience(self, root_inputs, rollout_info, batch_info):
+        ac_info = rollout_info.ac._replace(
+            action_distribution=rollout_info.action_distribution)
+        root_inputs, new_ac_info = self._ac_algorithm.preprocess_experience(
+            root_inputs, ac_info, batch_info)
+        return root_inputs, rollout_info._replace(ac=new_ac_info)

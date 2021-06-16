@@ -15,7 +15,6 @@
 import abc
 import copy
 import functools
-import gin
 import numpy as np
 
 import torch
@@ -30,7 +29,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 
 
-@gin.configurable
+@alf.configurable
 class ImageEncodingNetwork(Network):
     """
     A general template class for creating convolutional encoding networks.
@@ -121,7 +120,7 @@ class ImageEncodingNetwork(Network):
         return z, state
 
 
-@gin.configurable
+@alf.configurable
 class ParallelImageEncodingNetwork(Network):
     """
     A Parallel Image Encoding Network that can be used to perform n
@@ -220,7 +219,7 @@ class ParallelImageEncodingNetwork(Network):
         return z, state
 
 
-@gin.configurable
+@alf.configurable
 class ImageDecodingNetwork(Network):
     """
     A general template class for creating transposed convolutional decoding networks.
@@ -353,7 +352,7 @@ class ImageDecodingNetwork(Network):
         return z, state
 
 
-@gin.configurable
+@alf.configurable
 class ParallelImageDecodingNetwork(Network):
     """
     A Parallel Image Decoding Network that can be used to perform n
@@ -491,7 +490,7 @@ class ParallelImageDecodingNetwork(Network):
         return z, state
 
 
-@gin.configurable
+@alf.configurable
 class EncodingNetwork(PreprocessorNetwork):
     """Feed Forward network with CNN and FC layers which allows the last layer
     to have different settings from the other layers.
@@ -707,7 +706,7 @@ class EncodingNetwork(PreprocessorNetwork):
             return super().make_parallel(n)
 
 
-@gin.configurable
+@alf.configurable
 class ParallelEncodingNetwork(PreprocessorNetwork):
     """Parallel feed-forward network with FC layers which allows the last layer
     to have different settings from the other layers.
@@ -891,7 +890,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         return z, state
 
 
-@gin.configurable
+@alf.configurable
 class LSTMEncodingNetwork(Network):
     """LSTM cells followed by an encoding network."""
 

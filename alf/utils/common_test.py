@@ -23,6 +23,9 @@ import alf.utils.common as common
 
 
 class WraningOnceTest(alf.test.TestCase):
+    def setUp(self):
+        logging.use_absl_handler()
+
     def test_warning_once(self):
         warning_messages = ["warning message 1", "warning message 2"]
 

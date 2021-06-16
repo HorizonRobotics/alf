@@ -106,7 +106,9 @@ class Residue(Network):
             activation (Callable): activation function
         """
         block = wrap_as_network(block, input_tensor_spec)
-        super().__init__(input_tensor_spec=block.input_tensor_spec)
+        super().__init__(
+            input_tensor_spec=block.input_tensor_spec,
+            state_spec=block.state_spec)
         self._block = block
         self._activation = activation
 
@@ -249,13 +251,28 @@ class TemporalPool(Network):
 
 
 class Delay(Network):
-    """The output is the input from the last step."""
+    """The output is the input of the ``delay`` step ago.
 
-    def __init__(self, input_tensor_spec, name='Delay'):
+    Args:
+        input_tensor_spec (nested TensorSpec): representing the input
+        delay (int): if 0, there is no delay and the output is same as the input.
+    """
+
+    def __init__(self, input_tensor_spec, delay=1, name='Delay'):
+        if delay == 0:
+            state_spec = ()
+            self._forward = lambda i, s: (i, ())
+        elif delay == 1:
+            state_spec = input_tensor_spec
+            self._forward = lambda i, s: (s, i)
+        else:
+            state_spec = (input_tensor_spec, ) * delay
+            self._forward = lambda i, s: (s[0], s[1:] + (i, ))
+
         super().__init__(
             input_tensor_spec=input_tensor_spec,
-            state_spec=input_tensor_spec,
+            state_spec=state_spec,
             name=name)
 
     def forward(self, input, state):
-        return state, input
+        return self._forward(input, state)

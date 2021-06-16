@@ -17,9 +17,9 @@ alpha/Adam.lr=1e-3
 
 SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
 SacAlgorithm.q_network_cls=@critic/QNetwork
-SacAlgorithm.actor_optimizer=@actor/Adam()
-SacAlgorithm.critic_optimizer=@critic/Adam()
-SacAlgorithm.alpha_optimizer=@alpha/Adam()
+SacAlgorithm.actor_optimizer=@actor/Adam(name="actor")
+SacAlgorithm.critic_optimizer=@critic/Adam(name="critic")
+SacAlgorithm.alpha_optimizer=@alpha/Adam(name="alpha")
 SacAlgorithm.target_update_tau=0.01
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 OneStepTDLoss.gamma=0.98

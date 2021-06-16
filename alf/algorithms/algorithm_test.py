@@ -20,7 +20,7 @@ import torch.nn as nn
 
 import alf
 from alf.data_structures import LossInfo
-from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.algorithm import Algorithm, _get_optimizer_params
 
 
 class MyAlg(Algorithm):
@@ -78,7 +78,7 @@ class AlgorithmTest(alf.test.TestCase):
         self.assertEqual(info[0]['parameters'],
                          [alg_root.get_param_name(param_1)])
 
-        alg_1 = MyAlg(params=[param_1, param_1])
+        alg_1 = MyAlg(params=[param_1, param_1], name="alg_1")
         alg_root = MyAlg(
             optimizer=alf.optimizers.Adam(lr=0.25),
             sub_algs=[alg_1, alg_1],
@@ -128,6 +128,7 @@ class AlgorithmTest(alf.test.TestCase):
         self.assertRaises(AssertionError, alg_root.get_optimizer_info)
 
         # Test duplicated handling detection
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.25), [alg_1])
         alg_2.root = None
         alg_2.p = param_1
         self.assertRaises(AssertionError, alg_root.get_optimizer_info)
@@ -137,14 +138,60 @@ class AlgorithmTest(alf.test.TestCase):
         alg_2.ignored_param = param_1
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
-        self.assertEqual(info[0]['optimizer'], 'None')
         self.assertEqual(info[0]['parameters'],
-                         [alg_root.get_param_name(param_1)])
-        self.assertEqual(info[1]['parameters'],
                          [alg_root.get_param_name(param_2)])
+        self.assertEqual(info[1]['parameters'],
+                         [alg_root.get_param_name(param_1)])
 
         # test __repr__
         logging.info("\n" + repr(alg_root))
+
+    def test_get_optimizer_info2(self):
+        # test shared module in used by sub-algorithms
+        layer = alf.layers.FC(2, 3)
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = MyAlg(params=[param_1], name="alg_1")
+        alg_1.layer = layer
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        alg_2 = MyAlg(params=[param_2], name="alg_2")
+        alg_2.layer = layer
+        alg_root = MyAlg(
+            sub_algs=[alg_1, alg_2],
+            optimizer=alf.optimizers.Adam(lr=0.25),
+            name="root")
+        info = json.loads(alg_root.get_optimizer_info())
+        self.assertEqual(
+            set(info[0]['parameters']),
+            set(
+                alg_root.get_param_name(p)
+                for p in [param_1, param_2] + list(layer.parameters())))
+
+    def test_optimizer_params(self):
+        # test that the order of parameters is deterministic
+        opt1 = alf.optimizers.Adam(lr=0.25)
+        alg_1 = MyAlg(optimizer=opt1)
+        alg_1.a = nn.Parameter(torch.rand(1, 4))
+        alg_1.b = nn.Parameter(torch.rand(2, 4))
+        alg_1.c = nn.Parameter(torch.rand(3, 4))
+        alg_1.d = nn.Parameter(torch.rand(4, 4))
+        alg_1.e = nn.Parameter(torch.rand(5, 4))
+        alg_1.f = nn.Parameter(torch.rand(6, 4))
+        alg_1.get_optimizer_info()
+        params1 = _get_optimizer_params(opt1)
+        shapes1 = [p.shape for p in params1]
+
+        opt2 = alf.optimizers.Adam(lr=0.25)
+        alg_2 = MyAlg(optimizer=opt2)
+        alg_2.a = nn.Parameter(torch.rand(1, 4))
+        alg_2.b = nn.Parameter(torch.rand(2, 4))
+        alg_2.c = nn.Parameter(torch.rand(3, 4))
+        alg_2.d = nn.Parameter(torch.rand(4, 4))
+        alg_2.e = nn.Parameter(torch.rand(5, 4))
+        alg_2.f = nn.Parameter(torch.rand(6, 4))
+        alg_2.get_optimizer_info()
+        params2 = _get_optimizer_params(opt2)
+        shapes2 = [p.shape for p in params2]
+        self.assertEqual(shapes1, shapes2)
 
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))

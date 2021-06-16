@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Schedulers."""
-import gin
 
 import alf
 from alf.trainers.policy_trainer import Trainer

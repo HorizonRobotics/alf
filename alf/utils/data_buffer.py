@@ -14,7 +14,6 @@
 """Classes for storing data for sampling."""
 
 import functools
-import gin
 from multiprocessing import Event, RLock
 import time
 

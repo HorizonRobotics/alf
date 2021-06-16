@@ -47,7 +47,6 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=steps_per_episode,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
         )
         env_class = PolicyUnittestEnv
 
@@ -83,6 +82,7 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             actor_network_ctor=actor_network,
             critic_network_ctor=critic_network,
             reward_weights=reward_weights,
+            epsilon_greedy=0.0,
             env=env,
             config=config,
             num_critic_replicas=num_critic_replicas,
@@ -96,9 +96,7 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             alg.train_iter()
 
         eval_env.reset()
-        epsilon_greedy = 0.0
-        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1,
-                                epsilon_greedy)
+        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
         print(eval_time_step.reward.mean())
 
         self.assertAlmostEqual(

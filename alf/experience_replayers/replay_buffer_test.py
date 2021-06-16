@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import itertools
-import gin
 import torch
 
 from absl.testing import parameterized
@@ -23,23 +22,16 @@ from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
 from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
 
 class ReplayBufferTest(RingBufferTest):
     def tearDown(self):
-        gin.clear_config()
         super().tearDown()
 
     def test_replay_with_hindsight_relabel(self):
         self.max_length = 8
         torch.manual_seed(0)
-        configs = [
-            "hindsight_relabel_fn.her_proportion=0.8",
-            'hindsight_relabel_fn.achieved_goal_field="o.a"',
-            'hindsight_relabel_fn.desired_goal_field="o.g"',
-            "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
-        ]
-        gin.parse_config_files_and_bindings("", configs)
 
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
@@ -48,6 +40,12 @@ class ReplayBufferTest(RingBufferTest):
             keep_episodic_info=True,
             step_type_field="t",
             with_replacement=True)
+
+        transform = HindsightExperienceTransformer(
+            self.data_spec,
+            her_proportion=0.8,
+            achieved_goal_field="o.a",
+            desired_goal_field="o.g")
 
         steps = [
             [
@@ -90,7 +88,8 @@ class ReplayBufferTest(RingBufferTest):
             torch.equal(
                 pos,
                 torch.tensor([[15, 16, 16, 14, 11, 11, 11, 16],
-                              [14, 16, 13, 10, 10, 10, 16, 14]])))
+                              [14, 16, 13, 10, 10, 10, 16, 14]],
+                             dtype=torch.int64)))
 
         # Verify _index is built correctly.
         # Note, the _index_pos 8 represents headless timesteps, which are
@@ -120,7 +119,9 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(list(dist), [1, 0, 1, 0])
 
         # Test HER relabeled experiences
-        res = replay_buffer.get_batch(5, 2)[0]
+        res, info = replay_buffer.get_batch(5, 2)
+        res = res._replace(batch_info=info)
+        res = transform.transform_experience(res)
 
         self.assertEqual(list(res.o["g"].shape), [5, 2])
 
@@ -213,84 +214,6 @@ class ReplayBufferTest(RingBufferTest):
         steps[(ends + 1)[valid_starts]] = torch.tensor(
             [ds.StepType.FIRST]).expand(valid_starts.shape[0])
         return steps
-
-    @parameterized.named_parameters([
-        ('test_dense_epi_ends', 0.1),
-        ('test_sparse_epi_ends', 0.004),
-    ])
-    def test_compute_her_future_step_distance(self, end_prob):
-        num_envs = 2
-        max_length = 100
-        torch.manual_seed(0)
-        configs = [
-            "hindsight_relabel_fn.her_proportion=0.8",
-            'hindsight_relabel_fn.achieved_goal_field="o.a"',
-            'hindsight_relabel_fn.desired_goal_field="o.g"',
-            "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
-        ]
-        gin.parse_config_files_and_bindings("", configs)
-
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=num_envs,
-            max_length=max_length,
-            keep_episodic_info=True,
-            step_type_field="t")
-        # insert data
-        max_steps = 1000
-        # generate step_types with certain density of episode ends
-        steps = self.generate_step_types(
-            num_envs, max_steps, end_prob=end_prob)
-        for t in range(max_steps):
-            for b in range(num_envs):
-                batch = get_batch([b],
-                                  self.dim,
-                                  t=steps[b * max_steps + t],
-                                  x=1. / max_steps * t + b)
-                replay_buffer.add_batch(batch, batch.env_id)
-            if t > 1:
-                sample_steps = min(t, max_length)
-                env_ids = torch.tensor([0] * sample_steps + [1] * sample_steps)
-                idx = torch.tensor(
-                    list(range(sample_steps)) + list(range(sample_steps)))
-                gd = self.steps_to_episode_end(replay_buffer, env_ids, idx)
-                idx_orig = replay_buffer._indexed_pos.clone()
-                idx_headless_orig = replay_buffer._headless_indexed_pos.clone()
-                d = replay_buffer.steps_to_episode_end(
-                    replay_buffer._pad(idx, env_ids), env_ids)
-                # Test distance to end computation
-                if not torch.equal(gd, d):
-                    outs = [
-                        "t: ", t, "\nenvids:\n", env_ids, "\nidx:\n", idx,
-                        "\npos:\n",
-                        replay_buffer._pad(idx, env_ids), "\nNot Equal: a:\n",
-                        gd, "\nb:\n", d, "\nsteps:\n", replay_buffer._buffer.t,
-                        "\nindexed_pos:\n", replay_buffer._indexed_pos,
-                        "\nheadless_indexed_pos:\n",
-                        replay_buffer._headless_indexed_pos
-                    ]
-                    outs = [str(out) for out in outs]
-                    assert False, "".join(outs)
-
-                # Save original exp for later testing.
-                g_orig = replay_buffer._buffer.o["g"].clone()
-                r_orig = replay_buffer._buffer.reward.clone()
-
-                # HER relabel experience
-                res = replay_buffer.get_batch(sample_steps, 2)[0]
-
-                self.assertEqual(list(res.o["g"].shape), [sample_steps, 2])
-
-                # Test relabeling doesn't change original experience
-                self.assertTrue(
-                    torch.allclose(r_orig, replay_buffer._buffer.reward))
-                self.assertTrue(
-                    torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
-                self.assertTrue(
-                    torch.all(idx_orig == replay_buffer._indexed_pos))
-                self.assertTrue(
-                    torch.all(idx_headless_orig == replay_buffer.
-                              _headless_indexed_pos))
 
     @parameterized.parameters([
         (False, False),

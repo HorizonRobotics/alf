@@ -14,7 +14,6 @@
 
 from abc import abstractmethod
 
-import gin
 import torch
 import torch.nn as nn
 
@@ -305,7 +304,7 @@ class EMNormalizer(Normalizer):
         return EMAverager(self._tensor_spec, self._update_rate)
 
 
-@gin.configurable
+@alf.configurable
 class ScalarEMNormalizer(EMNormalizer):
     def __init__(self,
                  update_rate=1e-3,
@@ -326,7 +325,7 @@ class ScalarEMNormalizer(EMNormalizer):
             name=name)
 
 
-@gin.configurable
+@alf.configurable
 class AdaptiveNormalizer(Normalizer):
     def __init__(self,
                  tensor_spec,
@@ -373,7 +372,7 @@ class AdaptiveNormalizer(Normalizer):
             tensor_spec=self._tensor_spec, speed=self._speed)
 
 
-@gin.configurable
+@alf.configurable
 class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
     def __init__(self,
                  speed=8.0,

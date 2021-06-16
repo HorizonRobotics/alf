@@ -9,24 +9,38 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 
 ## Algorithms
 
-* [A2C](alf/algorithms/actor_critic_algorithm.py): [OpenAI Baselines: ACKTR & A2C](https://openai.com/blog/baselines-acktr-a2c/)
-* [DDPG](alf/algorithms/ddpg_algorithm.py): Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)
-* [PPO](alf/algorithms/ppo_algorithm.py): Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
-* [SAC](alf/algorithms/sac_algorithm.py): Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)
-* [ICM](alf/algorithms/icm_algorithm.py): Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)
-* [MERLIN](alf/algorithms/merlin_algorithm.py): Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)
-* [Amortized SVGD](alf/algorithms/generator.py): Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent"[arXiv:1707.06626](https://arxiv.org/abs/1707.06626)
-* [RND](alf/algorithms/rnd_algorithm.py): Burda et al. "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)
-* [MINE](alf/algorithms/mi_estimator.py): Belghazi et al. "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)
-* [DIAYN](alf/algorithms/diayn_algorithm.py): Eysenbach et al. "Diversity is All You Need: Learning Diverse Skills without a Reward Function" [arXiv:1802.06070](https://arxiv.org/abs/1802.06070)
-* [MISC](alf/algorithms/misc_algorithm.py): Zhao et al. "Mutual Information-based State-Control for Intrinsically Motivated Reinforcement Learning" [arXiv:2002.01963](https://arxiv.org/abs/2002.01963)
-* [MuZero](alf/algorithms/muzero_algorithm.py): Schrittwieser et. al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)
-* [SVGD optimizer](alf/optimizers/optimizers.py): Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)
-* [OAC](alf/algorithms/oac_algorithm.py): Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)
+|Algorithm|Type|Reference|
+|---------|----|---------|
+|[A2C](alf/algorithms/actor_critic_algorithm.py)|On-policy RL|[OpenAI Baselines: ACKTR & A2C](https://openai.com/blog/baselines-acktr-a2c/)|
+|[PPO](alf/algorithms/ppo_algorithm.py)|On-policy RL|Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)|
+|[DDPG](alf/algorithms/ddpg_algorithm.py)|Off-policy RL|Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)|
+|[SAC](alf/algorithms/sac_algorithm.py)|Off-policy RL|Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)|
+|[OAC](alf/algorithms/oac_algorithm.py)|Off-policy RL|Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)|
+|[HER](https://github.com/HorizonRobotics/alf/blob/911d9573866df41e9e3adf6cdd94ee03016bf5a8/alf/algorithms/data_transformer.py#L672)|Off-policy RL|Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495)|
+|[TAAC](alf/algorithms/taac_algorithm.py)|Off-policy RL|Yu et al. "TAAC: Temporally Abstract Actor-Critic for Continuous Control" [arXiv:2104.06521](https://arxiv.org/abs/2104.06521)|
+|[DIAYN](alf/algorithms/diayn_algorithm.py)|Intrinsic motivation/Exploration|Eysenbach et al. "Diversity is All You Need: Learning Diverse Skills without a Reward Function" [arXiv:1802.06070](https://arxiv.org/abs/1802.06070)|
+|[ICM](alf/algorithms/icm_algorithm.py)|Intrinsic motivation/Exploration|Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)|
+|[RND](alf/algorithms/rnd_algorithm.py)|Intrinsic motivation/Exploration|Burda et al. "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)|
+|[MuZero](alf/algorithms/muzero_algorithm.py)|Model-based RL|Schrittwieser et. al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)|
+|[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
+|[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
+|[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks." [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
+|[MCTS](alf/algorithms/mcts_algorithm.py)|General|Grill et. al. "Monte-Carlo tree search as regularized policy optimization" [arXiv:2007.12509](https://arxiv.org/abs/2007.12509)|
+|[MINE](alf/algorithms/mi_estimator.py)|General|Belghazi et al. "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)|
+|[ParticleVI](alf/algorithms/particle_vi_algorithm.py)|General|Liu and Wang. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471) <br> Liu et al. "Understanding and accelerating particle-based variational inference." [arXiv:1807.01750](https://arxiv.org/abs/1807.01750)|
+|[SVGD optimizer](alf/optimizers/optimizers.py)|General|Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)|
+|[VAE](alf/algorithms/vae.py)|General|Higgins et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework" [ICLR2017](https://openreview.net/forum?id=Sy2fzU9gl)|
 
 ## Installation
 
-Python3.7 is currently supported by ALF. [Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After activating a virtual env, you can run the following commands to install ALF
+Python3.7 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3.7-dev is installed:
+
+```
+sudo apt install -y python3.7-dev
+```
+
+[Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After creating and activating a virtual env, you can run the following commands to install ALF:
+
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
@@ -43,7 +57,7 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 
 You can train any `.gin` file under `alf/examples` using the following command:
 ```bash
-python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
+cd alf/examples; python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
 * GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
 You can find sample gin configuration files for different tasks under directory
@@ -56,7 +70,7 @@ training from a previous checkpoint (if any).
 
 Or alternatively, train any `_conf.py` file under `alf/examples` as follows:
 ```bash
-python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
+cd alf/examples; python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
 ```
 * CONF_FILE follows ALF configuraion file format (basically python).
 Note that we are in the process of converting all `.gin` examples to `_conf.py`
@@ -71,6 +85,8 @@ After training, you can visualize the trained model using the following command:
 ```bash
 python -m alf.bin.play --root_dir=LOG_DIR
 ```
+
+**Troubleshooting**: if an error says that no configuration file is found, then probably you are not under `alf/examples`.
 
 ### A2C
 * [Cart pole](alf/examples/ac_cart_pole.gin). The training score took only 30 seconds to reach 200, using 8 environments.

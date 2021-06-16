@@ -18,7 +18,6 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 from absl import logging
-import gin
 import torch
 
 import alf
@@ -27,7 +26,7 @@ from alf.environments.process_environment import ProcessEnvironment
 import alf.nest as nest
 
 
-@gin.configurable
+@alf.configurable
 class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     """Batch together environments and simulate them in external processes.
 

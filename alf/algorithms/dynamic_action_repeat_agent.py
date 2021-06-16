@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import torch
-import copy
-import math
-import numpy as np
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -25,10 +21,10 @@ from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import RewardNormalizer
 from alf.data_structures import TimeStep, Experience, namedtuple, AlgStep
-from alf.data_structures import make_experience, LossInfo
+from alf.data_structures import make_experience
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils.conditional_ops import conditional_update
-from alf.utils import common, summary_utils, tensor_utils
+from alf.utils import common, summary_utils
 
 ActionRepeatState = namedtuple(
     "ActionRepeatState", [
@@ -38,7 +34,7 @@ ActionRepeatState = namedtuple(
     default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class DynamicActionRepeatAgent(OffPolicyAlgorithm):
     """Create an agent which learns a variable action repetition duration.
     At each decision step, the agent outputs both the action to repeat and
@@ -172,7 +168,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         repeat_last_step = (state.steps == 0)
         return repeat_last_step | time_step.is_first() | time_step.is_last()
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state):
         switch_action = self._should_switch_action(time_step, state)
 
         @torch.no_grad()
@@ -184,8 +180,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 time_step = time_step._replace(observation=repr_step.output)
                 repr_state = repr_step.state
 
-            rl_step = self._rl.predict_step(time_step, state.rl,
-                                            epsilon_greedy)
+            rl_step = self._rl.predict_step(time_step, state.rl)
             steps, action = rl_step.output
             return ActionRepeatState(
                 action=action,
@@ -277,7 +272,8 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
         return AlgStep(output=new_state.action, state=new_state)
 
-    def train_step(self, rl_exp: Experience, state: ActionRepeatState):
+    def train_step(self, inputs: TimeStep, state: ActionRepeatState,
+                   rollout_info):
         """Train the underlying RL algorithm ``self._rl``. Because in
         ``self.rollout_step()`` the replay buffer only stores info related to
         ``self._rl``, here we can directly call ``self._rl.train_step()``.
@@ -289,21 +285,21 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         """
         repr_state = ()
         if self._repr_learner is not None:
-            repr_step = self._repr_learner.train_step(rl_exp, state.repr)
-            rl_exp = rl_exp._replace(observation=repr_step.output)
+            repr_step = self._repr_learner.train_step(inputs, state.repr)
+            inputs = inputs._replace(observation=repr_step.output)
             repr_state = repr_step.state
 
-        rl_step = self._rl.train_step(rl_exp, state.rl)
+        rl_step = self._rl.train_step(inputs, state.rl, rollout_info)
         new_state = ActionRepeatState(rl=rl_step.state, repr=repr_state)
         return rl_step._replace(state=new_state)
 
-    def calc_loss(self, rl_experience, rl_info):
+    def calc_loss(self, info):
         """Calculate the loss for training ``self._rl``."""
-        return self._rl.calc_loss(rl_experience, rl_info)
+        return self._rl.calc_loss(info)
 
-    def after_update(self, rl_exp, rl_info):
+    def after_update(self, root_inputs, info):
         """Call ``self._rl.after_update()``."""
-        self._rl.after_update(rl_exp, rl_info)
+        self._rl.after_update(root_inputs, info)
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Overwrite the function because the training action spec is
@@ -322,13 +318,13 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             if len(field) == 1:
                 summary_utils.summarize_action_dist(field[0])
 
-    def preprocess_experience(self, rl_exp):
+    def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         """Normalize training rewards if a reward normalizer is provided. Shape
         of ``rl_exp`` is ``[B, T, ...]``. The statistics of the normalizer is
         updated by random sample rewards.
         """
-        reward = rl_exp.reward
-        rl_info, repeats, sample_rewards = rl_exp.rollout_info
+        reward = root_inputs.reward
+        rl_info, repeats, sample_rewards = rollout_info
 
         if self._reward_normalizer is not None:
             normalizer = self._reward_normalizer.normalizer
@@ -357,5 +353,5 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 clip = clip * repeats
                 reward = torch.max(torch.min(clip, reward), -clip)
 
-        rl_exp = rl_exp._replace(reward=reward, rollout_info=rl_info)
-        return self._rl.preprocess_experience(rl_exp)
+        root_inputs = root_inputs._replace(reward=reward)
+        return self._rl.preprocess_experience(root_inputs, rl_info, batch_info)

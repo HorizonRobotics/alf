@@ -13,16 +13,16 @@
 # limitations under the License.
 """Decoding algorithm."""
 
-import gin
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo
 from alf.networks import Network
 from alf.utils.math_ops import sum_to_leftmost
 
 
-@gin.configurable
+@alf.configurable
 class DecodingAlgorithm(Algorithm):
     """Generic decoding algorithm."""
 
@@ -47,7 +47,7 @@ class DecodingAlgorithm(Algorithm):
         self._loss = loss
         self._loss_weight = loss_weight
 
-    def train_step(self, inputs, state=()):
+    def train_step(self, inputs, state=(), rollout_info=None):
         """Train one step.
 
         Args:

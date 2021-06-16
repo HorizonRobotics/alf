@@ -30,7 +30,8 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo", ["env_ids", "positions", "importance_weights"],
+    "BatchInfo",
+    ["env_ids", "positions", "importance_weights", "replay_buffer"],
     default_value=())
 
 
@@ -61,7 +62,6 @@ class ReplayBuffer(RingBuffer):
                  allow_multiprocess=False,
                  keep_episodic_info=None,
                  step_type_field="step_type",
-                 postprocess_exp_fn=None,
                  enable_checkpoint=False,
                  name="ReplayBuffer"):
         """
@@ -93,16 +93,6 @@ class ReplayBuffer(RingBuffer):
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
             step_type_field (string): path to the step_type field in exp nest.
                 This and the following fields are for hindsight relabeling.
-            postprocess_exp_fn (callable): function to postprocess experience.
-                Args:
-                    ``buffer`` (``ReplayBuffer``): the replay buffer object.
-                    ``batch`` (nest): nested sampled experience of shape
-                        ``[batch_size, batch_length, ...]``.
-                    ``batch_info`` (BatchInfo): sample information for the batch.
-                These three arguments are required.  Other optional arguments
-                    could be populated by gin.
-                Returns:
-                    updated ``(batch, batch_info)``.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
         """
@@ -128,7 +118,6 @@ class ReplayBuffer(RingBuffer):
             self._max_tree = MaxSegmentTree(tree_size, device=device)
             self._initial_priority = torch.tensor(
                 initial_priority, dtype=torch.float32, device=device)
-        self._postprocess_exp_fn = postprocess_exp_fn
         self._keep_episodic_info = keep_episodic_info
         self._recent_data_steps = recent_data_steps
         self._recent_data_ratio = recent_data_ratio
@@ -193,7 +182,9 @@ class ReplayBuffer(RingBuffer):
 
     def _index_to_env_id_idx(self, indices):
         """Convert indices used by SegmentTree to (env_id, idx)."""
-        env_ids = indices / self._max_length
+        # need to use `//` here. Newer versions of pytorch will do automatic
+        # type promtion and will generate float indices if `/` is used.
+        env_ids = indices // self._max_length
         return env_ids, indices % self._max_length
 
     def _change_mini_batch_length(self, mini_batch_length):
@@ -311,8 +302,6 @@ class ReplayBuffer(RingBuffer):
     def get_batch(self, batch_size, batch_length):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
-        It could hindsight relabel the experience via postprocess_exp_fn.
-
         Note: The environments where the sampels are from are ordered in the
             returned batch.
 
@@ -373,13 +362,10 @@ class ReplayBuffer(RingBuffer):
                     "replayer/" + self._name + ".original_reward_mean",
                     torch.mean(result.reward[:-1]))
 
-            if self._postprocess_exp_fn:
-                result, info = self._postprocess_exp_fn(self, result, info)
-
-        if alf.get_default_device() == self._device:
-            return result, info
-        else:
-            return convert_device(result), convert_device(info)
+        if alf.get_default_device() != self._device:
+            result, info = convert_device((result, info))
+        info = info._replace(replay_buffer=self)
+        return result, info
 
     def _recent_sample(self, batch_size, batch_length):
         return self._sample(batch_size, batch_length, self._recent_data_steps)
@@ -479,7 +465,10 @@ class ReplayBuffer(RingBuffer):
         current_pos - idx - 1 - L < n L <= current_pos - idx - 1
         n = (current_pos - idx - 1) / L
         """
-        return ((self._current_pos[env_ids] - x - 1) /
+
+        # need to use `//` here. Newer versions of pytorch will do automatic
+        # type promtion and will generate float indices if `/` is used.
+        return ((self._current_pos[env_ids] - x - 1) //
                 self._max_length) * self._max_length + x
 
     def _store_episode_end_pos(self, non_first, pos, env_ids):
@@ -652,118 +641,3 @@ class ReplayBuffer(RingBuffer):
         positions = positions[valid]
         step_type = alf.nest.get_field(self._buffer, self._step_type_field)
         step_type[env_ids, self.circular(positions)] = int(ds.StepType.LAST)
-
-
-@alf.configurable
-def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
-    if goal.dim() == 2:  # when goals are 1-dimentional
-        assert achieved_goal.dim() == goal.dim()
-        achieved_goal = achieved_goal.unsqueeze(2)
-        goal = goal.unsqueeze(2)
-    return torch.where(
-        torch.norm(achieved_goal - goal, dim=2) < threshold,
-        torch.zeros(1, dtype=torch.float32, device=device),
-        -torch.ones(1, dtype=torch.float32, device=device))
-
-
-@alf.configurable
-def hindsight_relabel_fn(buffer,
-                         result,
-                         info,
-                         her_proportion,
-                         achieved_goal_field="observation.achieved_goal",
-                         desired_goal_field="observation.desired_goal",
-                         reward_fn=l2_dist_close_reward_fn):
-    """Randomly get `batch_size` hindsight relabeled trajectories.
-
-    Note: The environments where the sampels are from are ordered in the
-        returned batch.
-
-    Args:
-        buffer (ReplayBuffer): for access to future achieved goals.
-        result (nest): of tensors of the sampled exp
-        info (BatchInfo): of the sampled result
-        her_proportion (float): proportion of hindsight relabeled experience.
-        achieved_goal_field (str): path to the achieved_goal field in
-            exp nest.
-        desired_goal_field (str): path to the desired_goal field in the
-            exp nest.
-        reward_fn (Callable): function to recompute reward based on
-            achieve_goal and desired_goal.  Default gives reward 0 when
-            L2 distance less than 0.05 and -1 otherwise, same as is done in
-            suite_robotics environments.
-    Returns:
-        tuple:
-            - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
-            - BatchInfo: Information about the batch. Its shapes are [batch_size].
-                - env_ids: environment id for each sequence
-                - positions: starting position in the replay buffer for each sequence.
-                - importance_weights: priority divided by the average of all
-                    non-zero priorities in the buffer.
-    """
-    if her_proportion == 0:
-        return result
-
-    env_ids = info.env_ids
-    start_pos = info.positions
-    shape = alf.nest.get_nest_shape(result)
-    batch_size, batch_length = shape[:2]
-    # TODO: add support for batch_length > 2.
-    assert batch_length == 2, shape
-
-    # relabel only these sampled indices
-    her_cond = torch.rand(batch_size) < her_proportion
-    (her_indices, ) = torch.where(her_cond)
-    (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
-
-    last_step_pos = start_pos[her_indices] + batch_length - 1
-    last_env_ids = env_ids[her_indices]
-    # Get x, y indices of LAST steps
-    dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
-    if alf.summary.should_record_summaries():
-        alf.summary.scalar(
-            "replayer/" + buffer._name + ".mean_steps_to_episode_end",
-            torch.mean(dist.type(torch.float32)))
-
-    # get random future state
-    future_idx = buffer.circular(last_step_pos + (torch.rand(*dist.shape) *
-                                                  (dist + 1)).to(torch.int64))
-    achieved_goals = alf.nest.get_field(buffer._buffer, achieved_goal_field)
-    future_ag = achieved_goals[(last_env_ids, future_idx)].unsqueeze(1)
-
-    # relabel desired goal
-    result_desired_goal = alf.nest.get_field(result, desired_goal_field)
-    relabed_goal = result_desired_goal.clone()
-    her_batch_index_tuple = (her_indices.unsqueeze(1),
-                             torch.arange(batch_length).unsqueeze(0))
-    relabed_goal[her_batch_index_tuple] = future_ag
-
-    # recompute rewards
-    result_ag = alf.nest.get_field(result, achieved_goal_field)
-    relabeled_rewards = reward_fn(
-        result_ag, relabed_goal, device=buffer._device)
-    if alf.summary.should_record_summaries():
-        alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_before_relabel",
-            torch.mean(result.reward[her_indices][:-1]))
-        alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_after_relabel",
-            torch.mean(relabeled_rewards[her_indices][:-1]))
-    # assert reward function is the same as used by the environment.
-    if not torch.allclose(relabeled_rewards[non_her_indices],
-                          result.reward[non_her_indices]):
-        msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
-               "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
-               ).format(relabeled_rewards[non_her_indices],
-                        result.reward[non_her_indices],
-                        result_ag[non_her_indices],
-                        result_desired_goal[non_her_indices],
-                        env_ids[non_her_indices], start_pos[non_her_indices])
-        logging.warning(msg)
-        # assert False, msg
-        relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
-
-    result = alf.nest.transform_nest(
-        result, desired_goal_field, lambda _: relabed_goal)
-    result = result._replace(reward=relabeled_rewards)
-    return result, info

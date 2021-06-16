@@ -15,7 +15,6 @@
 
 import abc
 from absl import logging
-import gin
 import math
 import os
 import pprint
@@ -98,7 +97,7 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         Trainer._trainer_progress = _TrainerProgress()
-        root_dir = os.path.expanduser(config.root_dir)
+        root_dir = config.root_dir
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
@@ -258,7 +257,7 @@ class Trainer(object):
         try:
             recovered_global_step = checkpointer.load()
             self._trainer_progress.update()
-        except Exception as e:
+        except RuntimeError as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
                  "Typically this is caused by using a wrong checkpoint. \n"
@@ -283,7 +282,6 @@ class RLTrainer(Trainer):
         """
         super().__init__(config)
 
-        self._envs = []
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
         assert (self._num_iterations + self._num_env_steps > 0
@@ -315,18 +313,16 @@ class RLTrainer(Trainer):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
+        self._algorithm.set_path('')
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
-        # DO NOT register this env in self._envs because AsyncOffPolicyTrainer
-        # will use all self._envs to init AsyncOffPolicyDriver!
-        if self._evaluate or isinstance(
+        if self._evaluate or (isinstance(
                 env,
-                alf.environments.parallel_environment.ParallelAlfEnvironment):
-            self._unwrapped_env = self._create_environment(
-                nonparallel=True,
-                random_seed=self._random_seed,
-                register=False)
+                alf.environments.parallel_environment.ParallelAlfEnvironment)
+                              and config.create_unwrapped_env):
+            self._unwrapped_env = create_environment(
+                nonparallel=True, seed=self._random_seed)
         else:
             self._unwrapped_env = None
         self._eval_env = None
@@ -351,32 +347,15 @@ class RLTrainer(Trainer):
             self._eval_summary_writer = alf.summary.create_summary_writer(
                 self._eval_dir, flush_secs=config.summaries_flush_secs)
 
-    @gin.configurable('alf.trainers.RLTrainer._create_environment')
-    def _create_environment(self,
-                            nonparallel=False,
-                            random_seed=None,
-                            register=True):
-        """Create and register an env."""
-        env = create_environment(nonparallel=nonparallel, seed=random_seed)
-        if register:
-            self._register_env(env)
-        return env
-
-    def _register_env(self, env):
-        """Register env so that later its resource will be recycled."""
-        self._envs.append(env)
-
     def _close_envs(self):
         """Close all envs to release their resources."""
-        for env in self._envs:
-            env.close()
         alf.close_env()
         if self._unwrapped_env is not None:
             self._unwrapped_env.close()
 
     def _train(self):
-        for env in self._envs:
-            env.reset()
+        env = alf.get_env()
+        env.reset()
         if self._eval_env:
             self._eval_env.reset()
 
@@ -470,7 +449,6 @@ class RLTrainer(Trainer):
                 time_step=time_step,
                 policy_state=policy_state,
                 trans_state=trans_state,
-                epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
             policy_state = policy_step.state
 
@@ -505,6 +483,7 @@ class SLTrainer(Trainer):
         self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
         self._algorithm = config.algorithm_ctor(config=config)
+        self._algorithm.set_path('')
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)
@@ -512,14 +491,22 @@ class SLTrainer(Trainer):
 
         checkpoint_interval = math.ceil(
             self._num_epochs / self._num_checkpoints)
-        time_to_checkpoint = checkpoint_interval
+        time_to_checkpoint = begin_epoch_num + checkpoint_interval
 
         logging.info("==> Begin Training")
         while True:
-            logging.info("-" * 68)
-            logging.info("Epoch: {}".format(epoch_num + 1))
+            t0 = time.time()
             with record_time("time/train_iter"):
-                self._algorithm.train_iter()
+                train_steps = self._algorithm.train_iter()
+                train_steps = train_steps or 1
+            t = time.time() - t0
+            logging.log_every_n_seconds(
+                logging.INFO,
+                '%s -> %s: %s time=%.3f throughput=%0.2f' %
+                (common.get_conf_file(),
+                 os.path.basename(self._root_dir.strip('/')), epoch_num, t,
+                 int(train_steps) / t),
+                n_seconds=1)
 
             if (epoch_num + 1) % self._eval_interval == 0:
                 if self._evaluate:
@@ -569,7 +556,6 @@ def _step(algorithm,
           time_step,
           policy_state,
           trans_state,
-          epsilon_greedy,
           metrics,
           render=False,
           recorder=None,
@@ -579,8 +565,7 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
-    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
-                                         epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
         recorder.capture_frame(policy_step.info, time_step.is_last())
@@ -599,7 +584,6 @@ def play(root_dir,
          env,
          algorithm,
          checkpoint_step="latest",
-         epsilon_greedy=0.,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -623,10 +607,6 @@ def play(root_dir,
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
             the most recent checkpoint named 'latest' will be loaded.
-        epsilon_greedy (float): a floating value in [0,1], representing the
-            chance of action sampling instead of taking argmax. This can
-            help prevent a dead loop in some deterministic environment like
-            Breakout.
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -642,7 +622,6 @@ def play(root_dir,
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
-    root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
@@ -681,7 +660,6 @@ def play(root_dir,
             time_step=time_step,
             policy_state=policy_state,
             trans_state=trans_state,
-            epsilon_greedy=epsilon_greedy,
             metrics=metrics,
             render=render,
             recorder=recorder,

@@ -14,7 +14,6 @@
 
 from absl import logging
 from functools import partial
-import gin
 import torch
 
 import alf
@@ -102,7 +101,7 @@ class PpoTest(alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
-def unroll(env, algorithm, steps, epsilon_greedy=0.1):
+def unroll(env, algorithm, steps):
     """Run `steps` environment steps using algoirthm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
@@ -113,8 +112,8 @@ def unroll(env, algorithm, steps, epsilon_greedy=0.1):
             time_step.is_first())
         transformed_time_step, trans_state = algorithm.transform_timestep(
             time_step, trans_state)
-        policy_step = algorithm.predict_step(
-            transformed_time_step, policy_state, epsilon_greedy=epsilon_greedy)
+        policy_step = algorithm.predict_step(transformed_time_step,
+                                             policy_state)
         time_step = env.step(policy_step.output)
         policy_state = policy_step.state
     return time_step

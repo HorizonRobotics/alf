@@ -1,0 +1,21 @@
+{
+  "desc": [
+  ],
+  "use_gpu": true,
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "max_worker_num": 8,
+  "repeats": 2,
+  "parameters": {
+    "create_environment.env_name": [
+      "FetchPickAndPlace-v1",
+      "FetchPush-v1",
+      "FetchReach-v1",
+      "FetchSlide-v1"
+    ]
+  }
+}

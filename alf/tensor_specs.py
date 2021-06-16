@@ -16,10 +16,11 @@
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
 
-import gin
 import numpy as np
 
 import torch
+
+import alf
 
 
 def torch_dtype_to_str(dtype):
@@ -27,7 +28,7 @@ def torch_dtype_to_str(dtype):
     return dtype.__str__()[6:]
 
 
-@gin.configurable
+@alf.configurable
 class TensorSpec(object):
     """Describes a torch.Tensor.
 
@@ -220,7 +221,7 @@ class TensorSpec(object):
         return torch.randn(*shape, dtype=self._dtype)
 
 
-@gin.configurable
+@alf.configurable
 class BoundedTensorSpec(TensorSpec):
     """A `TensorSpec` that specifies minimum and maximum values.
     Example usage:

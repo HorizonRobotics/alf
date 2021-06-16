@@ -290,6 +290,7 @@ class GridSearch(object):
                 root_dir = "%s/%s" % (FLAGS.root_dir,
                                       self._generate_run_name(
                                           parameters, task_count, repeat))
+                root_dir = common.abs_path(root_dir)
                 process_pool.apply_async(
                     func=self._worker,
                     args=[root_dir, parameters, device_queue],
@@ -305,7 +306,7 @@ class GridSearch(object):
 
             conf_file = common.get_conf_file()
             # This is the snapshot stored in grid-search root dir
-            alf_repo = os.path.join(FLAGS.root_dir, "alf")
+            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
             # We still need to generate a snapshot of ALF repo as ``<root_dir>/alf``
             # for playing individual searching job later
             common.generate_alf_root_snapshot(alf_repo, root_dir)
@@ -351,6 +352,8 @@ class GridSearch(object):
 
 def search():
     FLAGS.alsologtostderr = True
+    logging.get_absl_handler().use_absl_log_file(
+        log_dir=os.path.expanduser(FLAGS.root_dir))
     GridSearch(FLAGS.search_config).run()
 
 
@@ -360,7 +363,7 @@ def launch_snapshot_gridsearch():
     available, the cache is used to make sure that when a search job is launched,
     it's actually using the right ALF version.
     """
-    root_dir = os.path.expanduser(FLAGS.root_dir)
+    root_dir = common.abs_path(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
 
     # write the current conf file as
@@ -369,7 +372,8 @@ def launch_snapshot_gridsearch():
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
     # ../<ALF_REPO>/alf/bin/grid_search.py
-    alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+    file_path = os.path.abspath(__file__)
+    alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
     common.generate_alf_root_snapshot(alf_root, root_dir)
 
     # point the grid search to the snapshot paths

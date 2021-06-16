@@ -17,7 +17,6 @@ buffers for off-policy drivers in the future.
 """
 
 import abc
-import gin
 import six
 import torch
 from torch import nn
@@ -90,7 +89,7 @@ class ExperienceReplayer(nn.Module):
         """
 
 
-@gin.configurable
+@alf.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
     """
     A simple one-time experience replayer. For each incoming `exp`,

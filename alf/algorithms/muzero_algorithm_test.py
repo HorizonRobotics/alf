@@ -127,7 +127,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
         action_spec = alf.BoundedTensorSpec((),
                                             minimum=0,
                                             maximum=1,
-                                            dtype=torch.int32)
+                                            dtype=torch.int64)
         reward_spec = alf.TensorSpec(())
         time_step_spec = ds.time_step_spec(observation_spec, action_spec,
                                            reward_spec)
@@ -173,6 +173,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
 
         dt_state = common.zero_tensor_from_nested_spec(
             data_transformer.state_spec, batch_size)
+        prev_action = time_step.prev_action
         for i in range(len(step_type0)):
             step_type = [step_type0[i], step_type1[i]]
             step_type = [
@@ -191,10 +192,12 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 observation=torch.tensor([[i, i + 1, i], [i + 1, i, i]],
                                          dtype=torch.float32),
                 reward=reward,
+                prev_action=prev_action,
                 env_id=torch.arange(batch_size, dtype=torch.int32))
             transformed_time_step, dt_state = data_transformer.transform_timestep(
                 time_step, dt_state)
             alg_step = muzero.rollout_step(transformed_time_step, state)
+            prev_action = alg_step.output
             experience = ds.make_experience(time_step, alg_step, state)
             replay_buffer.add_batch(experience)
             state = alg_step.state
@@ -205,15 +208,14 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
         experience = replay_buffer.get_field(None,
                                              env_ids.unsqueeze(-1).cpu(),
                                              positions.unsqueeze(-1).cpu())
-        experience = experience._replace(
-            replay_buffer=replay_buffer,
-            batch_info=BatchInfo(env_ids=env_ids, positions=positions),
-            rollout_info_field='rollout_info')
-        processed_experience = muzero.preprocess_experience(experience)
+        batch_info = BatchInfo(
+            env_ids=env_ids, positions=positions, replay_buffer=replay_buffer)
+        processed_experience, processed_rollout_info = muzero.preprocess_experience(
+            experience, experience.rollout_info, batch_info)
         import pprint
-        pprint.pprint(processed_experience.rollout_info)
+        pprint.pprint(processed_rollout_info)
         alf.nest.map_structure(lambda x, y: self.assertEqual(x, y),
-                               processed_experience.rollout_info, expected)
+                               processed_rollout_info, expected)
 
     def get_exptected_info(self, sparse_reward):
         # yapf: disable

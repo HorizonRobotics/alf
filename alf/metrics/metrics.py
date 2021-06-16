@@ -16,7 +16,6 @@
 Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
-import gin
 import torch
 
 import alf
@@ -283,7 +282,7 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
             return [reward[..., i] for i in range(reward.shape[-1])]
 
 
-@gin.configurable
+@alf.configurable
 class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
     """Metric for computing the average discounted episodic return.
     It is calculated according to the following formula:

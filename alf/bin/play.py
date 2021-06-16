@@ -28,7 +28,6 @@ from absl import app
 from absl import flags
 from absl import logging
 import copy
-import gin
 import os
 import subprocess
 import sys
@@ -50,7 +49,6 @@ def _define_flags():
         "the number of training steps which is used to "
         "specify the checkpoint to be loaded. If None, the latest checkpoint under "
         "train_dir will be used.")
-    flags.DEFINE_float('epsilon_greedy', 0., "probability of sampling action.")
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
@@ -121,13 +119,13 @@ def play():
         action_spec=env.action_spec(),
         reward_spec=env.reward_spec(),
         config=config)
+    algorithm.set_path('')
     try:
         policy_trainer.play(
-            FLAGS.root_dir,
+            common.abs_path(FLAGS.root_dir),
             env,
             algorithm,
             checkpoint_step=FLAGS.checkpoint_step or "latest",
-            epsilon_greedy=FLAGS.epsilon_greedy,
             num_episodes=FLAGS.num_episodes,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
@@ -151,7 +149,7 @@ def launch_snapshot_play():
     this function doesn't have any effect and the most up-to-date ALF will
     be used by play.
     """
-    root_dir = os.path.expanduser(FLAGS.root_dir)
+    root_dir = common.abs_path(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
 
     env_vars = common.get_alf_snapshot_env_vars(root_dir)

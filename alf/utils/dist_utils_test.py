@@ -15,10 +15,12 @@
 from absl import logging
 from absl.testing import parameterized
 from collections import namedtuple
+import math
 import torch
 import torch.distributions as td
 
 import alf
+from alf.utils import math_ops
 import alf.utils.dist_utils as dist_utils
 
 ActionDistribution = namedtuple('ActionDistribution', ['a', 'b'])
@@ -152,6 +154,29 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertTensorEqual(x, x_recovered)
         self.assertTrue(x is x_recovered)
 
+    def test_affine_transformed(self):
+        normal_dist = dist_utils.DiagMultivariateNormal(
+            torch.tensor([[1., 2.], [2., 2.]]),
+            torch.tensor([[2., 3.], [1., 1.]]))
+        dist = dist_utils.AffineTransformedDistribution(
+            base_dist=normal_dist, loc=1, scale=2)
+        self.assertEqual(dist.entropy(),
+                         normal_dist.entropy() + math.log(2) * 2)
+        spec = dist_utils.DistributionSpec.from_distribution(dist)
+
+        params1 = {
+            'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
+            'scale': torch.tensor([[2., 4.], [2., 1.]])
+        }
+        dist1 = spec.build_distribution(params1)
+        self.assertEqual(type(dist1), dist_utils.AffineTransformedDistribution)
+        self.assertEqual(dist1.event_shape, dist.event_shape)
+        self.assertEqual(
+            type(dist1.base_dist), dist_utils.DiagMultivariateNormal)
+        self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
+        self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
+        self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
+
 
 class TestConversions(alf.test.TestCase):
     def test_conversions(self):
@@ -270,6 +295,63 @@ class TestRSampleActionDistribution(alf.test.TestCase):
         self.assertRaises(AssertionError,
                           dist_utils.rsample_action_distribution,
                           action_distribution)
+
+
+class TestSoftTransforms(alf.test.TestCase):
+    def test_soft_transforms(self):
+        N = 100
+        x = torch.randn([N, N], dtype=torch.float32, requires_grad=True)
+        softplus = dist_utils.Softplus()
+        softplus_x = softplus(x)
+        softplus_x_ = torch.nn.functional.softplus(x)
+
+        self.assertTrue(torch.all(softplus_x >= 0.))
+        self.assertTensorClose(softplus._inverse(softplus_x), x)
+        self.assertTensorClose(softplus_x, softplus_x_)
+
+        b = 0.1
+        softlower = dist_utils.Softlower(b)
+        softlower_x = softlower(x)
+        softlower_x_ = math_ops.softlower(x, b)
+        self.assertTrue(torch.all(softlower_x >= b))
+        self.assertTensorClose(softlower.inv(softlower_x), x)
+        self.assertTensorClose(softlower_x, softlower_x_)
+
+        b = -0.01
+        softupper = dist_utils.Softupper(b, hinge_softness=0.01)
+        softupper_x = softupper(x)
+        softupper_x_ = math_ops.softupper(x, b, hinge_softness=0.01)
+        self.assertTrue(torch.all(softupper_x <= b))
+        self.assertTensorClose(softupper.inv(softupper_x), x)
+        self.assertTensorClose(softupper_x, softupper_x_)
+
+        b = 1e-4
+        softclip = dist_utils.SoftclipTF(-b, b, hinge_softness=1e-4)
+        softclip_x = softclip(x)
+        softclip_x_ = math_ops.softclip_tf(x, -b, b, hinge_softness=1e-4)
+        self.assertTrue(torch.all(softclip_x <= b))
+        self.assertTrue(torch.all(softclip_x >= -b))
+        self.assertTensorClose(softclip.inv(softclip_x), x)
+        self.assertTensorClose(softclip_x, softclip_x_)
+
+        b = 1e-4
+        softclip = dist_utils.Softclip(-b, b, hinge_softness=1e-4)
+        softclip_x = softclip(x)
+        softclip_x_ = math_ops.softclip(x, -b, b, hinge_softness=1e-4)
+        self.assertTrue(torch.all(softclip_x <= b))
+        self.assertTrue(torch.all(softclip_x >= -b))
+        self.assertTensorClose(softclip.inv(softclip_x), x)
+        self.assertTensorClose(softclip_x, softclip_x_)
+
+        # test Softclip._inverse in mild conditions
+        b = 1
+        softclip = dist_utils.Softclip(-b, b, hinge_softness=1)
+        self.assertTensorClose(softclip._inverse(softclip(x)), x, epsilon=1e-4)
+
+        y = softclip(x)
+        grad = torch.autograd.grad(y.sum(), x)[0]
+        self.assertTensorClose(
+            grad.log(), softclip.log_abs_det_jacobian(x, y), epsilon=1e-5)
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ from functools import partial
 
 import alf
 from alf.algorithms.data_transformer import RewardNormalizer
-from alf.algorithms.tasac_algorithm import TasacAlgorithm
+from alf.algorithms.taac_algorithm import TaacAlgorithm, TaacLAlgorithm, TaacQAlgorithm
 from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
 from alf.optimizers import AdamTF
 from alf.utils import dist_utils, math_ops
@@ -34,7 +34,6 @@ hidden_layers = (256, 256)
 # algorithm config
 actor_network_cls = partial(
     ActorDistributionNetwork,
-    input_preprocessors=alf.layers.Detach(),
     fc_layer_params=hidden_layers,
     continuous_projection_net_ctor=partial(
         NormalProjectionNetwork,
@@ -46,7 +45,7 @@ critic_network_cls = partial(
     CriticNetwork, joint_fc_layer_params=hidden_layers)
 
 alf.config(
-    'TasacAlgorithm',
+    'TaacAlgorithmBase',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     target_update_tau=0.005,
@@ -55,7 +54,8 @@ alf.config(
                     partial(
                         dist_utils.calc_default_target_entropy, min_prob=0.1)))
 
-alf.config('Agent', rl_algorithm_cls=TasacAlgorithm, optimizer=AdamTF(lr=5e-4))
+alg = TaacAlgorithm  # TaacLAlgorithm TaacQAlgorithm
+alf.config('Agent', rl_algorithm_cls=alg, optimizer=AdamTF(lr=5e-4))
 
 # training config
 alf.config(

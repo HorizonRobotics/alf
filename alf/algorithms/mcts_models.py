@@ -14,7 +14,6 @@
 
 import abc
 from functools import partial
-import gin
 import numpy as np
 import torch
 from torch import nn
@@ -251,7 +250,7 @@ def create_simple_dynamics_net(input_tensor_spec):
         last_activation=alf.math.identity)
 
 
-@gin.configurable
+@alf.configurable
 class SimplePredictionNet(alf.networks.Network):
     def __init__(self,
                  observation_spec,
@@ -330,7 +329,7 @@ def create_simple_encoding_net(observation_spec):
         input_tensor_spec=observation_spec, fc_layer_params=(256, 256))
 
 
-@gin.configurable
+@alf.configurable
 class SimpleMCTSModel(MCTSModel):
     def __init__(self,
                  observation_spec,

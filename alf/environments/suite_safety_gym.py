@@ -48,7 +48,6 @@ import numpy as np
 import copy
 import gym
 
-import gin
 import alf
 from alf.environments import suite_gym
 
@@ -193,9 +192,6 @@ class RGBRenderWrapper(gym.Wrapper):
         if self._height is not None:
             render_kwargs["height"] = self._height
         return self.env.render(**render_kwargs)
-
-
-gin.constant('SafetyGym.REWARD_DIMENSION', VectorReward.REWARD_DIMENSION)
 
 
 @alf.configurable

@@ -16,31 +16,30 @@
 from absl import logging
 import copy
 from collections import OrderedDict
-from functools import wraps
 import itertools
 import json
+import numpy as np
 import os
 import psutil
-import six
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
-from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
-                       tensor_utils)
+from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
+from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
 
 
 def _get_optimizer_params(optimizer: torch.optim.Optimizer):
-    return set(sum([g['params'] for g in optimizer.param_groups], []))
+    return sum([g['params'] for g in optimizer.param_groups], [])
 
 
 def _flatten_module(module):
@@ -57,58 +56,14 @@ def _flatten_module(module):
         return [module]
 
 
-class Algorithm(nn.Module):
-    """Algorithm base class. ``Algorithm`` is a generic interface for supervised
-    training algorithms. The key interface functions are:
-
-    1. ``predict_step()``: one step of computation of action for evaluation.
-    2. ``rollout_step()``: one step of computation for rollout. It is used for
-       collecting experiences during training. Different from ``predict_step``,
-       ``rollout_step`` may include addtional computations for training. An
-       algorithm could immediately use the collected experiences to update
-       parameters after one rollout (multiple rollout steps) is performed; or it
-       can put these collected experiences into a replay buffer.
-    3. ``train_step()``: only used by algorithms that put experiences into
-       replay buffers. The training data are sampled from the replay buffer
-       filled by ``rollout_step()``.
-    4. ``train_from_unroll()``: perform a training iteration from the unrolled
-       result.
-    5. ``train_from_replay_buffer()``: perform a training iteration from a
-       replay buffer.
-    6. ``update_with_gradient()``: Do one gradient update based on the loss. It
-       is used by the default ``train_from_unroll()`` and
-       ``train_from_replay_buffer()`` implementations. You can override to
-       implement your own ``update_with_gradient()``.
-    7. ``calc_loss()``: calculate loss based the ``experience`` and the
-       ``train_info`` collected from ``rollout_step()`` or ``train_step()``. It
-       is used by the default implementations of ``train_from_unroll()`` and
-       ``train_from_replay_buffer()``. If you want to use these two functions,
-       you need to implement ``calc_loss()``.
-    8. ``after_update()``: called by ``train_iter()`` after every call to
-       ``update_with_gradient()``, mainly for some postprocessing steps such as
-       copying a training model to a target model in SAC or DQN.
-    9. ``after_train_iter()``: called by ``train_iter()`` after every call to
-       ``train_from_unroll()`` (on-policy training iter) or
-       ``train_from_replay_buffer`` (off-policy training iter). It's mainly for
-       training additional modules that have their own training logic (e.g.,
-       on/off-policy, replay buffers, etc). Other things might also be possible
-       as long as they should be done once every training iteration.
-
-    .. note::
-        A base (non-RL) algorithm will not directly interact with an
-        environment. The interation loop will always be driven by an
-        ``RLAlgorithm`` that outputs actions and gets rewards. So a base
-        (non-RL) algorithm is always attached to an ``RLAlgorithm`` and cannot
-        change the timing of (when to launch) a training iteration. However, it
-        can have its own logic of a training iteration (e.g.,
-        ``train_from_unroll()`` and ``train_from_replay_buffer()``) which can be
-        triggered by a parent ``RLAlgorithm`` inside its ``after_train_iter()``.
-    """
+class Algorithm(AlgorithmInterface):
+    """Base implementation for AlgorithmInterface."""
 
     def __init__(self,
                  train_state_spec=(),
                  rollout_state_spec=None,
                  predict_state_spec=None,
+                 is_on_policy=None,
                  optimizer=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
@@ -116,7 +71,8 @@ class Algorithm(nn.Module):
         """Each algorithm can have a default optimimzer. By default, the parameters
         and/or modules under an algorithm are optimized by the default
         optimizer. One can also specify an optimizer for a set of parameters
-        and/or modules using add_optimizer.
+        and/or modules using add_optimizer. You can find out which parameter is
+        handled by which optimizer using ``get_optimizer_info()``.
 
         A requirement for this optimizer structure to work is that there is no
         algorithm which is a submodule of a non-algorithm module. Currently,
@@ -132,6 +88,7 @@ class Algorithm(nn.Module):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
+            is_on_policy (None|bool):
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             config (TrainerConfig): config for training. ``config`` only needs to
@@ -191,8 +148,32 @@ class Algorithm(nn.Module):
         self._optimizers = []
         self._opt_keys = []
         self._module_to_optimizer = {}
+        self._path = ''
         if optimizer:
             self._optimizers.append(optimizer)
+        self._is_on_policy = is_on_policy
+
+    def forward(self, *input):
+        raise RuntimeError("forward() should not be called")
+
+    @property
+    def path(self):
+        return self._path
+
+    def set_path(self, path):
+        self._path = path
+
+    @property
+    def on_policy(self):
+        return self._is_on_policy
+
+    def set_on_policy(self, is_on_policy):
+        if self.on_policy is not None:
+            assert self.on_policy == is_on_policy, (
+                "set_on_policy() can"
+                "only be called to change is_on_policy if is_on_policy is None."
+            )
+        self._is_on_policy = is_on_policy
 
     def is_rl(self):
         """Always returns False for non-RL algorithms."""
@@ -352,20 +333,6 @@ class Algorithm(nn.Module):
         """
         return self._data_transformer.transform_experience(experience)
 
-    def preprocess_experience(self, experience):
-        """This function is called on the experiences obtained from a replay
-        buffer. An example usage of this function is to calculate advantages and
-        returns in ``PPOAlgorithm``.
-
-        The shapes of tensors in experience are assumed to be :math:`(B, T, ...)`.
-
-        Args:
-            experience (nest): original experience
-        Returns:
-            processed experience
-        """
-        return experience
-
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
@@ -425,11 +392,11 @@ class Algorithm(nn.Module):
 
     def _trainable_attributes_to_ignore(self):
         """Algorithms can overwrite this function to provide which class
-        member names should be ignored when getting trainable variables, to
-        avoid being assigned with multiple optimizers.
+        member names should be ignored when getting trainable parameters, to
+        avoid being assigned to the default optimizer.
 
         For example, if in your algorithm you've created a member ``self._vars``
-        pointing to the variables of a module for some purpose, you can avoid
+        pointing to the parameters of a module for some purpose, you can avoid
         assigning an optimizer to ``self._vars`` (because the module will be assigned
         with one) by doing:
 
@@ -505,46 +472,58 @@ class Algorithm(nn.Module):
             tuple:
 
             - list of parameters not handled by any optimizers under this algorithm
-            - list of parameters not handled under this algorithm
+            - list of parameters handled under this algorithm
         """
         default_optimizer = self.default_optimizer
-        new_params = []
-        handled = set()
-        duplicate_error = "Parameter %s is handled by muliple optimizers."
+        # The reason of using dict instead of set to hold the parameters is that
+        # dict is guaranteed to preserve the insertion order so that we can get
+        # deterministic ordering of the parameters.
+        new_params = dict()
+        handled = dict()
+        duplicate_error = "Parameter %s is handled by multiple optimizers."
 
         def _add_params_to_optimizer(params, opt):
-            existing_params = _get_optimizer_params(opt)
+            existing_params = set(_get_optimizer_params(opt))
             params = list(filter(lambda p: p not in existing_params, params))
             if params:
                 opt.add_param_group({'params': params})
+            return params
 
         for child in self._get_children():
             if child in handled:
                 continue
             assert id(child) != id(self), "Child should not be self"
-            handled.add(child)
             if isinstance(child, Algorithm):
                 params, child_handled = child._setup_optimizers_()
                 for m in child_handled:
-                    assert m not in handled, duplicate_error % m
-                    handled.add(m)
+                    assert m not in handled, duplicate_error % self.get_param_name(
+                        m)
+                    handled[m] = 1
             elif isinstance(child, nn.Module):
-                params = child.parameters()
+                params = list(child.parameters())
             elif isinstance(child, nn.Parameter):
                 params = [child]
             optimizer = self._module_to_optimizer.get(child, None)
             if optimizer is None:
-                new_params.extend(params)
+                new_params.update((p, 1) for p in params)
                 if default_optimizer is not None:
                     self._module_to_optimizer[child] = default_optimizer
             else:
-                _add_params_to_optimizer(params, optimizer)
+                for m in params:
+                    assert m not in handled, duplicate_error % self.get_param_name(
+                        m)
+                params = _add_params_to_optimizer(params, optimizer)
+                handled.update((p, 1) for p in params)
 
+        for p in handled:
+            if p in new_params:
+                del new_params[p]
         if default_optimizer is not None:
-            _add_params_to_optimizer(new_params, default_optimizer)
-            return [], handled
+            new_params = _add_params_to_optimizer(new_params.keys(),
+                                                  default_optimizer)
+            return [], list(handled.keys())
         else:
-            return new_params, handled
+            return list(new_params.keys()), list(handled.keys())
 
     def optimizers(self, recurse=True, include_ignored_attributes=False):
         """Get all the optimizers used by this algorithm.
@@ -599,7 +578,7 @@ class Algorithm(nn.Module):
         """Return the information about the parameters not being optimized.
 
         Note: the difference of this with the parameters contained in the optimizer
-        'None' from get_optimizer_info() is that get_optimizer_info() does not
+        'None' from ``get_optimizer_info()`` is that ``get_optimizer_info()`` does not
         traverse all the parameters (e.g., parameters in list, tuple, dict, or set).
 
         Returns:
@@ -986,61 +965,6 @@ class Algorithm(nn.Module):
         main_str += ')'
         return main_str
 
-    #------------- User need to implement the following functions -------
-
-    # Subclass may override predict_step() for more efficient implementation
-    def predict_step(self, inputs, state=None):
-        """Predict for one step of inputs.
-
-        Args:
-            inputs (nested Tensor): inputs for prediction.
-            state (nested Tensor): network state (for RNN).
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): prediction result.
-            - state (nested Tensor): should match ``predict_state_spec``.
-        """
-        algorithm_step = self.rollout_step(inputs, state)
-        return algorithm_step._replace(info=None)
-
-    def rollout_step(self, inputs, state=None):
-        """Rollout for one step of inputs.
-
-        Args:
-            inputs (nested Tensor): inputs for prediction.
-            state (nested Tensor): network state (for RNN).
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): prediction result.
-            - state (nested Tensor): should match ``rollout_state_spec``.
-        """
-        algorithm_step = self.train_step(inputs, state)
-        return algorithm_step._replace(info=None)
-
-    def train_step(self, inputs, state=None):
-        """Perform one step of training computation.
-
-        It is called to generate actions for every environment step.
-        It also needs to generate necessary information for training.
-
-        Args:
-            inputs (nested Tensor): inputs for train.
-            state (nested Tensor): consistent with ``train_state_spec``.
-
-        Returns:
-            AlgStep:
-            - output (nested Tensor): predict outputs.
-            - state (nested Tensor): should match ``train_state_spec``.
-            - info (nested Tensor): information for training. If this is
-              ``LossInfo``, ``calc_loss()`` in ``Algorithm`` can be used.
-              Otherwise, the user needs to override ``calc_loss()`` to
-              calculate loss or override ``update_with_gradient()`` to do
-              customized training.
-        """
-        return AlgStep()
-
     # Subclass may override update_with_gradient() to allow customized training
     def update_with_gradient(self,
                              loss_info,
@@ -1095,7 +1019,7 @@ class Algorithm(nn.Module):
                                "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
         for optimizer in optimizers:
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
 
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
@@ -1116,59 +1040,12 @@ class Algorithm(nn.Module):
         all_params = [(self._param_to_name[p], p) for p in all_params]
         return loss_info, all_params
 
-    def after_update(self, experience, train_info):
-        """Do things after completing one gradient update (i.e. ``update_with_gradient()``).
-        This function can be used for post-processings following one minibatch
-        update, such as copy a training model to a target model in SAC, DQN, etc.
-
-        Args:
-            experience (nest): experiences collected for the most recent
-                ``update_with_gradient()``.
-            train_info (nest): information collected for training.
-                It is batched from each ``AlgStep.info`` returned by ``rollout_step()``
-                or ``train_step()``.
-        """
-        pass
-
-    def after_train_iter(self, experience, train_info=None):
-        """Do things after completing one training iteration (i.e. ``train_iter()``
-        that consists of one or multiple gradient updates). This function can
-        be used for training additional modules that have their own training logic
-        (e.g., on/off-policy, replay buffers, etc). These modules should be added
-        to ``_trainable_attributes_to_ignore`` in the parent algorithm.
-
-        Other things might also be possible as long as they should be done once
-        every training iteration.
-
-        This function will serve the same purpose with ``after_update`` if there
-        is always only one gradient update in each training iteration. Otherwise
-        it's less frequently called than ``after_update``.
-
-        Args:
-            experience (nest): experience collected during ``unroll()``.
-                Note that it won't contain the field ``rollout_info`` because this
-                is the info collected just from the unroll but not from a replay
-                buffer. And ``rollout_info`` has been assigned to ``train_info``.
-            train_info (nest): information collected during ``unroll()``. If it's
-                ``None``, then only off-policy training is allowed. Currently
-                this arg is ``None`` when:
-
-                - This function is called by ``_train_iter_on_policy``, because
-                  it's not recomended to backprop on the same graph twice.
-                - This function is called by ``_train_iter_off_policy`` with
-                  ``config.unroll_with_grad=False``.
-        """
-        pass
-
     # Subclass may override calc_loss() to allow more sophisticated loss
-    def calc_loss(self, experience, train_info):
+    def calc_loss(self, info):
         """Calculate the loss at each step for each sample.
 
         Args:
-            experience (Experience): experiences collected from the most recent
-                ``unroll()`` or from a replay buffer. It's used for the most
-                recent ``update_with_gradient()``.
-            train_info (nest): information collected for training. It is batched
+            info (nest): information collected for training. It is batched
                 from each ``AlgStep.info`` returned by ``rollout_step()``
                 (on-policy training) or ``train_step()`` (off-policy training).
         Returns:
@@ -1176,11 +1053,11 @@ class Algorithm(nn.Module):
                 batch. The shapes of the tensors in loss info should be
                 :math:`(T, B)`.
         """
-        assert isinstance(train_info, LossInfo), (
-            "train_info returned by"
+        assert isinstance(info, LossInfo), (
+            "info returned by"
             " train_step() should be LossInfo. Otherwise you need override"
-            " calc_loss() to generate LossInfo from train_info")
-        return train_info
+            " calc_loss() to generate LossInfo from info")
+        return info
 
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
@@ -1200,9 +1077,10 @@ class Algorithm(nn.Module):
         else:
             valid_masks = None
         experience = experience._replace(rollout_info_field='rollout_info')
-        loss_info = self.calc_loss(experience, train_info)
+        loss_info = self.calc_loss(train_info)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
-        self.after_update(experience, train_info)
+        time_step = experience_to_time_step(experience)
+        self.after_update(time_step, train_info)
         self.summarize_train(experience, train_info, loss_info, params)
         return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
 
@@ -1233,6 +1111,8 @@ class Algorithm(nn.Module):
           for every update in ``num_updates_per_train_iter``, the data will
           be shuffled and divided into
           ``buffer_size//(mini_batch_size * mini_batch_length)`` "mini-updates".
+          If ``mini_batch_length`` is None, then ``unroll_length`` will be used
+          for this calculation.
 
         Args:
             update_global_counter (bool): controls whether this function changes
@@ -1261,6 +1141,9 @@ class Algorithm(nn.Module):
                 num_updates = config.num_updates_per_train_iter
                 batch_info = None
             else:
+                assert config.mini_batch_length is not None, (
+                    "No mini_batch_length is specified for off-policy training"
+                )
                 experience, batch_info = self._exp_replayer.replay(
                     sample_batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
@@ -1280,13 +1163,27 @@ class Algorithm(nn.Module):
         """Train using experience."""
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
-        experience = self._add_batch_info(experience, batch_info)
         if self._exp_replayer_type != "one_time":
             # The experience put in one_time replayer is already transformed
             # in unroll().
+            experience = alf.data_structures.add_batch_info(
+                experience, batch_info, self._exp_replayer.replay_buffer)
             experience = self.transform_experience(experience)
-        experience = self.preprocess_experience(experience)
-        experience = self._clear_batch_info(experience)
+            # allow data_transformers to change batch_info
+            if experience.batch_info != ():
+                batch_info = experience.batch_info
+            experience = alf.data_structures.clear_batch_info(experience)
+        time_step = experience_to_time_step(experience)
+        time_step, rollout_info = self.preprocess_experience(
+            time_step, experience.rollout_info, batch_info)
+        experience = experience._replace(
+            step_type=time_step.step_type,
+            reward=time_step.reward,
+            discount=time_step.discount,
+            observation=time_step.observation,
+            prev_action=time_step.prev_action,
+            env_id=time_step.env_id,
+            rollout_info=rollout_info)
         if self._processed_experience_spec is None:
             self._processed_experience_spec = dist_utils.extract_spec(
                 experience, from_dim=2)
@@ -1362,12 +1259,19 @@ class Algorithm(nn.Module):
 
         for u in range(num_updates):
             if mini_batch_size < batch_size:
-                indices = torch.randperm(batch_size)
+                # here we use the cpu version of torch.randperm(n) to generate
+                # the permuted indices, as the cuda version of torch.randperm(n)
+                # seems to have a bug when n is a large number, generating
+                # negative or very large values that cause out of bound kernel
+                # error: https://github.com/pytorch/pytorch/issues/59756
+                indices = alf.nest.utils.convert_device(
+                    torch.randperm(batch_size, device='cpu'))
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
                 if batch_info is not None:
                     batch_info = alf.nest.map_structure(
-                        lambda x: x[indices], batch_info)
+                        lambda x: x[indices]
+                        if isinstance(x, torch.Tensor) else x, batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
                     alf.summary.increment_global_counter()
@@ -1381,8 +1285,8 @@ class Algorithm(nn.Module):
                     experience)
                 if batch_info:
                     binfo = alf.nest.map_structure(
-                        lambda x: x[b:min(batch_size, b + mini_batch_size)],
-                        batch_info)
+                        lambda x: x[b:min(batch_size, b + mini_batch_size)]
+                        if isinstance(x, torch.Tensor) else x, batch_info)
                 else:
                     binfo = None
                 batch = _make_time_major(batch)
@@ -1420,7 +1324,9 @@ class Algorithm(nn.Module):
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
                     "the state but will simply keep updating it.")
-            policy_step = self.train_step(exp, policy_state)
+            time_step = experience_to_time_step(exp)
+            policy_step = self.train_step(time_step, policy_state,
+                                          exp.rollout_info)
             if self._train_info_spec is None:
                 self._train_info_spec = dist_utils.extract_spec(
                     policy_step.info)
@@ -1447,7 +1353,9 @@ class Algorithm(nn.Module):
 
         exp = dist_utils.params_to_distributions(
             exp, self.processed_experience_spec)
-        policy_step = self.train_step(exp, policy_state)
+        time_step = experience_to_time_step(exp)
+        policy_step = self.train_step(time_step, policy_state,
+                                      exp.rollout_info)
 
         if self._train_info_spec is None:
             self._train_info_spec = dist_utils.extract_spec(policy_step.info)
@@ -1456,17 +1364,6 @@ class Algorithm(nn.Module):
             lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
-
-    def _add_batch_info(self, experience, batch_info):
-        if batch_info is not None:
-            experience = experience._replace(
-                batch_info=batch_info,
-                replay_buffer=self._exp_replayer.replay_buffer)
-        return experience._replace(rollout_info_field='rollout_info')
-
-    def _clear_batch_info(self, experience):
-        return experience._replace(
-            batch_info=(), replay_buffer=(), rollout_info_field=())
 
     def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)
@@ -1478,8 +1375,7 @@ class Algorithm(nn.Module):
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
 
-        experience = self._add_batch_info(experience, batch_info)
-        loss_info = self.calc_loss(experience, train_info)
+        loss_info = self.calc_loss(train_info)
         if loss_info.priority is not ():
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
@@ -1491,6 +1387,9 @@ class Algorithm(nn.Module):
                         "new_priority", priority)
                     summary_utils.add_mean_hist_summary(
                         "old_importance_weight", batch_info.importance_weights)
+        else:
+            assert batch_info is None or batch_info.importance_weights is (), (
+                "Priority replay is enabled. But priority is not calculated.")
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
@@ -1499,6 +1398,33 @@ class Algorithm(nn.Module):
             valid_masks = None
         loss_info, params = self.update_with_gradient(loss_info, valid_masks,
                                                       weight, batch_info)
-        self.after_update(experience, train_info)
+        time_step = experience_to_time_step(experience)
+        self.after_update(time_step, train_info)
 
         return experience, train_info, loss_info, params
+
+
+class Loss(Algorithm):
+    """Algorithm that uses its input as loss.
+
+    It can be subclassed to customize calc_loss().
+    """
+
+    def __init__(self, loss_weight=1.0, name="LossAlg"):
+        super().__init__(name=name)
+        self._loss_weight = loss_weight
+
+    def predict_step(self, inputs, state=None):
+        return AlgStep()
+
+    def rollout_step(self, inputs, state=None):
+        if self.on_policy:
+            return AlgStep(info=inputs)
+        else:
+            return AlgStep()
+
+    def train_step(self, inputs, state=None, rollout_info=None):
+        return AlgStep(info=inputs)
+
+    def calc_loss(self, info):
+        return LossInfo(loss=self._loss_weight * info, extra=info)

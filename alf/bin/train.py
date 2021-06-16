@@ -48,7 +48,6 @@ replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_pa
 from absl import app
 from absl import flags
 from absl import logging
-import gin
 import os
 import pathlib
 import torch
@@ -73,7 +72,7 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
-@gin.configurable
+@alf.configurable
 def train_eval(root_dir):
     """Train and evaluate algorithm
 
@@ -86,27 +85,28 @@ def train_eval(root_dir):
     elif trainer_conf.ml_type == 'sl':
         trainer = policy_trainer.SLTrainer(trainer_conf)
     else:
-        raise ValueError("Unsupported ml_type: %s" % ml_type)
+        raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
     trainer.train()
 
 
 def main(_):
     FLAGS.alsologtostderr = True
-    root_dir = os.path.expanduser(FLAGS.root_dir)
+    root_dir = common.abs_path(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
     logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
 
     if FLAGS.store_snapshot:
         # ../<ALF_REPO>/alf/bin/train.py
-        alf_root = str(pathlib.Path(__file__).parent.parent.parent.absolute())
+        file_path = os.path.abspath(__file__)
+        alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
         # generate a snapshot of ALF repo as ``<root_dir>/alf``
         common.generate_alf_root_snapshot(alf_root, root_dir)
 
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)
-        train_eval(FLAGS.root_dir)
+        train_eval(root_dir)
     finally:
         alf.close_env()
 

@@ -13,7 +13,6 @@
 # limitations under the License.
 """PreprocessorNetworks."""
 
-import gin
 import functools
 import math
 import typing
