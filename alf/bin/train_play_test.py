@@ -617,14 +617,12 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_oac_halfcheetah(self):
         self._test(
             conf_file='oac_halfcheetah_conf.py',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_play_params=OAC_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_oac_humanoid(self):
         self._test(
             conf_file='oac_humanoid_conf.py',

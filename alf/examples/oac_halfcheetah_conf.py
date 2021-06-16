@@ -67,7 +67,6 @@ alf.config(
     initial_collect_steps=10000,
     mini_batch_length=2,
     unroll_length=1000,
-    unroll_with_grad=True,
     mini_batch_size=256,
     num_updates_per_train_iter=1000,
     num_iterations=2500,

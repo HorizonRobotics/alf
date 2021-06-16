@@ -73,10 +73,9 @@ class OacAlgorithm(SacAlgorithm):
         Refer to SacAlgorithm for Args besides the following.
 
         Args:
-            explore (bool): default is True for OAC algorithm, where 
-                'unroll_with_grad' has to be True in the 'TrainerConfig' 
-                and only continuous action space is supported.
-                When 'explore' is False, OAC is the same as SAC. 
+            explore (bool): default is True for OAC algorithm, where only 
+                continuous action space is supported. When 'explore' is False, 
+                OAC is the same as SAC. 
             explore_delta (float): parameter controlling how optimistic in shifting
                 the mean of the target policy to get the mean of the explore policy.
             beta_ub (float): parameter for computing the upperbound of Q value:
@@ -130,59 +129,61 @@ class OacAlgorithm(SacAlgorithm):
         from the target policy (actor_network) and used for action prediction.
         """
         new_state = SacActionState()
-        action_dist, actor_network_state = self._actor_network(
-            observation, state=state.actor_network)
-        assert isinstance(action_dist, td.TransformedDistribution), (
-            "Squashed distribution is expected from actor_network.")
-        assert isinstance(
-            action_dist.base_dist, dist_utils.DiagMultivariateNormal
-        ), ("the base distribution should be diagonal multivariate normal.")
-        normal_dist = action_dist.base_dist
-        unsquashed_mean = normal_dist.mean
-        unsquashed_std = normal_dist.stddev
-        unsquashed_var = normal_dist.variance
+        with torch.enable_grad():
+            action_dist, actor_network_state = self._actor_network(
+                observation, state=state.actor_network)
+            assert isinstance(action_dist, td.TransformedDistribution), (
+                "Squashed distribution is expected from actor_network.")
+            assert isinstance(
+                action_dist.base_dist, dist_utils.DiagMultivariateNormal
+            ), ("the base distribution should be diagonal multivariate normal."
+                )
+            normal_dist = action_dist.base_dist
+            unsquashed_mean = normal_dist.mean
+            unsquashed_std = normal_dist.stddev
+            unsquashed_var = normal_dist.variance
+            new_state = new_state._replace(actor_network=actor_network_state)
 
-        # sampled_action = dist_utils.rsample_action_distribution(action_dist)
-        new_state = new_state._replace(actor_network=actor_network_state)
+            def mean_shift_fn(mu, dqda, sigma):
+                if self._dqda_clipping:
+                    dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                       self._dqda_clipping)
+                norm = torch.sqrt(torch.sum(torch.mul(dqda * dqda,
+                                                      sigma))) + 1e-6
+                shift = self._explore_delta * torch.mul(sigma, dqda) / norm
+                return mu + shift
 
-        def mean_shift_fn(mu, dqda, sigma):
-            if self._dqda_clipping:
-                dqda = torch.clamp(dqda, -self._dqda_clipping,
-                                   self._dqda_clipping)
-            norm = torch.sqrt(torch.sum(torch.mul(dqda * dqda, sigma))) + 1e-6
-            shift = self._explore_delta * torch.mul(sigma, dqda) / norm
-            return mu + shift
-
-        if explore:
-            critic_action = normal_dist.mean.detach().clone()
-            critic_action.requires_grad = True
-            transformed_action = critic_action
-            for transform in action_dist.transforms:
-                transformed_action = transform(transformed_action)
-            critics, critic_state = self._critic_networks(
-                (observation, transformed_action), state=state.critic)
-            new_state = new_state._replace(critic=critic_state)
-            if critics.ndim > 2:
-                critics = critics.squeeze()
-            assert critics.ndim == 2
-            q_mean = critics.mean(dim=1)
-            q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
-            q_ub = q_mean + self._beta_ub * q_std
-            dqda = nest_utils.grad(critic_action, q_ub.sum())
-            shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
-                                              dqda, unsquashed_var)
-            normal_dist = dist_utils.DiagMultivariateNormal(
-                loc=shifted_mean, scale=unsquashed_std)
-            action_dist = td.TransformedDistribution(
-                base_distribution=normal_dist,
-                transforms=action_dist.transforms)
-            action = dist_utils.rsample_action_distribution(action_dist)
-        else:
-            if eps_greedy_sampling:
-                action = dist_utils.epsilon_greedy_sample(
-                    action_dist, epsilon_greedy)
-            else:
+            if explore:
+                critic_action = normal_dist.mean.detach().clone()
+                critic_action.requires_grad = True
+                transformed_action = critic_action
+                for transform in action_dist.transforms:
+                    transformed_action = transform(transformed_action)
+                critics, critic_state = self._critic_networks(
+                    (observation, transformed_action), state=state.critic)
+                new_state = new_state._replace(critic=critic_state)
+                if critics.ndim > 2:
+                    critics = critics.squeeze()
+                assert critics.ndim == 2
+                q_mean = critics.mean(dim=1)
+                q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
+                q_ub = q_mean + self._beta_ub * q_std
+                dqda = nest_utils.grad(critic_action, q_ub.sum())
+                shifted_mean = nest.map_structure(
+                    mean_shift_fn, unsquashed_mean, dqda, unsquashed_var)
+                normal_dist = dist_utils.DiagMultivariateNormal(
+                    loc=shifted_mean, scale=unsquashed_std)
+                action_dist = td.TransformedDistribution(
+                    base_distribution=normal_dist,
+                    transforms=action_dist.transforms)
                 action = dist_utils.rsample_action_distribution(action_dist)
+            else:
+                if eps_greedy_sampling:
+                    action = dist_utils.epsilon_greedy_sample(
+                        action_dist, epsilon_greedy)
+                else:
+                    action = dist_utils.rsample_action_distribution(
+                        action_dist)
 
         return action_dist, action, None, new_state
 

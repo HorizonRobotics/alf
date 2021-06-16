@@ -22,6 +22,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [MISC](alf/algorithms/misc_algorithm.py): Zhao et al. "Mutual Information-based State-Control for Intrinsically Motivated Reinforcement Learning" [arXiv:2002.01963](https://arxiv.org/abs/2002.01963)
 * [MuZero](alf/algorithms/muzero_algorithm.py): Schrittwieser et. al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)
 * [SVGD optimizer](alf/optimizers/optimizers.py): Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)
+* [OAC](alf/algorithms/oac_algorithm.py): Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)
 
 ## Installation
 
