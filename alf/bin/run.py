@@ -759,6 +759,25 @@ def v(map, key, default=None):
         return default
 
 
+def choose_cluster():
+    with open('gpucluster.yaml', 'r') as f:
+        cluster_str = f.read()
+    from conf import Config
+    assert FLAGS.cluster in Config.clusters, \
+        "Cluster name {} is unrecognized!".format(FLAGS.cluster)
+    id_and_key = Config.clusters[FLAGS.cluster]
+    cluster_str = cluster_str.replace("__appid__", id_and_key["appid"])
+    cluster_str = cluster_str.replace("__appkey__", id_and_key["appkey"])
+    cluster_str = cluster_str.replace(
+        "__endpoint__", id_and_key.get("endpoint", "idc-v2.hobot.cc"))
+    with open("gpucluster-c.yaml", 'w') as f:
+        f.write(cluster_str)
+
+    os.system(
+        "mkdir -p $HOME/.hobot; cp gpucluster-c.yaml $HOME/.hobot/gpucluster.yaml"
+    )
+
+
 def main(argv):
     # parse tag:
     run_tag = argv[1]
@@ -858,6 +877,7 @@ def main(argv):
         command = 'DISPLAY=:5 vglrun -d :7 ' + command
 
     if FLAGS.cluster:
+        choose_cluster()
         os.chdir('/home/users/le.zhao/test_gail/alf_submit/gail')
         run_yaml = create_run_yaml(
             run_tag, gazebo=gin_file_tag in SOCIAL_BOT_GIN_TAGS)
