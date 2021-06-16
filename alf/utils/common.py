@@ -25,6 +25,7 @@ import glob
 import math
 import numpy as np
 import os
+import pathlib
 import pprint
 import random
 import shutil
@@ -1139,3 +1140,22 @@ def abs_path(path):
     """Given any path, return the absolute path with expanding the user.
     """
     return os.path.realpath(os.path.expanduser(path))
+
+
+_alf_root = None
+
+
+def alf_root():
+    """Get the ALF root path."""
+    global _alf_root
+    if _alf_root is None:
+        # alf.__file__==<ALF_ROOT>/alf/__init__.py
+        _alf_root = str(pathlib.Path(alf.__file__).parent.parent.absolute())
+    return _alf_root
+
+
+def is_alf_root(dir):
+    """Given a directory, check if it is a valid ALF root. Currently the way
+    of checking is to see if there is valid ``__init__.py`` under it.
+    """
+    return os.path.isfile(os.path.join(dir, 'alf/__init__.py'))

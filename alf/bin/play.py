@@ -149,6 +149,11 @@ def launch_snapshot_play():
     this function doesn't have any effect and the most up-to-date ALF will
     be used by play.
     """
+    # assert the current path is not ALF_ROOT because sys.path will always prepend
+    # the current path to the path list, which makes our snapshot ALF path shadowed
+    assert not common.is_alf_root(
+        os.getcwd()), ("Play with a snapshot is not allowed under ALF root!")
+
     root_dir = common.abs_path(FLAGS.root_dir)
     alf_repo = os.path.join(root_dir, "alf")
 
