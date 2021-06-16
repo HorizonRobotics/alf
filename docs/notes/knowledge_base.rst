@@ -251,6 +251,77 @@ It is possible to directly implement a batched ``AlfEnvironment`` without follow
 the above steps. `suite_carla <../api/alf.environments.html#module-alf.environments.suite_carla>`_
 is such an example.
 
+Snapshot
+--------
+Sometimes we might want to play an old model that was trained a long time ago,
+even though ALF code has been changed since then. So by default, ALF stores a
+snapshot (all python files) under the root dir of a training job. This snapshot
+has a path like ``<training_root_dir>/alf``. To disable storing a snapshot, when
+training or grid searching, you can specify a flag ``--nostore_snapshot`` in the
+command line.
+
+``alf.bin.play`` will by default use the current ALF code for playing. To play a
+trained model with its snapshot, you can specify the flag ``--use_alf_snapshot``.
+By doing so, ``alf.bin.play`` will give a higher priority to the ALF snapshot under
+the training directory.
+
+To correctly use a snapshot, it is important to avoid relative paths/imports
+when writing your conf files. For example, suppose a conf file
+imports ``sac_conf.py`` under the same directory, as in the following:
+
+.. code-block:: python
+
+  # sac_conf1.py     # under 'alf/examples'
+  import sac_conf    # under 'alf/examples'
+  algo_cls = sac_conf.SacAlgorithm
+  ...
+
+When this conf is played with a snapshot, it is supposed to import the ``sac_conf.py``
+file of the ALF **snapshot**. However, if ``alf.bin.play`` is run in the current
+``alf/examples`` that also contains the newest version of ``sac_conf.py``,
+the old (desired) ``sac_conf.py`` will be shadowed. As another example,
+
+.. code-block:: python
+
+  # sac_conf1.py    # under 'alf/examples'
+  import sys
+  sys.path.append("./sac")
+  import sac_conf   # under 'alf/examples/sac'
+  algo_cls = sac_conf.SacAlgorithm
+  ...
+
+which will append the wrong path (depending on what the current path is) to
+``sys.path`` when playing with a snapshot.
+
+When playing with a snapshot, one thing is always guaranteed: the module ``alf``
+is always under the correct python path. So you should always ensure that modules
+are imported relative to the root module ``alf``. The perfectly safe way of writing
+the above examples are:
+
+.. code-block:: python
+
+  # sac_conf1.py     # under 'alf/examples'
+  from alf.examples import sac_conf
+  algo_cls = sac_conf.SacAlgorithm
+  ...
+
+and
+
+.. code-block:: python
+
+  # sac_conf1.py    # under 'alf/examples'
+  from alf.examples.sac import sac_conf
+  algo_cls = sac_conf.SacAlgorithm
+  ...
+
+In this way, no matter whether you are playing with a snapshot or not, the correct
+python files are used.
+
+.. note::
+
+  When playing with a snapshot, if the behaviors are unexpected, remember to check
+  if you're using relative paths incorrectly.
+
 
 Differences with the Tensorflow version of ALF
 ----------------------------------------------
