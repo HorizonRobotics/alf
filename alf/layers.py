@@ -734,6 +734,159 @@ class ParallelFC(nn.Module):
 
 
 @alf.configurable
+class CompositionalFC(nn.Module):
+    """Compositional FC layer."""
+
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 n,
+                 activation=identity,
+                 use_bias=True,
+                 use_bn=False,
+                 use_ln=False,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """
+        It maintains a set of ``n`` FC parameters for learning. During forward
+        computation, it composes the set of parameters using weighted average
+        with the compositional weight provided as input and then performs the
+        FC computation, which is equivalent to combine the pre-activation output
+        from each of the ``n`` FC layers using the compositional weight, and
+        then apply normalization and activation.
+
+        Args:
+            input_size (int): input size
+            output_size (int): output size
+            n (int): the size of the paramster set
+            activation (torch.nn.functional):
+            use_bn (bool): whether use Batch Normalization.
+            use_ln (bool): whether use layer normalization
+            use_bias (bool): whether use bias
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+                If none is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to
+                the std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
+        """
+        super().__init__()
+        self._activation = activation
+        self._weight = nn.Parameter(torch.Tensor(n, output_size, input_size))
+        if use_bias:
+            self._bias = nn.Parameter(torch.Tensor(n, output_size))
+        else:
+            self._bias = None
+
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
+        self._use_bn = use_bn
+        self._use_ln = use_ln
+        self._n = n
+
+        if use_bn:
+            self._bn = nn.BatchNorm1d(output_size)
+        else:
+            self._bn = None
+        if use_ln:
+            self._ln = nn.LayerNorm(output_size)
+        else:
+            self._ln = None
+        self.reset_parameters()
+
+    def forward(self, inputs, comp_weight=None):
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, input_size]``
+            comp_weight (torch.Tensor | None): with shape ``[B, n]``.
+                Uniform weight of one wil be used if None.
+        Returns:
+            torch.Tensor with shape ``[B, output_size]``
+        """
+        n, k, l = self._weight.shape
+        if inputs.ndim == 2:
+            assert inputs.shape[1] == l, (
+                "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
+                                                                  l))
+            inputs = inputs.unsqueeze(0).expand(n, *inputs.shape)
+
+        else:
+            raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
+
+        if self.bias is not None:
+            y = torch.baddbmm(
+                self._bias.unsqueeze(1), inputs,
+                self.weight.transpose(1, 2))  # [n, B, k]
+        else:
+            y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
+        y = y.transpose(0, 1)  # [B, n, k]
+
+        if comp_weight is not None:
+            assert comp_weight.ndim == 2, (
+                "Wrong comp_weight.ndim=%d" % comp_weight.ndim)
+
+            y = y * comp_weight.unsqueeze(-1)
+
+        y = y.sum(dim=1)
+
+        if self._use_ln:
+            if not self._use_bias:
+                self._ln.bias.data.zero_()
+            y = self._ln(y)
+        if self._use_bn:
+            if not self._use_bias:
+                self._bn.bias.data.zero_()
+            y = self._bn(y)
+        return self._activation(y)
+
+    def reset_parameters(self):
+        """Initialize the parameters."""
+        for i in range(self._n):
+            if self._kernel_initializer is None:
+                variance_scaling_init(
+                    self._weight.data[i],
+                    gain=self._kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                self._kernel_initializer(self._weight.data[i])
+
+        if self._use_bias:
+            nn.init.constant_(self._bias.data, self._bias_init_value)
+
+        if self._use_ln:
+            self._ln.reset_parameters()
+        if self._use_bn:
+            self._bn.reset_parameters()
+
+    @property
+    def weight(self):
+        """Get the weight Tensor.
+
+        Returns:
+            Tensor: with shape (n, output_size, input_size). ``weight[i]`` is
+                the weight for the i-th FC layer. ``weight[i]`` can be used for
+                ``FC`` layer with the same ``input_size`` and ``output_size``
+        """
+        return self._weight
+
+    @property
+    def bias(self):
+        """Get the bias Tensor.
+
+        Returns:
+            Tensor: with shape (n, output_size). ``bias[i]`` is the bias for the
+                i-th FC layer. ``bias[i]`` can be used for ``FC`` layer with
+                the same ``input_size`` and ``output_size``
+        """
+        return self._bias
+
+
+@alf.configurable
 class CausalConv1D(nn.Module):
     """1D (Dilated) Causal Convolution layer.
         1D Dilated Causal Convolution is proposed in `Aaron et. al. WaveNet:
