@@ -118,6 +118,7 @@ function test() {
         alf.utils.common_test \
         alf.utils.data_buffer_test \
         alf.utils.dist_utils_test \
+        alf.utils.lean_function_test \
         alf.utils.math_ops_test \
         alf.utils.normalizers_test \
         alf.utils.tensor_utils_test \
