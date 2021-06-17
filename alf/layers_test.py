@@ -128,21 +128,20 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             use_bn=True,
             use_ln=True)
 
-        px = torch.randn((batch_size, x_dim))
+        x = torch.randn((batch_size, x_dim))
 
         if specify_comp_weight:
             comp_weight = torch.randn(batch_size, n)
         else:
             comp_weight = None
 
-        py = cfc(px, comp_weight)
+        cy, _ = cfc(inputs=(x, comp_weight))
 
         comp_y = 0
         for i in range(n):
             fc.weight.data.copy_(cfc.weight[i])
             if use_bias:
                 fc.bias.data.copy_(cfc.bias[i])
-            x = px
             y = fc(x)
             if specify_comp_weight:
                 comp_y += comp_weight[..., i:i + 1] * y
@@ -155,7 +154,106 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         comp_y = act(comp_y)
 
-        self.assertLess((comp_y - py).abs().max(), 1e-5)
+        self.assertLess((comp_y - cy).abs().max(), 1e-5)
+
+    @parameterized.parameters(
+        dict(n=1, act=torch.relu, use_bias=True, specify_comp_weight=True),
+        dict(n=1, act=torch.relu, use_bias=True, specify_comp_weight=False),
+        dict(n=5, act=torch.relu, use_bias=True, specify_comp_weight=True),
+        dict(n=5, act=torch.relu, use_bias=True, specify_comp_weight=False),
+        dict(n=5, act=torch.relu, use_bn=True, specify_comp_weight=False),
+        dict(n=5, act=torch.relu, use_bn=True, specify_comp_weight=True))
+    def test_compositional_fc_chaining(self,
+                                       n=2,
+                                       act=math_ops.identity,
+                                       use_bias=True,
+                                       use_bn=False,
+                                       use_ln=False,
+                                       specify_comp_weight=True):
+        batch_size = 3
+        x_dim = 4
+        cfc1 = alf.layers.CompositionalFC(
+            x_dim,
+            8,
+            n=n,
+            activation=act,
+            use_bias=use_bias,
+            use_bn=use_bn,
+            use_ln=use_ln)
+
+        cfc2 = alf.layers.CompositionalFC(
+            8,
+            6,
+            n=n,
+            activation=act,
+            use_bias=use_bias,
+            use_bn=use_bn,
+            use_ln=use_ln)
+
+        x = torch.randn((batch_size, x_dim))
+
+        if specify_comp_weight:
+            comp_weight = torch.randn(batch_size, n)
+        else:
+            comp_weight = None
+
+        cy, _ = cfc2(cfc1(inputs=(x, comp_weight)))
+
+        fc1 = alf.layers.FC(
+            x_dim,
+            8,
+            activation=math_ops.identity,
+            use_bias=use_bias,
+            use_bn=False,
+            use_ln=False)
+        fc2 = alf.layers.FC(
+            8,
+            6,
+            activation=math_ops.identity,
+            use_bias=use_bias,
+            use_bn=False,
+            use_ln=False)
+
+        # only used for constructing proper bn/ln
+        fc1_bn_ln = alf.layers.FC(
+            x_dim,
+            8,
+            activation=math_ops.identity,
+            use_bias=use_bias,
+            use_bn=True,
+            use_ln=True)
+        fc2_bn_ln = alf.layers.FC(
+            8,
+            6,
+            activation=math_ops.identity,
+            use_bias=use_bias,
+            use_bn=True,
+            use_ln=True)
+
+        cfcs = [cfc1, cfc2]
+        fcs = [fc1, fc2]
+        fcs_bn_ln = [fc1_bn_ln, fc2_bn_ln]
+
+        for fc, fc_bn_ln, cfc in zip(fcs, fcs_bn_ln, cfcs):
+            comp_y = 0
+            for i in range(n):
+                fc.weight.data.copy_(cfc.weight[i])
+                if use_bias:
+                    fc.bias.data.copy_(cfc.bias[i])
+                y = fc(x)
+                if specify_comp_weight:
+                    comp_y += comp_weight[..., i:i + 1] * y
+                else:
+                    comp_y += y
+            if use_bn:
+                comp_y = fc_bn_ln._bn(comp_y)
+            if use_ln:
+                comp_y = fc_bn_ln._ln(comp_y)
+
+            comp_y = act(comp_y)
+            x = comp_y
+
+        self.assertLess((comp_y - cy).abs().max(), 1e-5)
 
     @parameterized.parameters(
         dict(n=1, act=torch.relu, use_bias=False, parallel_x=False),

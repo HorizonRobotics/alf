@@ -742,6 +742,7 @@ class CompositionalFC(nn.Module):
                  output_size,
                  n,
                  activation=identity,
+                 output_comp_weight=True,
                  use_bias=True,
                  use_bn=False,
                  use_ln=False,
@@ -761,9 +762,14 @@ class CompositionalFC(nn.Module):
             output_size (int): output size
             n (int): the size of the paramster set
             activation (torch.nn.functional):
+            output_comp_weight (bool): If True, the forward() function will
+                return a tuple of (result, comp_weight) for easy chaining of
+                multiple layers in the case when the same compsitional weight
+                is used. If False, the forward() function will return result
+                only.
+            use_bias (bool): whether use bias
             use_bn (bool): whether use Batch Normalization.
             use_ln (bool): whether use layer normalization
-            use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain
                 as ``kernel_init_gain`` will be used.
@@ -783,6 +789,7 @@ class CompositionalFC(nn.Module):
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
+        self._output_comp_weight = output_comp_weight
         self._use_bias = use_bias
         self._use_bn = use_bn
         self._use_ln = use_ln
@@ -798,17 +805,30 @@ class CompositionalFC(nn.Module):
             self._ln = None
         self.reset_parameters()
 
-    def forward(self, inputs, comp_weight=None):
+    def forward(self, inputs):
         """Forward
 
         Args:
-            inputs (torch.Tensor): with shape ``[B, input_size]``
-            comp_weight (torch.Tensor | None): with shape ``[B, n]``.
-                Uniform weight of one wil be used if None.
+            inputs (torch.Tensor|tuple): If a Tensor, its shape should be
+            ``[B, input_size]``. If a tuple, it should contain two elements.
+            The first is a Tensor with the shape of ``[B, input_size]``, the
+            second is a compositional weight Tensor with the shape of ``[B, n]``
+            or None. If the compositional weight is not specified (i.e. when
+            inputs is not a tuple) or None, a uniform weight of one wil be used.
         Returns:
-            torch.Tensor with shape ``[B, output_size]``
+            torch.Tensor representing the final activation with shape
+            ``[B, output_size]`` if ``output_comp_weight`` is False.
+            Otherwise, return a tuple consisted of the final activation and the
+            compositional weight used.
         """
+
+        if type(inputs) == tuple:
+            inputs, comp_weight = inputs
+        else:
+            comp_weight = None
+
         n, k, l = self._weight.shape
+
         if inputs.ndim == 2:
             assert inputs.shape[1] == l, (
                 "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
@@ -844,7 +864,13 @@ class CompositionalFC(nn.Module):
             if not self._use_bias:
                 self._bn.bias.data.zero_()
             y = self._bn(y)
-        return self._activation(y)
+
+        y = self._activation(y)
+
+        if self._output_comp_weight:
+            return (y, comp_weight)
+        else:
+            return y
 
     def reset_parameters(self):
         """Initialize the parameters."""
