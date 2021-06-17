@@ -251,6 +251,35 @@ It is possible to directly implement a batched ``AlfEnvironment`` without follow
 the above steps. `suite_carla <../api/alf.environments.html#module-alf.environments.suite_carla>`_
 is such an example.
 
+``ParallelAlfEnvironment`` and ``ThreadEnvironment``
+----------------------------------------------------
+
+A ``ThreadEnvironment`` is directly created in a thread of the main process and
+it can only wrap one Gym environment. A ``ParallelAlfEnvironment`` wraps a
+collection of Gym environments in subprocesses. Sometimes a Gym environment will
+crash or behave abnormally if it's wrapped by a ``ThreadEnvironment``.
+So ``ParallelAlfEnvironment`` is usually preferred for single or multiple
+training environments.
+
+However, gin/alf configurations that are used by subprocesses will not be considered
+by the main process as "operative". So to help debug, sometimes a ``ThreadEnvironment``
+is additionally created because it uses gin/alf configurations in the main process.
+If an evaluation environment is needed, this thread environment can also serve
+as the evaluation environment.
+
+To resolve the conflict of two, ``TrainerConfig`` provide a flag ``no_thread_env_for_conf``.
+The logic of creating an evaluation environment or a thread env is illustrated
+below:
+
+================================ ================================================================ =============================================
+``TrainerConfig`` flags          ``evaluate=True``                                                ``evaluate=False``
+================================ ================================================================ =============================================
+``no_thread_env_for_conf=True``  ``eval_env`` :math:`\leftarrow` ``ParallelAlfEnvironment`` (N=1) ``None``
+``no_thread_env_for_conf=False`` ``eval_env`` :math:`\leftarrow` ``ThreadEnvironment``            | Is training env ``ParallelAlfEnvironment``?
+                                                                                                  | Yes: ``ThreadEnvironment``
+                                                                                                  | No: ``None``
+================================ ================================================================ =============================================
+
 Snapshot
 --------
 Sometimes we might want to play an old model that was trained a long time ago,
@@ -321,7 +350,6 @@ python files are used.
 
   When playing with a snapshot, if the behaviors are unexpected, remember to check
   if you're using relative paths incorrectly.
-
 
 Differences with the Tensorflow version of ALF
 ----------------------------------------------
