@@ -83,7 +83,7 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
-        assert len(kwargs) > 0, ("**kwargs should not be provided when "
+        assert len(kwargs) > 0, ("**kwargs should be provided when "
                                  "'prefix_or_dict' is a str")
         prefix = prefix_or_dict
         configs = dict([(prefix + '.' + k, v) for k, v in kwargs.items()])
