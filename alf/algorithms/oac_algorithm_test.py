@@ -40,7 +40,6 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
-            unroll_with_grad=True,
             mini_batch_length=2,
             mini_batch_size=64,
             initial_collect_steps=500,
