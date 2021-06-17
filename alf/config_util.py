@@ -670,7 +670,9 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     Note: currently, to maintain the compatibility with gin-config, all the
     functions decorated using alf.configurable are automatically configurable
     using gin. The values specified using ``alf.config()`` will override
-    values specified through gin.
+    values specified through gin. Gin wrapper is quite convoluted and can make
+    debugging more challenging. It can be disabled by setting environment
+    varialbe ALF_USE_GIN to 0 if you are not using gin.
 
     Args:
         fn_or_name (Callable|str): A name for this configurable, or a function
