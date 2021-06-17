@@ -830,9 +830,11 @@ class CompositionalFC(nn.Module):
             assert comp_weight.ndim == 2, (
                 "Wrong comp_weight.ndim=%d" % comp_weight.ndim)
 
-            y = y * comp_weight.unsqueeze(-1)
+            # [B, 1, n] x [B, n, k] -> [B, 1, k] -> [B, k]
+            y = torch.bmm(comp_weight.unsqueeze(1), y).squeeze(1)
 
-        y = y.sum(dim=1)
+        else:
+            y = y.sum(dim=1)
 
         if self._use_ln:
             if not self._use_bias:
