@@ -656,6 +656,18 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_oac_halfcheetah(self):
+        self._test(
+            conf_file='oac_halfcheetah_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_oac_humanoid(self):
+        self._test(
+            conf_file='oac_humanoid_conf.py',
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @classmethod
     def tearDownClass(cls):
         not_tested = cls._all_.difference(cls._tested_)
