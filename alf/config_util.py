@@ -83,6 +83,8 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
+        assert len(kwargs) > 0, ("**kwargs should be provided when "
+                                 "'prefix_or_dict' is a str")
         prefix = prefix_or_dict
         configs = dict([(prefix + '.' + k, v) for k, v in kwargs.items()])
     elif isinstance(prefix_or_dict, dict):
@@ -579,7 +581,8 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     else:
         fn_or_cls = _make_wrapper(fn_or_cls, configs, signature, has_self=0)
 
-    if fn_or_cls.__module__ != '<run_path>':
+    if fn_or_cls.__module__ != '<run_path>' and os.environ.get(
+            'ALF_USE_GIN', "1") == "1":
         # If a file is executed using runpy.run_path(), the module name is
         # '<run_path>', which is not an acceptable name by gin.
         return gin.configurable(
@@ -667,7 +670,9 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     Note: currently, to maintain the compatibility with gin-config, all the
     functions decorated using alf.configurable are automatically configurable
     using gin. The values specified using ``alf.config()`` will override
-    values specified through gin.
+    values specified through gin. Gin wrapper is quite convoluted and can make
+    debugging more challenging. It can be disabled by setting environment
+    varialbe ALF_USE_GIN to 0 if you are not using gin.
 
     Args:
         fn_or_name (Callable|str): A name for this configurable, or a function
