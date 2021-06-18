@@ -86,7 +86,6 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             env=env,
             config=config,
             num_critic_replicas=num_critic_replicas,
-            use_parallel_network=num_critic_replicas > 1,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,

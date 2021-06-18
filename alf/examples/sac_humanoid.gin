@@ -22,7 +22,6 @@ SacAlgorithm.actor_optimizer=@AdamTF(lr=3e-4)
 SacAlgorithm.critic_optimizer=@AdamTF(lr=3e-4)
 SacAlgorithm.alpha_optimizer=@AdamTF(lr=3e-4)
 SacAlgorithm.target_update_tau=0.005
-SacAlgorithm.use_parallel_network=True
 calc_default_target_entropy.min_prob=0.184
 
 # training config

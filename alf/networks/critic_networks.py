@@ -76,6 +76,7 @@ class CriticNetwork(Network):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_naive_parallel_network=False,
                  name="CriticNetwork"):
         """
 
@@ -110,6 +111,12 @@ class CriticNetwork(Network):
                 with uniform distribution will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
+            use_naive_parallel_network (bool): if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
             name (str):
         """
         super().__init__(input_tensor_spec, name=name)
@@ -162,6 +169,7 @@ class CriticNetwork(Network):
             last_kernel_initializer=last_kernel_initializer,
             name=self.name + ".joint_encoder")
 
+        self._use_naive_parallel_network = use_naive_parallel_network
         self._output_spec = output_tensor_spec
 
     def forward(self, inputs, state=()):
@@ -189,8 +197,13 @@ class CriticNetwork(Network):
     def make_parallel(self, n):
         """Create a ``ParallelCriticNetwork`` using ``n`` replicas of ``self``.
         The initialized network parameters will be different.
+        If ``use_naive_parallel_network`` is True, use ``NaiveParallelNetwork``
+        to create the parallel network.
         """
-        return ParallelCriticNetwork(self, n, "parallel_" + self._name)
+        if self._use_naive_parallel_network:
+            return alf.networks.NaiveParallelNetwork(self, n)
+        else:
+            return ParallelCriticNetwork(self, n, "parallel_" + self._name)
 
 
 class ParallelCriticNetwork(Network):

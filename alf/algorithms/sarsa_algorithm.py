@@ -69,7 +69,6 @@ class SarsaAlgorithm(RLAlgorithm):
                  actor_network_ctor,
                  critic_network_ctor,
                  reward_spec=TensorSpec(()),
-                 use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
                  config=None,
@@ -106,12 +105,6 @@ class SarsaAlgorithm(RLAlgorithm):
                 ``forward((observation, action), state)``.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
-            use_parallel_network (bool): whether to use parallel network for
-                calculating critics. This can be useful when
-                ``mini_batch_size * mini_batch_length`` (when ``temporally_independent_train_step``
-                is True)  or ``mini_batch_size``  (when ``temporally_independent_train_step``
-                is False) is not very large. You have to test to see which way
-                is faster for your particular situation.
             num_critic_replicas (int): number of critics to be used. Default is 2.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
@@ -178,11 +171,7 @@ class SarsaAlgorithm(RLAlgorithm):
             "SarsaAlgorithm only supports continuous action."
             " action_spec: %s" % action_spec)
 
-        if use_parallel_network:
-            critic_networks = critic_network.make_parallel(num_critic_replicas)
-        else:
-            critic_networks = alf.networks.NaiveParallelNetwork(
-                critic_network, num_critic_replicas)
+        critic_networks = critic_network.make_parallel(num_critic_replicas)
 
         if not actor_network.is_distribution_output:
             noise_process = alf.networks.OUProcess(

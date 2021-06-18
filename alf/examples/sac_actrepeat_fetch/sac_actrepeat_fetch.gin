@@ -40,7 +40,6 @@ SacAlgorithm.critic_network_cls=@critic/CriticNetwork
 SacAlgorithm.actor_optimizer=@AdamTF()
 SacAlgorithm.critic_optimizer=@AdamTF()
 SacAlgorithm.alpha_optimizer=@AdamTF()
-SacAlgorithm.use_parallel_network=True
 sac/calc_default_target_entropy.min_prob=0.2
 SacAlgorithm.target_entropy=@sac/calc_default_target_entropy
 SacAlgorithm.target_update_tau=0.05

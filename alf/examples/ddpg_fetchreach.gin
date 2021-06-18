@@ -22,12 +22,12 @@ AdamTF.lr=1e-3
 # override algorithm and training config
 actor/ActorNetwork.fc_layer_params=%hidden_layers
 critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
+critic/CriticNetwork.use_naive_parallel_network=True
 
 DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
 DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork
 DdpgAlgorithm.actor_optimizer=@AdamTF()
 DdpgAlgorithm.critic_optimizer=@AdamTF()
-DdpgAlgorithm.use_parallel_network=False
 DdpgAlgorithm.rollout_random_action=0.3
 DdpgAlgorithm.target_update_period=40
 
