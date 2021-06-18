@@ -99,8 +99,8 @@ class SACAlgorithmTestInit(alf.test.TestCase):
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, 1), (2, 3))
-    def test_sac_algorithm(self, num_critic_replicas, reward_dim):
+    @parameterized.parameters((True, 1), (False, 3))
+    def test_sac_algorithm(self, use_naive_parallel_network, reward_dim):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -142,7 +142,9 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
         critic_network = partial(
-            CriticNetwork, joint_fc_layer_params=fc_layer_params)
+            CriticNetwork,
+            joint_fc_layer_params=fc_layer_params,
+            use_naive_parallel_network=use_naive_parallel_network)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
@@ -177,8 +179,8 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, ), (2, ))
-    def test_sac_algorithm_discrete(self, num_critic_replicas):
+    @parameterized.parameters((True, ), (False, ))
+    def test_sac_algorithm_discrete(self, use_naive_parallel_network):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -203,13 +205,15 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10)
 
-        q_network = partial(QNetwork, fc_layer_params=fc_layer_params)
+        q_network = partial(
+            QNetwork,
+            fc_layer_params=fc_layer_params,
+            use_naive_parallel_network=use_naive_parallel_network)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
             q_network_cls=q_network,
-            num_critic_replicas=num_critic_replicas,
             epsilon_greedy=0.1,
             env=env,
             config=config,
@@ -235,8 +239,8 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
 
 class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, ), (2, ))
-    def test_sac_algorithm_mixed(self, num_critic_replicas):
+    @parameterized.parameters((True, ), (False, ))
+    def test_sac_algorithm_mixed(self, use_naive_parallel_network):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -273,14 +277,14 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
         q_network = partial(
             QNetwork,
             preprocessing_combiner=NestConcat(),
-            fc_layer_params=fc_layer_params)
+            fc_layer_params=fc_layer_params,
+            use_naive_parallel_network=use_naive_parallel_network)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
             actor_network_cls=actor_network,
             q_network_cls=q_network,
-            num_critic_replicas=num_critic_replicas,
             epsilon_greedy=0.1,
             env=env,
             config=config,

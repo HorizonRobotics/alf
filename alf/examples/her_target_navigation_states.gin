@@ -53,6 +53,7 @@ actor/ActorNetwork.preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.output_tensor_spec=@get_reward_spec()
+critic/CriticNetwork.use_naive_parallel_network=True
 
 hidden_layers=(256,256,256)
 

@@ -40,6 +40,7 @@ class QNetwork(Network):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_naive_parallel_network=False,
                  name="QNetwork"):
         """Creates an instance of ``QNetwork`` for estimating action-value of
         discrete actions. The action-value is defined as the expected return
@@ -75,6 +76,12 @@ class QNetwork(Network):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a default ``variance_scaling_initializer``
                 will be used.
+            use_naive_parallel_network (bool): if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
         """
         super(QNetwork, self).__init__(input_tensor_spec, name=name)
 
@@ -83,6 +90,8 @@ class QNetwork(Network):
             "CriticNetwork instead for multiple actions.")
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
+
+        self._use_naive_parallel_network = use_naive_parallel_network
         self._output_spec = TensorSpec((num_actions, ))
 
         self._encoding_net = EncodingNetwork(
@@ -124,8 +133,13 @@ class QNetwork(Network):
     def make_parallel(self, n):
         """Create a ``ParallelQNetwork`` using ``n`` replicas of ``self``.
         The initialized network parameters will be different.
+        If ``use_naive_parallel_network`` is True, use ``NaiveParallelNetwork``
+        to create the parallel network.
         """
-        return ParallelQNetwork(self, n, "parallel_" + self._name)
+        if self._use_naive_parallel_network:
+            return alf.networks.NaiveParallelNetwork(self, n)
+        else:
+            return ParallelQNetwork(self, n, "parallel_" + self._name)
 
 
 class ParallelQNetwork(Network):
