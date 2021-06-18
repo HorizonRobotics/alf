@@ -4,7 +4,6 @@ actor/AdamTF.lr=3e-4
 critic/AdamTF.lr=3e-4
 alpha/AdamTF.lr=3e-4
 SarsaAlgorithm.use_entropy_reward=True
-SarsaAlgorithm.use_parallel_network=True
 
 import alf.algorithms.agent
 Agent.rl_algorithm_cls=@SarsaAlgorithm

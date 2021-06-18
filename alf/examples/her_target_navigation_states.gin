@@ -63,7 +63,6 @@ Agent.rl_algorithm_cls=@DdpgAlgorithm
 TrainerConfig.algorithm_ctor=@Agent
 DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
 DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork
-DdpgAlgorithm.use_parallel_network=False
 DdpgAlgorithm.rollout_random_action=0.3
 DdpgAlgorithm.target_update_period=8
 

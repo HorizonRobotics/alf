@@ -53,7 +53,6 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     target_update_tau=0.05,
-    use_parallel_network=True,
     use_entropy_reward=False,
     critic_loss_ctor=TDLoss)
 

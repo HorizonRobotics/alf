@@ -15,8 +15,6 @@ actor/Adam.lr=1e-4
 critic/CriticNetwork.joint_fc_layer_params=(100,100)
 critic/Adam.lr=1e-3
 
-# uncomment to use parallel critics
-#DdpgAlgorithm.use_parallel_network=1
 #DdpgAlgorithm.num_critic_replicas=2
 DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
 DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork

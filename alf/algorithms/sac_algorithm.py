@@ -153,7 +153,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  calculate_priority=False,
-                 use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
                  config: TrainerConfig = None,
@@ -203,8 +202,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             use_entropy_reward (bool): whether to include entropy as reward
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
-            use_parallel_network (bool): whether to use parallel network for
-                calculating critics.
             num_critic_replicas (int): number of critics to be used. Default is 2.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
@@ -249,7 +246,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
         self._num_critic_replicas = num_critic_replicas
-        self._use_parallel_network = use_parallel_network
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
@@ -371,12 +367,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                        continuous_actor_network_cls, critic_network_cls,
                        q_network_cls):
         def _make_parallel(net):
-            if self._use_parallel_network:
-                nets = net.make_parallel(self._num_critic_replicas)
-            else:
-                nets = alf.networks.NaiveParallelNetwork(
-                    net, self._num_critic_replicas)
-            return nets
+            return net.make_parallel(self._num_critic_replicas)
 
         def _check_spec_equal(spec1, spec2):
             assert nest.flatten(spec1) == nest.flatten(spec2), (

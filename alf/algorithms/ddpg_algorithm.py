@@ -63,7 +63,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
-                 use_parallel_network=False,
                  reward_weights=None,
                  epsilon_greedy=None,
                  calculate_priority=False,
@@ -97,8 +96,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 which is a tuple of ``(observation_spec, action_spec)``. The
                 constructed network will be called with
                 ``forward((observation, action), state)``.
-            use_parallel_network (bool): whether to use parallel network for
-                calculating critics.
             reward_weights (list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
@@ -152,11 +149,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             output_tensor_spec=reward_spec)
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        if use_parallel_network:
-            critic_networks = critic_network.make_parallel(num_critic_replicas)
-        else:
-            critic_networks = alf.networks.NaiveParallelNetwork(
-                critic_network, num_critic_replicas)
+
+        critic_networks = critic_network.make_parallel(num_critic_replicas)
+
         self._action_l2 = action_l2
 
         train_state_spec = DdpgState(

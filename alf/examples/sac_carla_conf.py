@@ -187,7 +187,6 @@ if not taac:
         target_entropy=partial(calc_default_target_entropy, min_prob=0.1),
         target_update_tau=0.005,
         critic_loss_ctor=TDLoss,
-        use_parallel_network=True,
         use_entropy_reward=False,
         reward_weights=reward_weights)
 else:

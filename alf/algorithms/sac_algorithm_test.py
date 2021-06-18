@@ -99,8 +99,8 @@ class SACAlgorithmTestInit(alf.test.TestCase):
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, 1), (False, 3))
-    def test_sac_algorithm(self, use_parallel_network, reward_dim):
+    @parameterized.parameters((1, 1), (2, 3))
+    def test_sac_algorithm(self, num_critic_replicas, reward_dim):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -150,7 +150,6 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             reward_spec=reward_spec,
             actor_network_cls=actor_network,
             critic_network_cls=critic_network,
-            use_parallel_network=use_parallel_network,
             use_entropy_reward=reward_dim == 1,
             epsilon_greedy=0.1,
             env=env,
@@ -178,8 +177,8 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, ), (False, ))
-    def test_sac_algorithm_discrete(self, use_parallel_network):
+    @parameterized.parameters((1, ), (2, ))
+    def test_sac_algorithm_discrete(self, num_critic_replicas):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -210,7 +209,7 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             observation_spec=obs_spec,
             action_spec=action_spec,
             q_network_cls=q_network,
-            use_parallel_network=use_parallel_network,
+            num_critic_replicas=num_critic_replicas,
             epsilon_greedy=0.1,
             env=env,
             config=config,
@@ -236,8 +235,8 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
 
 class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, ), (False, ))
-    def test_sac_algorithm_mixed(self, use_parallel_network):
+    @parameterized.parameters((1, ), (2, ))
+    def test_sac_algorithm_mixed(self, num_critic_replicas):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -281,7 +280,7 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
             action_spec=action_spec,
             actor_network_cls=actor_network,
             q_network_cls=q_network,
-            use_parallel_network=use_parallel_network,
+            num_critic_replicas=num_critic_replicas,
             epsilon_greedy=0.1,
             env=env,
             config=config,
