@@ -72,7 +72,7 @@ alf.config(
     num_iterations=2500000,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=10,
+    eval_interval=1000,
     num_eval_episodes=5,
     debug_summaries=False,
     random_seed=0,
