@@ -315,21 +315,30 @@ class RLTrainer(Trainer):
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
 
-        # Create an unwrapped env to expose subprocess gin confs which otherwise
-        # will be marked as "inoperative". This env should be created last.
-        if self._evaluate or (isinstance(
-                env,
-                alf.environments.parallel_environment.ParallelAlfEnvironment)
-                              and config.create_unwrapped_env):
-            self._unwrapped_env = create_environment(
-                nonparallel=True, seed=self._random_seed)
-        else:
-            self._unwrapped_env = None
         self._eval_env = None
+        # Create a thread env to expose subprocess gin/alf configurations
+        # which otherwise will be marked as "inoperative". Only created when
+        # ``TrainerConfig.no_thread_env_for_conf=False``.
+        self._thread_env = None
+
+        # See ``alf/docs/notes/knowledge_base.rst```
+        # (ParallelAlfEnvironment and ThreadEnvironment) for details.
+        if config.no_thread_env_for_conf:
+            if self._evaluate:
+                self._eval_env = create_environment(
+                    num_parallel_environments=1, seed=self._random_seed)
+        else:
+            if self._evaluate or isinstance(
+                    env, alf.environments.parallel_environment.
+                    ParallelAlfEnvironment):
+                self._thread_env = create_environment(
+                    nonparallel=True, seed=self._random_seed)
+            if self._evaluate:
+                self._eval_env = self._thread_env
+
         self._eval_metrics = None
         self._eval_summary_writer = None
         if self._evaluate:
-            self._eval_env = self._unwrapped_env
             self._eval_metrics = [
                 alf.metrics.AverageReturnMetric(
                     buffer_size=self._num_eval_episodes,
@@ -350,8 +359,11 @@ class RLTrainer(Trainer):
     def _close_envs(self):
         """Close all envs to release their resources."""
         alf.close_env()
-        if self._unwrapped_env is not None:
-            self._unwrapped_env.close()
+        if self._eval_env is not None:
+            self._eval_env.close()
+        if (self._thread_env is not None
+                and self._thread_env is not self._eval_env):
+            self._thread_env.close()
 
     def _train(self):
         env = alf.get_env()

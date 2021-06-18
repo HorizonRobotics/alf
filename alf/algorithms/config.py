@@ -33,7 +33,7 @@ class TrainerConfig(object):
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
-                 create_unwrapped_env=True,
+                 no_thread_env_for_conf=False,
                  load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
@@ -111,11 +111,14 @@ class TrainerConfig(object):
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
-            create_unwrapped_env (bool): whether to create an unwrapped env. Note
-                that this flag is only effective when no evaluation is needed and
-                the env is a ``ParallelAlfEnvironment`` instance. Default to ``True``.
-                For envs that consume lots of resources, this flag can be set to
-                ``False`` if no evaluation is needed to save resources. The decision
+            no_thread_env_for_conf (bool): not to create an unwrapped env for
+                the purpose of showing operative configurations. If True, no
+                ``ThreadEnvironment`` will ever be created, regardless of the
+                value of ``TrainerConfig.evaluate``. If False, a
+                ``ThreadEnvironment`` will be created if ``TrainerConfig.evaluate``
+                or the training env is a ``ParallelAlfEnvironment`` instance.
+                For an env that consume lots of resources, this flag can be set to
+                ``True`` if no evaluation is needed to save resources. The decision
                 of creating an unwrapped env won't affect training; it's used to
                 correctly display inoperative configurations in subprocesses.
             load_checkpoint_strict (bool): whether to strictly enforce that the keys
@@ -201,7 +204,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
-        self.create_unwrapped_env = create_unwrapped_env
+        self.no_thread_env_for_conf = no_thread_env_for_conf
         self.load_checkpoint_strict = load_checkpoint_strict
         self.evaluate = evaluate
         self.eval_interval = eval_interval
