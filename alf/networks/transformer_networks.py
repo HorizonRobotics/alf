@@ -48,7 +48,7 @@ class TransformerNetwork(PreprocessorNetwork):
     of having multiple core embeddings. In addition to generating a fixed dimensional
     representation, the core embedding is also used to update the memory.
 
-    [1]. Devlin et. al. BERT: Pre-training of Deep Bidirectional Transformers for
+    [1]. Devlin et al. BERT: Pre-training of Deep Bidirectional Transformers for
          Language Understanding
     """
 

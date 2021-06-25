@@ -142,7 +142,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     r"""Monte-Carlo Tree Search algorithm.
 
     The code largely follows the pseudocode of
-    `Schrittwieser et. al. Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model <https://arxiv.org/abs/1911.08265>`_.
+    `Schrittwieser et al. Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model <https://arxiv.org/abs/1911.08265>`_.
     The pseudocode can be downloaded from `<https://arxiv.org/src/1911.08265v2/anc/pseudocode.py>`_
 
     There are several differences:
@@ -171,7 +171,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     6. We add support for using a stochastic policy instead of using UCB to
        do the search/learn/act. This can be enabled by setting  ``act_with_exploration_policy``
        ``search_with_exploration_policy``, ``learn_with_exploration_policy`` to True.
-       See `Grill et. al. Monte-Carlo tree search as regularized policy optimization
+       See `Grill et al. Monte-Carlo tree search as regularized policy optimization
        <https://arxiv.org/abs/2007.12509>`_ for reference.
 
     """
@@ -630,7 +630,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
     r"""Calculate exploration policy.
 
     The policy is based on
-    `Grill et. al. Monte-Carlo tree search as regularized policy optimization
+    `Grill et al. Monte-Carlo tree search as regularized policy optimization
     <https://arxiv.org/abs/2007.12509>`_
 
     Notation:

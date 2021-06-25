@@ -354,13 +354,13 @@ class Player(object):
                 approximately every such distance along the route has been driven.
             allow_negative_distance_reward (True): whether to allow negative distance
                 reward. If True, the agent will receive positive reward for moving
-                ahead along the route, and negative rewad for moving back along
+                ahead along the route, and negative reward for moving back along
                 the route. If False, the agent still receives positive reward for
-                moving ahead along the route, but will not receive negative rewad
+                moving ahead along the route, but will not receive negative reward
                 for moving back along the route. Instead, the negative distance
                 will be accumulated to the future distance reward. This may ease
                 the learning if the right behavior is to temporarily go back along
-                the route in order, for examle, to avoid obstacle.
+                the route in order, for example, to avoid obstacle.
             min_speed (float): unit is m/s. Failure if initial_distance / min_speed
                 seconds passed
             with_gnss_sensor (bool): whether to use ``GnssSensor``.

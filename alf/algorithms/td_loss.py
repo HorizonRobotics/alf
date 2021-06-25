@@ -35,7 +35,7 @@ class TDLoss(nn.Module):
                  debug_summaries=False,
                  name="TDLoss"):
         r"""
-        Let :math:`G_{t:T}` be the bootstaped return from t to T:
+        Let :math:`G_{t:T}` be the bootstraped return from t to T:
 
         .. math::
 
