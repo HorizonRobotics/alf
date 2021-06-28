@@ -59,7 +59,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
     """MuZero algorithm.
 
     MuZero is described in the paper:
-    `Schrittwieser et. al. Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model <https://arxiv.org/abs/1911.08265>`_.
+    `Schrittwieser et al. Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model <https://arxiv.org/abs/1911.08265>`_.
 
     The pseudocode can be downloaded from `<https://arxiv.org/src/1911.08265v2/anc/pseudocode.py>`_
     """

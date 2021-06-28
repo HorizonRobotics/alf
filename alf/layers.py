@@ -443,7 +443,7 @@ class FC(nn.Module):
 class FCBatchEnsemble(FC):
     r"""The BatchEnsemble for FC layer.
 
-    BatchEnsemble is proposed in `Wen et. al. BatchEnsemble: An Alternative Approach
+    BatchEnsemble is proposed in `Wen et al. BatchEnsemble: An Alternative Approach
     to Efficient Ensemble and Lifelong Learning <https://arxiv.org/abs/2002.06715>`_
 
     In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
@@ -917,7 +917,7 @@ class CompositionalFC(nn.Module):
 @alf.configurable
 class CausalConv1D(nn.Module):
     """1D (Dilated) Causal Convolution layer.
-        1D Dilated Causal Convolution is proposed in `Aaron et. al. WaveNet:
+        1D Dilated Causal Convolution is proposed in `Aaron et al. WaveNet:
         A generative model for raw audio <https://arxiv.org/abs/1609.03499>`_
     """
 
@@ -1141,7 +1141,7 @@ class Conv2D(nn.Module):
 class Conv2DBatchEnsemble(Conv2D):
     r"""The BatchEnsemble for 2D Conv layer.
 
-    BatchEnsemble is proposed in `Wen et. al. BatchEnsemble: An Alternative Approach
+    BatchEnsemble is proposed in `Wen et al. BatchEnsemble: An Alternative Approach
     to Efficient Ensemble and Lifelong Learning <https://arxiv.org/abs/2002.06715>`_
 
     In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
@@ -2234,14 +2234,14 @@ class TransformerBlock(nn.Module):
         z = y + MLP(LN(y))
 
     The original transformer is described in:
-    [1]. Ashish Vaswani et. al. Attention Is All You Need
+    [1]. Ashish Vaswani et al. Attention Is All You Need
 
     This implementation is a variation which places layer norm at a different
     location, which is described in:
-    [2]. Ruibin Xiong et. al. On Layer Normalization in the Transformer Architecture
+    [2]. Ruibin Xiong et al. On Layer Normalization in the Transformer Architecture
 
     We also support the relative positional encoding proposed in
-    [3] Zihang Dai et. al. Transformer-XL: Attentive language models beyond a fixed-length context.
+    [3] Zihang Dai et al. Transformer-XL: Attentive language models beyond a fixed-length context.
 
     In this implementation, the positional encodings are learnable parameter instead
     of the sinusoidal matrix proposed in [1]
@@ -2539,7 +2539,7 @@ class GFT(nn.Module):
 
     This class implements the GFT model proposed in the following paper:
 
-    `Yu et al. Guided Feature Transformation (GFT): A Neural language Grounding
+    `Yu et al. Guided Feature Transformation (GFT): A Neural Language Grounding
     Module for Embodied Agents, CoRL 2018 <https://arxiv.org/pdf/1805.08329.pdf>`_
     """
 

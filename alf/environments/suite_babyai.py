@@ -93,7 +93,7 @@ class BabyAIWrapper(gym.Wrapper):
     """A wrapper for BabyAI environment.
 
     BabyAI environment is introduced in
-    `Chevalier-Boisver et. al. Baby{AI}: First Steps Towards Grounded Language
+    `Chevalier-Boisver et al. Baby{AI}: First Steps Towards Grounded Language
     Learning With a Human In the Loop <https://openreview.net/pdf?id=rJeXCo0cYX>`_.
 
     It can be downloaded from https://github.com/mila-iqia/babyai

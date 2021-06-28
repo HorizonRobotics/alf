@@ -35,7 +35,7 @@ FrameStackState = namedtuple('FrameStackState', ['steps', 'prev_frames'])
 class DataTransformer(nn.Module):
     """Base class for data transformers.
 
-    DataTransformer is used for tranforming raw data from environment before
+    DataTransformer is used for transforming raw data from environment before
     passing to actual algorithms.
 
     Most data transformers can subclass from ``SimpleDataTransformer``, which
@@ -369,7 +369,7 @@ class SimpleDataTransformer(DataTransformer):
 
     For simple data transformers, there is no state for ``transform_timestep`` and
     ``transform_timestep`` and ``transform_experience`` use same function
-    ``_transform`` to do the trasformation
+    ``_transform`` to do the transformation
     """
 
     def __init__(self, transformed_observation_spec):
