@@ -249,7 +249,7 @@ class Player(object):
 
     An episode terminates if it reaches one of the following situations:
     1. the vehicle arrives at the goal.
-    2. the time exceeds ``route_length / min_speed``.
+    2. the time exceeds ``route_length / min_speed + additional_time``.
     3. it get stuck because of a collision.
 
     At each step, the reward is given based on the following components:
@@ -308,6 +308,7 @@ class Player(object):
                  sparse_reward_interval=10.,
                  allow_negative_distance_reward=True,
                  min_speed=5.,
+                 additional_time=0.,
                  with_gnss_sensor=True,
                  with_imu_sensor=True,
                  with_camera_sensor=True,
@@ -360,9 +361,14 @@ class Player(object):
                 for moving back along the route. Instead, the negative distance
                 will be accumulated to the future distance reward. This may ease
                 the learning if the right behavior is to temporarily go back along
-                the route in order, for example, to avoid obstacle.
-            min_speed (float): unit is m/s. Failure if initial_distance / min_speed
-                seconds passed
+                the route in order, for examle, to avoid obstacle.
+            min_speed (float): unit is m/s. Failure if
+                route_length / min_speed + additional_time seconds passed
+            additional_time (float): additional time (unit is second) provided
+                to the agent in each episode. This is useful especially for the
+                episodes with short route_lengths (e.g. < 50m), as it takes
+                some time for the car to be able to move (because of initial
+                spawning phase with z > 0 and acceleration phase).
             with_gnss_sensor (bool): whether to use ``GnssSensor``.
             with_imu_sensor (bool): whether to use ``IMUSensor``.
             with_camera_sensor (bool): whether to use ``CameraSensor``.
@@ -411,6 +417,7 @@ class Player(object):
         self._success_reward = success_reward
         self._success_distance_thresh = success_distance_thresh
         self._min_speed = min_speed
+        self._additional_time = additional_time
         self._delta_seconds = actor.get_world().get_settings(
         ).fixed_delta_seconds
         self._max_collision_penalty = max_collision_penalty
@@ -719,7 +726,8 @@ class Player(object):
         if self._max_frame is None:
             step_type = ds.StepType.FIRST
             max_frames = math.ceil(
-                self._route_length / self._min_speed / self._delta_seconds)
+                (self._route_length / self._min_speed + self._additional_time)
+                / self._delta_seconds)
             self._max_frame = current_frame + max_frames
         elif (self._current_distance < self._success_distance_thresh
               and self._actor.get_velocity() == carla.Location(0., 0., 0.)):
