@@ -484,6 +484,16 @@ def parse_conf_file(conf_file):
     """
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
+
+        # Add the directory of the entry gin file to the search path.
+        # This is to bypass the issue
+        # https://github.com/google/gin-config/issues/104
+        #
+        # This is not ideal because add_config_file_search_path has
+        # side effects, but this should be fine for alf.
+        conf_file_direcotry = pathlib.Path(conf_file).parent
+        gin.add_config_file_search_path(conf_file_direcotry)
+
         gin.parse_config_files_and_bindings([conf_file], gin_params)
         ml_type = alf.get_config_value('TrainerConfig.ml_type')
         if ml_type == 'rl':
