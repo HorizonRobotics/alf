@@ -14,6 +14,9 @@ create_environment.env_name='FetchReach-v1'
 
 ObservationNormalizer.clipping=5.
 TrainerConfig.data_transformer_ctor=@ObservationNormalizer
+SuccessWrapper.since_episode_steps=0
+suite_robotics.load.use_success_wrapper=False
+suite_robotics.load.gym_env_wrappers=(@SuccessWrapper,)
 
 hidden_layers=(256, 256, 256)
 
