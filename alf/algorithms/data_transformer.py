@@ -132,7 +132,7 @@ class SequentialDataTransformer(DataTransformer):
                 assert not has_non_frame_stacker, (
                     "FrameStacker need to be the "
                     "first data transformers if it is used.")
-            else:
+            elif not isinstance(obs_trans, HindsightExperienceTransformer):
                 has_non_frame_stacker = True
             observation_spec = obs_trans.transformed_observation_spec
             data_transformers.append(obs_trans)
@@ -687,7 +687,7 @@ class HindsightExperienceTransformer(DataTransformer):
 
             ReplayBuffer.keep_episodic_info=True
             HindsightExperienceTransformer.her_proportion=0.8
-            TrainerConfig.data_transformer_ctor=[@ObservationNormalizer, @HindsightExperienceTransformer]
+            TrainerConfig.data_transformer_ctor=[@HindsightExperienceTransformer, @ObservationNormalizer]
 
         See unit test for more details on behavior.
     """
@@ -891,4 +891,7 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
     if len(data_transformer_ctor) == 1:
         return data_transformer_ctor[0](observation_spec)
 
+    if HindsightExperienceTransformer in data_transformer_ctor:
+        assert HindsightExperienceTransformer == data_transformer_ctor[0], \
+            "Hindsight relabeling should happen before all other transforms."
     return SequentialDataTransformer(data_transformer_ctor, observation_spec)

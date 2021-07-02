@@ -75,6 +75,16 @@ class TrainerConfig(object):
                 transformer. Available transformers are in ``algorithms.data_transformer``.
                 The data transformer constructed by this can be access as
                 ``TrainerConfig.data_transformer``.
+                Important Note: ``HindsightExperienceTransformer``, ``FrameStacker`` or
+                any data transformer that need to access the replay buffer
+                for additional data need to be before all other data transformers.
+                The reason is the following:
+                In off policy training, the replay buffer stores raw input w/o being
+                processed by any data transformer.  If say ``ObservationNormalizer`` is
+                applied before hindsight, then data retrieved by replay will be
+                normalized whereas hindsight data directly pulled from the replay buffer
+                will not be normalized.  Data will be in mismatch, causing training to
+                suffer and potentially fail.
             random_seed (None|int): random seed, a random seed is used if None
             num_iterations (int): For RL trainer, indicates number of update
                 iterations (ignored if 0). Note that for off-policy algorithms, if
