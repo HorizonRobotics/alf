@@ -8,7 +8,7 @@ critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
 
 ReplayBuffer.keep_episodic_info=True
 HindsightExperienceTransformer.her_proportion=0.8
-TrainerConfig.data_transformer_ctor=[@ObservationNormalizer, @HindsightExperienceTransformer]
+TrainerConfig.data_transformer_ctor=[@HindsightExperienceTransformer, @ObservationNormalizer]
 
 DdpgAlgorithm.action_l2=0.05
 

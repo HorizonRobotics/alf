@@ -138,7 +138,15 @@ class Normalizer(nn.Module):
             def _summarize_all(path, t, m2, m):
                 if path:
                     path += "."
+<<<<<<< HEAD
                 spec = TensorSpec.from_tensor(m if m2 is None else m2)
+=======
+                if m2 is not None:
+                    spec = TensorSpec.from_tensor(m2)
+                else:
+                    assert m is not None
+                    spec = TensorSpec.from_tensor(m)
+>>>>>>> e6f24059... fix data transformer order: Hindsight before ObservationNormalizer. add docs about the issue.
                 _summary(path + "tensor.batch_min",
                          _reduce_along_batch_dims(t, spec, torch.min))
                 _summary(path + "tensor.batch_max",

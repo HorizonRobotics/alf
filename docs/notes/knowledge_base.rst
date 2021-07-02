@@ -196,6 +196,34 @@ Step type      Discount | Value used          | Value          Note
 ============== ======== ===================== ================ ===================================================
 
 
+DataTransformers
+-----------
+
+A DataTransformer takes in data from rollout or replay, does some processing and
+returns the modified data.
+
+It is a useful abstraction to organize all kinds of data processing. For example,
+``ObservationNormalizer`` normalizes input data to be zero mean and one std.
+
+However, it is important to note that ``HindsightExperienceTransformer``,
+``FrameStacker`` or any data transformer that need to access the replay buffer
+for additional data need to be before all other data transformers.
+
+The reason is the following: In off policy training, the replay buffer stores
+raw input w/o being processed by any data transformer.  If say
+``ObservationNormalizer`` is applied before hindsight, then data retrieved by
+replay will be normalized whereas hindsight data directly pulled from the replay
+buffer will not be normalized.  Data will be in mismatch, causing training to
+suffer and potentially fail.
+
+It is very hard to debug such an error at the moment.  We try to raise errors where
+we suspect a problematic sequence of data transformers is present, but it does not
+catch all problems.  Ultimately, it's the developer's responsibility to make sure
+the sequence of data transformers is applied correctly to produce consistent data
+across rollout and training, and also within the same batch of data during either
+rollout or training.
+
+
 Environment
 -----------
 
