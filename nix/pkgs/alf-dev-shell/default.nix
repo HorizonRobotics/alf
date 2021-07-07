@@ -54,6 +54,7 @@ let customMagma =  magma.override {
       matplotlib tqdm
       sphinx_rtd_theme
       yapf
+      pre-commit
     ]);
 
     pythonIcon = "f3e2";
