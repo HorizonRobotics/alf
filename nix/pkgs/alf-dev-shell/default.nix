@@ -53,6 +53,7 @@ let customMagma =  magma.override {
       jupyterlab ipywidgets ipydatawidgets
       matplotlib tqdm
       sphinx_rtd_theme
+      yapf
     ]);
 
     pythonIcon = "f3e2";
