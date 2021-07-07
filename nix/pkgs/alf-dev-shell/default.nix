@@ -55,6 +55,7 @@ let customMagma =  magma.override {
       sphinx_rtd_theme
       yapf
       pre-commit
+      pylint
     ]);
 
     pythonIcon = "f3e2";
