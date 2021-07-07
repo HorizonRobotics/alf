@@ -118,3 +118,10 @@ venv.bak/
 
 data_m/
 data_c10/
+
+# Nix build artifacts. This can be a result of nix-build.
+**/result
+
+# Direnv artifacts. Developer may have different direnv settings so do not check them in.
+.envrc
+.direnv
