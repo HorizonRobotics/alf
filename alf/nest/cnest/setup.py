@@ -123,7 +123,7 @@ class BuildExt(build_ext):
 
 setup(
     name="cnest",
-    setup_requires=['pybind11>=2.5.0'],
+    setup_requires=['pybind11>=2.6.2'],
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExt},
 )
