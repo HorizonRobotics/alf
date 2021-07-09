@@ -528,20 +528,17 @@ def write_config(root_dir):
     root_dir = os.path.expanduser(root_dir)
     alf_config_file = os.path.join(root_dir, ALF_CONFIG_FILE)
     os.makedirs(root_dir, exist_ok=True)
-    conf_params = getattr(flags.FLAGS, 'conf_param', None)
+    pre_configs = alf.config_util.get_handled_pre_configs()
     config = ''
-    if conf_params:
+    if pre_configs:
         config += "########### config from commandline ###########\n\n"
         config += "import alf\n"
         config += "alf.pre_config({\n"
-        for conf_param in conf_params:
-            pos = conf_param.find('=')
-            if pos == -1:
-                raise ValueError("conf_param should have a format of "
-                                 "'CONFIG_NAME=VALUE': %s" % conf_param)
-            config_name = conf_param[:pos]
-            config_value = conf_param[pos + 1:]
-            config += "    '%s': %s,\n" % (config_name, config_value)
+        for config_name, config_value in pre_configs:
+            if isinstance(config_value, str):
+                config += "    '%s': '%s',\n" % (config_name, config_value)
+            else:
+                config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
         config += "########### end config from commandline ###########\n\n"
     f = open(conf_file, 'r')
