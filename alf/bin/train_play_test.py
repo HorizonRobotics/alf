@@ -41,12 +41,16 @@ def run_cmd(cmd, cwd=None):
     new_env = os.environ.copy()
 
     process = subprocess.Popen(
-        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd, env=new_env)
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=new_env)
 
-    process.communicate()
+    out, err = process.communicate()
 
-    assert process.returncode == 0, ("cmd: {0} exit abnormally".format(
-        " ".join(cmd)))
+    assert process.returncode == 0, (
+        f'cmd {" ".join(cmd)} exit abnormally, error:\n{err.decode("utf-8")}')
 
 
 def get_metrics_from_eval_tfevents(eval_dir):
