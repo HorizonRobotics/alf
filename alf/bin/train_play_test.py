@@ -185,6 +185,7 @@ class TrainPlayTest(alf.test.TestCase):
         'sac_conf.py',
         'carla.gin',
         'sac.gin',
+        'atari_conf.py',
     }
 
     # All alf conf files list in directory `$PROJECT_ROOT/alf/examples`
@@ -363,7 +364,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_ac_breakout(self):
         self._test(
-            conf_file='ac_breakout.gin',
+            conf_file='ac_breakout_conf.py',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
