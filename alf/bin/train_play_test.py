@@ -318,13 +318,13 @@ class TrainPlayTest(alf.test.TestCase):
             '--gin_param=TrainerConfig.random_seed=1'  # TODO: remove --gin_param
         ]
         if conf_file.endswith('.gin'):
-            cmd.append('--gin_file=%s' % conf_file)
+            cmd.append(f'--gin_file={examples_dir}/{conf_file}')
         else:
-            cmd.append('--conf=%s' % conf_file)
+            cmd.append(f'--conf={examples_dir}/{conf_file}')
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
         cmd.extend(extra_params or [])
-        run_cmd(cmd=cmd, cwd=examples_dir)
+        run_cmd(cmd=cmd)
 
     def _test_play(self, root_dir, extra_params, test_video_recording):
         """Test if it can play successfully using configuration and checkpoints
@@ -346,7 +346,7 @@ class TrainPlayTest(alf.test.TestCase):
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
         cmd.extend(extra_params or [])
-        run_cmd(cmd=cmd, cwd=examples_dir)
+        run_cmd(cmd=cmd)
 
     def _test_performance(self, root_dir, test_func):
         """Test if the performance meet expectations
