@@ -1072,7 +1072,7 @@ class CarlaServer(object):
     def __init__(self,
                  rpc_port=2000,
                  streaming_port=2001,
-                 docker_image="horizonrobotics/alf:0.0.3-carla",
+                 docker_image="horizonrobotics/alf:0.0.6-carla0.9.9",
                  quality_level="Low",
                  carla_root="/home/carla",
                  use_opengl=True):

@@ -51,7 +51,7 @@ class SuiteCarlaTest(alf.test.TestCase):
                     logging.debug("goal: %s, gnss: %s reward=%s" %
                                   (time_step.observation['goal'][0],
                                    time_step.observation['gnss'][0],
-                                   float(time_step.reward[0])))
+                                   float(time_step.reward[0][0])))
         finally:
             env.close()
 
