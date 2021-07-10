@@ -320,7 +320,6 @@ class TrainPlayTest(alf.test.TestCase):
         if conf_file.endswith('.gin'):
             cmd.append('--gin_file=%s' % conf_file)
         else:
-            print(f'conf_file={conf_file}')
             cmd.append('--conf=%s' % conf_file)
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
