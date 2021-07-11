@@ -50,7 +50,7 @@ def run_cmd(cmd, cwd=None):
     out, err = process.communicate()
 
     assert process.returncode == 0, (
-        f'cmd {" ".join(cmd)} exit abnormally, error:\n{err.decode("utf-8")}')
+        f'cmd {" ".join(cmd)} exit abnormally, error:\n{err}\nout:{out}')
 
 
 def get_metrics_from_eval_tfevents(eval_dir):
