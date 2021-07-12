@@ -21,7 +21,7 @@ from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, Crit
 from alf.optimizers import AdamTF
 from alf.utils import dist_utils, math_ops
 
-import sac_conf
+from alf.examples import sac_conf
 
 # environment config
 alf.config(
