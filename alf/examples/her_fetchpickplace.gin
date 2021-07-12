@@ -1,0 +1,2 @@
+include 'her_fetchpush.gin'
+create_environment.env_name='FetchPickAndPlace-v1'
