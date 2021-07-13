@@ -531,7 +531,7 @@ def write_config(root_dir):
     pre_configs = alf.config_util.get_handled_pre_configs()
     config = ''
     if pre_configs:
-        config += "########### config from commandline ###########\n\n"
+        config += "########### pre-configs ###########\n\n"
         config += "import alf\n"
         config += "alf.pre_config({\n"
         for config_name, config_value in pre_configs:
@@ -540,7 +540,7 @@ def write_config(root_dir):
             else:
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
-        config += "########### end config from commandline ###########\n\n"
+        config += "########### end pre-configs ###########\n\n"
     f = open(conf_file, 'r')
     config += f.read()
     f.close()
