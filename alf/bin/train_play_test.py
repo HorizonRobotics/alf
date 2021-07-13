@@ -36,17 +36,29 @@ def run_cmd(cmd, cwd=None):
         cmd (list[str]): command and args to run
         cwd (str): working directory for the process
     """
+
+    def format_error_message(cmd: list, stdout: bytes, stderr: bytes):
+        cmd_inline = ' '.join(cmd)
+        stdout_str = stdout.decode('utf-8')
+        stderr_str = stderr.decode('utf-8')
+        return f'\ncmd: {cmd_inline} exit abnormally, with\n' \
+            f'OUT: {stdout_str}\n' \
+            f'ERR: {stderr_str}'
+
     logging.info("Running %s", " ".join(cmd))
 
     new_env = os.environ.copy()
 
     process = subprocess.Popen(
-        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd, env=new_env)
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+        env=new_env)
 
-    process.communicate()
+    stdout, stderr = process.communicate()
 
-    assert process.returncode == 0, ("cmd: {0} exit abnormally".format(
-        " ".join(cmd)))
+    assert process.returncode == 0, format_error_message(cmd, stdout, stderr)
 
 
 def get_metrics_from_eval_tfevents(eval_dir):
