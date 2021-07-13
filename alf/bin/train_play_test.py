@@ -41,8 +41,9 @@ def run_cmd(cmd, cwd=None):
         cmd_inline = ' '.join(cmd)
         stdout_str = stdout.decode('utf-8')
         stderr_str = stderr.decode('utf-8')
-        return f'cmd: {cmd_inline} exit abnormally, with\n' \
-            f'OUT: {stdout_str}\nERR: {stderr_str}'
+        return f'\ncmd: {cmd_inline} exit abnormally, with\n' \
+            f'OUT: {stdout_str}\n' \
+            f'ERR: {stderr_str}'
 
     logging.info("Running %s", " ".join(cmd))
 
