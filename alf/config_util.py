@@ -22,9 +22,9 @@ import os
 
 __all__ = [
     'config', 'config1', 'configurable', 'define_config',
-    'get_all_config_names', 'get_config_value', 'get_operative_configs',
-    'get_inoperative_configs', 'pre_config', 'reset_configs',
-    'validate_pre_configs'
+    'get_all_config_names', 'get_config_value', 'get_handled_pre_configs',
+    'get_inoperative_configs', 'get_operative_configs', 'pre_config',
+    'reset_configs', 'validate_pre_configs'
 ]
 
 
@@ -326,7 +326,7 @@ def pre_config(configs):
     for name, value in configs.items():
         try:
             config1(name, value, mutable=False)
-            _HANDLED_PRE_CONFIGS.append(name)
+            _HANDLED_PRE_CONFIGS.append((name, value))
         except ValueError:
             _PRE_CONFIGS.append((name, value))
 
@@ -342,7 +342,7 @@ def _handle_pre_configs(path, node):
                 return True
         node.set_value(value)
         node.set_mutable(False)
-        _HANDLED_PRE_CONFIGS.append(name)
+        _HANDLED_PRE_CONFIGS.append(item)
         return False
 
     global _PRE_CONFIGS
@@ -359,8 +359,13 @@ def validate_pre_configs():
             "was not found, or there was some error when calling pre_config()")
                          % _PRE_CONFIGS[0][0])
 
-    for config_name in _HANDLED_PRE_CONFIGS:
+    for (config_name, _) in _HANDLED_PRE_CONFIGS:
         _get_config_node(config_name)
+
+
+def get_handled_pre_configs():
+    """Return a list of handled pre-config ``(name, value)``."""
+    return _HANDLED_PRE_CONFIGS
 
 
 def get_config_value(config_name):
