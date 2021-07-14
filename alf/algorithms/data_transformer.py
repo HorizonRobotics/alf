@@ -793,14 +793,18 @@ class HindsightExperienceTransformer(DataTransformer):
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
-
-            reward_achieved = relabeled_rewards >= 0
-            # Cut off episode for any goal reached.
-            end = reward_achieved
-            discount = torch.where(end, torch.tensor(0.), result.discount)
-            step_type = torch.where(end, torch.tensor(StepType.LAST),
-                                    result.step_type)
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + buffer._name +
+                    ".discount_mean_before_relabel",
+                    torch.mean(result.discount[:, 1:]))
             if self._sparse_reward:
+                reward_achieved = relabeled_rewards >= 0
+                # Cut off episode for any goal reached.
+                end = reward_achieved
+                discount = torch.where(end, torch.tensor(0.), result.discount)
+                step_type = torch.where(end, torch.tensor(StepType.LAST),
+                                        result.step_type)
                 # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
                 # achieved but env ended episode due to position goal achieved.
                 # -1/0 reward doesn't end episode on achieving position goal, and
@@ -815,20 +819,14 @@ class HindsightExperienceTransformer(DataTransformer):
                 step_type = torch.where(mid, torch.tensor(StepType.MID),
                                         step_type)
 
-            if alf.summary.should_record_summaries():
-                alf.summary.scalar(
-                    "replayer/" + buffer._name +
-                    ".discount_mean_before_relabel",
-                    torch.mean(result.discount[:, 1:]))
-                alf.summary.scalar(
-                    "replayer/" + buffer._name
-                    + ".discount_mean_after_relabel",
-                    torch.mean(discount[:, 1:]))
+                if alf.summary.should_record_summaries():
+                    alf.summary.scalar(
+                        "replayer/" + buffer._name +
+                        ".discount_mean_after_relabel",
+                        torch.mean(discount[:, 1:]))
 
-            result = result._replace(discount=discount)
-            result = result._replace(step_type=step_type)
-
-            if self._sparse_reward:
+                result = result._replace(discount=discount)
+                result = result._replace(step_type=step_type)
                 relabeled_rewards = suite_socialbot.transform_reward_tensor(
                     relabeled_rewards)
 

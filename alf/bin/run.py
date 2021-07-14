@@ -107,6 +107,8 @@ MJC_GIN_TAGS = [
     "herfetchpush",
     "ddpgfetchslide",
     "herfetchslide",
+    "ddpgfetchpickplace",
+    "herfetchpickplace",
 ]
 
 
@@ -178,6 +180,10 @@ def get_gin_file(gin_file_tag):
             "ddpg_fetchslide",
         "herfetchslide":
             "her_fetchslide",
+        "ddpgfetchpickplace":
+            "ddpg_fetchpickplace",
+        "herfetchpickplace":
+            "her_fetchpickplace",
         "mbpendu":
             "mbrl_pendulum",
     }
@@ -327,6 +333,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         'evit':
             'TrainerConfig.eval_interval',
         'lr': ['ac/AdamTF.lr', 'AdamTF.lr', 'Adam.lr'],
+        'adameps': ['ac/AdamTF.eps', 'AdamTF.eps', 'Adam.eps'],
         'tffn':
             'TrainerConfig.use_tf_functions',
         'unr':
