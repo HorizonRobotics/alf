@@ -42,6 +42,12 @@ class LoadBsuite(gym_wrapper.GymFromDMEnv):
             self.game_over = True
         return np.reshape(timestep.observation, (timestep.observation.shape[1], )), reward, timestep.last(), {}
 
+    def reset(self) -> np.ndarray:
+        self.game_over = False
+        timestep = self._env.reset()
+        self._last_observation = timestep.observation
+        return np.reshape(timestep.observation, (timestep.observation.shape[1], ))
+
 
 @alf.configurable
 def load(environment=sweep.CARTPOLE_SWINGUP[0],
@@ -154,7 +160,7 @@ def wrap_env(gym_env,
         # clip continuous actions according to gym_env.action_space
         gym_env = gym_wrappers.ContinuousActionClip(gym_env)
 
-    env = AlfBsuiteWrapper(
+    env = alf_gym_wrapper.AlfGymWrapper(
         gym_env=gym_env,
         env_id=env_id,
         discount=discount,
