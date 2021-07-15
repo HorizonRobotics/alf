@@ -21,8 +21,8 @@ import alf
 from alf.algorithms.taac_algorithm import TaacAlgorithm
 from alf.utils import dist_utils
 
-from alf.examples import sac_conf
-from alf.examples import fetch_conf
+import sac_conf
+import fetch_conf
 
 alf.config(
     'TaacAlgorithmBase',

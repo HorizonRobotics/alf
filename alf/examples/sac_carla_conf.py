@@ -21,8 +21,8 @@ from alf.algorithms.data_transformer import ImageScaleTransformer, ObservationNo
 from alf.environments import suite_carla
 from alf.environments.carla_controller import VehicleController
 
-from alf.examples import carla_conf
-from alf.examples import sac_conf
+import carla_conf
+import sac_conf
 
 alf.config('ImageScaleTransformer', min=0.0, fields=['observation.camera'])
 alf.config('ObservationNormalizer', clipping=5.0)

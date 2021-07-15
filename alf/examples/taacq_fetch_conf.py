@@ -15,6 +15,6 @@
 import alf
 from alf.algorithms.taac_algorithm import TaacQAlgorithm
 
-from alf.examples import taac_fetch_conf
+import taac_fetch_conf
 
 alf.config('Agent', rl_algorithm_cls=TaacQAlgorithm)

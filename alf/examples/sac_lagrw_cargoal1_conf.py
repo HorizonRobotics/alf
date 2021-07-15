@@ -26,7 +26,7 @@ from alf.utils import math_ops
 from alf.algorithms.td_loss import TDLoss
 from alf.optimizers import AdamTF
 
-from alf.examples import sac_conf
+import sac_conf
 
 # environment config
 alf.config(
