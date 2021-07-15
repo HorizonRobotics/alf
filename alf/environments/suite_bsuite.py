@@ -1,13 +1,50 @@
+import alf
+from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
+from alf.environments.alf_bsuite_wrapper import AlfBsuiteWrapper
+
 import bsuite
 from bsuite import sweep
 from bsuite.utils import gym_wrapper
+from gym import spaces
+from dm_env import specs
+import numpy as np
+from typing import Any, Dict, Tuple
 
-import alf
-from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
+
+class LoadBsuite(gym_wrapper.GymFromDMEnv):
+    def __init__(self, env):
+        super(LoadBsuite, self).__init__(env)
+
+    @property
+    def observation_space(self) -> spaces.Box:
+        obs_spec = self._env.observation_spec()  # type: specs.Array
+        obs_spec = specs.Array(
+            shape=(obs_spec.shape[1],), dtype=np.float32, name='state')
+        if isinstance(obs_spec, specs.BoundedArray):
+            return spaces.Box(
+                low=float(obs_spec.minimum),
+                high=float(obs_spec.maximum),
+                shape=obs_spec.shape,
+                dtype=obs_spec.dtype)
+        return spaces.Box(
+            low=-float('inf'),
+            high=float('inf'),
+            shape=obs_spec.shape,
+            dtype=obs_spec.dtype)
+
+    _GymTimestep = Tuple[np.ndarray, float, bool, Dict[str, Any]]
+
+    def step(self, action: int) -> _GymTimestep:
+        timestep = self._env.step(action)
+        self._last_observation = timestep.observation
+        reward = timestep.reward or 0.
+        if timestep.last():
+            self.game_over = True
+        return np.reshape(timestep.observation, (timestep.observation.shape[1], )), reward, timestep.last(), {}
 
 
 @alf.configurable
-def load(environment=sweep.CARTPOLE_SWINGUP,
+def load(environment=sweep.CARTPOLE_SWINGUP[0],
          env_id=None,
          discount=1.0,
          max_episode_steps=None,
@@ -37,17 +74,11 @@ def load(environment=sweep.CARTPOLE_SWINGUP,
         An AlfEnvironment instance.
     """
 
-    if env_id == None:
-        env_id = 0
-
-    env = bsuite.load_from_id('catch/' + str(environment))
-    gym_env = gym_wrapper.GymFromDMEnv(env)
+    env = bsuite.load_from_id(environment)
+    gym_env = LoadBsuite(env)
 
     if max_episode_steps is None:
-        if gym_env.max_episode_steps is not None:
-            max_episode_steps = gym_env.max_episode_steps
-        else:
-            max_episode_steps = 0
+        max_episode_steps = 0
 
     return wrap_env(
         gym_env,
@@ -123,7 +154,7 @@ def wrap_env(gym_env,
         # clip continuous actions according to gym_env.action_space
         gym_env = gym_wrappers.ContinuousActionClip(gym_env)
 
-    env = alf_gym_wrapper.AlfGymWrapper(
+    env = AlfBsuiteWrapper(
         gym_env=gym_env,
         env_id=env_id,
         discount=discount,
