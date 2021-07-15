@@ -1,6 +1,5 @@
 import alf
 from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
-from alf.environments.alf_bsuite_wrapper import AlfBsuiteWrapper
 
 import bsuite
 from bsuite import sweep
