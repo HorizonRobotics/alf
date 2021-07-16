@@ -21,13 +21,13 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
-from alf.networks import Network, EncodingNetwork, ReluMLP
+from alf.networks import Network, EncodingNetwork, ReluMLP, PinverseNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
-                               ["generator", "mi_estimator"])
+                               ["generator", "mi_estimator", "pinverse"])
 
 
 @alf.configurable
@@ -116,6 +116,85 @@ class CriticAlgorithm(Algorithm):
 
 
 @alf.configurable
+class PinverseAlgorithm(Algorithm):
+    r"""PinverseNet Algorithm
+        
+    Simple MLP network used with the functional gradient par_vi methods
+    It is used to predict :math:`x=J^{-1}*eps` given eps for the purpose of 
+    optimizing a downstream objective Jx - eps = 0. 
+    
+    If using ``svgd3``, then the eps quantity represents the kernel grad
+        :math:`\nabla_{z'}k(z', z)`
+    if using ``minmax``, the eps quantity represents the critic 
+        input-output jacobian :math:`\frac{\partial \phi}{\partial z}`
+    """
+
+    def __init__(self,
+                 input_dim,
+                 output_dim,
+                 eps_dim=None,
+                 hidden_size=500,
+                 num_hidden_layers=1,
+                 net: Network = None,
+                 optimizer=None,
+                 name="PinverseAlgorithm"):
+        r"""Create a PinverseAlgorithm.
+        Args:
+            input_dim (int): dimension of input noise vector z, if equals to 
+                output_dim, use fullsize of z, otherwise, input the first 
+                input_dim dim of z, and add a direct link of z to the output.
+            output_dim (int): total output dimension of the pinverse net, will differ
+                between ``svgd3`` and ``minmax`` methods
+            hidden_size (tuple(int,)): base hidden width for pinverse net
+            num_hidden_layers (int): number of hidden layers. 
+            net (Network): network for predicting outputs from inputs.
+                If None, a default ReluMLP with hidden_layers will be created
+            optimizer (torch.optim.Optimizer): (optional) optimizer for training.
+            name (str): name of this CriticAlgorithm.
+            eps_shape (list or None): shape of eps to estimate. In general ``svgd3``
+                takes an eps input of shape [B', B, k]. ``minmax`` takes an eps
+                of shape [B, k, d]. 
+                if ``eps_shape`` is None, then only :math:'J^{-1}' is estimated, 
+                and eps is not an input to the forward pass
+        """
+        if optimizer is None:
+            optimizer = alf.optimizers.Adam(lr=1e-3)
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+
+        self._output_dim = output_dim
+        if net is None:
+            z_spec = TensorSpec(shape=(input_dim, ))
+            if eps_dim is None:
+                input_tensor_spec = z_spec
+            else:
+                eps_spec = TensorSpec(shape=(eps_dim, ))
+                input_tensor_spec = (z_spec, eps_spec)
+            net = PinverseNetwork(
+                input_tensor_spec,
+                output_dim,
+                hidden_size,
+                num_hidden_layers,
+                name='PinverseNetwork')
+        self._net = net
+
+    def predict_step(self, inputs, state=None):
+        """Predict for one step of inputs.
+        Args:
+            inputs (tuple of Tensors): inputs (z, eps) for prediction.
+            state: not used.
+            
+        Returns:
+            AlgStep:
+            - output (torch.Tensor): predictions
+                if requires_jac_diag is True.
+            - state: not used.
+        """
+        outputs = self._net(inputs)[0]
+
+        return AlgStep(output=outputs, state=(), info=())
+
+
+@alf.configurable
 class Generator(Algorithm):
     r"""Generator
 
@@ -182,6 +261,10 @@ class Generator(Algorithm):
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
                  par_vi=None,
+                 functional_gradient=None,
+                 pinverse_solve_iters=1,
+                 pinverse_hidden_size=100,
+                 pinverse_hidden_layers=1,
                  critic_input_dim=None,
                  critic_hidden_layers=(100, 100),
                  critic_l2_weight=10.,
@@ -231,6 +314,13 @@ class Generator(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
+            functional_gradient (bool): whether or not to use GPVI.
+            pinverse_solve_iters (int): number of iterations of pinverse
+                network training per single iteration of generator training.
+            pinverse_hidden_size (int): width of hidden layers in pinverse
+                network. 
+            pinverse_hidden_layers (int): number of hidden layers in pinverse
+                network. 
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
@@ -246,6 +336,9 @@ class Generator(Algorithm):
                 critic update, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
+            pinverse_optimizer (torch.optim.Optimizer): Optimizer for training
+                the pinverse network, used when ``functional_gradient`` is 
+                ``True``.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -253,6 +346,7 @@ class Generator(Algorithm):
         self._output_dim = output_dim
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
+        self._functional_gradient = functional_gradient
         self._par_vi = par_vi
         if entropy_regularization == 0:
             self._grad_func = self._ml_grad
@@ -281,6 +375,32 @@ class Generator(Algorithm):
                     optimizer=critic_optimizer)
             else:
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
+
+            if functional_gradient is not None:
+                if functional_gradient == 'rkhs':
+                    self._grad_func = self._rkhs_func_grad
+                    if force_fullrank:
+                        self._eps_dim = output_dim
+                    else:
+                        self._eps_dim = noise_dim
+                else:
+                    raise ValueError(
+                        'functional gradient only supports ``rkhs``')
+
+                if noise_dim == output_dim:
+                    force_fullrank = False
+                self._pinverse_solve_iters = pinverse_solve_iters
+                if pinverse_optimizer is None:
+                    pinverse_optimizer = alf.optimizers.Adam(
+                        lr=1e-4, weight_decay=1e-5)
+
+                self._pinverse = PinverseAlgorithm(
+                    noise_dim,
+                    output_dim,
+                    eps_dim=self._eps_dim,
+                    hidden_size=pinverse_hidden_size,
+                    num_hidden_layers=pinverse_hidden_layers,
+                    optimizer=pinverse_optimizer)
 
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=()))
@@ -443,13 +563,20 @@ class Generator(Algorithm):
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
             mi_loss = mi_step.info.loss
             loss_propagated = loss_propagated + self._mi_weight * mi_loss
+        if self._functional_gradient:
+            loss, pinverse_loss = loss
+        else:
+            pinverse_loss = ()
 
         return AlgStep(
             output=outputs,
             state=(),
             info=LossInfo(
                 loss=loss_propagated,
-                extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
+                extra=GeneratorLossInfo(
+                    generator=loss,
+                    mi_estimator=mi_loss,
+                    pinverse=pinverse_loss)))
 
     def _ml_grad(self,
                  inputs,

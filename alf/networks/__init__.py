@@ -24,6 +24,7 @@ from .network import Network, NaiveParallelNetwork, wrap_as_network, NetworkWrap
 from .networks import *
 from .ou_process import OUProcess
 from .param_networks import *
+from .pinverse_network import *
 from .preprocessor_networks import PreprocessorNetwork
 from .projection_networks import *
 from .relu_mlp import ReluMLP
