@@ -33,6 +33,7 @@ class TDLoss(nn.Module):
                  td_lambda=0.95,
                  normalize_target=False,
                  improve_w_goal_return=False,
+                 reward_multiplier=1.,
                  debug_summaries=False,
                  name="TDLoss"):
         r"""
@@ -94,6 +95,7 @@ class TDLoss(nn.Module):
         self._td_error_loss_fn = td_error_loss_fn
         self._lambda = td_lambda
         self._improve_w_goal_return = improve_w_goal_return
+        self._reward_multiplier = reward_multiplier
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
@@ -162,7 +164,7 @@ class TDLoss(nn.Module):
             if her_cond != () and torch.any(her_cond):
                 goal_return = torch.pow(
                     self._gamma * torch.ones(her_cond.shape),
-                    info.batch_info.future_distance)
+                    info.batch_info.future_distance) * self._reward_multiplier
                 returns_0 = returns
                 # Multi-dim reward:
                 if len(returns.shape) > 2:

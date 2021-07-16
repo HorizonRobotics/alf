@@ -33,6 +33,7 @@ import numpy as np
 import gym
 
 import gin
+import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
@@ -43,22 +44,24 @@ def is_available():
     return mujoco_py is not None
 
 
+@alf.configurable
 class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self, env):
+    def __init__(self, env, reward_cap=1.):
         gym.Wrapper.__init__(self, env)
+        self._reward_cap = reward_cap
 
     def step(self, action):
         # openai Robotics env will always return ``done=False``
         ob, reward, done, info = self.env.step(action)
         if reward == 0:
             done = True
-        return ob, reward + 1, done, info
+        return ob, (reward + 1) * self._reward_cap, done, info
 
 
-@gin.configurable
+@alf.configurable
 class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
     """

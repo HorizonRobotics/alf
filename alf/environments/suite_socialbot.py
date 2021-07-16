@@ -22,7 +22,6 @@ except ImportError:
 import contextlib
 from fasteners.process_lock import InterProcessLock
 import functools
-import gin
 import gym
 import numpy as np
 import socket
@@ -40,7 +39,7 @@ def is_available():
     return social_bot is not None
 
 
-@gin.configurable
+@alf.configurable
 def transform_reward(reward, reward_cap=1.):
     goal_reward = reward
     if isinstance(reward, (np.ndarray, list)):
@@ -53,12 +52,13 @@ def transform_reward(reward, reward_cap=1.):
     return reward
 
 
-def transform_reward_tensor(reward):
+@alf.configurable
+def transform_reward_tensor(reward, reward_cap=1.):
     goal_reward = reward
     if reward.ndim > 2:
         goal_reward = reward[:, :, 0]
     goal_reward = torch.where(goal_reward >= 0, torch.ones(()), torch.zeros(
-        ()))
+        ())) * reward_cap
     if reward.ndim > 2:
         reward[:, :, 0] = goal_reward
     else:
@@ -84,7 +84,7 @@ class SparseReward(gym.Wrapper):
         return ob, reward, done, info
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          port=None,

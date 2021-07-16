@@ -560,8 +560,12 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             #'hindsight_relabel_fn.sparse_reward',
             #'SubgoalPlanningGoalGenerator.sparse_reward',
         ],
-        'rwdcap':
+        'rwdcap': [
             'transform_reward.reward_cap',
+            'transform_reward_tensor.reward_cap',
+            'suite_robotics.SparseReward.reward_cap',
+            'TDLoss.reward_multiplier',
+        ],
         'fskip':
             'FrameSkip.skip',
         'esu':
