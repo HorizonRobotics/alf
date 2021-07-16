@@ -560,6 +560,8 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             #'hindsight_relabel_fn.sparse_reward',
             #'SubgoalPlanningGoalGenerator.sparse_reward',
         ],
+        'succsince':
+            'SuccessWrapper.since_episode_steps',
         'rwdcap': [
             'transform_reward.reward_cap',
             'transform_reward_tensor.reward_cap',
