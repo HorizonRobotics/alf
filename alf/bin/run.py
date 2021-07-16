@@ -566,6 +566,12 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'suite_robotics.SparseReward.reward_cap',
             'TDLoss.reward_multiplier',
         ],
+        'posrwd': [
+            'transform_reward.positive_reward',
+            'transform_reward_tensor.positive_reward',
+            'suite_robotics.SparseReward.positive_reward',
+            'TDLoss.positive_reward',
+        ],
         'fskip':
             'FrameSkip.skip',
         'esu':

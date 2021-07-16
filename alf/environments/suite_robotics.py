@@ -49,16 +49,21 @@ class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self, env, reward_cap=1.):
+    def __init__(self, env, reward_cap=1., positive_reward=True):
         gym.Wrapper.__init__(self, env)
         self._reward_cap = reward_cap
+        self._positive_reward = positive_reward
 
     def step(self, action):
         # openai Robotics env will always return ``done=False``
         ob, reward, done, info = self.env.step(action)
         if reward == 0:
             done = True
-        return ob, (reward + 1) * self._reward_cap, done, info
+        if self._positive_reward:
+            return_reward = reward + 1
+        else:
+            return_reward = reward
+        return ob, return_reward * self._reward_cap, done, info
 
 
 @alf.configurable
