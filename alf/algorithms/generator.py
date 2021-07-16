@@ -262,6 +262,8 @@ class Generator(Algorithm):
                  mi_estimator_cls=MIEstimator,
                  par_vi=None,
                  functional_gradient=None,
+                 force_fullrank=True,
+                 fullrank_diag_weight=1.0,
                  pinverse_solve_iters=1,
                  pinverse_hidden_size=100,
                  pinverse_hidden_layers=1,
@@ -273,6 +275,7 @@ class Generator(Algorithm):
                  critic_use_bn=True,
                  minmax_resample=True,
                  critic_optimizer=None,
+                 pinverse_optimizer=None,
                  optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
@@ -314,7 +317,13 @@ class Generator(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
-            functional_gradient (bool): whether or not to use GPVI.
+            functional_gradient (string): whether or not to use GPVI. Options
+                are ``rkhs``, for GPVI or ``None``. 
+            force_fullrank (bool): when ``functional_gradient`` is not ``None``, 
+                this option forces the dimension of the jacobian of the
+                generator to be square. 
+            fullrank_diag_weight (float): weight on "extra" dimensions when 
+                forcing full rank Jacobian
             pinverse_solve_iters (int): number of iterations of pinverse
                 network training per single iteration of generator training.
             pinverse_hidden_size (int): width of hidden layers in pinverse
@@ -389,6 +398,8 @@ class Generator(Algorithm):
 
                 if noise_dim == output_dim:
                     force_fullrank = False
+                self._force_fullrank = force_fullrank
+                self._fullrank_diag_weight = fullrank_diag_weight
                 self._pinverse_solve_iters = pinverse_solve_iters
                 if pinverse_optimizer is None:
                     pinverse_optimizer = alf.optimizers.Adam(
@@ -463,7 +474,19 @@ class Generator(Algorithm):
         if self._predict_net and not training:
             outputs = self._predict_net(gen_inputs)[0]
         else:
-            outputs = self._net(gen_inputs)[0]
+            if self._functional_gradient is not None:
+                if self._force_fullrank:
+                    extra_noise = torch.ones(
+                        noise.shape[0],
+                        torch.randn(self._output_dim - self._noise_dim))
+                    outputs = self._net(gen_inputs)[0]  # [B, D]
+                    gen_inputs = torch.cat((gen_inputs, extra_noise),
+                                           dim=-1)  # [B, D]
+                    outputs = outputs + self._fullrank_diag_weight * gen_inputs
+                else:
+                    outputs = self._net(gen_inputs)[0]
+            else:
+                outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
     def predict_step(self,
@@ -554,6 +577,8 @@ class Generator(Algorithm):
             - info (LossInfo): loss
         """
         outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
+        if self._functional_gradient:
+            outputs = (outputs, gen_inputs)
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
         loss, loss_propagated = self._grad_func(
@@ -902,6 +927,128 @@ class Generator(Algorithm):
         loss_propagated = torch.sum(-critic_outputs.detach() * outputs, dim=-1)
 
         return loss, loss_propagated
+
+    def _pinverse_train_step(self, z, eps=None):
+        r"""Compute the loss for pinverse training. 
+        self._pinverse solves an inverse problem for the amortized 
+        functional gradient vi method ``rkhs``. 
+        For ``rkhs``, it takes z' and :math:'\nabla_{z'}k(z', z)' as input 
+        and outputs
+        :math:`(\partial f / \partial z')^{-1} * \nabla_{z'}k(z', z)`.
+        The training loss is given by
+        :math:'\|()\partical f / \partial z')^T y - \nabla_{z'}k(z',z)',
+        where y denotes the output of self._pinverse.
+        The first term is computed by vector-jacobian product between the
+        generator f and output y.
+    
+        Args: 
+            z (torch.tensor): of size [N2, K], representing z'
+            eps (torch.tensor): of size [N2, N, D or K], representing
+                :math:'\nabla_{z'}k(z', z)', last dimension is D when 
+                self._force_fullrank is True, K otherwise. In general,
+                K is much less than D.
+        Returns:
+            pinverse_loss (float)
+        """
+        assert z.ndim == 2
+        assert z.shape[-1] == self._noise_dim or z.shape[-1] == self._output_dim
+
+        if self._functional_gradient == 'rkhs':
+            assert eps.ndim == 3
+            assert eps.shape[-1] == self._eps_dim
+
+            z_inputs = z[:, :self._noise_dim]
+            assert z.shape[0] == eps.shape[0]
+            z_inputs = torch.repeat_interleave(
+                z_inputs, eps.shape[1], dim=0)  # [N2*N, K]
+            eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1],
+                                     -1)  # [N2*N, D or K]
+            # [N2*N, D]
+            y = self._pinverse.predict_step((z_inputs, eps_inputs)).output
+            jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
+            if self._force_fullrank:
+                jac_y = torch.cat(
+                    (jac_y,
+                     torch.zeros(jac_y.shape[0],
+                                 self._output_dim - self._noise_dim)),
+                    dim=-1)
+                jac_y += self._fullrank_diag_weight * y  # [N2*N, D]
+            jac_y = jac_y.reshape(eps.shape[0], eps.shape[1],
+                                  -1)  # [N2, N, D or K]
+            loss = torch.nn.functional.mse_loss(jac_y, eps)
+        else:
+            raise ValueError('pinverse only supports ``rkhs``')
+
+        return loss
+
+    def _rkhs_func_grad(self,
+                        inputs,
+                        outputs,
+                        loss_func,
+                        entropy_regularization,
+                        transform_func=None):
+        """
+        Compute the amortized functional gradient of generator, functional gradient
+        represented in an RKHS. Empirical expectation evaluated by a resampling
+        from the z space of the same batch size. 
+        Args:
+            inputs: None
+            outputs (tuple of Tensors): (outputs, gen_inputs) of size [N, D] and
+                [N, K] respectively, where N being the sample size, D being the 
+                output dim of ReluMLP and K being the input dim of the generator.
+            loss_func (callable)
+            entropy_regularization (float): tradeoff parameter
+            transform_func (callable): not used
+        """
+        assert inputs is None, (
+            '``rkhs`` does not support conditional generator')
+        assert transform_func is None, (
+            "function value based vi is not supported for rkhs_func_grad")
+        outputs, gen_inputs = outputs  # [N, D], [N, D, K]
+        num_particles = outputs.shape[0]
+        outputs2, gen_inputs2 = self._predict(
+            batch_size=num_particles)  # [N2, D]
+        pinverse_z_input = gen_inputs2.detach()
+        kernel_input2 = gen_inputs2
+        kernel_input1 = gen_inputs
+        outputs_full = outputs
+        outputs_full2 = outputs
+
+        # [N2, N], [N2, N, D]
+        kernel_weight, kernel_grad = self._rbf_func2(kernel_input2,
+                                                     kernel_input1)
+        # train pinverse
+        for i in range(self._pinverse_solve_iters):
+            pinverse_loss = self._pinverse_train_step(pinverse_z_input,
+                                                      kernel_grad.detach())
+            self._pinverse.update_with_gradient(LossInfo(loss=pinverse_loss))
+
+        # construct functional gradient via pinverse
+        gen_inputs2_batch = torch.repeat_interleave(
+            gen_inputs2, num_particles, dim=0).detach()
+        kernel_grad_batch = kernel_grad.reshape(num_particles * num_particles,
+                                                -1).detach()
+        pinverse_z_input = gen_inputs2_batch
+        J_inv_kernel_grad = self._pinverse.predict_step(
+            (pinverse_z_input, kernel_grad_batch)).output  # [N2*N, D]
+        J_inv_kernel_grad = J_inv_kernel_grad.reshape(
+            num_particles, num_particles, -1)  # [N2, N, D]
+
+        loss_inputs = outputs2
+        loss = loss_func(loss_inputs)
+
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(),
+                                        loss_inputs)[0]  # [N2, D]
+        kernel_logp = torch.matmul(kernel_weight.t(),
+                                   loss_grad) / num_particles  # [N, D]
+
+        grad = kernel_logp - entropy_regularization * J_inv_kernel_grad.mean(0)
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=1)
+        return (loss, pinverse_loss), loss_propagated
 
     def after_update(self, training_info):
         if self._predict_net:
