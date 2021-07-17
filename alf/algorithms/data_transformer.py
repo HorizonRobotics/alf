@@ -698,6 +698,8 @@ class HindsightExperienceTransformer(DataTransformer):
                  achieved_goal_field="observation.achieved_goal",
                  desired_goal_field="observation.desired_goal",
                  sparse_reward=False,
+                 add_noise_to_goals=False,
+                 threshold=.05,
                  reward_fn=l2_dist_close_reward_fn):
         """
         Args:
@@ -707,6 +709,8 @@ class HindsightExperienceTransformer(DataTransformer):
             desired_goal_field (str): path to the desired_goal field in the
                 exp nest.
             sparse_reward (bool): Whether to transform reward from -1/0 to 0/1.
+            add_noise_to_goals (bool): Whether to add noise around relabeled goal.
+            threshold (float): noise added to relabeled goals.
             reward_fn (Callable): function to recompute reward based on
                 achieve_goal and desired_goal.  Default gives reward 0 when
                 L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -719,6 +723,8 @@ class HindsightExperienceTransformer(DataTransformer):
         self._achieved_goal_field = achieved_goal_field
         self._desired_goal_field = desired_goal_field
         self._sparse_reward = sparse_reward
+        self._add_noise_to_goals = add_noise_to_goals
+        self._threshold = threshold
         self._reward_fn = reward_fn
 
     def transform_timestep(self, timestep: TimeStep, state):
@@ -774,12 +780,36 @@ class HindsightExperienceTransformer(DataTransformer):
                     "replayer/" + buffer._name + ".mean_steps_to_episode_end",
                     torch.mean(dist.type(torch.float32)))
 
+            def _add_noise(t):
+                if not self._add_noise_to_goals:
+                    return t
+                bs, bl, dim = t.shape
+                # rejection sample from unit ball
+                assert dim < 20, "Cannot rejection sample from high dim ball yet."
+                n_samples, i = 0, 0
+                while n_samples == 0:
+                    _sample = torch.rand((bs * 2, dim))
+                    in_ball = torch.norm(_sample, dim=1) < 1.
+                    if torch.any(in_ball):
+                        sample = _sample[in_ball]
+                        nsample = sample.shape[0]
+                        if nsample < bs:
+                            sample = sample.expand(bs // nsample + 1, nsample,
+                                                   dim).reshape(-1, dim)
+                        if sample.shape[0] > bs:
+                            sample = sample[:bs, :]
+                        break
+                    assert i < 10, "shouldn't take 10 iterations"
+                    i += 1
+                return t + self._threshold * sample.reshape(bs, 1, dim)
+
             # get random future state
             future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(
                 torch.int64)
             future_idx = last_step_pos + future_dist
-            future_ag = buffer.get_field(self._achieved_goal_field,
-                                         last_env_ids, future_idx).unsqueeze(1)
+            future_ag = _add_noise(
+                buffer.get_field(self._achieved_goal_field, last_env_ids,
+                                 future_idx).unsqueeze(1))
 
             # relabel desired goal
             result_desired_goal = alf.nest.get_field(result,
@@ -792,7 +822,8 @@ class HindsightExperienceTransformer(DataTransformer):
 
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-            relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
+            relabeled_rewards = self._reward_fn(
+                result_ag, relabeled_goal, threshold=self._threshold)
             if alf.summary.should_record_summaries():
                 alf.summary.scalar(
                     "replayer/" + buffer._name +

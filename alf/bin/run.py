@@ -426,7 +426,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'l2_dist_close_reward_fn.combine_position_speed_reward'
         ],
         "gnoise":
-            'hindsight_relabel_fn.add_noise_to_goals',
+            'HindsightExperienceTransformer.add_noise_to_goals',
         "cobj":
             'PushReachTask.close_to_agent',
         'goalgen':

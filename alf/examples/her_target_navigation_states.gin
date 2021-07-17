@@ -88,7 +88,7 @@ TrainerConfig.num_eval_episodes=50
 # HER
 ReplayBuffer.keep_episodic_info=True
 HindsightExperienceTransformer.her_proportion=0.8
-l2_dist_close_reward_fn.threshold=0.5
+HindsightExperienceTransformer.threshold=0.5
 TrainerConfig.data_transformer_ctor=@HindsightExperienceTransformer
 
 # Finer grain tensorboard summaries plus local action distribution
