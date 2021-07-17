@@ -62,7 +62,7 @@ class BSuiteWrapper(gym_wrapper.GymFromDMEnv):
     The BSuite environment is introduced in
     `Osband et al. Behaviour Suite for Reinforcement Learning  <https://openreview.net/forum?id=rygf-kSYwH>`_.
 
-    It can be accessed from https://github.com/deepmind/bsuite
+    It can be accessed on https://github.com/deepmind/bsuite
     """
 
     _GymTimestep = Tuple[np.ndarray, float, bool, Dict[str, Any]]
