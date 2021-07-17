@@ -1,3 +1,17 @@
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import alf
 from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
 from alf.environments.suite_gym import wrap_env
@@ -11,8 +25,12 @@ import numpy as np
 from typing import Any, Dict, Tuple
 
 
+def is_available():
+    return bsuite is not None
+
+
 @alf.configurable
-def load(environment=sweep.CARTPOLE_SWINGUP[0],
+def load(environment_name=sweep.CARTPOLE_SWINGUP[0],
          env_id=None,
          discount=1.0,
          max_episode_steps=None,
@@ -28,9 +46,8 @@ def load(environment=sweep.CARTPOLE_SWINGUP[0],
         env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): If None the max_episode_steps will be set to zero as not
-        all bsuite environments specify max episode lengths.
-            if set to 0 or if there is no max_episode_steps set in the environment's
-            spec.
+            all bsuite environments specify max episode lengths. No limit is applied if set 
+            to 0.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
@@ -40,7 +57,7 @@ def load(environment=sweep.CARTPOLE_SWINGUP[0],
         An AlfEnvironment instance.
     """
 
-    env = bsuite.load_from_id(environment)
+    env = bsuite.load_from_id(environment_name)
     gym_env = BSuiteWrapper(env)
 
     if max_episode_steps is None:
@@ -78,7 +95,7 @@ class BSuiteWrapper(gym_wrapper.GymFromDMEnv):
     def observation_space(self) -> spaces.Box:
         obs_spec = self._env.observation_spec()  # type: specs.Array
         obs_spec = specs.Array(
-            shape=(obs_spec.shape[1],), dtype=np.float32, name='state')
+            shape=(obs_spec.shape[1], ), dtype=np.float32, name='state')
         if isinstance(obs_spec, specs.BoundedArray):
             return spaces.Box(
                 low=float(obs_spec.minimum),
@@ -97,10 +114,13 @@ class BSuiteWrapper(gym_wrapper.GymFromDMEnv):
         reward = timestep.reward or 0.
         if timestep.last():
             self.game_over = True
-        return np.reshape(timestep.observation, (timestep.observation.shape[1], )), reward, timestep.last(), {}
+        return np.reshape(
+            timestep.observation,
+            (timestep.observation.shape[1], )), reward, timestep.last(), {}
 
     def reset(self) -> np.ndarray:
         self.game_over = False
         timestep = self._env.reset()
         self._last_observation = timestep.observation
-        return np.reshape(timestep.observation, (timestep.observation.shape[1], ))
+        return np.reshape(timestep.observation,
+                          (timestep.observation.shape[1], ))

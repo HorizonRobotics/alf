@@ -23,7 +23,7 @@ from alf.optimizers import Adam, AdamTF
 from alf.utils.math_ops import clipped_exp
 from alf.utils.losses import element_wise_squared_loss
 
-import sac_conf
+from alf.examples import sac_conf
 
 # environment config
 alf.config(
