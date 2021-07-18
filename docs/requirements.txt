@@ -1,5 +1,6 @@
 absl-py
 atari_py == 0.1.7
+bsuite
 carla
 fasteners
 git+git://github.com/HorizonRobotics/gin-config@master#egg=gin-config
