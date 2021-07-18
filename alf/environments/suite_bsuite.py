@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,7 +60,10 @@ def load(environment_name=sweep.CARTPOLE_SWINGUP[0],
     env = bsuite.load_from_id(environment_name)
     gym_env = BSuiteWrapper(env)
 
-    if max_episode_steps is None:
+    if hasattr(env, '_max_steps'):
+        if max_episode_steps is None:
+            max_episode_steps = env._max_steps - 1
+    elif max_episode_steps is None:
         max_episode_steps = 0
 
     return wrap_env(

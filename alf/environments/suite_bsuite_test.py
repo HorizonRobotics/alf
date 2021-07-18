@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,8 +57,6 @@ class SuiteBSuiteTest(alf.test.TestCase):
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual(torch.float32, self._env.observation_spec().dtype)
-        # self.assertEqual((suite_bsuite.VectorReward.REWARD_DIMENSION, ),
-        #                  self._env.reward_spec().shape)
 
         actions = self._env.action_spec().sample(outer_dims=(env_num, ))
         for _ in range(10):
