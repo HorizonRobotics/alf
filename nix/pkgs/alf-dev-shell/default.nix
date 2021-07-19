@@ -24,6 +24,8 @@ let customMagma =  magma.override {
       pybox2d = pyPkgs.callPackage ../pybox2d {};
 
       atari-py-with-rom = pyPkgs.callPackage ../atari-py-with-rom {};
+
+      custom-gin-config = pyPkgs.callPackage ../gin-config {};
       
     in [
       # For both Dev and Deploy
@@ -40,7 +42,7 @@ let customMagma =  magma.override {
       psutil
       pybullet
       sphinx
-      gin-config
+      custom-gin-config
       cnest
       fasteners
       rectangle-packer
