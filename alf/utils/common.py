@@ -1164,6 +1164,10 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     avoid manually computing the interval value when an expected number of calls
     is in mind.
 
+    .. warning::
+        This function might not work for algorithms that change the global
+        counter themselves, e.g., ``LMAlgorithm``.
+
     Args:
         config (TrainerConfig): the configuration object for training
         summary_or_eval_calls (int): the expected number of summary
@@ -1171,10 +1175,6 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
             the time consumed on summary or eval. Note that this number might not
             be exactly satisfied eventually, if the calculated interval has been
             rounded up.
-
-    Warning:
-        This function might not work for algorithms that change the global
-        counter themselves, e.g., ``LMAlgorithm``.
 
     Returns:
         int: summary or eval interval
