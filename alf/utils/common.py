@@ -1156,3 +1156,45 @@ def is_alf_root(dir):
     of checking is to see if there is valid ``__init__.py`` under it.
     """
     return os.path.isfile(os.path.join(dir, 'alf/__init__.py'))
+
+
+def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
+    """Automatically compute a summary or eval interval according to the config
+    and the expected total number of summary or eval calls. This function can
+    avoid manually computing the interval value when an expected number of calls
+    is in mind.
+
+    Args:
+        config (TrainerConfig): the configuration object for training
+        summary_or_eval_calls (int): the expected number of summary
+            or eval calls throughout the training process. This number can control
+            the time consumed on summary or eval. Note that this number might not
+            be exactly satisfied eventually, if the calculated interval has been
+            rounded up.
+
+    Warning:
+        This function might not work for algorithms that change the global
+        counter themselves, e.g., ``LMAlgorithm``.
+
+    Returns:
+        int: summary or eval interval
+    """
+    # Do not support this for now because the summary global counter will have
+    # a different value with the iteration number.
+    assert not config.update_counter_every_mini_batch, (
+        "This function currently doesn't support update_counter_every_mini_batch=True!"
+    )
+
+    if config.num_iterations > 0:
+        num_iterations = config.num_iterations
+    # this condition is exclusive with the above
+    if config.num_env_steps > 0:
+        # the rollout env is always creatd with ``nonparallel=False``
+        num_envs = alf.get_config_value(
+            "create_environment.num_parallel_environments")
+        num_iterations = config.num_env_steps / (
+            num_envs * config.unroll_length)
+
+    interval = math.ceil(num_iterations / summary_or_eval_calls)
+    logging.info("A summary or eval interval=%d is calculated" % interval)
+    return interval
