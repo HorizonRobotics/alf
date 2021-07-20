@@ -14,13 +14,14 @@
     let pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
+          overlays = [
+            # Use this overlay to provide customized python packages
+            # for development environment.
+            (import ./nix/overlays/dev.nix)
+          ];
         };
     in {
       # Instantiate the development environment with CUDA 11.2
-      devShell = pkgs.callPackage ./nix/pkgs/alf-dev-shell {
-        cudatoolkit = pkgs.cudatoolkit_11_2;
-        nccl = pkgs.nccl_cudatoolkit_11;
-        cudnn = pkgs.cudnn_cudatoolkit_11_2;
-      };
+      devShell = pkgs.callPackage ./nix/pkgs/alf-dev-shell {};
     });
 }

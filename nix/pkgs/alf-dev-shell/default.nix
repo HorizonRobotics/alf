@@ -1,34 +1,12 @@
 # This is a development environment for agent learning framework.
 
-{ mkShell, python3, magma, cudatoolkit, nccl, cudnn,
-  python-language-server, clang-tools }:
+{ mkShell, python3, python-language-server, clang-tools }:
 
-let customMagma =  magma.override {
-      inherit cudatoolkit;
-    };
-
-    pythonForAlf = python3.withPackages (pyPkgs: with pyPkgs; let
-      customPytorchWithCuda = pytorchWithCuda.override {
-        inherit cudatoolkit nccl cudnn;
-        magma = customMagma;
-      };
-      
-      torchvisionWithCuda = torchvision.override {
-        pytorch = customPytorchWithCuda;
-      };
-
-      cnest = pyPkgs.callPackage ../cnest {};
-
-      rectangle-packer = pyPkgs.callPackage ../rectangle-packer {};
-
-      pybox2d = pyPkgs.callPackage ../pybox2d {};
-
-      atari-py-with-rom = pyPkgs.callPackage ../atari-py-with-rom {};
-      
-    in [
+let pythonForAlf = python3.withPackages (pyPkgs: with pyPkgs; [
       # For both Dev and Deploy
-      customPytorchWithCuda torchvisionWithCuda
-      numpy pandas
+      pytorchWithCuda11
+      torchvisionWithCuda11
+      numpy pandas absl-py
       gym
       # TODO(breakds): Require pyglet 1.3.2, because higher version
       # breaks classic control rendering. Or fix the classic control
@@ -46,7 +24,7 @@ let customMagma =  magma.override {
       rectangle-packer
       pybox2d
       atari-py-with-rom
-      # TODO(breakds): Package torchtexxt and enable it.
+      # TODO(breakds): Package torchtext and enable it.
       # torchtext (0.9.1)
       
       # Dev only packages
