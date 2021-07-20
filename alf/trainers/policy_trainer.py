@@ -577,6 +577,9 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
+    # save the untransformed time step in case that sub-algorithms need it
+    transformed_time_step = transformed_time_step._replace(
+        untransformed=time_step)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
