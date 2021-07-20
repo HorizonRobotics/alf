@@ -23,6 +23,10 @@ final: prev: rec {
       atari-py-with-rom = prev.python3Packages.callPackage ../pkgs/atari-py-with-rom {};
 
       gin-config = prev.python3Packages.callPackage ../pkgs/gin-config {};
+
+      jedi = prev.python3Packages.callPackage ../pkgs/jedi {};
+
+      pudb = final.python3Packages.callPackage ../pkgs/pudb {};
     };
   };
 

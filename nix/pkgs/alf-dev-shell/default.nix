@@ -34,6 +34,7 @@ let pythonForAlf = python3.withPackages (pyPkgs: with pyPkgs; [
       yapf
       pre-commit
       pylint
+      pudb
     ]);
 
     pythonIcon = "f3e2";
