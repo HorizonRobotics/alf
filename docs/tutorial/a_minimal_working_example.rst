@@ -11,7 +11,7 @@ Train and play
 Let's ignore its content for a moment (see the next section
 :doc:`./understanding_ALF_via_the_minimal_working_example` for an explanation of
 the configuration content), and just focus on how to launch the training,
-interpret the output training messages, and play a trained model.
+interpret the output training messages, and evaluate a trained model.
 
 Train from scratch
 ^^^^^^^^^^^^^^^^^^
@@ -23,9 +23,16 @@ We can train from scratch by
     cd <ALF_ROOT>/alf/examples/tutorial
     python -m alf.bin.train --root_dir /tmp/alf_tutorial1 --conf minimal_example_conf.py
 
-assuming ``/tmp/alf_tutorial1`` doesn't exist or is empty. The training will finish
-in several seconds, but with some informative messages shown in the terminal. First
-of all, you should see a message from ``checkpoint_utils.py`` like
+assuming ``/tmp/alf_tutorial1`` doesn't exist or is empty.
+
+.. note::
+    In ALF, a root directory is where all the Tensorboard summary events,
+    algorithm checkpoints, general training information (e.g., conf file, code diff,
+    output log, etc) are stored.
+
+The training will finish in several seconds, but with some informative messages
+shown in the terminal. First of all, you should see a message from ``checkpoint_utils.py``
+like
 
 ::
 
@@ -77,8 +84,23 @@ a training root dir if multiple checkpoints exist. Also at the end of training,
 It's important to understand that when training from a checkpoint, the numbering
 will continue, i.e., the previous checkpoints won't be overwritten.
 
+Use Tensorboard for monitoring the training progress
+----------------------------------------------------
+
+While the training is ongoing, we can monitor the real-time progress by
+
+.. code-block::
+
+    tensorboard --logdir /tmp/alf_tutorial1
+
+We leave the interpretation of various Tensorboard statistics to later sections.
+
 Play from a checkpoint
 ^^^^^^^^^^^^^^^^^^^^^^
+
+ALF defines the term *play* as evaluating a model on a task and possibly also visualizing
+the evaluation process, for example, by rendering environment frames or various
+inference statistics.
 
 Here we only introduce three basic usages of the ALF ``play`` module. For advanced
 play (e.g., rendering customized model inference results, play from an ALF snapshot,
@@ -107,22 +129,11 @@ We recommend the reader to read the various commandline flags in ``<ALF_ROOT>/al
 for specifying different options such as checkpoint number and number of episodes to
 evaluate.
 
-Use Tensorboard for monitoring the training progress
-----------------------------------------------------
-
-While the training is ongoing, we can monitor the real-time progress by
-
-.. code-block::
-
-    tensorboard --logdir /tmp/alf_tutorial1
-
-We leave the interpretation of various Tensorboard statistics to later sections.
-
-Conclusion
-----------
+Summary
+-------
 
 So far, we've talked about how to train a conf file and play the trained model,
-with very basic options of ``train.py`` and ``play.py``. We really haven't explained
-the content of the example conf file and ALF RL pipeline yet. In the next section,
-we will try to view a rough picture of ALF through the lens of this minimal working
-example.
+with very basic options of ``train.py`` and ``play.py``. This covers a usual
+command-line usage of ALF. We really haven't explained the content of the
+example and the ALF pipeline yet. In the next section, we will try to get a
+rough picture of ALF through the lens of this minimal working example.

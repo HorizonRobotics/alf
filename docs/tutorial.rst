@@ -5,14 +5,24 @@ ALF is designed with **modularization** in mind. Unlike most RL libraries or fra
 which implement different algorithms by repeating the almost entire RL pipeline in
 separate source code files with little code reuse, ALF categorizes RL algorithms
 and distills the common structure and logic within each caterogy, so
-that each algorithm only needs to implement or override its own exclusive logic. The
-categorization and distillation processes require huge effort, as a deep understanding
-of different algorithms is needed to know the relations and differences among
-algorithms.
+that each algorithm only needs to implement or override its own exclusive logic.
 
-However, once correctly done, modularization provides at least two benefits:
+Usually to create an ALF job, a user is expected to:
 
-1. *Fast prototyping without worring about breaking things.*
+1. write a configuration file that configures both the environment (e.g., num
+   of parallel envs, task name, etc) and the algorithm (e.g., training schedule,
+   algorithm networks, etc);
+2. or for customized algorithms, override some (hopefully a small number) functions
+   of ALF provided algorithms.
+
+After this, the ALF job can be executed to perform training, evaluation, and more.
+
+RL training is a very complex process; some details are very tricky and error-prone,
+and you certainly don't want to implement (or even touch!) the entire pipeline
+each time. ALF strives to provide best RL practices. Thus ALF's modularization
+provides at least two benefits:
+
+1. *Fast prototyping without worrying about breaking things.*
 
    * If you just want to explore new models/networks of an existing
      algorithm on an existing task, no source code will be modified; only a python
@@ -34,10 +44,6 @@ However, once correctly done, modularization provides at least two benefits:
    * Specifying different optimizers for different sub-algorithms,
    * Exploiting a variety of tensorboard summary utils,
    * and many more...
-
-   RL training is a very complex process; some details are very tricky and
-   error-prone, and you certainly don't want to implement (or even touch!) the
-   entire pipeline each time. ALF strives to provide best RL practices.
 
 Below are a series of examples for writing training files using ALF,
 from simple to advanced usage. Each section is a detailed, step-by-step guide
