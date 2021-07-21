@@ -40,6 +40,7 @@ setup(
         'pybullet == 2.5.0',
         'rectangle-packer==2.0.0',
         'sphinx==2.4.4',
+        'sphinx-autobuild',
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard == 2.1.0',
