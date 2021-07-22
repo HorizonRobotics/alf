@@ -75,6 +75,7 @@ class CriticNetwork(Network):
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 last_bias_init_value=0.0,
                  use_fc_bn=False,
                  name="CriticNetwork"):
         """
@@ -160,6 +161,7 @@ class CriticNetwork(Network):
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
             last_kernel_initializer=last_kernel_initializer,
+            last_bias_init_value=last_bias_init_value,
             name=self.name + ".joint_encoder")
 
         self._output_spec = output_tensor_spec

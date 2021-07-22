@@ -691,6 +691,8 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'critic/CriticNetwork.joint_fc_layer_params',
             'value/ValueNetwork.fc_layer_params',
         ],
+        'crbini':
+            'critic/CriticNetwork.last_bias_init_value',
         'actsqsh':
             'actor/ActorNetwork.squashing_func',
         'obnorm':
