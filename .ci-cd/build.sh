@@ -69,6 +69,7 @@ function test() {
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \
         alf.algorithms.sac_algorithm_test \
+        alf.algorithms.oac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
         alf.bin.train_play_test \

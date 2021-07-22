@@ -32,9 +32,8 @@ from alf.utils import common
 from alf.utils.math_ops import clipped_exp
 
 
-class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters(True, False)
-    def test_oac_algorithm(self, explore=True):
+class OACAlgorithmTest(alf.test.TestCase):
+    def test_oac_algorithm(self):
         reward_dim = 3
         num_env = 1
         config = TrainerConfig(
@@ -44,9 +43,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_size=64,
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
-            clear_replay_buffer=False,
-            num_envs=1,
-        )
+            clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
         env = env_class(
@@ -90,8 +87,8 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             use_entropy_reward=reward_dim == 1,
             env=env,
             config=config,
-            explore=explore,
-            explore_delta=2.,
+            explore=True,
+            explore_delta=1.,
             beta_ub=1.,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
@@ -100,7 +97,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             name="MyOAC")
 
         eval_env.reset()
-        for i in range(650):
+        for i in range(700):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue
