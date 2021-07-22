@@ -44,9 +44,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_size=64,
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
-            clear_replay_buffer=False,
-            num_envs=1,
-        )
+            clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
         env = env_class(
@@ -91,7 +89,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             env=env,
             config=config,
             explore=explore,
-            explore_delta=2.,
+            explore_delta=5.,
             beta_ub=1.,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
@@ -100,7 +98,7 @@ class OACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             name="MyOAC")
 
         eval_env.reset()
-        for i in range(650):
+        for i in range(600):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue
