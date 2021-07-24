@@ -88,11 +88,7 @@ def _setup_logging(rank: int = 0, log_dir: Optional[str] = None):
     """
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
-
-    # When there are multiple processes, only the process with rank = 0 writes
-    # to the log directory to avoid race condition.
-    if rank == 0 and log_dir is not None:
-        logging.get_absl_handler().use_absl_log_file(log_dir=log_dir)
+    logging.get_absl_handler().use_absl_log_file(log_dir=log_dir)
 
 
 def _setup_device(rank: int = 0):
@@ -137,6 +133,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
                 "Mutli-GPU DDP training is under development and temporarily unavailble"
             )
 
+        # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
         trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
 
@@ -153,8 +150,6 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
         trainer.train()
-
-        # Load the configuration file, note that this will also bring up the
     except Exception as e:
         # If the training worker is running as a process in multiprocessing
         # environment, this will make sure that the exception raised in this
@@ -193,25 +188,12 @@ def main(_):
                 rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
             return
 
-        # Force setting multiprocessing's start method to spawn. This is
-        # required for DDP to run correctly.
-        try:
-            mp.set_start_method('spawn', force=True)
-        except RuntimeError:
-            pass
-
-        processes = []
-        for i in range(world_size):
-            processes.append(
-                mp.Process(
-                    target=training_worker,
-                    args=(i, world_size, conf_file, root_dir)))
-
-        for proc in processes:
-            proc.start()
-
-        for proc in processes:
-            proc.join()
+        processes = mp.spawn(
+            training_worker,
+            args=(world_size, conf_file, root_dir),
+            join=True,
+            nprocs=world_size,
+            start_method='spawn')
 
 
 if __name__ == '__main__':
