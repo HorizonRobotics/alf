@@ -90,7 +90,6 @@ class RemoteAlgorithmEvaluator(object):
         self._algorithm.eval()
 
         self._num_eval_episodes = config.num_eval_episodes
-        self._epsilon_greedy = config.epsilon_greedy
 
         self._eval_metrics = [
             alf.metrics.AverageReturnMetric(
@@ -130,8 +129,8 @@ class RemoteAlgorithmEvaluator(object):
                     self._env.batch_size), time_step.is_first())
             transformed_time_step, trans_state = self._algorithm.transform_timestep(
                 time_step, trans_state)
-            policy_step = self._algorithm.predict_step(
-                transformed_time_step, policy_state, self._epsilon_greedy)
+            policy_step = self._algorithm.predict_step(transformed_time_step,
+                                                       policy_state)
             steps += 1
             next_time_step = self._env.step(policy_step.output)
             for metric in self._eval_metrics:
