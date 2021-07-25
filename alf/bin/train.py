@@ -53,7 +53,6 @@ import pathlib
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import traceback
 from typing import Optional
 
 from alf.utils import common
@@ -71,8 +70,9 @@ def _define_flags():
     flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
     flags.DEFINE_bool('store_snapshot', True,
                       'Whether store an ALF snapshot before training')
-    flags.DEFINE_enum('distributed', 'none', ['none', 'multi-gpu'],
-                      'Whether store an ALF snapshot before training')
+    flags.DEFINE_enum(
+        'distributed', 'none', ['none', 'multi-gpu'],
+        'Set whether and how to run trainning in distributed mode.')
     flags.mark_flag_as_required('root_dir')
 
 
@@ -83,8 +83,8 @@ def _setup_logging(rank: int = 0, log_dir: Optional[str] = None):
     """Setup logging for each process
 
     Args:
-        rank: The ID of the process among all of the DDP processes
-        log_dir: path to the direcotry where log files are written to
+        rank (int): The ID of the process among all of the DDP processes
+        log_dir (Optional[str]): path to the direcotry where log files are written to
     """
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
@@ -94,36 +94,30 @@ def _setup_logging(rank: int = 0, log_dir: Optional[str] = None):
 def _setup_device(rank: int = 0):
     """Setup the GPU device for each process
 
-    Each process will use the GPU with the same rank (device id) by default.
+    All tensors of the calling process will use the GPU with the
+    specified rank by default.
 
     Args:
-        rank: The ID of the process among all of the DDP processes
+        rank (int): The ID of the process among all of the DDP processes
+
     """
     if torch.cuda.is_available():
         alf.set_default_device('cuda')
         torch.cuda.set_device(rank)
 
 
-def _snapshot_alf(root_dir: str):
-    """Snapshot the alf repository to the specified path
-
-    Args:
-        root_dir: the direcotry that stores various states of this training session
-    """
-    # ../<ALF_REPO>/alf/bin/train.py
-    file_path = os.path.abspath(__file__)
-    alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
-    # generate a snapshot of ALF repo as ``<root_dir>/alf``
-    common.generate_alf_root_snapshot(alf_root, root_dir)
-
-
 def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
     """An executable instance that trains and evaluate the algorithm
+
+    Args:
+        rank (int): The ID of the process among all of the DDP processes.
+        world_size (int): The number of processes in total. If set to 1, it is interpreted as "non distributed mode".
+        conf_file (str): Path to the training configuration.
+        root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
     """
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
         _setup_device(rank)
-        print(world_size)
         if world_size > 1:
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -154,9 +148,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         # If the training worker is running as a process in multiprocessing
         # environment, this will make sure that the exception raised in this
         # particular process is captured and shown.
-        tb = traceback.format_exc()
-        print(e)
-        print(tb)
+        logging.exception(e)
     finally:
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
@@ -170,7 +162,7 @@ def main(_):
     os.makedirs(root_dir, exist_ok=True)
 
     if FLAGS.store_snapshot:
-        _snapshot_alf(root_dir)
+        common.generate_alf_root_snapshot(common.alf_root(), root_dir)
 
     conf_file = common.get_conf_file()
 
