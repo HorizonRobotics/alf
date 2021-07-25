@@ -53,7 +53,6 @@ import pathlib
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from typing import Optional
 
 from alf.utils import common
 import alf.utils.external_configurables
@@ -79,12 +78,12 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
-def _setup_logging(rank: int = 0, log_dir: Optional[str] = None):
+def _setup_logging(rank: int, log_dir: str):
     """Setup logging for each process
 
     Args:
         rank (int): The ID of the process among all of the DDP processes
-        log_dir (Optional[str]): path to the direcotry where log files are written to
+        log_dir (str): path to the direcotry where log files are written to
     """
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
