@@ -180,6 +180,11 @@ def main(_):
                 rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
             return
 
+        # The other process will communicate with the authoritative
+        # process via network protocol on localhost:12355.
+        os.environ['MASTER_ADDR'] = 'localhost'
+        os.environ['MASTER_PORT'] = '12355'
+
         processes = mp.spawn(
             training_worker,
             args=(world_size, conf_file, root_dir),
