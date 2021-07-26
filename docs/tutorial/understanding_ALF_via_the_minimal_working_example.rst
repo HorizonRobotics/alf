@@ -48,7 +48,7 @@ What the minimal example does
 -----------------------------
 
 Let's go back to our first example which trains an existing algorithm
-``ActorCriticAlgorithm`` on ``CartPole-v0``. To achieve this, normally we would
+:class:`.ActorCriticAlgorithm` on ``CartPole-v0``. To achieve this, normally we would
 need to configure the environment name by
 
 .. code-block:: python
@@ -58,8 +58,7 @@ need to configure the environment name by
                num_parallel_environments=30)
 
 which tells ALF to use ``CartPole-v0`` and create 30 environments in parallel for
-rollout data collection. The ``create_environment`` function is defined in
-``alf/environments/utils.py`` as:
+rollout data collection. The :func:`.create_environment` function is defined as:
 
 .. code-block:: python
 
@@ -77,10 +76,11 @@ are already what we want, in the example conf we've skipped configuring them.
 .. note::
     **ALF configuration** is one of the secret sauces that make ALF flexible.
 
-    For any function decorated by ``@alf.configurable``, we can configure its argument
-    value **before** that function is actually evaluated. If configured, the default
-    value will be overwritten by the configured value. ``alf.config`` can be called
-    multiple times on the same function.
+    For any function decorated by :func:`~alf.config_util.configurable`, we can
+    configure its argument value **before** that function is actually evaluated.
+    If configured, the default value will be overwritten by the configured value.
+    :func:`~.alf.config_util.config` can be called multiple times on the same
+    function.
 
 .. note::
     When ``nonparallel=False``, ALF always creates a **batched environment**. This
@@ -98,7 +98,7 @@ and the optimizer by
                num_iterations=1)
 
 The algorithm and training iterations are configured through a global object
-``TrainerConfig``, which is supposed to be passed from the trainer to algorithms.
+:class:`.TrainerConfig`, which is supposed to be passed from the trainer to algorithms.
 One important hyperparameter that's skipped in the conf file is ``unroll_length``.
 We simply use its default value which is equal to do
 
@@ -116,8 +116,8 @@ configuration is always through the algorithm interface. Here we use Adam with a
 learning rate of :math:`10^{-3}`.
 
 .. note::
-    ``TrainerConfig`` is a very important concept in ALF. It allows customizing many
-    crucial parameters of the training pipeline, for example, random seed, number
+    :class:`.TrainerConfig` is a very important concept in ALF. It allows customizing
+    many crucial parameters of the training pipeline, for example, random seed, number
     of checkpoints, summary interval, rollout length, etc. The user is highly
     recommended to read the API doc of this class.
 
@@ -149,7 +149,7 @@ If you look at the algorithm class definition,
 
 its arguments are also configurable. Notably, ``actor_network_ctor`` and
 ``value_network_ctor`` allow configuring the actor and value networks, respectively.
-By default ``ActorDistributionNetwork`` is used. This class can potentially be
+By default :class:`.ActorDistributionNetwork` is used. This class can potentially be
 replaced by a user's custom actor network class. By further looking into
 
 .. code-block:: python
@@ -218,7 +218,7 @@ that is deep in the calling tree by one line, e.g.,
 Compared to passing a huge config dictionary from the main function to other places
 in the code, this makes the code less cluttered. However, one side effect is that
 the configuration takes place *globally*. That is, if there are multiple places
-that create ``NormalProjectionNetwork``, they will share the same configured
+that create :class:`.NormalProjectionNetwork`, they will share the same configured
 values.
 
 There are two ways of overwriting the globally configured values. One is to
@@ -245,10 +245,10 @@ In this case, the configuration ``activation=torch.tanh`` becomes *inoperative*.
     because it helps avoid the case where a user thinks a provided config should
     take effect but in fact it's shadowed. You can find this information in
     "TEXT/config" tab in the Tensorboard. For details, see the next chapter
-    :doc:`./understanding_tensorboard_summaries`.
+    :doc:`./summary_metrics_and_tensorboard`.
 
-The other way is to use ``partial`` which is a Python built-in helper function from
-the ``functools`` package.
+The other way is to use `partial <https://docs.python.org/3/library/functools.html#functools.partial>`_
+which is a Python built-in helper function from the ``functools`` package.
 
 ::
 
@@ -267,7 +267,7 @@ So to achieve the same purpose, alternatively we could do
                     NormalProjectionNetwork,
                     activation=torch.tanh))
 
-This avoids globally changing the activation function of ``NormalProjectionNetwork``.
+This avoids globally changing the activation function of :class:`.NormalProjectionNetwork`.
 Moreover, to avoid globally changing anything about the algorithm, the entire
 calling path can use ``partial`` in a nested way:
 
@@ -294,8 +294,9 @@ to a variable and pass this closure around (e.g., to other conf files).
 .. note::
     We always recommend the user to use ``partial`` whenever possible in order to
     avoid global side effects. However, if you are sure that only one object instance
-    is going to be created or no harmful side effect will take place (e.g., ``TrainerConfig``,
-    and ``create_environment``), then ``alf.config`` will be more convenient.
+    is going to be created or no harmful side effect will take place (e.g.,
+    :class:`.TrainerConfig`, and :func:`.create_environment`), then
+    :func:`~alf.config_util.config` will be more convenient.
 
 The big picture of ALF
 ----------------------
@@ -308,8 +309,8 @@ and algorithms :doc:`./customize_algorithms`.
 
 Once a conf file is provided to ALF trainer, the RL pipeline runs according to
 the configuration. In general, there are two types of pipelines: on-policy and
-off-policy, corresponding to on-policy algorithms (e.g., ``ActorCriticAlgorithm``)
-and off-policy algorithms (e.g., ``SacAlgorithm``).
+off-policy, corresponding to on-policy algorithms (e.g., :class:`.ActorCriticAlgorithm`)
+and off-policy algorithms (e.g., :class:`.SacAlgorithm`).
 
 Either pipeline type follows a simple alternation between "unroll"
 (online data collection) and "update" (parameters updates).
@@ -322,9 +323,10 @@ Either pipeline type follows a simple alternation between "unroll"
 1. "unroll": in this process, a behavior policy generates a batch of actions, each
    output to one of the parallel environments, to collect a batch of experience
    data per time step. The policy rolls out multiple time steps for data collection
-   before transitioning to "update". For on-policy algorithms, an inference computational graph with
-   grads will be preserved and passed to "update". For off-policy algorithms,
-   no computational graph is preserved and the data directly go to a replay buffer.
+   before transitioning to "update". For on-policy algorithms, an inference
+   computational graph with grads will be preserved and passed to "update". For
+   off-policy algorithms, no computational graph is preserved and the data directly
+   go to a replay buffer.
 2. "update": a loop of parameter updates are performed. On-policy algorithms compute
    losses on all samples in the temp buffer while off-policy algorithms compute losses
    on mini-batch samples from a replay buffer. *The loop length is forced to be 1
@@ -337,9 +339,9 @@ Either pipeline type follows a simple alternation between "unroll"
 
 A conf file usually
 
-1. tweaks the schedule of a pipeline by changing the "unroll" interval (``TrainerConfig.unroll_length``),
-   the "update" loop (``TrainerConfig.num_updates_per_train_iter``), the mini-batch
-   shape (``TrainerConfig.mini_batch_size`` x ``TrainerConfig.mini_batch_length``), etc.
+1. tweaks the schedule of a pipeline by changing the "unroll" interval (:attr:`.TrainerConfig.unroll_length`),
+   the "update" loop (:attr:`.TrainerConfig.num_updates_per_train_iter`), the mini-batch
+   shape (:attr:`.TrainerConfig.mini_batch_size` x :attr:`.TrainerConfig.mini_batch_length`), etc.
 2. how on-policy/off-policy losses are computed, for example, which algorithms
    using what networks computing what losses, as demonstrated in the previous
    section.
@@ -348,10 +350,50 @@ Although very rare, a user can customize a new training pipeline. We will talk a
 this in :doc:`./customize_training_pipeline`.
 
 Which pipeline is used will be automatically determined based on the root algorithm
-configured to ``TrainerConfig``. The above example conf tells ALF to use the
-on-policy training pipeline because an on-policy algorithm ``ActorCriticAlgorithm``
+configured to :class:`.TrainerConfig`. The above example conf tells ALF to use the
+on-policy training pipeline because an on-policy algorithm :class:`.ActorCriticAlgorithm`
 is configured. In this very simple example, after 30 environments unroll 8 steps,
 the trainer updates the model parameters once and the training finishes.
+
+ALF is flexible
+---------------
+
+Now we try another arbitrary environment which has continuous actions.
+To do so, we just append
+
+.. code-block:: python
+
+    alf.config("create_environment", env_name="LunarLanderContinuous-v2")
+
+to the example conf file, to replace the default ``CartPole-v0`` environment
+with ``LunarLanderContinuous-v2``.  The conf file can still be trained successfully.
+In this training, the :class:`.ActorCriticAlgorithm` algorithm is again used, but on
+continuous actions. It turns out that ALF can automatically adapt to different
+action types without the user telling it what to do!
+
+As another example, we replace the algorithm with PPO by appending:
+
+.. code-block:: python
+
+    from alf.algorithms.ppo_algorithm import PPOAlgorithm
+    alf.config("TrainerConfig",
+               algorithm_ctor=partial(
+                  PPOAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)))
+
+The conf file still works without any problem.
+
+ALF's flexibility is more than this. In fact, ALF can adapt to different observations
+(e.g., image vs. vector), rewards (e.g., scalar vs. vector), and actions (e.g.,
+discrete vs. continuous). The reason is that ALF hard-codes very few things, and
+it always assumes the most general scenario when handling observations, rewards,
+and actions. The secret weapon for supporting this flexibility is :class:`.TensorSpec`.
+A :class:`.TensorSpec` allows an API to describe the tensors that it accepts or returns,
+before those tensors exist. This allows dynamic and flexible graph construction and
+configuration.
+
+In summary, different components on a ALF pipeline are connected by using
+:class:`.TensorSpec` to specify their I/O specs. This also happens within a component,
+for example, between child algorithms, between networks, etc.
 
 More than training pipelines
 ----------------------------
@@ -367,8 +409,8 @@ for RL research, including various algorithms, networks, layers, and environment
     alf/environments/
 
 A user can easily experiment them via the conf file. In the example conf,
-``ActorCriticAlgorithm``, ``ActorDistributionNetwork``, and ``NormalProjectionNetwork``
-are representatives.
+:class:`.ActorCriticAlgorithm`, :class:`.ActorDistributionNetwork`, and
+:class:`.NormalProjectionNetwork` are representatives.
 
 Summary
 -------

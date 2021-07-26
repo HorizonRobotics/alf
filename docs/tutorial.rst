@@ -65,7 +65,7 @@ be found under ``<ALF_ROOT>/alf/examples/tutorial``.
     tutorial/a_minimal_working_example
     tutorial/understanding_ALF_via_the_minimal_working_example
     tutorial/algorithm_interfaces
-    tutorial/understanding_tensorboard_summaries
+    tutorial/summary_metrics_and_tensorboard
     tutorial/customize_environments_and_wrappers
     tutorial/customize_algorithms
     tutorial/customize_training_pipeline
