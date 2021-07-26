@@ -5,16 +5,13 @@ We start with a minimal working example of ALF. The example, as a pure ALF
 configuration file, is located at ``<ALF_ROOT>/alf/examples/tutorial/minimal_example_conf.py``,
 and consists of only 8 lines.
 
-Train and play
---------------
-
-Let's ignore its content for a moment (see the next section
+Let's ignore its content for a moment (see the next chapter
 :doc:`./understanding_ALF_via_the_minimal_working_example` for an explanation of
 the configuration content), and just focus on how to launch the training,
 interpret the output training messages, and evaluate a trained model.
 
 Train from scratch
-^^^^^^^^^^^^^^^^^^
+------------------
 
 We can train from scratch by
 
@@ -63,7 +60,7 @@ as the training finishes. Here we have the checkpoint numbered by the training
 iteration, which is '1' because only one iteration is performed by this example.
 
 Train from a checkpoint
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 By launching the same command again, this time the checkpoint messages are different.
 First it should say
@@ -93,10 +90,11 @@ While the training is ongoing, we can monitor the real-time progress by
 
     tensorboard --logdir /tmp/alf_tutorial1
 
-We leave the interpretation of various Tensorboard statistics to later sections.
+We leave the interpretation of various Tensorboard statistics to a later chapter
+:doc:`./understanding_tensorboard_summaries`.
 
 Play from a checkpoint
-^^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 ALF defines the term *play* as evaluating a model on a task and possibly also visualizing
 the evaluation process, for example, by rendering environment frames or various
@@ -135,5 +133,5 @@ Summary
 So far, we've talked about how to train a conf file and play the trained model,
 with very basic options of ``train.py`` and ``play.py``. This covers a usual
 command-line usage of ALF. We really haven't explained the content of the
-example and the ALF pipeline yet. In the next section, we will try to get a
+example and the ALF pipeline yet. In the next chapter, we will try to get a
 rough picture of ALF through the lens of this minimal working example.
