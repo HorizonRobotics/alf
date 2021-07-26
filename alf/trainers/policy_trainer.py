@@ -284,7 +284,7 @@ class Trainer(object):
 class RLTrainer(Trainer):
     """Trainer for reinforcement learning. """
 
-    def __init__(self, config: TrainerConfig):
+    def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
         """
 
         Args:
@@ -324,6 +324,8 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
+        if ddp_rank >= 0:
+            self._algorithm.activate_ddp(rank=ddp_rank)
 
         self._eval_env = None
         # Create a thread env to expose subprocess gin/alf configurations

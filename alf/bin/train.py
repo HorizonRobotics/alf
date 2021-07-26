@@ -120,18 +120,15 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         if world_size > 1:
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
-            # TODO(breakds): Remove this when DDP is finally working
             # TODO(breakds): Also update the file level documentation when DDP is working
-            raise RuntimeError(
-                "Mutli-GPU DDP training is under development and temporarily unavailble"
-            )
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
         trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
 
         if trainer_conf.ml_type == 'rl':
-            trainer = policy_trainer.RLTrainer(trainer_conf)
+            ddp_rank = rank if world_size > 1 else -1
+            trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank)
         elif trainer_conf.ml_type == 'sl':
             # NOTE: SLTrainer does not support distributed training yet
             if world_size > 1:

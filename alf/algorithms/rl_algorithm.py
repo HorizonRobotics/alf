@@ -17,6 +17,7 @@ from abc import abstractmethod
 import os
 import time
 import torch
+from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable
 
 import alf
@@ -26,6 +27,15 @@ from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
+
+
+class UnrollPerformer(torch.nn.Module):
+    def __init__(self, algorithm):
+        super().__init__()
+        self.algorithm = algorithm
+
+    def forward(self, unroll_length):
+        return self.algorithm.uroll(unroll_length)
 
 
 @alf.configurable
@@ -156,6 +166,8 @@ class RLAlgorithm(Algorithm):
         self._current_policy_state = None
         self._current_transform_state = None
 
+        self._unroll_performer = None
+
         if self._env is not None and not self.on_policy:
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 replayer = "one_time"
@@ -212,6 +224,9 @@ class RLAlgorithm(Algorithm):
     def action_spec(self):
         """Return the action spec."""
         return self._action_spec
+
+    def activate_ddp(self, rank: int):
+        self._unroll_performer = DDP(UnrollPerformer(self), device_ids=[rank])
 
     @torch.no_grad()
     def set_reward_weights(self, reward_weights):
@@ -364,8 +379,14 @@ class RLAlgorithm(Algorithm):
             self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
         return policy_step
 
-    @common.mark_rollout
     def unroll(self, unroll_length):
+        if self._unroll_performer is not None:
+            return self._unroll_performer(unroll_length)
+        else:
+            return self._unroll(unroll_length)
+
+    @common.mark_rollout
+    def _unroll(self, unroll_length):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
         Because the ``self._env`` is a batched environment. The total number of
