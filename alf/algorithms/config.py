@@ -63,7 +63,8 @@ class TrainerConfig(object):
                  priority_replay_alpha=0.7,
                  priority_replay_beta=0.4,
                  priority_replay_eps=1e-6,
-                 clear_replay_buffer=True):
+                 clear_replay_buffer=True,
+                 num_parallel_agents=1):
         """
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -243,3 +244,4 @@ class TrainerConfig(object):
         self.priority_replay_alpha = priority_replay_alpha
         self.priority_replay_beta = priority_replay_beta
         self.priority_replay_eps = priority_replay_eps
+        self.num_parallel_agents = num_parallel_agents

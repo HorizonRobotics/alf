@@ -14,6 +14,7 @@
 """Actor critic algorithm."""
 
 import alf
+import torch
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
@@ -34,7 +35,7 @@ ActorCriticInfo = namedtuple(
 
 
 @alf.configurable
-class ActorCriticAlgorithm(OnPolicyAlgorithm):
+class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
     """Actor critic algorithm."""
 
     def __init__(self,
@@ -50,7 +51,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss_class=ActorCriticLoss,
                  optimizer=None,
                  debug_summaries=False,
-                 name="ActorCriticAlgorithm"):
+                 name="ParallelActorCriticAlgorithm"):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
@@ -91,30 +92,54 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             epsilon_greedy = alf.get_config_value(
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
-
         
-        actor_network = actor_network_ctor(
+        self._num_parallel_agents = config.num_parallel_agents
+        if self._num_parallel_agents > 1: 
+            actor_network_array = torch.nn.ModuleList([actor_network_ctor(
+                input_tensor_spec=observation_spec, action_spec=action_spec) for _ in range(self._num_parallel_agents)])
+            value_network_array = torch.nn.ModuleList([value_network_ctor(input_tensor_spec=observation_spec) for _ in range(self._num_parallel_agents)])
+            actor_network_state_spec = actor_network_array[0].state_spec
+            value_network_state_spec = value_network_array[0].state_spec
+
+            super(ParallelActorCriticAlgorithm, self).__init__(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                reward_spec=reward_spec,
+                predict_state_spec=ActorCriticState(
+                    actor=actor_network_state_spec),
+                train_state_spec=ActorCriticState(
+                    actor=actor_network_state_spec,
+                    value=value_network_state_spec),
+                env=env,
+                config=config,
+                optimizer=optimizer,
+                debug_summaries=debug_summaries,
+                name=name)
+            self._actor_network = actor_network_array
+            self._value_network = value_network_array
+        else:
+            actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        value_network = value_network_ctor(input_tensor_spec=observation_spec)
+            value_network = value_network_ctor(input_tensor_spec=observation_spec)
         
-        super(ActorCriticAlgorithm, self).__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            predict_state_spec=ActorCriticState(
-                actor=actor_network.state_spec),
-            train_state_spec=ActorCriticState(
-                actor=actor_network.state_spec,
-                value=value_network.state_spec),
-            env=env,
-            config=config,
-            optimizer=optimizer,
-            debug_summaries=debug_summaries,
-            name=name)
+            super(ParallelActorCriticAlgorithm, self).__init__(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                reward_spec=reward_spec,
+                predict_state_spec=ActorCriticState(
+                    actor=actor_network.state_spec),
+                train_state_spec=ActorCriticState(
+                    actor=actor_network.state_spec,
+                    value=value_network.state_spec),
+                env=env,
+                config=config,
+                optimizer=optimizer,
+                debug_summaries=debug_summaries,
+                name=name)
+            
+            self._actor_network = actor_network
+            self._value_network = value_network
         
-        self._actor_network = actor_network
-        self._value_network = value_network
-
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
@@ -124,9 +149,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
-
-        action_dist, actor_state = self._actor_network(
+        if self._num_parallel_agents > 1:
+            action_dist, actor_state = self._actor_network[0](
             inputs.observation, state=state.actor)
+        else:
+            action_dist, actor_state = self._actor_network(
+            inputs.observation, state=state.actor)
+        
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
@@ -137,14 +166,33 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
-
-        value, value_state = self._value_network(
+        if self._num_parallel_agents > 1:
+            for i in range(self._num_parallel_agents):
+                temp_value, value_state = self._value_network[i](
+                    inputs.observation[i].unsqueeze(0), state=state.value
+                )
+                temp_action_distribution, actor_state = self._actor_network[i](
+                inputs.observation[i].unsqueeze(0), state=state.actor)
+                temp_action = dist_utils.sample_action_distribution(temp_action_distribution)
+                temp_logists = temp_action_distribution.logits
+                if i == 0:
+                    action = temp_action
+                    value = temp_value
+                    logists = temp_logists
+                else:
+                    action = torch.cat((action, temp_action), 0)
+                    value = torch.cat((value, temp_value), 0)
+                    logists = torch.cat((logists, temp_logists), 0)
+            action_distribution = torch.distributions.categorical.Categorical(logits=logists)
+        else:
+            value, value_state = self._value_network(
             inputs.observation, state=state.value)
 
-        action_distribution, actor_state = self._actor_network(
+            action_distribution, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
+
         
         return AlgStep(
             output=action,

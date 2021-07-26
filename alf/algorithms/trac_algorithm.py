@@ -80,6 +80,7 @@ class TracAlgorithm(RLAlgorithm):
         ac_algorithm = ac_algorithm_cls(
             observation_spec=observation_spec,
             action_spec=action_spec,
+            config = config,
             debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
@@ -99,6 +100,7 @@ class TracAlgorithm(RLAlgorithm):
         self._ac_algorithm = ac_algorithm
         self._trusted_updater = None
         self._action_distribution_spec = None
+
 
         def _get_clip(spec):
             dims = np.product(spec.shape)
@@ -151,6 +153,7 @@ class TracAlgorithm(RLAlgorithm):
         ac_info = info.ac._replace(
             action_distribution=info.action_distribution)
         return self._ac_algorithm.calc_loss(ac_info)
+        
 
     def after_update(self, root_inputs, info: TracInfo):
         """Adjust actor parameter according to KL-divergence."""
