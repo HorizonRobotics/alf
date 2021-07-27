@@ -79,6 +79,7 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
     try:
         alf.set_default_device("cpu")
         env = env_constructor(env_id=env_id)
+
         action_spec = env.action_spec()
         conn.send(_MessageType.READY)  # Ready.
         while True:
@@ -157,8 +158,13 @@ class ProcessEnvironment(object):
         Args:
             wait_to_start (bool): Whether the call should wait for an env initialization.
         """
-        self._conn, conn = multiprocessing.Pipe()
-        self._process = multiprocessing.Process(
+        # from alf.config_util import _get_config_node
+        # print(_get_config_node('suite_gym.load.max_episode_steps').get_value())
+        ctx = multiprocessing.get_context('fork')
+        print(ctx.get_start_method())
+        
+        self._conn, conn = ctx.Pipe()
+        self._process = ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)

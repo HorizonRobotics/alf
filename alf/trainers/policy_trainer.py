@@ -324,6 +324,7 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
+        self.rank = ddp_rank
         if ddp_rank >= 0:
             self._algorithm.activate_ddp(rank=ddp_rank)
 
@@ -402,14 +403,15 @@ class RLTrainer(Trainer):
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
-                '%s -> %s: %s time=%.3f throughput=%0.2f' %
+                '%s -> %s [rank=%d]: %s time=%.3f throughput=%0.2f' %
                 (common.get_conf_file(),
-                 os.path.basename(self._root_dir.strip('/')), iter_num, t,
-                 int(train_steps) / t),
+                 os.path.basename(self._root_dir.strip('/')), self.rank,
+                 iter_num, t, int(train_steps) / t),
                 n_seconds=1)
-
+                
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
+
             if iter_num == begin_iter_num:
                 self._summarize_training_setting()
 

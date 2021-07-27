@@ -33,9 +33,13 @@ class UnrollPerformer(torch.nn.Module):
     def __init__(self, algorithm):
         super().__init__()
         self.algorithm = algorithm
+        self._ddp_params_and_buffers_to_ignore = []
+        for name, value in self.state_dict().items():
+            if type(value) is not torch.Tensor:
+                self._ddp_params_and_buffers_to_ignore.append(name)
 
     def forward(self, unroll_length):
-        return self.algorithm.uroll(unroll_length)
+        return self.algorithm._unroll(unroll_length)
 
 
 @alf.configurable
@@ -226,7 +230,7 @@ class RLAlgorithm(Algorithm):
         return self._action_spec
 
     def activate_ddp(self, rank: int):
-        self._unroll_performer = DDP(UnrollPerformer(self), device_ids=[rank])
+        self.__dict__['_unroll_performer'] = DDP(UnrollPerformer(self), device_ids=[rank])
 
     @torch.no_grad()
     def set_reward_weights(self, reward_weights):
@@ -381,9 +385,11 @@ class RLAlgorithm(Algorithm):
 
     def unroll(self, unroll_length):
         if self._unroll_performer is not None:
-            return self._unroll_performer(unroll_length)
+            result = self._unroll_performer(unroll_length)
         else:
-            return self._unroll(unroll_length)
+            result = self._unroll(unroll_length)
+        return result
+        
 
     @common.mark_rollout
     def _unroll(self, unroll_length):

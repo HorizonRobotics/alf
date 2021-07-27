@@ -29,7 +29,7 @@ from alf.examples import atari_conf
 alf.config(
     'create_environment',
     env_name='BreakoutNoFrameskip-v4',
-    num_parallel_environments=64)
+    num_parallel_environments=32)
 
 # Neural Network Configuration
 CONV_LAYER_PARAMS = ((32, 8, 4), (64, 4, 2), (64, 3, 1))
@@ -68,4 +68,4 @@ alf.config(
     evaluate=False,
     debug_summaries=1,
     summarize_grads_and_vars=1,
-    summary_interval=10)
+    summary_interval=100)

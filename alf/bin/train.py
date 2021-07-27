@@ -122,6 +122,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
             # TODO(breakds): Also update the file level documentation when DDP is working
 
+
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
         trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
@@ -144,7 +145,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         # If the training worker is running as a process in multiprocessing
         # environment, this will make sure that the exception raised in this
         # particular process is captured and shown.
-        logging.exception(e)
+        logging.exception(f'{mp.current_process().name} - {e}')
     finally:
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
@@ -180,6 +181,8 @@ def main(_):
         # process via network protocol on localhost:12355.
         os.environ['MASTER_ADDR'] = 'localhost'
         os.environ['MASTER_PORT'] = '12355'
+
+        logging.info(f'Training on {world_size} GPUs')
 
         processes = mp.spawn(
             training_worker,
