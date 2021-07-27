@@ -36,10 +36,12 @@ class TrainerConfig(object):
                  no_thread_env_for_conf=False,
                  load_checkpoint_strict=True,
                  evaluate=False,
+                 num_evals=None,
                  eval_interval=10,
                  epsilon_greedy=0.,
                  eval_uncertainty=False,
                  num_eval_episodes=10,
+                 num_summaries=None,
                  summary_interval=50,
                  update_counter_every_mini_batch=False,
                  summaries_flush_secs=1,
@@ -128,6 +130,9 @@ class TrainerConfig(object):
                 any of the lists is non-empty; if ``strict=False``, missing/unexpected
                 keys will be omitted and no error will be raised.
             evaluate (bool): A bool to evaluate when training
+            num_evals (int): how many evaluations are needed throughout the training.
+                If not None, an automatically calculated ``eval_interval`` will
+                replace ``config.eval_interval``.
             eval_interval (int): evaluate every so many iteration
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
@@ -135,6 +140,9 @@ class TrainerConfig(object):
                 Breakout. Only used for evaluation.
             eval_uncertainty (bool): whether to evluate uncertainty after training.
             num_eval_episodes (int) : number of episodes for one evaluation
+            num_summaries (int): how many summary calls are needed throughout the
+                training. If not None, an automatically calculated ``summary_interval``
+                will replace ``config.summary_interval``.
             summary_interval (int): write summary every so many training steps
             update_counter_every_mini_batch (bool): whether to update counter
                 for every mini batch. The ``summary_interval`` is based on this
@@ -207,10 +215,12 @@ class TrainerConfig(object):
         self.no_thread_env_for_conf = no_thread_env_for_conf
         self.load_checkpoint_strict = load_checkpoint_strict
         self.evaluate = evaluate
+        self.num_evals = num_evals
         self.eval_interval = eval_interval
         self.epsilon_greedy = epsilon_greedy
         self.eval_uncertainty = eval_uncertainty
         self.num_eval_episodes = num_eval_episodes
+        self.num_summaries = num_summaries
         self.summary_interval = summary_interval
         self.update_counter_every_mini_batch = update_counter_every_mini_batch
         self.summaries_flush_secs = summaries_flush_secs

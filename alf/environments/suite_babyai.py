@@ -68,12 +68,15 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
-    gym_spec = gym.spec(environment_name)
-    gym_env = gym_spec.make()
-
+    # babyai doesn't register max_episode_steps in Gym
+    gym_env = gym.make(environment_name)
+    # but it does have an interal property ``max_steps`` which returns ``done=True```
+    # when reached, see
+    # https://github.com/maximecb/gym-minigrid/blob/6f5fe8588d05eb13a08f971fd3c7a82c404dc1bb/gym_minigrid/minigrid.py#L1158
     if max_episode_steps is None:
-        if gym_spec.max_episode_steps is not None:
-            max_episode_steps = gym_spec.max_episode_steps
+        if hasattr(gym_env, 'max_steps'):
+            # minus 1 because we need to let ALF wrap ``TimeLimit`` before getting ``done=True```
+            max_episode_steps = gym_env.max_steps - 1
         else:
             max_episode_steps = 0
 

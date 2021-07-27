@@ -10,6 +10,7 @@ Welcome to ALF's documentation!
    :maxdepth: 2
 
    overview
+   tutorial
    notes
    contributing
 

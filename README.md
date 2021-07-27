@@ -47,6 +47,14 @@ cd alf
 pip install -e .
 ```
 
+**For Nix Users**: There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
+
+```bash
+$ nix develop
+```
+
+in the root of your local repository.
+
 ## Documentation
 
 You can read the [ALF documentation here](https://alf.readthedocs.io/).

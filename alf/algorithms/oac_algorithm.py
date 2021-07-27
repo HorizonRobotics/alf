@@ -47,8 +47,9 @@ class OacAlgorithm(SacAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
+                 epsilon_greedy=None,
                  use_entropy_reward=True,
-                 use_parallel_network=False,
+                 calculate_priority=False,
                  num_critic_replicas=2,
                  env=None,
                  config: TrainerConfig = None,
@@ -88,8 +89,9 @@ class OacAlgorithm(SacAlgorithm):
             actor_network_cls=actor_network_cls,
             critic_network_cls=critic_network_cls,
             q_network_cls=q_network_cls,
+            epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
-            use_parallel_network=use_parallel_network,
+            calculate_priority=calculate_priority,
             num_critic_replicas=num_critic_replicas,
             env=env,
             config=config,
@@ -184,12 +186,12 @@ class OacAlgorithm(SacAlgorithm):
 
         return action_dist, action, None, new_state
 
-    def rollout_step(self, time_step: TimeStep, state: SacState):
+    def rollout_step(self, inputs: TimeStep, state: SacState):
         """Same as SacAlgorithm.rollout_step except that `explore` is set to be
         `self._explore` when calling `_predict_action`.
         """
         action_dist, action, _, action_state = self._predict_action(
-            time_step.observation,
+            inputs.observation,
             state=state.action,
             epsilon_greedy=1.0,
             eps_greedy_sampling=True,
@@ -197,10 +199,10 @@ class OacAlgorithm(SacAlgorithm):
 
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(
-                self._critic_networks, time_step.observation, action,
+                self._critic_networks, inputs.observation, action,
                 state.critic.critics)
             _, target_critics_state = self._compute_critics(
-                self._target_critic_networks, time_step.observation, action,
+                self._target_critic_networks, inputs.observation, action,
                 state.critic.target_critics)
             critic_state = SacCriticState(
                 critics=critics_state, target_critics=target_critics_state)
@@ -214,4 +216,4 @@ class OacAlgorithm(SacAlgorithm):
         return AlgStep(
             output=action,
             state=new_state,
-            info=SacInfo(action_distribution=action_dist))
+            info=SacInfo(action=action, action_distribution=action_dist))

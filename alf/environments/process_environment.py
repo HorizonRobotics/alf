@@ -19,6 +19,7 @@ Adapted from TF-Agents Environment API as seen in:
 
 from absl import logging
 import atexit
+from enum import Enum
 import multiprocessing
 import numpy as np
 import sys
@@ -49,16 +50,79 @@ def tensor_to_array(data):
     return nest.map_structure(_tensor_to_array, data)
 
 
+class _MessageType(Enum):
+    """Message types for communication via the pipe.
+
+    The ProcessEnvironment uses pipe to perform IPC, where each of the message
+    has a message type. This Enum provides all the available message types.
+    """
+    READY = 1
+    ACCESS = 2
+    CALL = 3
+    RESULT = 4
+    EXCEPTION = 5
+    CLOSE = 6
+
+
+def _worker(conn, env_constructor, env_id=None, flatten=False):
+    """The process waits for actions and sends back environment results.
+
+    Args:
+        conn (multiprocessing.connection): Connection for communication to the main process.
+        env_constructor (Callable): callable environment creator.
+        flatten (bool): whether to assume flattened actions and time_steps
+          during communication to avoid overhead.
+
+    Raises:
+        KeyError: When receiving a message of unknown type.
+    """
+    try:
+        alf.set_default_device("cpu")
+        env = env_constructor(env_id=env_id)
+        action_spec = env.action_spec()
+        conn.send(_MessageType.READY)  # Ready.
+        while True:
+            try:
+                # Only block for short times to have keyboard exceptions be raised.
+                if not conn.poll(0.1):
+                    continue
+                message, payload = conn.recv()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if message == _MessageType.ACCESS:
+                name = payload
+                result = getattr(env, name)
+                conn.send((_MessageType.RESULT, result))
+                continue
+            if message == _MessageType.CALL:
+                name, args, kwargs = payload
+                if flatten and name == 'step':
+                    args = [nest.pack_sequence_as(action_spec, args[0])]
+                result = getattr(env, name)(*args, **kwargs)
+                if flatten and name in ['step', 'reset']:
+                    result = nest.flatten(result)
+                    assert all([
+                        not isinstance(x, torch.Tensor) for x in result
+                    ]), ("Tensor result is not allowed: %s" % name)
+                conn.send((_MessageType.RESULT, result))
+                continue
+            if message == _MessageType.CLOSE:
+                assert payload is None
+                env.close()
+                break
+            raise KeyError(
+                'Received message of unknown type {}'.format(message))
+    except Exception:  # pylint: disable=broad-except
+        etype, evalue, tb = sys.exc_info()
+        stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
+        message = 'Error in environment process: {}'.format(stacktrace)
+        logging.error(message)
+        conn.send((_MessageType.EXCEPTION, stacktrace))
+    finally:
+        conn.close()
+
+
 class ProcessEnvironment(object):
-
-    # Message types for communication via the pipe.
-    _READY = 1
-    _ACCESS = 2
-    _CALL = 3
-    _RESULT = 4
-    _EXCEPTION = 5
-    _CLOSE = 6
-
     def __init__(self, env_constructor, env_id=None, flatten=False):
         """Step environment in a separate process for lock free paralellism.
 
@@ -95,7 +159,7 @@ class ProcessEnvironment(object):
         """
         self._conn, conn = multiprocessing.Pipe()
         self._process = multiprocessing.Process(
-            target=self._worker,
+            target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)
         self._process.start()
@@ -109,7 +173,7 @@ class ProcessEnvironment(object):
             self._conn.close()
             self._process.join(5)
             raise result
-        assert result == self._READY, result
+        assert result == _MessageType.READY, result
 
     def env_info_spec(self):
         if not self._env_info_spec:
@@ -148,7 +212,7 @@ class ProcessEnvironment(object):
         Returns:
             Value of the attribute.
         """
-        self._conn.send((self._ACCESS, name))
+        self._conn.send((_MessageType.ACCESS, name))
         return self._receive()
 
     def call(self, name, *args, **kwargs):
@@ -164,13 +228,13 @@ class ProcessEnvironment(object):
         """
         payload = name, args, kwargs
         payload = tensor_to_array(payload)
-        self._conn.send((self._CALL, payload))
+        self._conn.send((_MessageType.CALL, payload))
         return self._receive
 
     def close(self):
         """Send a close message to the external process and join it."""
         try:
-            self._conn.send((self._CLOSE, None))
+            self._conn.send((_MessageType.CLOSE, None))
             self._conn.close()
         except IOError:
             # The connection was already closed.
@@ -223,71 +287,14 @@ class ProcessEnvironment(object):
         payload = array_to_tensor(payload)
 
         # Re-raise exceptions in the main process.
-        if message == self._EXCEPTION:
+        if message == _MessageType.EXCEPTION:
             stacktrace = payload
             raise Exception(stacktrace)
-        if message == self._RESULT:
+        if message == _MessageType.RESULT:
             return payload
         self.close()
         raise KeyError(
             'Received message of unexpected type {}'.format(message))
-
-    def _worker(self, conn, env_constructor, env_id=None, flatten=False):
-        """The process waits for actions and sends back environment results.
-
-        Args:
-            conn (multiprocessing.connection): Connection for communication to the main process.
-            env_constructor (Callable): callable environment creator.
-            flatten (bool): whether to assume flattened actions and time_steps
-              during communication to avoid overhead.
-
-        Raises:
-            KeyError: When receiving a message of unknown type.
-        """
-        try:
-            alf.set_default_device("cpu")
-            env = env_constructor(env_id=env_id)
-            action_spec = env.action_spec()
-            conn.send(self._READY)  # Ready.
-            while True:
-                try:
-                    # Only block for short times to have keyboard exceptions be raised.
-                    if not conn.poll(0.1):
-                        continue
-                    message, payload = conn.recv()
-                except (EOFError, KeyboardInterrupt):
-                    break
-                if message == self._ACCESS:
-                    name = payload
-                    result = getattr(env, name)
-                    conn.send((self._RESULT, result))
-                    continue
-                if message == self._CALL:
-                    name, args, kwargs = payload
-                    if flatten and name == 'step':
-                        args = [nest.pack_sequence_as(action_spec, args[0])]
-                    result = getattr(env, name)(*args, **kwargs)
-                    if flatten and name in ['step', 'reset']:
-                        result = nest.flatten(result)
-                        assert all([
-                            not isinstance(x, torch.Tensor) for x in result
-                        ]), ("Tensor result is not allowed: %s" % name)
-                    conn.send((self._RESULT, result))
-                    continue
-                if message == self._CLOSE:
-                    assert payload is None
-                    env.close()
-                    break
-                raise KeyError(
-                    'Received message of unknown type {}'.format(message))
-        except Exception:  # pylint: disable=broad-except
-            etype, evalue, tb = sys.exc_info()
-            stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
-            message = 'Error in environment process: {}'.format(stacktrace)
-            logging.error(message)
-            conn.send((self._EXCEPTION, stacktrace))
-        finally:
-            conn.close()
 
     def render(self, mode='human'):
         """Render the environment.

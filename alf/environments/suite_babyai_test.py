@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gym
 import numpy as np
 
 import alf
 from alf.environments import suite_babyai
+from alf.environments.alf_wrappers import TimeLimit
 
 
 class SuiteBabyAITest(alf.test.TestCase):
@@ -79,6 +81,24 @@ class SuiteBabyAITest(alf.test.TestCase):
         self.assertTrue(
             np.alltrue(obs['mission'] == instr1)
             or np.alltrue(obs['mission'] == instr2))
+
+    def test_timelimit_discount(self):
+        env_name = "BabyAI-GoToObj-v0"
+        gym_env = gym.make(env_name)
+        gym_spec = gym.spec(env_name)
+        self.assertTrue(gym_spec.max_episode_steps is None)
+
+        # first test the original env will incorrectly return done=True when timeout
+        self.assertTrue(hasattr(gym_env, 'max_steps'))
+        gym_env.reset()
+        for i in range(gym_env.max_steps):
+            observation, reward, done, info = gym_env.step(0)
+        self.assertTrue(done)  # timelimit
+
+        # then test the new suite_babyai will correctly handle this
+        env = suite_babyai.load(env_name)
+        self.assertTrue(isinstance(env, TimeLimit))
+        self.assertEqual(env.duration, gym_env.max_steps - 1)
 
 
 if __name__ == '__main__':

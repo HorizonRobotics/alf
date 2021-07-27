@@ -110,9 +110,19 @@ class Trainer(object):
 
         self._evaluate = config.evaluate
         self._eval_uncertainty = config.eval_uncertainty
-        self._eval_interval = config.eval_interval
 
-        self._summary_interval = config.summary_interval
+        if config.num_evals is not None:
+            self._eval_interval = common.compute_summary_or_eval_interval(
+                config, config.num_evals)
+        else:
+            self._eval_interval = config.eval_interval
+
+        if config.num_summaries is not None:
+            self._summary_interval = common.compute_summary_or_eval_interval(
+                config, config.num_summaries)
+        else:
+            self._summary_interval = config.summary_interval
+
         self._summaries_flush_secs = config.summaries_flush_secs
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
@@ -577,6 +587,9 @@ def _step(algorithm,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
+    # save the untransformed time step in case that sub-algorithms need it
+    transformed_time_step = transformed_time_step._replace(
+        untransformed=time_step)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder:
