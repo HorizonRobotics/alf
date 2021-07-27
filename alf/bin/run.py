@@ -907,9 +907,9 @@ def main(argv):
         command = 'traincli submit -f {}'.format(run_yaml)
         print('via:\n' + command)
         ret = os.system(command)
-        print("========================================")
-        feedback = "Failed" if ret else "Succeeded"
-        print(feedback)
+        if ret:
+            print("========================================")
+            print("Submission Failed for command:\n" + command)
     else:
         print(command)
         if not os.path.exists(root_dir):
