@@ -71,7 +71,13 @@ rollout data collection. The :func:`.create_environment` function is defined as:
                            batched_wrappers=())
 
 We can see that because the default values of ``env_name`` and ``num_parallel_environments``
-are already what we want, in the example conf we've skipped configuring them.
+are already what we want, in the example conf we've skipped configuring them. But
+it is recommended to always explicitly specify them in a conf for readability
+purpose. On the other hand, ``env_load_fn`` is the func that loads ``env_name``.
+Usually :func:`.suite_gym.load` can load most built-in Gym environments. For
+extra Gym environments or user-customized environments, this argument value
+should be set accordingly. For instance, see :func:`.suite_mario.load` and
+:func:`.suite_simple.load`.
 
 .. note::
     **ALF configuration** is one of the secret sauces that make ALF flexible.
@@ -100,7 +106,7 @@ and the optimizer by
 The algorithm and training iterations are configured through a global object
 :class:`.TrainerConfig`, which is supposed to be passed from the trainer to algorithms.
 One important hyperparameter that's skipped in the conf file is ``unroll_length``.
-We simply use its default value which is equal to do
+We simply use its default value which is equivalent to doing
 
 .. code-block:: python
 
