@@ -146,7 +146,6 @@ class Algorithm(AlgorithmInterface):
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
-        self._opt_keys = []
         self._module_to_optimizer = {}
         self._path = ''
         if optimizer:
@@ -720,9 +719,7 @@ class Algorithm(AlgorithmInterface):
             self._setup_optimizers()
             for i, opt in enumerate(self._optimizers):
                 new_key = prefix + '_optimizers.%d' % i
-                if new_key not in self._opt_keys:
-                    self._opt_keys.append(new_key)
-                opts_dict[self._opt_keys[i]] = opt.state_dict()
+                opts_dict[new_key] = opt.state_dict()
 
             destination.update(opts_dict)
 
