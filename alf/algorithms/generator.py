@@ -21,13 +21,13 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
-from alf.networks import Network, EncodingNetwork, ReluMLP, PinverseNetwork
+from alf.networks import Network, EncodingNetwork, ReluMLP, InverseMVPNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
-                               ["generator", "mi_estimator", "pinverse"])
+                               ["generator", "mi_estimator", "inverse_mvp"])
 
 
 @alf.configurable
@@ -116,8 +116,8 @@ class CriticAlgorithm(Algorithm):
 
 
 @alf.configurable
-class PinverseAlgorithm(Algorithm):
-    r"""PinverseNet Algorithm
+class InverseMVPAlgorithm(Algorithm):
+    r"""InverseMVPNet Algorithm
         
     Simple MLP network used with the functional gradient par_vi methods
     It is used to predict :math:`x=J^{-1}*eps` given eps for the purpose of 
@@ -137,25 +137,20 @@ class PinverseAlgorithm(Algorithm):
                  num_hidden_layers=1,
                  net: Network = None,
                  optimizer=None,
-                 name="PinverseAlgorithm"):
-        r"""Create a PinverseAlgorithm.
+                 name="InverseMVPAlgorithm"):
+        r"""Create a InverseMVPAlgorithm.
         Args:
             input_dim (int): dimension of input noise vector z, if equals to 
                 output_dim, use fullsize of z, otherwise, input the first 
                 input_dim dim of z, and add a direct link of z to the output.
-            output_dim (int): total output dimension of the pinverse net, will differ
+            output_dim (int): total output dimension of the inverse_mvp net, will differ
                 between ``svgd3`` and ``minmax`` methods
-            hidden_size (tuple(int,)): base hidden width for pinverse net
+            hidden_size (tuple(int,)): base hidden width for inverse_mvp net
             num_hidden_layers (int): number of hidden layers. 
             net (Network): network for predicting outputs from inputs.
                 If None, a default ReluMLP with hidden_layers will be created
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this CriticAlgorithm.
-            eps_shape (list or None): shape of eps to estimate. In general ``svgd3``
-                takes an eps input of shape [B', B, k]. ``minmax`` takes an eps
-                of shape [B, k, d]. 
-                if ``eps_shape`` is None, then only :math:'J^{-1}' is estimated, 
-                and eps is not an input to the forward pass
         """
         if optimizer is None:
             optimizer = alf.optimizers.Adam(lr=1e-3)
@@ -169,12 +164,12 @@ class PinverseAlgorithm(Algorithm):
             else:
                 eps_spec = TensorSpec(shape=(eps_dim, ))
                 input_tensor_spec = (z_spec, eps_spec)
-            net = PinverseNetwork(
+            net = InverseMVPNetwork(
                 input_tensor_spec,
                 output_dim,
                 hidden_size,
                 num_hidden_layers,
-                name='PinverseNetwork')
+                name='InverseMVPNetwork')
         self._net = net
 
     def predict_step(self, inputs, state=None):
@@ -185,8 +180,7 @@ class PinverseAlgorithm(Algorithm):
             
         Returns:
             AlgStep:
-            - output (torch.Tensor): predictions
-                if requires_jac_diag is True.
+            - output (torch.Tensor): predictions of InverseMVPNetwork
             - state: not used.
         """
         outputs = self._net(inputs)[0]
@@ -261,12 +255,13 @@ class Generator(Algorithm):
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
                  par_vi=None,
+                 use_kernel_averager=False,
                  functional_gradient=None,
                  force_fullrank=True,
                  fullrank_diag_weight=1.0,
-                 pinverse_solve_iters=1,
-                 pinverse_hidden_size=100,
-                 pinverse_hidden_layers=1,
+                 inverse_mvp_solve_iters=1,
+                 inverse_mvp_hidden_size=100,
+                 inverse_mvp_hidden_layers=1,
                  critic_input_dim=None,
                  critic_hidden_layers=(100, 100),
                  critic_l2_weight=10.,
@@ -275,7 +270,7 @@ class Generator(Algorithm):
                  critic_use_bn=True,
                  minmax_resample=True,
                  critic_optimizer=None,
-                 pinverse_optimizer=None,
+                 inverse_mvp_optimizer=None,
                  optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
@@ -317,18 +312,24 @@ class Generator(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
+            use_kernel_averager (bool): whether or not to use a running 
+                average of the kernel bandwith for ParVI methods. 
             functional_gradient (string): whether or not to use GPVI. Options
                 are ``rkhs``, for GPVI or ``None``. 
             force_fullrank (bool): when ``functional_gradient`` is not ``None``, 
                 this option forces the dimension of the jacobian of the
-                generator to be square. 
+                generator to be square -- therefore invertible. We ensure this
+                by sampling an input noise vector of the same size as the
+                output, and only forwarding the first ``noise_dim`` components.
+                We then add the full noise vector to the output, multiplied by
+                the ``fullrank_diag_weight``.  
             fullrank_diag_weight (float): weight on "extra" dimensions when 
                 forcing full rank Jacobian
-            pinverse_solve_iters (int): number of iterations of pinverse
+            inverse_mvp_solve_iters (int): number of iterations of inverse_mvp
                 network training per single iteration of generator training.
-            pinverse_hidden_size (int): width of hidden layers in pinverse
+            inverse_mvp_hidden_size (int): width of hidden layers in inverse_mvp
                 network. 
-            pinverse_hidden_layers (int): number of hidden layers in pinverse
+            inverse_mvp_hidden_layers (int): number of hidden layers in inverse_mvp
                 network. 
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
@@ -345,8 +346,8 @@ class Generator(Algorithm):
                 critic update, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
-            pinverse_optimizer (torch.optim.Optimizer): Optimizer for training
-                the pinverse network, used when ``functional_gradient`` is 
+            inverse_mvp_optimizer (torch.optim.Optimizer): Optimizer for training
+                the inverse_mvp network, used when ``functional_gradient`` is 
                 ``True``.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
@@ -400,21 +401,23 @@ class Generator(Algorithm):
                     force_fullrank = False
                 self._force_fullrank = force_fullrank
                 self._fullrank_diag_weight = fullrank_diag_weight
-                self._pinverse_solve_iters = pinverse_solve_iters
-                if pinverse_optimizer is None:
-                    pinverse_optimizer = alf.optimizers.Adam(
+                self._inverse_mvp_solve_iters = inverse_mvp_solve_iters
+                if inverse_mvp_optimizer is None:
+                    inverse_mvp_optimizer = alf.optimizers.Adam(
                         lr=1e-4, weight_decay=1e-5)
 
-                self._pinverse = PinverseAlgorithm(
+                self._inverse_mvp = InverseMVPAlgorithm(
                     noise_dim,
                     output_dim,
                     eps_dim=self._eps_dim,
-                    hidden_size=pinverse_hidden_size,
-                    num_hidden_layers=pinverse_hidden_layers,
-                    optimizer=pinverse_optimizer)
-
-            self._kernel_width_averager = AdaptiveAverager(
-                tensor_spec=TensorSpec(shape=()))
+                    hidden_size=inverse_mvp_hidden_size,
+                    num_hidden_layers=inverse_mvp_hidden_layers,
+                    optimizer=inverse_mvp_optimizer)
+            if use_kernel_averager:
+                self._kernel_width_averager = AdaptiveAverager(
+                    tensor_spec=TensorSpec(shape=()))
+            else:
+                self._kernel_width_averager = None
 
         noise_spec = TensorSpec(shape=(noise_dim, ))
 
@@ -476,9 +479,8 @@ class Generator(Algorithm):
         else:
             if self._functional_gradient is not None:
                 if self._force_fullrank:
-                    extra_noise = torch.ones(
-                        noise.shape[0],
-                        torch.randn(self._output_dim - self._noise_dim))
+                    extra_noise = torch.randn(
+                        noise.shape[0], self._output_dim - self._noise_dim)
                     outputs = self._net(gen_inputs)[0]  # [B, D]
                     gen_inputs = torch.cat((gen_inputs, extra_noise),
                                            dim=-1)  # [B, D]
@@ -589,9 +591,9 @@ class Generator(Algorithm):
             mi_loss = mi_step.info.loss
             loss_propagated = loss_propagated + self._mi_weight * mi_loss
         if self._functional_gradient:
-            loss, pinverse_loss = loss
+            loss, inverse_mvp_loss = loss
         else:
-            pinverse_loss = ()
+            inverse_mvp_loss = ()
 
         return AlgStep(
             output=outputs,
@@ -601,7 +603,7 @@ class Generator(Algorithm):
                 extra=GeneratorLossInfo(
                     generator=loss,
                     mi_estimator=mi_loss,
-                    pinverse=pinverse_loss)))
+                    inverse_mvp=inverse_mvp_loss)))
 
     def _ml_grad(self,
                  inputs,
@@ -626,9 +628,10 @@ class Generator(Algorithm):
             assert dist.ndim == 1, "dist must have dimension 1 or 2."
         width, _ = torch.median(dist, dim=0)
         width = width / np.log(len(dist))
-        self._kernel_width_averager.update(width)
-
-        return self._kernel_width_averager.get()
+        if self._kernel_width_averager is not None:
+            self._kernel_width_averager.update(width)
+            width = self._kernel_width_averager.get()
+        return width
 
     def _rbf_func(self, x, y):
         """Compute RBF kernel, used by svgd_grad. """
@@ -928,16 +931,16 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _pinverse_train_step(self, z, eps=None):
-        r"""Compute the loss for pinverse training. 
-        self._pinverse solves an inverse problem for the amortized 
+    def _inverse_mvp_train_step(self, z, eps=None):
+        r"""Compute the loss for inverse_mvp training. 
+        self._inverse_mvp solves an inverse problem for the amortized 
         functional gradient vi method ``rkhs``. 
         For ``rkhs``, it takes z' and :math:'\nabla_{z'}k(z', z)' as input 
         and outputs
         :math:`(\partial f / \partial z')^{-1} * \nabla_{z'}k(z', z)`.
         The training loss is given by
         :math:'\|()\partical f / \partial z')^T y - \nabla_{z'}k(z',z)',
-        where y denotes the output of self._pinverse.
+        where y denotes the output of self._inverse_mvp.
         The first term is computed by vector-jacobian product between the
         generator f and output y.
     
@@ -948,7 +951,7 @@ class Generator(Algorithm):
                 self._force_fullrank is True, K otherwise. In general,
                 K is much less than D.
         Returns:
-            pinverse_loss (float)
+            inverse_mvp_loss (float)
         """
         assert z.ndim == 2
         assert z.shape[-1] == self._noise_dim or z.shape[-1] == self._output_dim
@@ -964,7 +967,7 @@ class Generator(Algorithm):
             eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1],
                                      -1)  # [N2*N, D or K]
             # [N2*N, D]
-            y = self._pinverse.predict_step((z_inputs, eps_inputs)).output
+            y = self._inverse_mvp.predict_step((z_inputs, eps_inputs)).output
             jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
             if self._force_fullrank:
                 jac_y = torch.cat(
@@ -977,7 +980,7 @@ class Generator(Algorithm):
                                   -1)  # [N2, N, D or K]
             loss = torch.nn.functional.mse_loss(jac_y, eps)
         else:
-            raise ValueError('pinverse only supports ``rkhs``')
+            raise ValueError('inverse_mvp only supports ``rkhs``')
 
         return loss
 
@@ -1008,29 +1011,25 @@ class Generator(Algorithm):
         num_particles = outputs.shape[0]
         outputs2, gen_inputs2 = self._predict(
             batch_size=num_particles)  # [N2, D]
-        pinverse_z_input = gen_inputs2.detach()
-        kernel_input2 = gen_inputs2
-        kernel_input1 = gen_inputs
-        outputs_full = outputs
-        outputs_full2 = outputs
+        inverse_mvp_z_input = gen_inputs2.detach()
 
         # [N2, N], [N2, N, D]
-        kernel_weight, kernel_grad = self._rbf_func2(kernel_input2,
-                                                     kernel_input1)
-        # train pinverse
-        for i in range(self._pinverse_solve_iters):
-            pinverse_loss = self._pinverse_train_step(pinverse_z_input,
-                                                      kernel_grad.detach())
-            self._pinverse.update_with_gradient(LossInfo(loss=pinverse_loss))
+        kernel_weight, kernel_grad = self._rbf_func2(gen_inputs2, gen_inputs)
+        # train inverse_mvp
+        for i in range(self._inverse_mvp_solve_iters):
+            inverse_mvp_loss = self._inverse_mvp_train_step(
+                inverse_mvp_z_input, kernel_grad.detach())
+            self._inverse_mvp.update_with_gradient(
+                LossInfo(loss=inverse_mvp_loss))
 
-        # construct functional gradient via pinverse
+        # construct functional gradient via inverse_mvp
         gen_inputs2_batch = torch.repeat_interleave(
             gen_inputs2, num_particles, dim=0).detach()
         kernel_grad_batch = kernel_grad.reshape(num_particles * num_particles,
                                                 -1).detach()
-        pinverse_z_input = gen_inputs2_batch
-        J_inv_kernel_grad = self._pinverse.predict_step(
-            (pinverse_z_input, kernel_grad_batch)).output  # [N2*N, D]
+        inverse_mvp_z_input = gen_inputs2_batch
+        J_inv_kernel_grad = self._inverse_mvp.predict_step(
+            (inverse_mvp_z_input, kernel_grad_batch)).output  # [N2*N, D]
         J_inv_kernel_grad = J_inv_kernel_grad.reshape(
             num_particles, num_particles, -1)  # [N2, N, D]
 
@@ -1048,7 +1047,7 @@ class Generator(Algorithm):
 
         grad = kernel_logp - entropy_regularization * J_inv_kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs, dim=1)
-        return (loss, pinverse_loss), loss_propagated
+        return (loss, inverse_mvp_loss), loss_propagated
 
     def after_update(self, training_info):
         if self._predict_net:

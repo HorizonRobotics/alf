@@ -79,9 +79,9 @@ class HyperNetwork(Algorithm):
                  functional_gradient=None,
                  force_fullrank=True,
                  fullrank_diag_weight=1.0,
-                 pinverse_solve_iters=1,
-                 pinverse_hidden_size=100,
-                 pinverse_hidden_layers=1,
+                 inverse_mvp_solve_iters=1,
+                 inverse_mvp_hidden_size=100,
+                 inverse_mvp_hidden_layers=1,
                  function_vi=False,
                  function_bs=None,
                  function_extra_bs_ratio=0.1,
@@ -92,7 +92,7 @@ class HyperNetwork(Algorithm):
                  par_vi="svgd",
                  num_train_classes=10,
                  critic_optimizer=None,
-                 pinverse_optimizer=None,
+                 inverse_mvp_optimizer=None,
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -141,11 +141,11 @@ class HyperNetwork(Algorithm):
                 generator to be square. 
             fullrank_diag_weight (float): weight on "extra" dimensions when 
                 forcing full rank Jacobian
-            pinverse_solve_iters (int): number of iterations to train pinverse
+            inverse_mvp_solve_iters (int): number of iterations to train inverse_mvp
                 network each training iteration of generator.
-            pinverse_hidden_size (int): width of hidden layers of pinverse 
+            inverse_mvp_hidden_size (int): width of hidden layers of inverse_mvp 
                 network.
-            pinverse_hidden_layers (int): number of hidden layers in pinverse 
+            inverse_mvp_hidden_layers (int): number of hidden layers in inverse_mvp 
                 network. 
 
             function_vi (bool): whether to use funciton value based par_vi, current
@@ -284,10 +284,10 @@ class HyperNetwork(Algorithm):
             functional_gradient=functional_gradient,
             force_fullrank=force_fullrank,
             fullrank_diag_weight=fullrank_diag_weight,
-            pinverse_solve_iters=pinverse_solve_iters,
-            pinverse_hidden_size=pinverse_hidden_size,
-            pinverse_hidden_layers=pinverse_hidden_layers,
-            pinverse_optimizer=pinverse_optimizer,
+            inverse_mvp_solve_iters=inverse_mvp_solve_iters,
+            inverse_mvp_hidden_size=inverse_mvp_hidden_size,
+            inverse_mvp_hidden_layers=inverse_mvp_hidden_layers,
+            inverse_mvp_optimizer=inverse_mvp_optimizer,
             optimizer=None,
             critic_optimizer=critic_optimizer,
             name=name)
@@ -410,6 +410,10 @@ class HyperNetwork(Algorithm):
         alf.summary.increment_global_counter()
         with record_time("time/train"):
             loss = 0.
+            if self._functional_gradient:
+                inverse_mvp_loss = 0.
+            else:
+                inverse_mvp_loss = None
             if self._loss_type == 'classification':
                 avg_acc = []
             for batch_idx, (data, target) in enumerate(self._train_loader):
@@ -421,7 +425,7 @@ class HyperNetwork(Algorithm):
                 loss_info, params = self.update_with_gradient(alg_step.info)
                 loss += loss_info.extra.generator.loss
                 if self._functional_gradient:
-                    pinverse_loss += loss_info.extra.pinverse
+                    inverse_mvp_loss += loss_info.extra.inverse_mvp
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)
         acc = None
@@ -430,13 +434,13 @@ class HyperNetwork(Algorithm):
         if self._logging_training:
             if self._loss_type == 'classification':
                 logging.info("Avg acc: {}".format(acc))
-            if pinverse_loss > 0.:
-                if batch_idx == 0:
-                    batch_idx = 1
-                pinverse_loss = pinverse_loss / batch_idx
-                logging.info("Avg pinverse loss: {}".format(pinverse_loss))
             logging.info("Cum loss: {}".format(loss))
-        self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
+        self.summarize_train(
+            loss_info,
+            params,
+            cum_loss=loss,
+            avg_acc=acc,
+            inverse_mvp_loss=inverse_mvp_loss)
         return batch_idx + 1
 
     def train_step(self,
@@ -676,7 +680,12 @@ class HyperNetwork(Algorithm):
         alf.summary.scalar(name='eval/auroc_variance', data=auroc_variance)
         return auroc_entropy, auroc_variance
 
-    def summarize_train(self, loss_info, params, cum_loss=None, avg_acc=None):
+    def summarize_train(self,
+                        loss_info,
+                        params,
+                        cum_loss=None,
+                        avg_acc=None,
+                        inverse_mvp_loss=None):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
         (with grads) and the loss. An algorithm can override this for additional
@@ -692,6 +701,7 @@ class HyperNetwork(Algorithm):
             params (list[Parameter]): list of parameters with gradients.
             cum_loss (float): cumulative training loss of epoch.
             avg_acc (float): average accuracy across batches in epoch.
+            inverse_mvp_loss (float): cumulative training loss of InverseMVPNet
         """
         if self._config is not None:
             if self._config.summarize_grads_and_vars:
@@ -703,3 +713,6 @@ class HyperNetwork(Algorithm):
             alf.summary.scalar(name='train_epoch/neglogprob', data=cum_loss)
         if avg_acc is not None:
             alf.summary.scalar(name='train_epoch/avg_acc', data=avg_acc)
+        if inverse_mvp_loss is not None:
+            alf.summary.scalar(
+                name='train_epoch/inverse_mvp_loss', data=inverse_mvp_loss)

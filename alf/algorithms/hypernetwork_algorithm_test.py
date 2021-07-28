@@ -112,10 +112,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             force_fullrank=True,
             functional_gradient=functional_gradient,
             critic_hidden_layers=(hidden_size, hidden_size),
-            pinverse_hidden_layers=3,
+            inverse_mvp_hidden_layers=3,
             function_bs=train_batch_size,
             optimizer=alf.optimizers.Adam(lr=2e-3),
-            pinverse_optimizer=alf.optimizers.Adam(lr=1e-4),
+            inverse_mvp_optimizer=alf.optimizers.Adam(lr=1e-4),
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))

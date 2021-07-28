@@ -18,13 +18,13 @@ from .containers import Branch, Parallel, Sequential, Echo
 from .critic_networks import *
 from .dynamics_networks import *
 from .encoding_networks import *
+from .inverse_mvp_network import *
 from .mdq_critic_networks import *
 from .memory import *
 from .network import Network, NaiveParallelNetwork, wrap_as_network, NetworkWrapper
 from .networks import *
 from .ou_process import OUProcess
 from .param_networks import *
-from .pinverse_network import *
 from .preprocessor_networks import PreprocessorNetwork
 from .projection_networks import *
 from .relu_mlp import ReluMLP

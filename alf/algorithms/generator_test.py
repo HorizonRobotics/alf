@@ -103,6 +103,10 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         else:
             noise_dim = 3
             net = Net(dim)
+        if par_vi == 'svgd':
+            use_kernel_averager = True
+        else:
+            use_kernel_averager = False
         hidden_size = 20
         generator = Generator(
             dim,
@@ -113,13 +117,14 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             par_vi=par_vi,
             functional_gradient=functional_gradient,
             force_fullrank=True,
-            pinverse_hidden_size=10,
-            pinverse_solve_iters=1,
-            pinverse_hidden_layers=3,
+            inverse_mvp_hidden_size=10,
+            inverse_mvp_solve_iters=1,
+            inverse_mvp_hidden_layers=3,
+            use_kernel_averager=use_kernel_averager,
             fullrank_diag_weight=1.0,
             critic_hidden_layers=(hidden_size, hidden_size),
             optimizer=alf.optimizers.AdamTF(lr=2e-3),
-            pinverse_optimizer=alf.optimizers.Adam(lr=1e-3),
+            inverse_mvp_optimizer=alf.optimizers.Adam(lr=1e-3),
             critic_optimizer=alf.optimizers.AdamTF(lr=2e-3))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
@@ -180,6 +185,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             net=net,
             mi_weight=mi_weight,
             par_vi=par_vi,
+            use_kernel_averager=True,
             input_tensor_spec=TensorSpec((dim, )),
             optimizer=alf.optimizers.Adam(lr=2e-3))
 
