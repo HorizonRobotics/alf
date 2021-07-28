@@ -520,6 +520,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=SacState(action=action_state),
             info=SacInfo(action_distribution=action_dist))
 
+    def get_predict_module_state(self):
+        """get state_dict of the predict_step module. """
+        return self._actor_network.state_dict()
+
+    def load_predict_module_state(self, state_dict):
+        """load state_dict to the predict_step module. """
+        self._actor_network.load_state_dict(state_dict)
+
     def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay

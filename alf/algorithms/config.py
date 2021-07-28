@@ -22,7 +22,6 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  ml_type='rl',
-                 env_name=None,
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
@@ -70,7 +69,6 @@ class TrainerConfig(object):
         Args:
             root_dir (str): directory for saving summary and checkpoints
             ml_type (str): type of learning task, one of ['rl', 'sl']
-            env_name (str): name of the environment
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             data_transformer_ctor (Callable|list[Callable]): Function(s)
@@ -204,7 +202,6 @@ class TrainerConfig(object):
         assert ml_type in ('rl', 'sl')
         self.root_dir = root_dir
         self.ml_type = ml_type
-        self.env_name = env_name
         self.algorithm_ctor = algorithm_ctor
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer

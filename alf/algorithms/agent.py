@@ -40,6 +40,10 @@ AgentInfo = namedtuple(
     ["rl", "irm", "goal_generator", "entropy_target", "repr", "rw", "rewards"],
     default_value=())
 
+AgentPredictModuleState = namedtuple(
+    "AgentPredictModuleState", ["rl", "repr", "goal_generator"],
+    default_value=())
+
 
 @alf.configurable
 class Agent(RLAlgorithm):
@@ -235,6 +239,36 @@ class Agent(RLAlgorithm):
         info = info._replace(rl=rl_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
+
+    def get_predict_module_state(self):
+        """get (nested) state_dict of the predict_step module. """
+        new_state = AgentPredictModuleState()
+        if self._representation_learner is not None:
+            repr_state = self._representation_learner.get_predict_module_state(
+            )
+            new_state = new_state._replace(repr=repr_state)
+
+        if self._goal_generator is not None:
+            goal_generator_state = self._goal_generator.get_predict_module_state(
+            )
+            new_state = new_state._replace(goal_generator=goal_generator_state)
+
+        rl_state = self._rl_algorithm.get_predict_module_state()
+        new_state = new_state._replace(rl=rl_state)
+
+        return new_state
+
+    def load_predict_module_state(self, state_dict):
+        """load state_dict to the predict_step module. """
+        if self._representation_learner is not None:
+            self._representation_learner.load_predict_module_state(
+                state_dict.repr)
+
+        if self._goal_generator is not None:
+            self._goal_generator.load_predict_module_state(
+                state_dict.goal_generator)
+
+        self._rl_algorithm.load_predict_module_state(state_dict.rl)
 
     def rollout_step(self, time_step: TimeStep, state: AgentState):
         """Rollout for one step."""

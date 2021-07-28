@@ -31,7 +31,6 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.data_structures import StepType
 from alf.environments.utils import create_environment
-from alf.examples.oac_ray import RemoteAlgorithmEvaluator
 from alf.nest import map_structure
 from alf.nest.utils import convert_device
 from alf.tensor_specs import TensorSpec
@@ -40,6 +39,7 @@ from alf.utils import git_utils
 from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
+from alf.utils.ray_utils import RemoteAlgorithmEvaluator
 from alf.utils.summary_utils import record_time
 from alf.utils.video_recorder import VideoRecorder
 
@@ -381,6 +381,8 @@ class RLTrainer(Trainer):
         if (self._thread_env is not None
                 and self._thread_env is not self._eval_env):
             self._thread_env.close()
+        if self._remote_eval:
+            self._remote_evaluator.close_env.remote()
 
     def _train(self):
         env = alf.get_env()
@@ -510,20 +512,20 @@ class RLTrainer(Trainer):
         self._algorithm.train()
 
     def _init_remote_evaluator(self):
+        conf_file = common.get_conf_file()
         self._remote_evaluator = RemoteAlgorithmEvaluator.remote(
-            self._random_seed, self._config)
+            self._config, conf_file)
 
     def _launch_remote_eval(self):
-        actor_state_dict = self._algorithm._rl_algorithm._actor_network.state_dict(
-        )
+        state_dict = self._algorithm.get_predict_module_state()
+        state_dict = convert_device(state_dict, device='cpu')
         train_step = alf.summary.get_global_counter()
         step_metrics = self._algorithm.get_step_metrics()
         metric_names = [metric.name for metric in step_metrics]
         metric_steps = [metric.result() for metric in step_metrics]
-        actor_state_dict = convert_device(actor_state_dict, device='cpu')
         metric_steps = convert_device(metric_steps, device='cpu')
         remote_eval_id = self._remote_evaluator.eval.remote(
-            actor_state_dict,
+            state_dict,
             train_step=train_step,
             step_metrics=zip(metric_names, metric_steps))
         return remote_eval_id
@@ -538,7 +540,6 @@ class RLTrainer(Trainer):
             for metric, result in zip(self._eval_metrics, eval_results):
                 metric.gen_summaries_from_result(
                     result, train_step=train_step, step_metrics=step_metrics)
-        # common.log_metrics(eval_metrics)
 
 
 class SLTrainer(Trainer):

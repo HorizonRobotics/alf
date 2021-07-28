@@ -242,6 +242,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             state=state,
             info=DdpgInfo(action=noisy_action, action_distribution=action))
 
+    def get_predict_module_state(self):
+        """get state_dict of the predict_step module. """
+        return self._actor_network.state_dict()
+
+    def load_predict_module_state(self, state_dict):
+        """load state_dict to the predict_step module. """
+        self._actor_network.load_state_dict(state_dict)
+
     def rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "

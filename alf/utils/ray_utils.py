@@ -12,81 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
 import ray
 import torch
 
 import alf
-from alf.algorithms.oac_algorithm import OacAlgorithm
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
-from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
-from alf.optimizers import Adam, AdamTF
 from alf.utils import common
-from alf.utils.math_ops import clipped_exp
-
-fc_layer_params = (256, 256)
-
-actor_network_cls = partial(
-    ActorDistributionNetwork,
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
-        state_dependent_std=True,
-        scale_distribution=True,
-        std_transform=clipped_exp))
-
-# actor_network_cls = partial(
-#     ActorDistributionNetwork,
-#     fc_layer_params=fc_layer_params,
-#     continuous_projection_net_ctor=partial(
-#         NormalProjectionNetwork,
-#         state_dependent_std=True,
-#         scale_distribution=True,
-#         std_transform=partial(
-#             clipped_exp, clip_value_min=-10, clip_value_max=2)))
-
-critic_network_cls = partial(
-    CriticNetwork, joint_fc_layer_params=fc_layer_params)
-
-
-def _environment_creator(env_name, random_seed=None):
-    env = create_environment(
-        env_name=env_name, nonparallel=True, seed=random_seed)
-    return env
-
-
-def _algorithm_creator(env, observation_spec, config):
-    algorithm = OacAlgorithm(
-        observation_spec,
-        action_spec=env.action_spec(),
-        reward_spec=env.reward_spec(),
-        env=env,
-        actor_network_cls=actor_network_cls,
-        critic_network_cls=critic_network_cls,
-        explore=True,
-        explore_delta=6.,
-        target_update_tau=0.005,
-        actor_optimizer=AdamTF(lr=3e-4),
-        critic_optimizer=AdamTF(lr=3e-4),
-        alpha_optimizer=AdamTF(lr=3e-4),
-        config=config)
-    return algorithm
 
 
 @ray.remote(num_cpus=1)
 class RemoteAlgorithmEvaluator(object):
-    def __init__(self, env_seed, config):
+    """Asynchronized algorithm evaluator managed by ray. """
+
+    def __init__(self, config, conf_file):
+        """
+        Args:
+            config (TrainerConfig): configuration used to construct the main trainer
+            conf_file (str): full path to the configuration file
+        """
 
         torch.set_num_threads(1)
-        self._env = _environment_creator(config.env_name, random_seed=env_seed)
+        common.parse_conf_file(conf_file)
+        # current parse_conf_file automatically creates a global env
+        # if the conf_file is .gin file
+        # for eval purpose, we need another nonparallel env
+        alf.close_env()
+        self._env = create_environment(
+            nonparallel=True, seed=config.random_seed)
 
         data_transformer = create_data_transformer(
             config.data_transformer_ctor, self._env.observation_spec())
         observation_spec = data_transformer.transformed_observation_spec
+        self._algorithm = config.algorithm_ctor(
+            observation_spec=observation_spec,
+            action_spec=self._env.action_spec(),
+            env=self._env,
+            config=config)
 
-        self._algorithm = _algorithm_creator(self._env, observation_spec,
-                                             config)
         self._algorithm.eval()
 
         self._num_eval_episodes = config.num_eval_episodes
@@ -112,8 +75,7 @@ class RemoteAlgorithmEvaluator(object):
     def eval(self, state_dict, train_step=None, step_metrics=()):
         self._train_step = train_step
         self._step_metrics = step_metrics
-        actor_state_dict = state_dict
-        self._algorithm._actor_network.load_state_dict(actor_state_dict)
+        self._algorithm.load_predict_module_state(state_dict)
 
         time_step = common.get_initial_time_step(self._env)
         policy_state = self._algorithm.get_initial_predict_state(
@@ -144,3 +106,7 @@ class RemoteAlgorithmEvaluator(object):
     def get_eval_results(self):
         results = [metric.result() for metric in self._eval_metrics]
         return results, self._train_step, self._step_metrics
+
+    def close_env(self):
+        if self._env is not None:
+            self._env.close()
