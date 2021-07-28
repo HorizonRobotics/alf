@@ -160,11 +160,10 @@ class ProcessEnvironment(object):
         """
         # from alf.config_util import _get_config_node
         # print(_get_config_node('suite_gym.load.max_episode_steps').get_value())
-        ctx = multiprocessing.get_context('fork')
-        print(ctx.get_start_method())
-        
-        self._conn, conn = ctx.Pipe()
-        self._process = ctx.Process(
+
+        mp_ctx = multiprocessing.get_context('fork')
+        self._conn, conn = mp_ctx.Pipe()
+        self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)
