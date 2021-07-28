@@ -90,7 +90,7 @@ class Trainer(object):
 
     _trainer_progress = _TrainerProgress()
 
-    def __init__(self, config: TrainerConfig):
+    def __init__(self, config: TrainerConfig, ddp_rank: int=-1):
         """
 
         Args:
@@ -129,6 +129,7 @@ class Trainer(object):
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
         self._random_seed = config.random_seed
+        self.rank = ddp_rank
 
     def train(self):
         """Perform training."""
@@ -175,9 +176,9 @@ class Trainer(object):
             checkpoint_saved = True
         finally:
             if self._config.confirm_checkpoint_upon_crash and not checkpoint_saved:
-                ans = input("Do you want to save checkpoint? (y/n): ")
-                if ans.lower().startswith('y'):
-                    self._save_checkpoint()
+                # ans = input("Do you want to save checkpoint? (y/n): ")
+                # if ans.lower().startswith('y'):
+                self._save_checkpoint()
             self._close()
 
     @staticmethod
@@ -249,6 +250,12 @@ class Trainer(object):
         self._debug_requested = True
 
     def _save_checkpoint(self):
+        # Only enable save checkpoint when
+        #
+        # 1. Running in single process mode (self.rank == -1)
+        # 2. Running master process in distributed mode (self.rank == 0)
+        if self.rank > 0:
+            return
         global_step = alf.summary.get_global_counter()
         self._checkpointer.save(global_step=global_step)
 
@@ -290,7 +297,7 @@ class RLTrainer(Trainer):
         Args:
             config (TrainerConfig): configuration used to construct this trainer
         """
-        super().__init__(config)
+        super().__init__(config, ddp_rank=ddp_rank)
 
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
@@ -324,7 +331,6 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
-        self.rank = ddp_rank
         if ddp_rank >= 0:
             self._algorithm.activate_ddp(rank=ddp_rank)
 
@@ -408,7 +414,7 @@ class RLTrainer(Trainer):
                  os.path.basename(self._root_dir.strip('/')), self.rank,
                  iter_num, t, int(train_steps) / t),
                 n_seconds=1)
-                
+
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
 
