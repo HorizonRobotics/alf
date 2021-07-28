@@ -113,6 +113,8 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
                 break
             raise KeyError(
                 'Received message of unknown type {}'.format(message))
+    except KeyboardInterrupt:
+        conn.send((_MessageType.CLOSE, None))
     except Exception:  # pylint: disable=broad-except
         etype, evalue, tb = sys.exc_info()
         stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
@@ -298,8 +300,9 @@ class ProcessEnvironment(object):
         if message == _MessageType.RESULT:
             return payload
         self.close()
-        raise KeyError(
-            'Received message of unexpected type {}'.format(message))
+        if message is not _MessageType.CLOSE:
+            raise KeyError(
+                'Received message of unexpected type {}'.format(message))
 
     def render(self, mode='human'):
         """Render the environment.

@@ -174,6 +174,8 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
         trainer.train()
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         # If the training worker is running as a process in multiprocessing
         # environment, this will make sure that the exception raised in this
@@ -218,12 +220,19 @@ def main(_):
 
         logging.info(f'Training on {world_size} GPUs')
 
-        processes = mp.spawn(
-            training_worker,
-            args=(world_size, conf_file, root_dir),
-            join=True,
-            nprocs=world_size,
-            start_method='spawn')
+        try:
+            processes = mp.spawn(
+                training_worker,
+                args=(world_size, conf_file, root_dir),
+                join=True,
+                nprocs=world_size,
+                start_method='spawn')
+
+            processes.join()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            logging.exception(f'Training failed on exception: {e}')
 
 
 if __name__ == '__main__':
