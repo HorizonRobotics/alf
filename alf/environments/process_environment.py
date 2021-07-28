@@ -157,8 +157,18 @@ class ProcessEnvironment(object):
         Args:
             wait_to_start (bool): Whether the call should wait for an env initialization.
         """
-        self._conn, conn = multiprocessing.Pipe()
-        self._process = multiprocessing.Process(
+        # The following context made sure that the newly created child process
+        # (for environment) is started using the "fork" start method.
+        #
+        # This is to prevent multiprocessing from accidentally creating the
+        # child process with the "spawn" start method. Using "fork" start method
+        # is required here because we would like to have the child process
+        # inherit the alf configurations from the parent process, so that such
+        # confiurations are effective for the to-be-created environments in the
+        # child process.
+        mp_ctx = multiprocessing.get_context('fork')
+        self._conn, conn = mp_ctx.Pipe()
+        self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)
