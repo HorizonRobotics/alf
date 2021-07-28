@@ -50,6 +50,7 @@ from absl import flags
 from absl import logging
 import os
 import pathlib
+import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -104,40 +105,6 @@ def _setup_device(rank: int = 0):
         alf.set_default_device('cuda')
         torch.cuda.set_device(rank)
 
-
-class FlagsCache(object):
-    def __init__(self, root_dir: str):
-        """Construct a FlagsCache object
-
-        """
-        self.cached_file = pathlib.Path(root_dir, 'flags', 'cached_flags.txt')
-
-    def store(self):
-        self.cached_file.parent.mkdir(exist_ok=True, parents=True)
-        self.cached_file.unlink(missing_ok=True)
-        flags.FLAGS.append_flags_into_file(self.cached_file)        
-
-    def load(self):
-        if not self.cached_file.exists():
-            raise FileNotFoundError(f'Cannot load flags cache: {self.cached_file} does not exist')
-        _define_flags()
-        argv = flags.FLAGS.read_flags_from_files([f'--flagfile={self.cached_file}'])
-        flags.FLAGS([__file__] + argv, known_only=True)
-        flags.FLAGS.mark_as_parsed()
-
-# def _save_flags(
-#     """Save the flags to root direcotry
-
-#     This is to make sure that each child process can call _load_flags
-#     to get the flags passed to the parent process.
-
-#     The actual path is <root_dir>/flags/cached_flags.txt
-
-#     Args:
-#         root_dir (int): Path to the directory for writing saved flags cache
-#     """
-
-
 def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
     """An executable instance that trains and evaluate the algorithm
 
@@ -154,7 +121,9 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
             # TODO(breakds): Also update the file level documentation when DDP is working
-            FlagsCache(root_dir).load()
+            print(f'argv={sys.argv}')
+            _define_flags()
+            flags.FLAGS(sys.argv, known_only=True)
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
@@ -192,7 +161,6 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
 def main(_):
     root_dir = common.abs_path(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
-    FlagsCache(root_dir).store()
 
     if FLAGS.store_snapshot:
         common.generate_alf_root_snapshot(common.alf_root(), root_dir)
@@ -227,8 +195,6 @@ def main(_):
                 join=True,
                 nprocs=world_size,
                 start_method='spawn')
-
-            processes.join()
         except KeyboardInterrupt:
             pass
         except Exception as e:
