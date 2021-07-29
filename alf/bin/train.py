@@ -54,7 +54,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from alf.utils import common
+from alf.utils import common, flags_cache
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
 
@@ -120,6 +120,14 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         if world_size > 1:
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
+            # In distributed mode, this function is running in a newly spawned
+            # process, and will have blank FLAGS at this moment.
+            #
+            # Define and then load the cached flags from the parent process so
+            # that all the functionalities that depends on the abseil FLAGS can
+            # work smoothly and transparently.
+            _define_flags()
+            flags_cache.load(root_dir)
             # TODO(breakds): Remove this when DDP is finally working
             # TODO(breakds): Also update the file level documentation when DDP is working
             raise RuntimeError(
@@ -159,6 +167,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
 def main(_):
     root_dir = common.abs_path(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
+    flags_cache.store(root_dir)
 
     if FLAGS.store_snapshot:
         common.generate_alf_root_snapshot(common.alf_root(), root_dir)
