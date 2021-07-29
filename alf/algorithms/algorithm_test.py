@@ -39,6 +39,10 @@ class MyAlg(Algorithm):
         return ['ignored_param']
 
 
+# class HigherLevelAlgorithm(Algorithm):
+#     def __init__(self
+
+
 class AlgorithmTest(alf.test.TestCase):
     def test_flatten_module(self):
         a = nn.Module()
@@ -192,6 +196,14 @@ class AlgorithmTest(alf.test.TestCase):
         params2 = _get_optimizer_params(opt2)
         shapes2 = [p.shape for p in params2]
         self.assertEqual(shapes1, shapes2)
+
+    def test_optimizer_name(self):
+        optimizer1 = alf.optimizers.Adam(lr=0.25)
+        sub_algorithm = MyAlg(optimizer=optimizer1)
+        my_algorithm = MyAlg(sub_algs=[sub_algorithm])
+        self.assertTrue('_optimizers.0' in sub_algorithm.state_dict())
+        self.assertTrue(
+            '_module_list.0._optimizers.0' in my_algorithm.state_dict())
 
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
