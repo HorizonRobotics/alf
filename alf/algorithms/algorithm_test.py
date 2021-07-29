@@ -39,10 +39,6 @@ class MyAlg(Algorithm):
         return ['ignored_param']
 
 
-# class HigherLevelAlgorithm(Algorithm):
-#     def __init__(self
-
-
 class AlgorithmTest(alf.test.TestCase):
     def test_flatten_module(self):
         a = nn.Module()
