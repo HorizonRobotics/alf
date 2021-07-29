@@ -41,8 +41,13 @@ You can visualize playing of the trained model by running:
     --gin_file=ac_cart_pole.gin \
     --alsologtostderr
 
+In case you have multiple GPUs on the machine and you would like to
+train with all of them, specify --distributed multi-gpu. This will use
+PyTorch's DistributedDataParallel for training.
+
 If instead of Gin configuration file, you want to use ALF python conf file, then
 replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_param".
+
 """
 
 from absl import app
@@ -50,6 +55,7 @@ from absl import flags
 from absl import logging
 import os
 import pathlib
+import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -120,18 +126,18 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         if world_size > 1:
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
-            # TODO(breakds): Remove this when DDP is finally working
-            # TODO(breakds): Also update the file level documentation when DDP is working
-            raise RuntimeError(
-                "Mutli-GPU DDP training is under development and temporarily unavailble"
-            )
+            # Recover the flags when spawned as a sub process
+            _define_flags()
+            FLAGS(sys.argv, known_only=True)
+            FLAGS.mark_as_parsed()
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
         trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
 
         if trainer_conf.ml_type == 'rl':
-            trainer = policy_trainer.RLTrainer(trainer_conf)
+            ddp_rank = rank if world_size > 1 else -1
+            trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank)
         elif trainer_conf.ml_type == 'sl':
             # NOTE: SLTrainer does not support distributed training yet
             if world_size > 1:
