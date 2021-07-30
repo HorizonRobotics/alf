@@ -138,7 +138,10 @@ class Trainer(object):
     def train(self):
         """Perform training."""
         self._restore_checkpoint()
-        alf.summary.enable_summary()
+        if self._rank <= 0:
+            # Only enable summary for single process (rank is -1) training or
+            # the master process (rank is 0) in multi-process training.
+            alf.summary.enable_summary()
 
         self._checkpoint_requested = False
         signal.signal(signal.SIGUSR2, self._request_checkpoint)
