@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
 from functools import partial
 import pprint
 import torch
@@ -23,8 +24,10 @@ from alf.utils import common, dist_utils
 from alf.optimizers import Adam
 
 
-class LagrangianRewardWeightAlgorithmTest(alf.test.TestCase):
-    def test_lagrangian_algorithm(self):
+class LagrangianRewardWeightAlgorithmTest(parameterized.TestCase,
+                                          alf.test.TestCase):
+    @parameterized.parameters((False, ), (True, ))
+    def test_lagrangian_algorithm(self, reward_weight_projection):
         batch_size = 2
         obs_dim = 3
         observation_spec = alf.TensorSpec([obs_dim])
@@ -39,6 +42,7 @@ class LagrangianRewardWeightAlgorithmTest(alf.test.TestCase):
         alg = LagrangianRewardWeightAlgorithm(
             reward_spec,
             reward_thresholds=[None, 0.1, -0.1, None],
+            reward_weight_projection=reward_weight_projection,
             optimizer=Adam(lr=1.),
             init_weights=1.)
 
@@ -54,13 +58,17 @@ class LagrangianRewardWeightAlgorithmTest(alf.test.TestCase):
         alg.after_train_iter(experience, experience.rollout_info)
 
         reward_weights = alg.reward_weights
-        # No thresholds, no training
-        self.assertEqual(float(reward_weights[0]), 1.)
-        self.assertEqual(float(reward_weights[3]), 1.)
-        # weight increased (0 < 0.1)
-        self.assertGreater(float(reward_weights[1]), 1.)
-        # weight decreased (0 > -0.1)
-        self.assertGreater(1., float(reward_weights[2]))
+
+        if not reward_weight_projection:
+            # No thresholds, no training
+            self.assertEqual(float(reward_weights[0]), 1.)
+            self.assertEqual(float(reward_weights[3]), 1.)
+            # weight increased (0 < 0.1)
+            self.assertGreater(float(reward_weights[1]), 1.)
+            # weight decreased (0 > -0.1)
+            self.assertGreater(1., float(reward_weights[2]))
+        else:
+            self.assertTensorClose(reward_weights.sum(), torch.tensor(1.))
 
 
 if __name__ == '__main__':

@@ -367,7 +367,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                        continuous_actor_network_cls, critic_network_cls,
                        q_network_cls):
         def _make_parallel(net):
-            return net.make_parallel(self._num_critic_replicas)
+            return net.make_parallel(
+                self._num_critic_replicas * reward_spec.numel)
 
         def _check_spec_equal(spec1, spec2):
             assert nest.flatten(spec1) == nest.flatten(spec2), (
@@ -411,8 +412,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     " be provided!")
                 critic_network = critic_network_cls(
                     input_tensor_spec=(observation_spec,
-                                       continuous_action_spec),
-                    output_tensor_spec=reward_spec)
+                                       continuous_action_spec))
                 critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
@@ -566,6 +566,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # discrete/mixed: critics shape [B, replicas, num_actions]
         # continuous: critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
+        if self.has_multidim_reward():
+            # [B, replicas * reward_dim] -> [B, replicas, reward_dim]
+            critics = critics.reshape(-1, self._num_critic_replicas,
+                                      *self._reward_spec.shape)
         return critics, critics_state
 
     def _actor_train_step(self, inputs: TimeStep, state, action, critics,
