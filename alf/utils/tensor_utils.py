@@ -75,16 +75,22 @@ def tensor_extend(x, y):
     return torch.cat((x, y.unsqueeze(0)))
 
 
-def tensor_extend_zero(x):
-    """Extending tensor with zeros.
+def tensor_extend_zero(x, dim=0):
+    """Extending tensor with zeros along an axis.
 
-    new_slice.shape should be same as tensor.shape[1:]
     Args:
         x (Tensor): tensor to be extended
+        dim (int): the axis to extend zeros
     Returns:
-        Tensor: the extended tensor. Its shape is ``(x.shape[0]+1, x.shape[1:])``
+        Tensor: the extended tensor. Its shape is
+            ``(*x.shape[:dim], x.shape[dim]+1, *x.shape[dim+1:])``
     """
-    return torch.cat((x, torch.zeros(1, *x.shape[1:], dtype=x.dtype)))
+    if dim < 0:
+        return tensor_extend_zero(x, dim + x.ndim)
+
+    zero_shape = x.shape[:dim] + (1, ) + x.shape[dim + 1:]
+    zeros = torch.zeros(zero_shape, dtype=x.dtype)
+    return torch.cat((x, zeros), dim=dim)
 
 
 def tensor_prepend(x, y):

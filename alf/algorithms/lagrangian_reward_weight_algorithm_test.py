@@ -27,7 +27,7 @@ from alf.optimizers import Adam
 class LagrangianRewardWeightAlgorithmTest(parameterized.TestCase,
                                           alf.test.TestCase):
     @parameterized.parameters((False, ), (True, ))
-    def test_lagrangian_algorithm(self, reward_weight_projection):
+    def test_lagrangian_algorithm(self, reward_weight_normalization):
         batch_size = 2
         obs_dim = 3
         observation_spec = alf.TensorSpec([obs_dim])
@@ -42,7 +42,7 @@ class LagrangianRewardWeightAlgorithmTest(parameterized.TestCase,
         alg = LagrangianRewardWeightAlgorithm(
             reward_spec,
             reward_thresholds=[None, 0.1, -0.1, None],
-            reward_weight_projection=reward_weight_projection,
+            reward_weight_normalization=reward_weight_normalization,
             optimizer=Adam(lr=1.),
             init_weights=1.)
 
@@ -59,7 +59,7 @@ class LagrangianRewardWeightAlgorithmTest(parameterized.TestCase,
 
         reward_weights = alg.reward_weights
 
-        if not reward_weight_projection:
+        if not reward_weight_normalization:
             # No thresholds, no training
             self.assertEqual(float(reward_weights[0]), 1.)
             self.assertEqual(float(reward_weights[3]), 1.)

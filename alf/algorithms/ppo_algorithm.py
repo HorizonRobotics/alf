@@ -73,8 +73,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
             discounts=discounts,
             td_lambda=self._loss._lambda,
             time_major=False)
-        advantages = tensor_utils.tensor_extend_zero(
-            advantages.transpose(0, 1)).transpose(0, 1)
+        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
 
         returns = rollout_info.value + advantages
         return root_inputs, PPOInfo(

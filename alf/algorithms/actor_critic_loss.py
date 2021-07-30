@@ -153,7 +153,7 @@ class ActorCriticLoss(Loss):
             advantages = torch.clamp(advantages, -self._advantage_clip,
                                      self._advantage_clip)
 
-        if info.reward_weights is not ():
+        if info.reward_weights != ():
             advantages = (advantages * info.reward_weights).sum(-1)
         pg_loss = self._pg_loss(info, advantages.detach())
 

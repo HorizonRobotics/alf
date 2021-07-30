@@ -55,7 +55,7 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
                  optimizer,
                  init_weights=1.,
                  max_weight=None,
-                 reward_weight_projection=True,
+                 reward_weight_normalization=True,
                  lambda_transform=F.softplus,
                  debug_summaries=False,
                  name="LagrangianRewardWeightAlgorithm"):
@@ -70,8 +70,11 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
             optimizer (optimizer): optimizer for learning the reward weights.
             init_weights (float|list[float]): the initial reward weights.
             max_weight (float): the reward weights will be clipped up to this value
-            reward_weight_projection (bool): whether project the weights to
-                a simplex
+            reward_weight_normalization (bool): whether project the weights to
+                a simplex (sum-to-one normalization)
+            lambda_transform (Callable): the transform function to make sure all
+                lambdas (reward weights) are positive. Currently only support
+                ``F.softplus`` and ``torch.exp``.
             debug_summaries (bool):
             name (str):
         """
@@ -92,7 +95,7 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         self._reward_thresholds = torch.tensor(
             [0. if t is None else t for t in reward_thresholds])
 
-        self._reward_weight_projection = reward_weight_projection
+        self._reward_weight_normalization = reward_weight_normalization
 
         lambda_init = torch.tensor(init_weights)
         if lambda_init.ndim == 0:
@@ -123,7 +126,7 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         """Return the detached reward weights. These weights are expected not to
         be changed by external code."""
         weights = self._lambda_transform(self._lambdas).detach().clone()
-        if self._reward_weight_projection:
+        if self._reward_weight_normalization:
             weights = weights / weights.sum()
         return weights
 
@@ -193,7 +196,7 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
                  optimizer,
                  init_weights=1.,
                  max_weight=None,
-                 reward_weight_projection=True,
+                 reward_weight_normalization=True,
                  pred_rewards_averager_ctor=partial(
                      EMAverager, update_rate=1e-4),
                  debug_summaries=False,
@@ -205,12 +208,14 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
             reward_thresholds (list[float|None]): a list of floating numbers,
                 each representing a desired minimum reward threshold in expectation.
                 If any entry is None, then that reward weight won't be tuned and
-                its init value is always used.
+                its init value (after normalization if ``reward_weight_normalization=True``)
+                is always used. If a single floating value, it's shared by all
+                weights.
             optimizer (optimizer): optimizer for learning the reward weights.
             init_weights (float|list[float]): the initial reward weights.
             max_weight (float): the reward weights will be clipped up to this value
-            reward_weight_projection (bool): whether project the weights to
-                a simplex
+            reward_weight_normalization (bool): whether project the weights to
+                a simplex (sum-to-one normalization)
             pred_rewards_averager_ctor (Callable): callable for creating an
                 averager to maintain a moving average of prediction rewards.
                 If None, ``EMAverager`` with an update rate of ``1e-4`` will be
@@ -227,7 +232,7 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
             optimizer=optimizer,
             init_weights=init_weights,
             max_weight=max_weight,
-            reward_weight_projection=reward_weight_projection,
+            reward_weight_normalization=reward_weight_normalization,
             debug_summaries=debug_summaries,
             name=name)
 

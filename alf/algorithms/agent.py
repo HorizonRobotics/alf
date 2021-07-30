@@ -259,7 +259,7 @@ class Agent(RLAlgorithm):
             info = info._replace(goal_generator=goal_step.info)
             goal, goal_reward = goal_step.output
             observation = [observation, goal]
-            if goal_reward is not ():
+            if goal_reward != ():
                 rewards['goal_generator'] = goal_reward
 
         if self._irm is not None:
@@ -357,7 +357,7 @@ class Agent(RLAlgorithm):
     def calc_loss(self, info: AgentInfo):
         """Calculate loss."""
 
-        if info.rewards is not ():
+        if info.rewards != ():
             for name, reward in info.rewards.items():
                 self.summarize_reward("reward/%s" % name, reward)
 
@@ -401,7 +401,7 @@ class Agent(RLAlgorithm):
         """
         exp = root_inputs
         rewards = rollout_info.rewards
-        if rewards is not ():
+        if rewards != ():
             rewards = copy.copy(rewards)
             rewards['overall'] = self._calc_overall_reward(
                 root_inputs.reward, rewards)
