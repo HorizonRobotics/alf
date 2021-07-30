@@ -20,6 +20,7 @@ based TrainerConfig in this module.
 """
 
 import runpy
+import math
 
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
@@ -29,7 +30,8 @@ from alf.utils.common import set_random_seed
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
-    'get_action_spec', 'get_env', 'parse_config'
+    'get_action_spec', 'get_env', 'parse_config',
+    'adjust_config_by_multi_process_divider'
 ]
 
 _env = None
@@ -102,7 +104,36 @@ def get_action_spec():
 _is_parsing = False
 
 
-def parse_config(conf_file, conf_params):
+def adjust_config_by_multi_process_divider(multi_process_divider: int = 1):
+    """Adjust specific configuration value in multiple process settings
+
+    Alf assumes all configuration files geared towards single process training.
+    This means that in multi-process settings such as DDP some of the
+    configuration values needs to be adjusted to achieve parity on number of
+    processes.
+
+    For example, if we run 64 environments in parallel for single process
+    settings, the value needs to be overriden with 16 if there are 4 identical
+    processes running DDP training to achieve parity.
+
+    Args:
+        multi_process_divider (int): this is equivalent to number of processes
+    """
+    if multi_process_divider <= 1:
+        return
+
+    # Adjust the num of environments per process. The value for single process
+    # (before adjustment) is divided by the multi_process_divider and becomes
+    # the per-process value.
+    tag = 'create_environment.num_parallel_environments'
+    num_parallel_environments = get_config_value(tag)
+    config1(
+        tag,
+        math.ceil(num_parallel_environments / multi_process_divider),
+        raise_if_used=False)
+
+
+def parse_config(conf_file, conf_params, multi_process_divider: int = 1):
     """Parse config file and config parameters
 
     Note: a global environment will be created (which can be obtained by
@@ -113,6 +144,9 @@ def parse_config(conf_file, conf_params):
         conf_file (str): The full path of the config file.
         conf_params (list[str]): the list of config parameters. Each one has a
             format of CONFIG_NAME=VALUE.
+        multi_process_divider (int): this is equivalent to number of processes.
+            We need it to adjust specific config to achieve number of process
+            parity, if the value is greater than 1.
     """
     global _is_parsing
     _is_parsing = True
@@ -133,6 +167,10 @@ def parse_config(conf_file, conf_params):
         validate_pre_configs()
     finally:
         _is_parsing = False
+
+    # TODO(breakds): Decouple this with configuration parsing after get_env is
+    # decoupled from parse_config.
+    adjust_config_by_multi_process_divider(multi_process_divider)
 
     # Create the global environment and initialize random seed
     get_env()

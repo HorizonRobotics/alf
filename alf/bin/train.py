@@ -132,7 +132,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             FLAGS.mark_as_parsed()
 
         # Parse the configuration file, which will also implicitly bring up the environments.
-        common.parse_conf_file(conf_file)
+        common.parse_conf_file(conf_file, multi_process_divider=world_size)
         trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
 
         if trainer_conf.ml_type == 'rl':

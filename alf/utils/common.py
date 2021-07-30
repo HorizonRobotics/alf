@@ -470,7 +470,7 @@ def get_conf_file():
     return gin_file[0]
 
 
-def parse_conf_file(conf_file):
+def parse_conf_file(conf_file, multi_process_divider: int = 1):
     """Parse config from file.
 
     It also looks for FLAGS.gin_param and FLAGS.conf_param for extra configs.
@@ -481,6 +481,9 @@ def parse_conf_file(conf_file):
 
     Args:
         conf_file (str): the full path to the config file
+        multi_process_divider (int): this is equivalent to number of processes.
+            We need it to adjust specific config to achieve number of process
+            parity, if the value is greater than 1.
     """
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
@@ -488,10 +491,11 @@ def parse_conf_file(conf_file):
         ml_type = alf.get_config_value('TrainerConfig.ml_type')
         if ml_type == 'rl':
             # Create the global environment and initialize random seed
+            alf.adjust_config_by_multi_process_divider(multi_process_divider)
             alf.get_env()
     else:
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
-        alf.parse_config(conf_file, conf_params)
+        alf.parse_config(conf_file, conf_params, multi_process_divider)
 
 
 def summarize_config():
