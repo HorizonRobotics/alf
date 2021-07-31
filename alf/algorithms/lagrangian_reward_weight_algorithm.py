@@ -44,9 +44,11 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
     reward is greater than the threshold (requirement satisfied) then it decreases
     the reward weight; otherwise it increases the weight.
 
-    Note that this algorithm doesn't put a constraint on per-step basis since it
-    only learns a single weight for each reward dim. A reward is always the higher
-    the better.
+    .. note::
+
+        This algorithm doesn't put a constraint on per-step basis since it only
+        learns a single, state-independent weight for each reward dim. Also, a
+        reward is always assumed to be the higher the better.
     """
 
     def __init__(self,
@@ -63,10 +65,11 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         Args:
             reward_spec (TensorSpec): a rank-1 tensor spec representing multi-dim
                 rewards.
-            reward_thresholds (list[float|None]): a list of floating numbers,
+            reward_thresholds (list[float]|None]): a list of floating numbers,
                 each representing a desired minimum reward threshold in expectation.
-                If any entry is None, then that reward weight won't be tuned and
-                its init value is always used.
+                If any entry is None, then the corresponding reward weight won't be
+                tuned; either its init value or its normalized init value
+                (if ``reward_weight_normalization=True``) will be used.
             optimizer (optimizer): optimizer for learning the reward weights.
             init_weights (float|list[float]): the initial reward weights.
             max_weight (float): the reward weights will be clipped up to this value
@@ -82,13 +85,13 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
             debug_summaries=debug_summaries, name=name)
 
         self._reward_spec = reward_spec
-        self._reward_thresholds = reward_thresholds
 
         assert reward_spec.numel > 1, (
             "Only multi-dim reward needs this algorithm!")
-        assert len(reward_thresholds) == reward_spec.numel, (
-            "Mismatch between len(reward_weights)=%s and reward_dim=%s" %
-            (len(reward_thresholds), reward_spec.numel))
+        assert (isinstance(reward_thresholds, (list, tuple))
+                and len(reward_thresholds) == reward_spec.numel), (
+                    "Mismatch between len(reward_weights)=%s and reward_dim=%s"
+                    % (len(reward_thresholds), reward_spec.numel))
 
         self._reward_training_mask = torch.tensor(
             [t is not None for t in reward_thresholds], dtype=torch.float32)
@@ -187,7 +190,9 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
     maintain the reward statistics. Inside every ``after_train_iter`` we perform
     a gradient step by querying the current averager value.
 
-    Note: this algorithm asserts ``TrainerConfig.evaluate=True``.
+    .. note::
+
+        This algorithm asserts ``TrainerConfig.evaluate=True``.
     """
 
     def __init__(self,
@@ -205,12 +210,11 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
         Args:
             reward_spec (TensorSpec): a rank-1 tensor spec representing multi-dim
                 rewards.
-            reward_thresholds (list[float|None]): a list of floating numbers,
+            reward_thresholds (list[float]|None]): a list of floating numbers,
                 each representing a desired minimum reward threshold in expectation.
-                If any entry is None, then that reward weight won't be tuned and
-                its init value (after normalization if ``reward_weight_normalization=True``)
-                is always used. If a single floating value, it's shared by all
-                weights.
+                If any entry is None, then the corresponding reward weight won't be
+                tuned; either its init value or its normalized init value
+                (if ``reward_weight_normalization=True``) will be used.
             optimizer (optimizer): optimizer for learning the reward weights.
             init_weights (float|list[float]): the initial reward weights.
             max_weight (float): the reward weights will be clipped up to this value

@@ -85,10 +85,8 @@ def tensor_extend_zero(x, dim=0):
         Tensor: the extended tensor. Its shape is
             ``(*x.shape[:dim], x.shape[dim]+1, *x.shape[dim+1:])``
     """
-    if dim < 0:
-        return tensor_extend_zero(x, dim + x.ndim)
-
-    zero_shape = x.shape[:dim] + (1, ) + x.shape[dim + 1:]
+    zero_shape = list(x.shape)
+    zero_shape[dim] = 1
     zeros = torch.zeros(zero_shape, dtype=x.dtype)
     return torch.cat((x, zeros), dim=dim)
 
