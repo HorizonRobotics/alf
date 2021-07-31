@@ -31,25 +31,6 @@ from alf.data_structures import TimeStep
 import alf.nest as nest
 
 
-def array_to_tensor(data):
-    def _array_to_cpu_tensor(obj):
-        return torch.as_tensor(
-            obj, device='cpu') if isinstance(obj,
-                                             (np.ndarray, np.number)) else obj
-
-    return nest.map_structure(_array_to_cpu_tensor, data)
-
-
-def tensor_to_array(data):
-    def _tensor_to_array(obj):
-        if torch.is_tensor(obj):
-            return obj.cpu().numpy()
-        else:
-            return obj
-
-    return nest.map_structure(_tensor_to_array, data)
-
-
 class _MessageType(Enum):
     """Message types for communication via the pipe.
 
@@ -244,7 +225,6 @@ class ProcessEnvironment(object):
             Promise object that blocks and provides the return value when called.
         """
         payload = name, args, kwargs
-        payload = tensor_to_array(payload)
         self._conn.send((_MessageType.CALL, payload))
         return self._receive
 
@@ -301,7 +281,6 @@ class ProcessEnvironment(object):
             Payload object of the message.
         """
         message, payload = self._conn.recv()
-        payload = array_to_tensor(payload)
 
         # Re-raise exceptions in the main process.
         if message == _MessageType.EXCEPTION:
