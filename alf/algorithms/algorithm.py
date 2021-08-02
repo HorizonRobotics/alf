@@ -146,7 +146,6 @@ class Algorithm(AlgorithmInterface):
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
-        self._opt_keys = []
         self._module_to_optimizer = {}
         self._path = ''
         if optimizer:
@@ -720,9 +719,7 @@ class Algorithm(AlgorithmInterface):
             self._setup_optimizers()
             for i, opt in enumerate(self._optimizers):
                 new_key = prefix + '_optimizers.%d' % i
-                if new_key not in self._opt_keys:
-                    self._opt_keys.append(new_key)
-                opts_dict[self._opt_keys[i]] = opt.state_dict()
+                opts_dict[new_key] = opt.state_dict()
 
             destination.update(opts_dict)
 
@@ -990,7 +987,7 @@ class Algorithm(AlgorithmInterface):
             - params (list[(name, Parameter)]): list of parameters being updated.
         """
         masks = None
-        if (batch_info is not None and batch_info.importance_weights is not ()
+        if (batch_info is not None and batch_info.importance_weights != ()
                 and self._config.priority_replay_beta != 0):
             masks = batch_info.importance_weights.pow(
                 -self._config.priority_replay_beta).unsqueeze(0)
@@ -1319,7 +1316,7 @@ class Algorithm(AlgorithmInterface):
                 policy_state = common.reset_state_if_necessary(
                     policy_state, initial_train_state,
                     exp.step_type == StepType.FIRST)
-            elif policy_state is not ():
+            elif policy_state != ():
                 common.warning_once(
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
@@ -1376,7 +1373,7 @@ class Algorithm(AlgorithmInterface):
             experience, self.processed_experience_spec)
 
         loss_info = self.calc_loss(train_info)
-        if loss_info.priority is not ():
+        if loss_info.priority != ():
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
             self._exp_replayer.update_priority(batch_info.env_ids,
@@ -1388,7 +1385,7 @@ class Algorithm(AlgorithmInterface):
                     summary_utils.add_mean_hist_summary(
                         "old_importance_weight", batch_info.importance_weights)
         else:
-            assert batch_info is None or batch_info.importance_weights is (), (
+            assert batch_info is None or batch_info.importance_weights == (), (
                 "Priority replay is enabled. But priority is not calculated.")
 
         if self.is_rl():

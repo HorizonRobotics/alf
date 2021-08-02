@@ -112,6 +112,13 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
                 break
             raise KeyError(
                 'Received message of unknown type {}'.format(message))
+    except KeyboardInterrupt:
+        # When worker receives interruption from keyboard (i.e. Ctrl-C), notify
+        # the parent process to shut down quietly by sending the CLOSE message.
+        #
+        # This is to avoid sometimes tens of environment processes panicking
+        # simultaneously.
+        conn.send((_MessageType.CLOSE, None))
     except Exception:  # pylint: disable=broad-except
         etype, evalue, tb = sys.exc_info()
         stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
@@ -300,8 +307,12 @@ class ProcessEnvironment(object):
         if message == _MessageType.EXCEPTION:
             stacktrace = payload
             raise Exception(stacktrace)
-        if message == _MessageType.RESULT:
+        elif message == _MessageType.RESULT:
             return payload
+        elif message == _MessageType.CLOSE:
+            # When notified that the child process is going to shut down, do not
+            # panic and handle it quietly.
+            return None
         self.close()
         raise KeyError(
             'Received message of unexpected type {}'.format(message))
