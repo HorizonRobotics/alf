@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
 from functools import partial
 import torch
 import torch.distributions as td
@@ -45,6 +46,7 @@ def create_algorithm(env):
     alg = ActorCriticAlgorithm(
         observation_spec=obs_spec,
         action_spec=action_spec,
+        reward_spec=env.reward_spec(),
         actor_network_ctor=actor_network,
         value_network_ctor=value_network,
         env=env,
@@ -55,9 +57,10 @@ def create_algorithm(env):
     return alg
 
 
-class ActorCriticAlgorithmTest(alf.test.TestCase):
-    def test_ac_algorithm(self):
-        env = MyEnv(batch_size=3)
+class ActorCriticAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((1, ), (3, ))
+    def test_ac_algorithm(self, reward_dim):
+        env = MyEnv(batch_size=3, reward_dim=reward_dim)
         alg1 = create_algorithm(env)
 
         iter_num = 50
@@ -76,8 +79,9 @@ class ActorCriticAlgorithmTest(alf.test.TestCase):
         # global counter is iter_num due to alg1
         self.assertTrue(alf.summary.get_global_counter() == iter_num)
 
-    def test_ac_algorithm_with_global_counter(self):
-        env = MyEnv(batch_size=3)
+    @parameterized.parameters((1, ), (3, ))
+    def test_ac_algorithm_with_global_counter(self, reward_dim):
+        env = MyEnv(batch_size=3, reward_dim=reward_dim)
         alg2 = create_algorithm(env)
         new_iter_num = 3
         for _ in range(new_iter_num):
