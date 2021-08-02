@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from absl.testing import parameterized
 from functools import partial
 import torch
 
@@ -65,6 +66,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     return PPOAlgorithm(
         observation_spec=observation_spec,
         action_spec=action_spec,
+        reward_spec=env.reward_spec(),
         env=env,
         config=config,
         actor_network_ctor=actor_net,
@@ -74,16 +76,18 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         debug_summaries=DEBUGGING)
 
 
-class PpoTest(alf.test.TestCase):
-    def test_ppo(self):
+class PpoTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((1, ), (3, ))
+    def test_ppo(self, reward_dim):
         env_class = PolicyUnittestEnv
         learning_rate = 1e-1
         iterations = 20
         batch_size = 100
         steps_per_episode = 13
-        env = env_class(batch_size, steps_per_episode)
+        env = env_class(batch_size, steps_per_episode, reward_dim=reward_dim)
 
-        eval_env = env_class(batch_size, steps_per_episode)
+        eval_env = env_class(
+            batch_size, steps_per_episode, reward_dim=reward_dim)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
 

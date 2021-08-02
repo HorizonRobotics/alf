@@ -89,10 +89,14 @@ class MyEnv(object):
     action 1 gets 1.0, action 2 gets reward -1.
     """
 
-    def __init__(self, batch_size, obs_shape=(2, )):
+    def __init__(self, batch_size, obs_shape=(2, ), reward_dim=1):
         super().__init__()
         self._batch_size = batch_size
+        self._reward_dim = reward_dim
         self._rewards = torch.tensor([0.5, 1.0, -1.])
+        if reward_dim != 1:
+            self._rewards = self._rewards.unsqueeze(-1).expand(
+                (-1, self._reward_dim))
         self._observation_spec = alf.TensorSpec(obs_shape, dtype='float32')
         self._action_spec = alf.BoundedTensorSpec(
             shape=(), dtype='int64', minimum=0, maximum=2)
@@ -105,7 +109,10 @@ class MyEnv(object):
         return self._action_spec
 
     def reward_spec(self):
-        return alf.TensorSpec(())
+        if self._reward_dim == 1:
+            return TensorSpec(())
+        else:
+            return TensorSpec((self._reward_dim, ))
 
     def reset(self):
         self._prev_action = torch.zeros(self._batch_size, dtype=torch.int64)
@@ -114,7 +121,7 @@ class MyEnv(object):
             step_type=torch.full([self._batch_size],
                                  StepType.FIRST,
                                  dtype=torch.int32),
-            reward=torch.zeros(self._batch_size),
+            reward=self.reward_spec().zeros(outer_dims=(self._batch_size, )),
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
             env_id=torch.arange(self._batch_size, dtype=torch.int32))

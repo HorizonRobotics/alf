@@ -58,7 +58,9 @@ class PPOLoss(ActorCriticLoss):
         much.
 
         Args:
-            gamma (float): A discount factor for future rewards.
+            gamma (float|list[float]): A discount factor for future rewards. For
+                multi-dim reward, this can also be a list of discounts, each
+                discount applies to a reward dim.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
