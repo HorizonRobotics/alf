@@ -61,6 +61,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from alf.utils import common
+from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
 
@@ -130,6 +131,11 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             _define_flags()
             FLAGS(sys.argv, known_only=True)
             FLAGS.mark_as_parsed()
+            # Set the rank and total number of processes for distributed training.
+            PerProcessContext().set_distributed(
+                rank=rank, num_processes=world_size)
+        # Make PerProcessContext read-only.
+        PerProcessContext().finalize()
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)

@@ -20,12 +20,13 @@ based TrainerConfig in this module.
 """
 
 import runpy
-
+import math
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.config_util import config1, get_config_value, pre_config, validate_pre_configs
 from alf.environments.utils import create_environment
 from alf.utils.common import set_random_seed
+from alf.utils.per_process_context import PerProcessContext
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
@@ -102,6 +103,32 @@ def get_action_spec():
 _is_parsing = False
 
 
+def adjust_config_by_multi_process_divider(multi_process_divider: int = 1):
+    """Adjust specific configuration value in multiple process settings
+    Alf assumes all configuration files geared towards single process training.
+    This means that in multi-process settings such as DDP some of the
+    configuration values needs to be adjusted to achieve parity on number of
+    processes.
+    For example, if we run 64 environments in parallel for single process
+    settings, the value needs to be overriden with 16 if there are 4 identical
+    processes running DDP training to achieve parity.
+    Args:
+        multi_process_divider (int): this is equivalent to number of processes
+    """
+    if multi_process_divider <= 1:
+        return
+
+    # Adjust the num of environments per process. The value for single process
+    # (before adjustment) is divided by the multi_process_divider and becomes
+    # the per-process value.
+    tag = 'create_environment.num_parallel_environments'
+    num_parallel_environments = get_config_value(tag)
+    config1(
+        tag,
+        math.ceil(num_parallel_environments / multi_process_divider),
+        raise_if_used=False)
+
+
 def parse_config(conf_file, conf_params):
     """Parse config file and config parameters
 
@@ -165,6 +192,11 @@ def get_env():
         # random seed we are using.
         if random_seed is None:
             config1('TrainerConfig.random_seed', seed, raise_if_used=False)
+
+        # In case when running in multi-process mode, the number of environments
+        # per process need to be adjusted (divided by number of processes).
+        adjust_config_by_multi_process_divider(
+            PerProcessContext().num_processes)
         _env = create_environment(seed=random_seed)
     return _env
 

@@ -42,6 +42,7 @@ import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
+from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
 
 
@@ -255,6 +256,12 @@ def run_under_record_context(func,
         summary_max_queue (int): the largest number of summaries to keep in a queue;
             will flush once the queue gets bigger than this. Defaults to 10.
     """
+    # Disable summary if in distributed mode and the running process isn't the
+    # master process (i.e. rank = 0)
+    if PerProcessContext().ddp_rank > 0:
+        func()
+        return
+
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = alf.summary.create_summary_writer(
         summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
