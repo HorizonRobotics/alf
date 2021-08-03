@@ -413,8 +413,11 @@ class Beta(td.Beta):
         """
         self._concentration1 = concentration1
         self._concentration0 = concentration0
-        self._eps = eps
         super().__init__(concentration1, concentration0, validate_args)
+        if eps is None:
+            self._eps = torch.finfo(self._dirichlet.concentration.dtype).eps
+        else:
+            self._eps = float(eps)
 
     @property
     def concentration0(self):
@@ -431,11 +434,7 @@ class Beta(td.Beta):
         `<https://docs.pyro.ai/en/dev/_modules/pyro/distributions/affine_beta.html#AffineBeta>`_.
         """
         x = super(Beta, self).rsample(sample_shape)
-        if self._eps is None:
-            eps = torch.finfo(x.dtype).eps
-        else:
-            eps = self._eps
-        return torch.clamp(x, min=eps, max=1 - eps)
+        return torch.clamp(x, min=self._eps, max=1 - self._eps)
 
 
 class DiagMultivariateBeta(td.Independent):
