@@ -129,14 +129,11 @@ class InverseMVPAlgorithm(Algorithm):
     """
 
     def __init__(self,
-                 output_dim,
                  net: Network,
                  optimizer=None,
                  name="InverseMVPAlgorithm"):
         r"""Create a InverseMVPAlgorithm.
         Args:
-            output_dim (int): total output dimension of the inverse_mvp net, will differ
-                between ``svgd3`` and ``minmax`` methods
             net (Network): network for predicting outputs from inputs.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this Algorithm.
@@ -145,7 +142,6 @@ class InverseMVPAlgorithm(Algorithm):
             optimizer = alf.optimizers.Adam(lr=1e-3)
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
 
-        self._output_dim = output_dim
         self._net = net
 
     def predict_step(self, inputs, state=None):
@@ -298,7 +294,7 @@ class Generator(Algorithm):
             use_kernel_averager (bool): whether or not to use a running 
                 average of the kernel bandwith for ParVI methods. 
             functional_gradient (bool): whether or not to optimize the generator
-                with GPVI. 
+                with GPVI, currently only works for SVGD ParVI methods. 
             force_fullrank (bool): when ``functional_gradient`` is True, 
                 this option forces the dimension of the jacobian of the
                 generator to be square -- therefore invertible. We ensure this
@@ -388,13 +384,11 @@ class Generator(Algorithm):
                 z_spec = TensorSpec(shape=(noise_dim, ))
                 eps_spec = TensorSpec(shape=(self._eps_dim, ))
                 inverse_mvp_net = self._create_mvp_network(
-                    (z_spec, eps_spec), inverse_mvp_hidden_size,
+                    (z_spec, eps_spec), output_dim, inverse_mvp_hidden_size,
                     inverse_mvp_hidden_layers)
 
                 self._inverse_mvp = InverseMVPAlgorithm(
-                    output_dim,
-                    net=inverse_mvp_net,
-                    optimizer=inverse_mvp_optimizer)
+                    net=inverse_mvp_net, optimizer=inverse_mvp_optimizer)
 
             if use_kernel_averager:
                 self._kernel_width_averager = AdaptiveAverager(
@@ -914,19 +908,32 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _create_mvp_network(self, input_spec, hidden_size, num_hidden_layers):
-        r"""Instantiate an encoding network to compuate a matrix-vector
-        product. Used for computing the functional gradient in _rkhs_func_grad.
+    def _create_mvp_network(self, input_spec, output_dim, hidden_size,
+                            num_hidden_layers):
+        r"""Instantiate an encoding network to predict a matrix-vector
+        product of the form :math:`y=J^{-1}*vec, where :math:`J^{-1}` is a
+        square matrix and :math:`vec` is a vector. 
+        To train this mvp_network, a minimization objective is used
+        assuming that :math:`J` is available: :math:`||Jy - vec||^2_2,`
+        where the mvp_network is trained to predict a :math:`y` that minimizes
+        this objective.
+        This network is primarily used to train ``svgd3`` when the 
+        ``functional_gradient`` is True. In this case, :math:`J^{-1}` is the inverse
+        of the Jacobian of the generator function w.r.t. input :math:`z'`, and
+        :math:`vec` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
 
         Args:
-            input_spec (TensorSpec): spec of inputs. 
-            hidden_size (int): width of hidden layers.
+            input_spec (tuple): a tuple of TensorSpec (z_spec, vec_spec) 
+            output_dim (int): output dimension, i.e., dim of mvp
+            hidden_size (int): width of hidden layers
             num_hidden_layers (int): number of hidden layers after 
 
         Returns:
             inverse mvp network (Network)
         """
-        input_dim = input_spec[0].shape[0]
+        assert isinstance(input_spec, tuple) and len(input_spec) == 2, (
+            "input_spec must have shape (z_spec, vec_spec")
+        z_dim = input_spec[0].shape[0]
         vec_dim = input_spec[1].shape[0]
 
         kernel_initializer = functools.partial(
@@ -938,13 +945,13 @@ class Generator(Algorithm):
 
         mvp_network = EncodingNetwork(
             input_spec,
-            input_preprocessors=(torch.nn.Linear(input_dim, hidden_size),
+            input_preprocessors=(torch.nn.Linear(z_dim, hidden_size),
                                  torch.nn.Linear(vec_dim, hidden_size)),
             preprocessing_combiner=alf.layers.NestConcat(),
             fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
             activation=torch.relu_,
             kernel_initializer=kernel_initializer,
-            last_layer_size=input_dim,
+            last_layer_size=output_dim,
             last_activation=math_ops.identity,
             name='InverseMVPNetwork')
 

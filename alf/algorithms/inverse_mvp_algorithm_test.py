@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,66 +18,16 @@ import torch.nn as nn
 import alf
 from alf.data_structures import AlgStep, LossInfo
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.generator import InverseMVPAlgorithm
 from alf.networks.network import Network
 from alf.networks.relu_mlp import ReluMLP
+from alf.networks.relu_mlp_test import jacobian
 from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
 import functools
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.initializers import variance_scaling_init
-
-
-class InverseMVPAlgorithm(Algorithm):
-    r"""InverseMVPNetwork Algorithm
-    It is used to predict :math:`x=J^{-1}*vec` given vec for the purpose of 
-    optimizing a downstream objective Jx - vec = 0. 
-    """
-
-    def __init__(self,
-                 net: Network = None,
-                 optimizer=None,
-                 name="InvMVPAlgorithm"):
-        r"""Create a Inverse MVP Algorithm.
-        Args:
-            net (Network): network for predicting outputs from inputs.
-            name (str): name of this Algorithm.
-        """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
-
-        self._net = net
-
-    def predict_step(self, inputs, state=None):
-        """Predict for one step of inputs.
-        Args:
-            inputs (tuple of Tensors): inputs (inputs, vec) for prediction.
-            state: not used.
-            
-        Returns:
-            AlgStep:
-            - output (torch.Tensor): predictions
-                if requires_jac_diag is True.
-            - state: not used.
-        """
-        outputs = self._net(inputs)[0]
-        return AlgStep(output=outputs, state=(), info=())
-
-
-def jacobian(y, x, create_graph=False):
-    """It is from Adam Paszke's implementation:
-    https://gist.github.com/apaszke/226abdf867c4e9d6698bd198f3b45fb7
-    """
-    jac = []
-    flat_y = y.reshape(-1)
-    grad_y = torch.zeros_like(flat_y)
-    for i in range(len(flat_y)):
-        grad_y[i] = 1.
-        grad_x, = torch.autograd.grad(
-            flat_y, x, grad_y, retain_graph=True, create_graph=create_graph)
-        jac.append(grad_x.reshape(x.shape))
-        grad_y[i] = 0.
-
-    return torch.stack(jac).reshape(y.shape + x.shape)
 
 
 def create_mvp_network(input_spec, hidden_size, num_hidden_layers):

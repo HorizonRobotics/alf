@@ -166,9 +166,7 @@ class HyperNetwork(Algorithm):
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
-                * svgd: empirical expectation of SVGD is evaluated by a single
-                  resampled particle. The main benefit of this choice is it
-                  supports conditional case, while all other options do not.
+                * svgd: same as ``svgd3``. 
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
                   half of the sampled batch. It is a trade-off between
                   computational efficiency and convergence speed.
