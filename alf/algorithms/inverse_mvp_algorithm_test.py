@@ -122,7 +122,7 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         jac_inv = torch.inverse(jac)
         jac_inv_vec = torch.matmul(vec.unsqueeze(1), jac_inv).squeeze(1)
         y = self.inverse_mvp.predict_step((inputs, vec)).output
-        self.assertArrayEqual(y, jac_inv_vec, 1e-3)
+        self.assertArrayEqual(y, jac_inv_vec, 1e-2)
 
 
 if __name__ == "__main__":
