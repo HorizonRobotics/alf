@@ -60,5 +60,3 @@ alf.config(
     eval_interval=50,
     debug_summaries=False,
     summary_interval=5)
-
-alf.config('ReplayBuffer', max_length=2048)
