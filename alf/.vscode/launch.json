@@ -9,7 +9,8 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "justMyCode": false
         },
 
         {
@@ -17,7 +18,17 @@
             "type": "python",
             "request": "launch",
             "module": "alf.bin.train",
-            "args": ["--gin_file=./examples/ac_cart_pole_debug.gin", "--root_dir=~/research/res"],
+            "args": ["--gin_file=./examples/pac_cart_pole.gin", "--root_dir=~/research/res"],
+            "justMyCode": false,
+            "python.linting.pylintArgs": ["--disable=W"]
+        },
+
+        {
+            "name": "Python: Module2",
+            "type": "python",
+            "request": "launch",
+            "module": "alf.bin.train",
+            "args": ["--gin_file=./examples/ac_cart_pole.gin", "--root_dir=~/research/res"],
             "justMyCode": false,
             "python.linting.pylintArgs": ["--disable=W"]
         }

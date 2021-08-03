@@ -1,77 +1,112 @@
+from absl import logging
 from functools import partial
-import torch
-import torch.distributions as td
 import unittest
 
 import alf
-from alf.utils import common, dist_utils, tensor_utils
-from alf.data_structures import StepType, TimeStep
-from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.algorithms.parallel_actor_critic_algorithm import ParallelActorCriticAlgorithm
-from alf.algorithms.rl_algorithm_test import MyEnv
+from alf.algorithms.parallel_actor_critic_algorithm import ParallelActorCriticAlgorithm, ParallelActorCriticState
+from alf.environments.suite_unittest import (PolicyUnittestEnv, ActionType)
+from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.utils import common
+from alf.utils.math_ops import clipped_exp
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm, ActorCriticState
+from alf.algorithms.parallel_actor_critic_loss import ParallelActorCriticLoss
+from alf.algorithms.actor_critic_loss import ActorCriticLoss
+
+class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
+    def test_parallel_trac_algorithm(self):
+
+        env_class = PolicyUnittestEnv
+        num_env = 5
+        num_eval_env = 1
+        num_parallel_agents = num_env
+        steps_per_episode = 15
+        pac = True
+        action_type = ActionType.Discrete
+
+        if pac:
+            ac_algorithm_cls = ParallelActorCriticAlgorithm
+            ac_algorithm_loss = ParallelActorCriticLoss
+        else:
+            ac_algorithm_cls = ActorCriticAlgorithm
+            ac_algorithm_loss = ActorCriticLoss
+
+        config = TrainerConfig(
+            root_dir="dummy",
+            unroll_length=25,
+            num_iterations=2500,
+            num_checkpoints=10,
+            evaluate=False,
+            debug_summaries=False,
+            summarize_grads_and_vars=False,
+            summary_interval=5,
+            epsilon_greedy=0.1,
+            num_parallel_agents=num_parallel_agents)
+        
+        env = env_class(
+            num_env,
+            steps_per_episode,
+            action_type=action_type)
+
+        eval_env = env_class(
+            num_eval_env,
+            steps_per_episode,
+            action_type=action_type)
+
+        obs_spec = env._observation_spec
+        action_spec = env._action_spec
+        reward_spec = env._reward_spec
+        
+        fc_layer_params = (100,)
+        ac_network = partial(ActorDistributionNetwork, fc_layer_params=fc_layer_params)
+        vl_network =  partial(ValueNetwork, fc_layer_params=fc_layer_params)
+
+        alg = ac_algorithm_cls(
+            observation_spec=obs_spec,
+            action_spec=action_spec,
+            reward_spec= reward_spec,
+            actor_network_ctor= ac_network,
+            value_network_ctor= vl_network,
+            env = env,
+            config= config,
+            loss_class=ac_algorithm_loss,
+            optimizer=alf.optimizers.Adam(lr=1e-3),
+            debug_summaries=False,
+            name="MyParallelActorCritic")
+
+        eval_env.reset()
+        for i in range(700):
+            alg.train_iter()
+            if i < config.initial_collect_steps:
+                continue
+            eval_env.reset()
+            eval_time_step = unroll(eval_env, alg, steps_per_episode - 1, pac)
+            logging.log_every_n_seconds(
+                logging.INFO,
+                "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
+                n_seconds=1)
+
+        self.assertAlmostEqual(
+            1.0, float(eval_time_step.reward.mean()), delta=0.3)
 
 
-def create_algorithm(env, num_parallel_agents):
-    config = TrainerConfig(root_dir="dummy", unroll_length=5, num_parallel_agents=num_parallel_agents)
-    obs_spec = alf.TensorSpec((2, ), dtype='float32')
-    action_spec = alf.BoundedTensorSpec(
-        shape=(), dtype='int32', minimum=0, maximum=2)
-
-    fc_layer_params = (10, 8, 6)
-
-    actor_network = partial(
-        ActorDistributionNetwork,
-        fc_layer_params=fc_layer_params,
-        discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
-
-    value_network = partial(ValueNetwork, fc_layer_params=(10, 8, 1))
-
-    alg = ParallelActorCriticAlgorithm(
-        observation_spec=obs_spec,
-        action_spec=action_spec,
-        actor_network_ctor=actor_network,
-        value_network_ctor=value_network,
-        env=env,
-        config=config,
-        optimizer=alf.optimizers.Adam(lr=1e-2),
-        debug_summaries=True,
-        name="MyActorCritic")
-    return alg
-
-
-class ActorCriticAlgorithmTest(alf.test.TestCase):
-    def test_ac_algorithm(self):
-        num_env = 3
-        env = MyEnv(batch_size=num_env)
-        alg1 = create_algorithm(env, num_env)
-
-        iter_num = 50
-        for _ in range(iter_num):
-            alg1.train_iter()
-
-        time_step = common.get_initial_time_step(env)
-        state = alg1.get_initial_predict_state(env.batch_size)
-        policy_step = alg1.rollout_step(time_step, state)
-        logits = policy_step.info.action_distribution.log_prob(
-            torch.arange(3).reshape(3, 1))
-        print("logits: ", logits)
-        self.assertTrue(torch.all(logits[1, :] > logits[0, :]))
-        self.assertTrue(torch.all(logits[1, :] > logits[2, :]))
-
-        # global counter is iter_num due to alg1
-        self.assertTrue(alf.summary.get_global_counter() == iter_num)
-
-    def test_ac_algorithm_with_global_counter(self):
-        num_env = 3
-        env = MyEnv(batch_size=num_env)
-        alg2 = create_algorithm(env,num_env)
-        new_iter_num = 3
-        for _ in range(new_iter_num):
-            alg2.train_iter()
-        # new_iter_num of iterations done in alg2
-        self.assertTrue(alf.summary.get_global_counter() == new_iter_num)
+def unroll(env, algorithm, steps, pac=True):
+    time_step = common.get_initial_time_step(env)
+    policy_state = algorithm.get_initial_predict_state(env.batch_size)
+    trans_state = algorithm.get_initial_transform_state(env.batch_size)
+    for _ in range(steps):
+        policy_state = common.reset_state_if_necessary(
+            policy_state, algorithm.get_initial_predict_state(env.batch_size),
+            time_step.is_first())
+        transformed_time_step, trans_state = algorithm.transform_timestep(
+            time_step, trans_state)
+        if pac:
+            action, action_state, _ = algorithm.predict_step(transformed_time_step, ParallelActorCriticState(actors=(), values=()))
+        else:
+            action, action_state, _ = algorithm.predict_step(transformed_time_step, ActorCriticState(actor=(), value=()))
+        time_step = env.step(action)
+        policy_state = action_state
+    return time_step
 
 
 if __name__ == '__main__':

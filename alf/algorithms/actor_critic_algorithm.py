@@ -91,12 +91,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             epsilon_greedy = alf.get_config_value(
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
-
-        
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         value_network = value_network_ctor(input_tensor_spec=observation_spec)
-        
+
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -111,10 +109,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
-        
+
         self._actor_network = actor_network
         self._value_network = value_network
-
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
@@ -124,7 +121,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
-
         action_dist, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
 
@@ -137,7 +133,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
-
         value, value_state = self._value_network(
             inputs.observation, state=state.value)
 
@@ -145,7 +140,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             inputs.observation, state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
-        
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
