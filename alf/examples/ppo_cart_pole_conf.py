@@ -34,7 +34,11 @@ alf.config(
     'ActorCriticAlgorithm',
     actor_network_ctor=ActorDistributionNetwork,
     value_network_ctor=ValueNetwork,
-    optimizer=alf.optimizers.Adam(lr=1e-3))
+    optimizer=alf.optimizers.AdamTF(lr=1e-3))
+
+# Turn off enforce_entropy_target. It is turned on by default in
+# ppo_conf. Turning this on may have negative impact
+alf.config('Agent', enforce_entropy_target=False)
 
 alf.config(
     'PPOLoss',
@@ -50,7 +54,7 @@ alf.config(
     unroll_length=32,
     mini_batch_size=128,
     num_updates_per_train_iter=4,
-    num_iterations=600,
+    num_iterations=200,
     num_checkpoints=5,
     evaluate=True,
     eval_interval=50,
