@@ -213,9 +213,9 @@ class ReluMLP(Network):
         assert vec.shape[-1] == self._output_size, \
             ("vec should has shape {}!".format(self._output_size))
 
-        self.forward(inputs)
+        outputs, _ = self.forward(inputs)
 
-        return self._compute_vjp(vec)
+        return self._compute_vjp(vec), outputs
 
     def _compute_vjp(self, vec):
         """Compute vector-Jacobian product. """

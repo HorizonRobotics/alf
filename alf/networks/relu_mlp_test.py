@@ -127,7 +127,7 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         vec = torch.randn(batch_size, output_size)
         x1 = x.detach().clone()
         x1.requires_grad = True
-        vjp = mlp.compute_vjp(x1, vec)
+        vjp, _ = mlp.compute_vjp(x1, vec)
 
         # # compute jac using autograd
         y, _ = mlp(x)
