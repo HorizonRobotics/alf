@@ -30,7 +30,7 @@ from alf.networks.encoding_networks import EncodingNetwork
 from alf.initializers import variance_scaling_init
 
 
-def create_mvp_network(input_spec, hidden_size, num_hidden_layers):
+def create_mvp_network(input_spec, output_dim, hidden_size, num_hidden_layers):
     input_dim = input_spec[0].shape[0]
     vec_dim = input_spec[1].shape[0]
 
@@ -49,7 +49,7 @@ def create_mvp_network(input_spec, hidden_size, num_hidden_layers):
         fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
         activation=torch.relu_,
         kernel_initializer=kernel_initializer,
-        last_layer_size=input_dim,
+        last_layer_size=output_dim,
         last_activation=identity)
 
     return mvp_network
@@ -60,57 +60,68 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
 
-    def minimize_step(self, inputs, vec):
-        y = self.inverse_mvp.predict_step((inputs, vec)).output
-        jac_y, _ = self.mlp.compute_vjp(inputs, y)
-        jac_y = jac_y.reshape(*vec.shape)
-        loss = torch.nn.functional.mse_loss(jac_y, vec)
-        return loss
-
-    @parameterized.parameters(
-        dict(batch_size=2, input_dim=2, vec_dim=2),
-        dict(batch_size=5, input_dim=2, vec_dim=2),
-        dict(batch_size=10, input_dim=2, vec_dim=2),
-    )
-    def test_inverse_mvp(self, batch_size=2, input_dim=2, vec_dim=2):
+    def test_inverse_mvp(self, batch_size=5):
         r"""
         The InverseMVP network is an encoding network that is trained to
-        predict the inverse Jacobian vector product
-        :math:`J^{-1}v` with respect to an MLP on a randomly generated input.
-        Using relu_mlp we can compute this exactly, and check that the
+        predict the inverse Jacobian vector product :math:`J^{-1}v`,
+        where the Jacobian is w.r.t. :math:`f(z)=g(z^{(:k)})+\lambda z`, 
+        :math:`z^{(:k)}` denote the vector of the first k components 
+        of z. In the following test case, z is a randomly generated input 
+        of dimension 3 and :math:`k=2`.
+        Using relu_mlp for g we can compute this exactly, and check that the
         trained network is correct. 
         """
+        input_dim = 2
+        vec_dim = 3
+        output_dim = 3
+        fullrank_diag_weight = 1.0
         input_spec = TensorSpec(shape=(input_dim, ))
         vec_spec = TensorSpec(shape=(vec_dim, ))
         input_tensor_spec = (input_spec, vec_spec)
         net = create_mvp_network(
-            input_tensor_spec, hidden_size=300, num_hidden_layers=1)
-        optimizer = alf.optimizers.Adam(lr=1e-4)
+            input_tensor_spec,
+            output_dim,
+            hidden_size=300,
+            num_hidden_layers=1)
+        optimizer = alf.optimizers.Adam(lr=5e-4)
         self.inverse_mvp = InverseMVPAlgorithm(net=net, optimizer=optimizer)
         mlp_spec = TensorSpec((input_dim, ))
         self.mlp = ReluMLP(
             mlp_spec,
-            output_size=input_dim,
+            output_size=output_dim,
             activation=identity,
-            hidden_layers=(1, ))
+            hidden_layers=(2, ))
         # make Jac better behaved
         w1 = torch.tensor([[1., 2.], [2., 1.]])
-        w2 = torch.tensor([[2., 1.], [1., 2.]])
+        w2 = torch.tensor([[2., 1.], [1, 1], [1., 2.]])
 
         self.mlp._fc_layers[0].weight = nn.Parameter(w1)
         self.mlp._fc_layers[1].weight = nn.Parameter(w2)
 
-        input = torch.rand(batch_size, input_dim, requires_grad=True)
-        vec = torch.rand(batch_size, input_dim, requires_grad=True)
+        def _minimize_step(inputs, vec):
+            y = self.inverse_mvp.predict_step((inputs, vec)).output
+            jac_y, _ = self.mlp.compute_vjp(inputs, y)
+            jac_y = torch.cat(
+                (jac_y, torch.zeros(jac_y.shape[0], output_dim - input_dim)),
+                dim=-1)
+            jac_y += fullrank_diag_weight * y
+            loss = torch.nn.functional.mse_loss(jac_y, vec)
+            return loss
 
-        for _ in range(500):
-            loss = self.minimize_step(input, vec.detach())
+        inputs = torch.rand(batch_size, input_dim, requires_grad=True)
+        vec = torch.rand(batch_size, vec_dim, requires_grad=True)
+        for _ in range(5000):
+            loss = _minimize_step(inputs, vec.detach())
             self.inverse_mvp.update_with_gradient(LossInfo(loss=loss))
 
-        jac = self.mlp.compute_jac(input)
+        jac = self.mlp.compute_jac(inputs)
+        jac = torch.cat(
+            (jac, torch.zeros(*jac.shape[:-1] + (output_dim - input_dim, ))),
+            dim=-1)
+        jac += fullrank_diag_weight * torch.eye(output_dim)
         jac_inv = torch.inverse(jac)
-        jac_inv_vec = torch.matmul(jac_inv, vec.unsqueeze(-1)).squeeze(-1)
-        y = self.inverse_mvp.predict_step((input, vec)).output
+        jac_inv_vec = torch.matmul(vec.unsqueeze(1), jac_inv).squeeze(1)
+        y = self.inverse_mvp.predict_step((inputs, vec)).output
         self.assertArrayEqual(y, jac_inv_vec, 1e-3)
 
 

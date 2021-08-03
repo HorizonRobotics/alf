@@ -57,6 +57,7 @@ function test() {
         alf.algorithms.hypernetwork_algorithm_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
+        alf.algorithms.inverse_mvp_algorithm_test \
         alf.algorithms.lagrangian_reward_weight_algorithm_test \
         alf.algorithms.mcts_algorithm_test \
         alf.algorithms.merlin_algorithm_test \

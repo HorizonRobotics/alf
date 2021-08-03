@@ -61,11 +61,11 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(('gfsf', False), ('svgd2', False),
                               ('svgd3', False), ('minmax', False),
                               ('gfsf', True), ('svgd2', True), ('svgd3', True),
-                              ('svgd', False, 'rkhs'))
+                              ('svgd', False, True))
     def test_bayesian_linear_regression(self,
                                         par_vi='svgd3',
                                         function_vi=False,
-                                        functional_gradient=None,
+                                        functional_gradient=False,
                                         train_batch_size=10,
                                         num_particles=128):
         r"""
@@ -94,7 +94,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
 
-        if functional_gradient is not None:
+        if functional_gradient:
             hidden_layers = ()
         else:
             hidden_layers = None
@@ -109,7 +109,6 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             loss_type='regression',
             par_vi=par_vi,
             function_vi=function_vi,
-            force_fullrank=True,
             functional_gradient=functional_gradient,
             critic_hidden_layers=(hidden_size, hidden_size),
             inverse_mvp_hidden_layers=3,

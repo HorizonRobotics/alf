@@ -235,8 +235,7 @@ class Generator(Algorithm):
                  mi_estimator_cls=MIEstimator,
                  par_vi=None,
                  use_kernel_averager=False,
-                 functional_gradient=None,
-                 force_fullrank=True,
+                 functional_gradient=False,
                  fullrank_diag_weight=1.0,
                  inverse_mvp_solve_iters=1,
                  inverse_mvp_hidden_size=100,
@@ -294,14 +293,13 @@ class Generator(Algorithm):
             use_kernel_averager (bool): whether or not to use a running 
                 average of the kernel bandwith for ParVI methods. 
             functional_gradient (bool): whether or not to optimize the generator
-                with GPVI, currently only works for SVGD ParVI methods. 
-            force_fullrank (bool): when ``functional_gradient`` is True, 
-                this option forces the dimension of the jacobian of the
-                generator to be square -- therefore invertible. We ensure this
-                by sampling an input noise vector of the same size as the
-                output, and only forwarding the first ``noise_dim`` components.
-                We then add the full noise vector to the output, multiplied by
-                the ``fullrank_diag_weight``.  
+                with GPVI. When True, the dimension of the jacobian of the
+                generator function needs to be square -- therefore invertible. 
+                When the generator is not sqaure, we ensure this by sampling 
+                an input noise vector of the same size as the output, and only 
+                forwarding the first ``noise_dim`` components. We then add the 
+                full noise vector to the output, multiplied by the 
+                ``fullrank_diag_weight``.  
             fullrank_diag_weight (float): weight on "extra" dimensions when 
                 forcing full rank Jacobian
             inverse_mvp_solve_iters (int): number of iterations of inverse_mvp
@@ -326,8 +324,7 @@ class Generator(Algorithm):
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
             inverse_mvp_optimizer (torch.optim.Optimizer): Optimizer for training
-                the inverse_mvp network, used when ``functional_gradient`` is 
-                ``True``.
+                the inverse_mvp network, used when ``functional_gradient`` is True.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -366,14 +363,13 @@ class Generator(Algorithm):
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
             if functional_gradient:
-                self._grad_func = self._rkhs_func_grad
-                if force_fullrank:
-                    self._eps_dim = output_dim
-                else:
-                    self._eps_dim = noise_dim
-
                 if noise_dim == output_dim:
                     force_fullrank = False
+                else:
+                    assert noise_dim < output_dim
+                    force_fullrank = True
+                self._grad_func = self._rkhs_func_grad
+                self._eps_dim = output_dim
                 self._force_fullrank = force_fullrank
                 self._fullrank_diag_weight = fullrank_diag_weight
                 self._inverse_mvp_solve_iters = inverse_mvp_solve_iters
@@ -427,6 +423,55 @@ class Generator(Algorithm):
             self._predict_net_updater = common.get_target_updater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
+    def _create_mvp_network(self, input_spec, output_dim, hidden_size,
+                            num_hidden_layers):
+        r"""Instantiate an encoding network to predict a matrix-vector
+        product of the form :math:`y=J^{-1}*vec, where :math:`J^{-1}` is a
+        square matrix and :math:`vec` is a vector. 
+        To train this mvp_network, a minimization objective is used
+        assuming that :math:`J` is available: :math:`||Jy - vec||^2_2,`
+        where the mvp_network is trained to predict a :math:`y` that minimizes
+        this objective.
+        This network is primarily used to train ``svgd3`` when the 
+        ``functional_gradient`` is True. In this case, :math:`J^{-1}` is the inverse
+        of the Jacobian of the generator function w.r.t. input :math:`z'`, and
+        :math:`vec` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
+
+        Args:
+            input_spec (tuple): a tuple of TensorSpec (z_spec, vec_spec) 
+            output_dim (int): output dimension, i.e., dim of mvp
+            hidden_size (int): width of hidden layers
+            num_hidden_layers (int): number of hidden layers after 
+
+        Returns:
+            inverse mvp network (Network)
+        """
+        assert isinstance(input_spec, tuple) and len(input_spec) == 2, (
+            "input_spec must have shape (z_spec, vec_spec")
+        z_dim = input_spec[0].shape[0]
+        vec_dim = input_spec[1].shape[0]
+
+        kernel_initializer = functools.partial(
+            alf.initializers.variance_scaling_init,
+            gain=1.0 / 2.0,
+            mode='fan_in',
+            distribution='truncated_normal',
+            nonlinearity=math_ops.identity)
+
+        mvp_network = EncodingNetwork(
+            input_spec,
+            input_preprocessors=(torch.nn.Linear(z_dim, hidden_size),
+                                 torch.nn.Linear(vec_dim, hidden_size)),
+            preprocessing_combiner=alf.layers.NestConcat(),
+            fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
+            activation=torch.relu_,
+            kernel_initializer=kernel_initializer,
+            last_layer_size=output_dim,
+            last_activation=math_ops.identity,
+            name='InverseMVPNetwork')
+
+        return mvp_network
+
     def _trainable_attributes_to_ignore(self):
         return ["_predict_net", "_critic"]
 
@@ -454,7 +499,7 @@ class Generator(Algorithm):
         if self._predict_net and not training:
             outputs = self._predict_net(gen_inputs)[0]
         else:
-            if self._functional_gradient is not None:
+            if self._functional_gradient:
                 if self._force_fullrank:
                     extra_noise = torch.randn(
                         noise.shape[0], self._output_dim - self._noise_dim)
@@ -908,60 +953,11 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _create_mvp_network(self, input_spec, output_dim, hidden_size,
-                            num_hidden_layers):
-        r"""Instantiate an encoding network to predict a matrix-vector
-        product of the form :math:`y=J^{-1}*vec, where :math:`J^{-1}` is a
-        square matrix and :math:`vec` is a vector. 
-        To train this mvp_network, a minimization objective is used
-        assuming that :math:`J` is available: :math:`||Jy - vec||^2_2,`
-        where the mvp_network is trained to predict a :math:`y` that minimizes
-        this objective.
-        This network is primarily used to train ``svgd3`` when the 
-        ``functional_gradient`` is True. In this case, :math:`J^{-1}` is the inverse
-        of the Jacobian of the generator function w.r.t. input :math:`z'`, and
-        :math:`vec` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
-
-        Args:
-            input_spec (tuple): a tuple of TensorSpec (z_spec, vec_spec) 
-            output_dim (int): output dimension, i.e., dim of mvp
-            hidden_size (int): width of hidden layers
-            num_hidden_layers (int): number of hidden layers after 
-
-        Returns:
-            inverse mvp network (Network)
-        """
-        assert isinstance(input_spec, tuple) and len(input_spec) == 2, (
-            "input_spec must have shape (z_spec, vec_spec")
-        z_dim = input_spec[0].shape[0]
-        vec_dim = input_spec[1].shape[0]
-
-        kernel_initializer = functools.partial(
-            alf.initializers.variance_scaling_init,
-            gain=1.0 / 2.0,
-            mode='fan_in',
-            distribution='truncated_normal',
-            nonlinearity=math_ops.identity)
-
-        mvp_network = EncodingNetwork(
-            input_spec,
-            input_preprocessors=(torch.nn.Linear(z_dim, hidden_size),
-                                 torch.nn.Linear(vec_dim, hidden_size)),
-            preprocessing_combiner=alf.layers.NestConcat(),
-            fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
-            activation=torch.relu_,
-            kernel_initializer=kernel_initializer,
-            last_layer_size=output_dim,
-            last_activation=math_ops.identity,
-            name='InverseMVPNetwork')
-
-        return mvp_network
-
-    def _inverse_mvp_train_step(self, z, eps=None):
+    def _inverse_mvp_train_step(self, z, eps):
         r"""Compute the loss for inverse_mvp training. 
         self._inverse_mvp solves an inverse problem for the amortized 
         functional gradient vi method GPVI.  
-        For ``functional_gradient=True``, it takes :math:`z'` and
+        For ``functional_gradient`` being True, it takes :math:`z'` and
         :math:`\nabla_{z'}k(z', z)` as input and outputs
         :math:`(\partial f / \partial z')^{-1} * \nabla_{z'}k(z', z)`.
         The training loss is given by
@@ -971,26 +967,23 @@ class Generator(Algorithm):
         generator :math:`f` and output :math`y`.
     
         Args: 
-            z (torch.tensor): of size [N2, K], representing z'
-            eps (torch.tensor): of size [N2, N, D or K], representing
-                :math:`\nabla_{z'}k(z', z)`, last dimension is D when 
-                self._force_fullrank is True, K otherwise. In general,
-                K is much less than D.
+            z (torch.tensor): of size [N2, D], representing z'
+            eps (torch.tensor): of size [N2, N, D], representing
+                :math:`\nabla_{z'}k(z', z)`.
         Returns:
             inverse_mvp_loss (float)
         """
         assert z.ndim == 2
-        assert z.shape[-1] == self._noise_dim or z.shape[-1] == self._output_dim
+        assert z.shape[-1] == self._output_dim
+        assert z.shape[0] == eps.shape[0]
 
         assert eps.ndim == 3
         assert eps.shape[-1] == self._eps_dim
 
-        z_inputs = z[:, :self._noise_dim]
-        assert z.shape[0] == eps.shape[0]
+        z_inputs = z[:, :self._noise_dim]  # [N2, K]
         z_inputs = torch.repeat_interleave(
             z_inputs, eps.shape[1], dim=0)  # [N2*N, K]
-        eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1],
-                                 -1)  # [N2*N, D or K]
+        eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1], -1)  # [N2*N, D]
         # [N2*N, D]
         y = self._inverse_mvp.predict_step((z_inputs, eps_inputs)).output
         jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
@@ -1001,8 +994,7 @@ class Generator(Algorithm):
                              self._output_dim - self._noise_dim)),
                 dim=-1)
             jac_y += self._fullrank_diag_weight * y  # [N2*N, D]
-        jac_y = jac_y.reshape(eps.shape[0], eps.shape[1],
-                              -1)  # [N2, N, D or K]
+        jac_y = jac_y.reshape(eps.shape[0], eps.shape[1], -1)  # [N2, N, D]
         loss = torch.nn.functional.mse_loss(jac_y, eps)
 
         return loss
@@ -1030,7 +1022,7 @@ class Generator(Algorithm):
             'rkhs_func_grad does not support conditional generator')
         assert transform_func is None, (
             "function value based vi is not supported for rkhs_func_grad")
-        outputs, gen_inputs = outputs  # [N, D], [N, D, K]
+        outputs, gen_inputs = outputs  # [N, D], [N, D]
         num_particles = outputs.shape[0]
         outputs2, gen_inputs2 = self._predict(
             batch_size=num_particles)  # [N2, D]
@@ -1050,7 +1042,7 @@ class Generator(Algorithm):
             gen_inputs2, num_particles, dim=0).detach()
         kernel_grad_batch = kernel_grad.reshape(num_particles * num_particles,
                                                 -1).detach()
-        inverse_mvp_z_input = gen_inputs2_batch
+        inverse_mvp_z_input = gen_inputs2_batch[:, :self._noise_dim]  # [N2, K]
         J_inv_kernel_grad = self._inverse_mvp.predict_step(
             (inverse_mvp_z_input, kernel_grad_batch)).output  # [N2*N, D]
         J_inv_kernel_grad = J_inv_kernel_grad.reshape(
