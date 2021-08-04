@@ -30,31 +30,6 @@ from alf.networks.encoding_networks import EncodingNetwork
 from alf.initializers import variance_scaling_init
 
 
-def create_mvp_network(input_spec, output_dim, hidden_size, num_hidden_layers):
-    input_dim = input_spec[0].shape[0]
-    vec_dim = input_spec[1].shape[0]
-
-    kernel_initializer = functools.partial(
-        variance_scaling_init,
-        gain=1.0 / 2.0,
-        mode='fan_in',
-        distribution='truncated_normal',
-        nonlinearity=identity)
-
-    mvp_network = EncodingNetwork(
-        input_spec,
-        input_preprocessors=(torch.nn.Linear(input_dim, hidden_size),
-                             torch.nn.Linear(vec_dim, hidden_size)),
-        preprocessing_combiner=alf.layers.NestConcat(),
-        fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
-        activation=torch.relu_,
-        kernel_initializer=kernel_initializer,
-        last_layer_size=output_dim,
-        last_activation=identity)
-
-    return mvp_network
-
-
 class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
@@ -78,13 +53,13 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         input_spec = TensorSpec(shape=(input_dim, ))
         vec_spec = TensorSpec(shape=(vec_dim, ))
         input_tensor_spec = (input_spec, vec_spec)
-        net = create_mvp_network(
-            input_tensor_spec,
+        optimizer = alf.optimizers.Adam(lr=5e-4)
+        self.inverse_mvp = InverseMVPAlgorithm(
+            input_dim,
             output_dim,
             hidden_size=300,
-            num_hidden_layers=1)
-        optimizer = alf.optimizers.Adam(lr=5e-4)
-        self.inverse_mvp = InverseMVPAlgorithm(net=net, optimizer=optimizer)
+            num_hidden_layers=1,
+            optimizer=optimizer)
         mlp_spec = TensorSpec((input_dim, ))
         self.mlp = ReluMLP(
             mlp_spec,
@@ -99,7 +74,7 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         self.mlp._fc_layers[1].weight = nn.Parameter(w2)
 
         def _minimize_step(inputs, vec):
-            y = self.inverse_mvp.predict_step((inputs, vec)).output
+            y = self.inverse_mvp.predict_step((inputs, vec)).output[0]
             jac_y, _ = self.mlp.compute_vjp(inputs, y)
             jac_y = torch.cat(
                 (jac_y, torch.zeros(jac_y.shape[0], output_dim - input_dim)),
@@ -121,7 +96,7 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         jac += fullrank_diag_weight * torch.eye(output_dim)
         jac_inv = torch.inverse(jac)
         jac_inv_vec = torch.matmul(vec.unsqueeze(1), jac_inv).squeeze(1)
-        y = self.inverse_mvp.predict_step((inputs, vec)).output
+        y = self.inverse_mvp.predict_step((inputs, vec)).output[0]
         self.assertArrayEqual(y, jac_inv_vec, 1e-2)
 
 

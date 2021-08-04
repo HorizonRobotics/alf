@@ -119,35 +119,72 @@ class CriticAlgorithm(Algorithm):
 @alf.configurable
 class InverseMVPAlgorithm(Algorithm):
     r"""InverseMVP network Algorithm
-        
-    Simple MLP network used with the functional gradient par_vi methods
-    It is used to predict :math:`x=J^{-1}*eps` given eps for the purpose of 
-    optimizing a downstream objective Jx - eps = 0. 
-    
-    If using ``svgd3``, then the eps quantity represents the kernel grad
-        :math:`\nabla_{z'}k(z', z)`
+
+    Maintain an encoding network that takes (z, vec) as input and predicts a 
+    matrix-vector product (mvp) of the form :math:`y=J^{-1}(z)*vec`, where 
+    :math:`J^{-1}(z)` is the inverse of the Jacobian matrix of some function
+    :math:`f(z)`, and ``vec`` is a vector. This network is used in GPVI in 
+    computing the ``functional_gradient`` of the generator, where :math:`J^{-1}`
+    is the inverse of the Jacobian of the generator function w.r.t. input noise
+    :math:`z'`, and ``vec`` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
+
+    Training of this network is done outside of the algorithm, where the network is 
+    trained to predict :math:`y` that minimize the  objective :math:`||Jy - vec||^2.
     """
 
     def __init__(self,
-                 net: Network,
+                 input_dim,
+                 output_dim,
+                 hidden_size=100,
+                 num_hidden_layers=1,
                  optimizer=None,
                  name="InverseMVPAlgorithm"):
         r"""Create a InverseMVPAlgorithm.
         Args:
-            net (Network): network for predicting outputs from inputs.
+            input_dim (int): dimension of input z
+            output_dim (int): output dimension, i.e., dimension of the mvp 
+            hidden_size (int): width of hidden layers
+            num_hidden_layers (int): number of hidden layers after 
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this Algorithm.
         """
+        assert input_dim <= output_dim
+
         if optimizer is None:
             optimizer = alf.optimizers.Adam(lr=1e-3)
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
 
-        self._net = net
+        kernel_initializer = functools.partial(
+            alf.initializers.variance_scaling_init,
+            gain=1.0 / 2.0,
+            mode='fan_in',
+            distribution='truncated_normal',
+            nonlinearity=math_ops.identity)
+
+        self._z_dim = input_dim
+        self._vec_dim = output_dim
+        z_spec = TensorSpec(shape=(self._z_dim, ))
+        vec_spec = TensorSpec(shape=(self._vec_dim, ))
+
+        self._net = EncodingNetwork(
+            (z_spec, vec_spec),
+            input_preprocessors=(torch.nn.Linear(self._z_dim, hidden_size),
+                                 torch.nn.Linear(self._vec_dim, hidden_size)),
+            preprocessing_combiner=alf.layers.NestConcat(),
+            fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
+            activation=torch.relu_,
+            kernel_initializer=kernel_initializer,
+            last_layer_size=output_dim,
+            last_activation=math_ops.identity,
+            name='InverseMVPNetwork')
 
     def predict_step(self, inputs, state=None):
         """Predict for one step of inputs.
         Args:
-            inputs (tuple of Tensors): inputs (z, eps) for prediction.
+            inputs (tuple of Tensors): inputs (z, vec) for prediction.
+            - z (Tensor): of size [N2, K] or [N2, D], representing :math:`z'`
+            - vec (Tensor): of size [N2, D] or [N2, N, D], representing 
+                :math:`\nabla_{z'}k(z', z)`.
             state: not used.
             
         Returns:
@@ -155,7 +192,27 @@ class InverseMVPAlgorithm(Algorithm):
             - output (torch.Tensor): predictions of InverseMVP network
             - state: not used.
         """
-        outputs = self._net(inputs)[0]
+        z_inputs, vec = inputs
+        assert z_inputs.ndim == 2 and z_inputs.shape[-1] >= self._z_dim
+        assert vec.shape[-1] == self._vec_dim
+        assert z_inputs.shape[0] == vec.shape[0]
+
+        if z_inputs.shape[-1] > self._z_dim:
+            z_inputs = z_inputs[:, self._z_dim]  # [N2, K]
+
+        if vec.ndim == 2:
+            vec_inputs = vec
+        elif vec.ndim == 3:  # [N2, N, D]
+            z_inputs = torch.repeat_interleave(
+                z_inputs, vec.shape[1], dim=0)  # [N2*N, K]
+            vec_inputs = vec.reshape(vec.shape[0] * vec.shape[1],
+                                     -1)  # [N2*N, D]
+        else:
+            raise ValueError(
+                "vec must of dimension 3, got vec of dimension {}".format(
+                    vec.ndim))
+
+        outputs = (self._net((z_inputs, vec_inputs))[0], z_inputs)
 
         return AlgStep(output=outputs, state=(), info=())
 
@@ -363,6 +420,10 @@ class Generator(Algorithm):
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
             if functional_gradient:
+                if net is not None:
+                    assert isinstance(net, ReluMLP), (
+                        "only ReluMLP generator is supported for functional_gradient."
+                    )
                 if noise_dim == output_dim:
                     force_fullrank = False
                 else:
@@ -377,14 +438,12 @@ class Generator(Algorithm):
                     inverse_mvp_optimizer = alf.optimizers.Adam(
                         lr=1e-4, weight_decay=1e-5)
 
-                z_spec = TensorSpec(shape=(noise_dim, ))
-                eps_spec = TensorSpec(shape=(self._eps_dim, ))
-                inverse_mvp_net = self._create_mvp_network(
-                    (z_spec, eps_spec), output_dim, inverse_mvp_hidden_size,
-                    inverse_mvp_hidden_layers)
-
                 self._inverse_mvp = InverseMVPAlgorithm(
-                    net=inverse_mvp_net, optimizer=inverse_mvp_optimizer)
+                    noise_dim,
+                    output_dim,
+                    hidden_size=inverse_mvp_hidden_size,
+                    num_hidden_layers=inverse_mvp_hidden_layers,
+                    optimizer=inverse_mvp_optimizer)
 
             if use_kernel_averager:
                 self._kernel_width_averager = AdaptiveAverager(
@@ -398,12 +457,19 @@ class Generator(Algorithm):
             net_input_spec = noise_spec
             if input_tensor_spec is not None:
                 net_input_spec = [net_input_spec, input_tensor_spec]
-            net = EncodingNetwork(
-                input_tensor_spec=net_input_spec,
-                fc_layer_params=hidden_layers,
-                last_layer_size=output_dim,
-                last_activation=math_ops.identity,
-                name="Generator")
+            if functional_gradient:
+                net = ReluMLP(
+                    input_tensor_spec,
+                    output_size=output_dim,
+                    hidden_layers=hidden_layers,
+                    name='Generator')
+            else:
+                net = EncodingNetwork(
+                    input_tensor_spec=net_input_spec,
+                    fc_layer_params=hidden_layers,
+                    last_layer_size=output_dim,
+                    last_activation=math_ops.identity,
+                    name="Generator")
 
         self._mi_estimator = None
         self._input_tensor_spec = input_tensor_spec
@@ -422,55 +488,6 @@ class Generator(Algorithm):
             self._predict_net = net.copy(name="Generator_average")
             self._predict_net_updater = common.get_target_updater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
-
-    def _create_mvp_network(self, input_spec, output_dim, hidden_size,
-                            num_hidden_layers):
-        r"""Instantiate an encoding network to predict a matrix-vector
-        product of the form :math:`y=J^{-1}*vec, where :math:`J^{-1}` is a
-        square matrix and :math:`vec` is a vector. 
-        To train this mvp_network, a minimization objective is used
-        assuming that :math:`J` is available: :math:`||Jy - vec||^2_2,`
-        where the mvp_network is trained to predict a :math:`y` that minimizes
-        this objective.
-        This network is primarily used to train ``svgd3`` when the 
-        ``functional_gradient`` is True. In this case, :math:`J^{-1}` is the inverse
-        of the Jacobian of the generator function w.r.t. input :math:`z'`, and
-        :math:`vec` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
-
-        Args:
-            input_spec (tuple): a tuple of TensorSpec (z_spec, vec_spec) 
-            output_dim (int): output dimension, i.e., dim of mvp
-            hidden_size (int): width of hidden layers
-            num_hidden_layers (int): number of hidden layers after 
-
-        Returns:
-            inverse mvp network (Network)
-        """
-        assert isinstance(input_spec, tuple) and len(input_spec) == 2, (
-            "input_spec must have shape (z_spec, vec_spec")
-        z_dim = input_spec[0].shape[0]
-        vec_dim = input_spec[1].shape[0]
-
-        kernel_initializer = functools.partial(
-            alf.initializers.variance_scaling_init,
-            gain=1.0 / 2.0,
-            mode='fan_in',
-            distribution='truncated_normal',
-            nonlinearity=math_ops.identity)
-
-        mvp_network = EncodingNetwork(
-            input_spec,
-            input_preprocessors=(torch.nn.Linear(z_dim, hidden_size),
-                                 torch.nn.Linear(vec_dim, hidden_size)),
-            preprocessing_combiner=alf.layers.NestConcat(),
-            fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
-            activation=torch.relu_,
-            kernel_initializer=kernel_initializer,
-            last_layer_size=output_dim,
-            last_activation=math_ops.identity,
-            name='InverseMVPNetwork')
-
-        return mvp_network
 
     def _trainable_attributes_to_ignore(self):
         return ["_predict_net", "_critic"]
@@ -953,7 +970,7 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _inverse_mvp_train_step(self, z, eps):
+    def _inverse_mvp_train_step(self, z, vec):
         r"""Compute the loss for inverse_mvp training. 
         self._inverse_mvp solves an inverse problem for the amortized 
         functional gradient vi method GPVI.  
@@ -967,25 +984,13 @@ class Generator(Algorithm):
         generator :math:`f` and output :math`y`.
     
         Args: 
-            z (torch.tensor): of size [N2, D], representing z'
-            eps (torch.tensor): of size [N2, N, D], representing
-                :math:`\nabla_{z'}k(z', z)`.
+            z (Tensor): of size [N2, D], representing :math:`z'`
+            vec (Tensor): of size [N2, N, D], representing :math:`\nabla_{z'}k(z', z)`
         Returns:
             inverse_mvp_loss (float)
         """
-        assert z.ndim == 2
-        assert z.shape[-1] == self._output_dim
-        assert z.shape[0] == eps.shape[0]
-
-        assert eps.ndim == 3
-        assert eps.shape[-1] == self._eps_dim
-
-        z_inputs = z[:, :self._noise_dim]  # [N2, K]
-        z_inputs = torch.repeat_interleave(
-            z_inputs, eps.shape[1], dim=0)  # [N2*N, K]
-        eps_inputs = eps.reshape(eps.shape[0] * eps.shape[1], -1)  # [N2*N, D]
-        # [N2*N, D]
-        y = self._inverse_mvp.predict_step((z_inputs, eps_inputs)).output
+        y, z_inputs = self._inverse_mvp.predict_step((z,
+                                                      vec)).output  #[N2*N, D]
         jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
         if self._force_fullrank:
             jac_y = torch.cat(
@@ -994,8 +999,8 @@ class Generator(Algorithm):
                              self._output_dim - self._noise_dim)),
                 dim=-1)
             jac_y += self._fullrank_diag_weight * y  # [N2*N, D]
-        jac_y = jac_y.reshape(eps.shape[0], eps.shape[1], -1)  # [N2, N, D]
-        loss = torch.nn.functional.mse_loss(jac_y, eps)
+        jac_y = jac_y.reshape(vec.shape[0], vec.shape[1], -1)  # [N2, N, D]
+        loss = torch.nn.functional.mse_loss(jac_y, vec)
 
         return loss
 
@@ -1026,25 +1031,18 @@ class Generator(Algorithm):
         num_particles = outputs.shape[0]
         outputs2, gen_inputs2 = self._predict(
             batch_size=num_particles)  # [N2, D]
-        inverse_mvp_z_input = gen_inputs2.detach()
 
         # [N2, N], [N2, N, D]
         kernel_weight, kernel_grad = self._rbf_func2(gen_inputs2, gen_inputs)
         # train inverse_mvp
         for i in range(self._inverse_mvp_solve_iters):
             inverse_mvp_loss = self._inverse_mvp_train_step(
-                inverse_mvp_z_input, kernel_grad.detach())
+                gen_inputs2.detach(), kernel_grad.detach())
             self._inverse_mvp.update_with_gradient(
                 LossInfo(loss=inverse_mvp_loss))
 
-        # construct functional gradient via inverse_mvp
-        gen_inputs2_batch = torch.repeat_interleave(
-            gen_inputs2, num_particles, dim=0).detach()
-        kernel_grad_batch = kernel_grad.reshape(num_particles * num_particles,
-                                                -1).detach()
-        inverse_mvp_z_input = gen_inputs2_batch[:, :self._noise_dim]  # [N2, K]
-        J_inv_kernel_grad = self._inverse_mvp.predict_step(
-            (inverse_mvp_z_input, kernel_grad_batch)).output  # [N2*N, D]
+        J_inv_kernel_grad, _ = self._inverse_mvp.predict_step(
+            (gen_inputs2.detach(), kernel_grad.detach())).output  # [N2*N, D]
         J_inv_kernel_grad = J_inv_kernel_grad.reshape(
             num_particles, num_particles, -1)  # [N2, N, D]
 
