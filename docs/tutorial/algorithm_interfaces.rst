@@ -355,13 +355,11 @@ to be optimized:
 
     def rollout_step(self, inputs, state):
         print("rollout_step: ", state)
-        return AlgStep(output=inputs.prev_action,
-                       state=state - 1)
+        return AlgStep(output=inputs.prev_action, state=state - 1)
 
     def train_step(self, inputs, state, rollout_info):
         print("train_step: ", state)
-        return AlgStep(output=inputs.prev_action,
-                       state=state + 1)
+        return AlgStep(output=inputs.prev_action, state=state + 1)
 
     def calc_loss(self, info):
         return LossInfo()
@@ -434,9 +432,26 @@ buffer, the training states can start from any of :math:`\{0,-1,-2\}`.
     should be carefully set. On one hand, directly using historical rollout RNN states
     will be problematic because the model parameters have been different by the
     time of training. On the other hand, always starting from zero RNN states might
-    miss some historical information. In practice, both options were used by
-    people.
+    miss some historical information. In practice, both options have been used by
+    prior works.
 
+Finally, if we increase the training iterations and let some episodes finish during
+training
+
+.. code-block:: python
+
+    alf.config("TrainerConfig", num_iterations=50)
+
+    def rollout_step(self, inputs, state):
+        print("rollout_step: ", state)
+        is_first_steps = inputs.is_first()
+        is_zero_state = (state == 0)
+        assert torch.all(is_zero_state[is_first_steps])
+        return AlgStep(output=inputs.prev_action, state=state - 1)
+
+You will find that when a new episode begins (``inputs.is_first()==True``),
+then the state will be automatically reset to zero. So in ALF the user doesn't
+need to worry about when to re-initialize episodic memory.
 
 Summary
 -------

@@ -43,6 +43,9 @@ class MyOffPolicyAlgorithm(OffPolicyAlgorithm):
 
     def rollout_step(self, inputs, state):
         print("rollout_step: ", state)
+        is_first_steps = inputs.is_first()
+        is_zero_state = (state == 0)
+        assert torch.all(is_zero_state[is_first_steps])
         return AlgStep(output=inputs.prev_action, state=state - 1)
 
     def train_step(self, inputs, state, rollout_info):
