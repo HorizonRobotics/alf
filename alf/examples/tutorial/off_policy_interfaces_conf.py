@@ -26,7 +26,7 @@ MySacInfo = namedtuple("MySacInfo", ["sac", "zeros"])
 
 class MySacAlgorithm(SacAlgorithm):
     def rollout_step(self, inputs, state):
-        alg_step = super(MySacAlgorithm, self).rollout_step(inputs, state)
+        alg_step = super().rollout_step(inputs, state)
         action = alg_step.output
         zeros = torch.zeros_like(action)
         print("rollout_step: ", zeros.shape)
@@ -35,11 +35,10 @@ class MySacAlgorithm(SacAlgorithm):
         return alg_step
 
     def train_step(self, inputs, state, rollout_info: MySacInfo):
-        alg_step = super(MySacAlgorithm, self).train_step(
-            inputs, state, rollout_info.sac)
+        alg_step = super().train_step(inputs, state, rollout_info.sac)
         print("train_step rollout zeros:  ", rollout_info.zeros.shape)
         train_zeros = torch.zeros_like(alg_step.output, dtype=torch.uint8)
-        print("train_step train ones:", train_zeros.shape)
+        print("train_step train zeros:", train_zeros.shape)
         alg_step = alg_step._replace(
             info=MySacInfo(sac=alg_step.info, zeros=train_zeros))
         return alg_step
@@ -47,18 +46,17 @@ class MySacAlgorithm(SacAlgorithm):
     def calc_loss(self, info: MySacInfo):
         zeros = info.zeros
         print("calc_loss: ", zeros.shape, zeros.dtype)
-        return super(MySacAlgorithm, self).calc_loss(info.sac)
+        return super().calc_loss(info.sac)
 
     def after_update(self, root_inputs, info: MySacInfo):
         zeros = info.zeros
         print("after_update: ", zeros.shape, zeros.dtype)
-        super(MySacAlgorithm, self).after_update(root_inputs, info.sac)
+        super().after_update(root_inputs, info.sac)
 
     def after_train_iter(self, root_inputs, rollout_info: MySacInfo):
         zeros = rollout_info.zeros
         print("after_train_iter: ", zeros.shape, zeros.dtype)
-        super(MySacAlgorithm, self).after_train_iter(root_inputs,
-                                                     rollout_info.sac)
+        super().after_train_iter(root_inputs, rollout_info.sac)
 
 
 alf.config(

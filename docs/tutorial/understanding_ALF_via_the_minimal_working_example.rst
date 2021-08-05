@@ -436,6 +436,6 @@ minimal example. We've shown that ALF is essentially a pipeline that connects
 different components which can be customized by a conf file. Moreover, ALF
 provides various arms for doing RL research.
 
-It might still not be unclear to a user what roles an algorithm plays in the training
+It might still be unclear to a user what roles an algorithm plays in the training
 pipelines. In the next chapter :doc:`./algorithm_interfaces`, we will explain
 the most important common algorithm interfaces to fill in the gap.

@@ -8,105 +8,209 @@ algorithm interfaces of the previous example :doc:`./a_minimal_working_example`,
 for an illustration purpose. Then we introduce a simple off-policy training
 example and again explore its algorithm interfaces.
 
-Interface Overview
-------------------
+Overview
+--------
 
 .. image:: images/algorithm_interfaces.png
     :width: 800
     :align: center
     :alt: interaction between algorithm interfaces
 
+The figure above shows the details of on/off-policy training pipelines, along with
+a simple evaluation pipeline. To establish a link between this figure and
+the figure in the :ref:`big picture of ALF <chap2_big_picture>`, we note that in
+the figure above :meth:`~.AlgorithmInterface.train_from_unroll` and
+:meth:`~.AlgorithmInterface.train_from_replay_buffer` corresponds to the "update"
+stage there for on-policy and off-policy training respectively. The top-left
+loop containing :meth:`~.AlgorithmInterface.rollout_step` corresponds to the "unroll"
+stage there.
 
-There are several key interfaces (highlighted in the figure above) that play
+There are several key interfaces (**bold** in the figure above) that play
 important roles in assembling a training pipeline of an ALF algorithm, and their
 signatures are summarized below.
 
-======================================================  ===========================================  =======================================  =============================== ===============
-Interface                                               Tensor shape                                 Input                                    Output                          Which pipeline?
-======================================================  ===========================================  =======================================  =============================== ===============
-:meth:`~.AlgorithmInterface.predict_step`               :math:`[1,\ldots]`                           ``inputs``, ``state``                    ``output``, ``state``, ``info`` On/Off-policy
-:meth:`~.AlgorithmInterface.rollout_step`               :math:`[B,\ldots]`                           ``inputs``, ``state``                    ``output``, ``state``, ``info`` On/Off-policy
-:meth:`~.AlgorithmInterface.train_step`                 :math:`[B,\ldots]` or :math:`[TB,\ldots]`    ``inputs``, ``state``, ``rollout_info``  ``output``, ``state``, ``info`` Off-policy
-:meth:`~.AlgorithmInterface.calc_loss`                  :math:`[T,B,\ldots]`                         ``info``                                 ``loss_info``                   On/Off-policy
-:meth:`~.AlgorithmInterface.after_update`               :math:`[T,B,\ldots]`                         ``root_inputs``, ``info``                ``None``                        On/Off-policy
-:meth:`~.AlgorithmInterface.after_train_iter`           :math:`[T,B,\ldots]`                         ``root_inputs``, ``rollout_info``        ``None``                        On/Off-policy
-======================================================  ===========================================  =======================================  =============================== ===============
+======================================================  =============================================  =======================================  =============================== ===============
+Interface                                               Input and output tensor shapes                 Input                                    Output                          Which pipeline?
+======================================================  =============================================  =======================================  =============================== ===============
+:meth:`~.AlgorithmInterface.predict_step`               :math:`[1,\ldots]`                             ``inputs``, ``state``                    :class:`.AlgStep`               On/Off-policy
+:meth:`~.AlgorithmInterface.rollout_step`               :math:`[B_1,\ldots]`                           ``inputs``, ``state``                    :class:`.AlgStep`               On/Off-policy
+:meth:`~.AlgorithmInterface.train_step`                 :math:`[B_2,\ldots]` or :math:`[TB_2,\ldots]`  ``inputs``, ``state``, ``rollout_info``  :class:`.AlgStep`               Off-policy
+:meth:`~.AlgorithmInterface.calc_loss`                  :math:`[T,B_3,\ldots]`                         ``info``                                 :class:`.LossInfo`              On/Off-policy
+:meth:`~.AlgorithmInterface.after_update`               :math:`[T,B_3,\ldots]`                         ``root_inputs``, ``info``                ``None``                        On/Off-policy
+:meth:`~.AlgorithmInterface.after_train_iter`           :math:`[T,B_3,\ldots]`                         ``root_inputs``, ``rollout_info``        ``None``                        On/Off-policy
+======================================================  =============================================  =======================================  =============================== ===============
 
-:math:`T` is :attr:`.TrainerConfig.unroll_length` for on-policy algorithms and
-:attr:`.TrainerConfig.mini_batch_length` for off-policy algorithms. :math:`B` is
-:attr:`.create_environment.num_parallel_environments` for on-policy algorithms and
-:attr:`.TrainerConfig.mini_batch_size` for off-policy algorithms. We can see that
-the first three interfaces are called at every time step, while the last three
-are called once for multiple time steps. The off-policy pipeline has one
-additional :meth:`~.AlgorithmInterface.train_step` interface compared to on-policy.
+What the interfaces do
+----------------------
+
+Most of the time, all we have to do is overriding these interfaces while adhering
+to their input/output signatures. These interfaces are expected to fulfill the
+following tasks:
+
+- :meth:`~.AlgorithmInterface.predict_step`: This interface is for evaluation
+  purpose only. It outputs prediction output such as action, label, goal, etc.
+  The output is directly used for evaluating the algorithm's performance. It's
+  called in an isolated evaluation pipeline which is activated periodically in
+  parallel with training.
+- :meth:`~.AlgorithmInterface.rollout_step`: This interface is for data collection.
+  It is called during the agent's rollout phase. The outputs will be used to
+  interact with the environment, or be stored in a replay buffer for later training
+  (if off-policy training). The outputs can also be directly used for training for
+  on-policy training.
+- :meth:`~.AlgorithmInterface.train_step`: off-policy training only. It's responsible
+  to do forward and backward on sampled experiences and generate training info
+  for loss computation.
+- :meth:`~.AlgorithmInterface.calc_loss`: This interface obtains training info
+  from either :meth:`~.AlgorithmInterface.rollout_step` (on-policy training)
+  or :meth:`~.AlgorithmInterface.train_step` (off-policy training) and return a
+  calculated loss for gradient computation.
+- :meth:`~.AlgorithmInterface.after_update`: This function does things after
+  completing one gradient update (i.e. through :meth:`~.Algorithm.update_with_gradient`).
+  This function can be used for post-processings following one mini-batch update,
+  such as copying a training model to a target model in SAC, DQN, etc.
+- :meth:`~.AlgorithmInterface.after_train_iter`: It's mainly for training
+  additional modules that have their own training logic (e.g., on/off-policy,
+  replay buffers, etc). Other things might also be possible as long as they
+  should be done once every training iteration.
+
+Argument conventions
+--------------------
+
+In ALF, every input/output argument is assumed to be a :mod:`~.alf.nest.nest`.
+A nest is defined to be a nested Python container (list, tuple, dict) which is
+basically a tree with leaves as data. For example, the following are all nests.
+
+.. code-block:: python
+
+    [1, 2, 3, 4]
+
+    ('x', torch.zeros([2]))
+
+    dict(x=1, y=dict(a=1, b=[2, 3, 4]))
+
+    #from alf.data_structures import namedtuple
+    #MyNest = namedtuple('MyNest', ['a', 'b'])
+
+    MyNest(a=1, b=(1, 2))
+
+.. note::
+
+    A special case of a nest is a single leaf, for example, 3, "3",
+    ``np.zeros([2, 3])``, or ``torch.zeros([2, 3])``.
+
+* ``inputs`` denotes the observations/states based on which
+  an algorithm's interface does computation at every step. Usually,
+  :meth:`~.AlgorithmInterface.predict_step`, :meth:`~.AlgorithmInterface.rollout_step`,
+  and :meth:`~.AlgorithmInterface.train_step` all have :class:`.TimeStep` as the
+  type of ``inputs`` for an RL algorithm. But ``inputs`` can be an
+  arbitrary nest for other (e.g., SL, SSL) algorithms.
+
+* :meth:`~.AlgorithmInterface.predict_step`,
+  :meth:`~.AlgorithmInterface.rollout_step`, and :meth:`~.AlgorithmInterface.train_step`
+  all return a nest called :class:`.AlgStep`, which contains three (optional) fields:
+
+  .. code-block:: python
+
+    AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
+
+  Each field itself is a nest.
+
+    * ``output`` is specially used to represent a step function's main output, e.g.,
+      action of an RL algorithm, latent embedding of an encoder algorithm, or goal
+      representation of a goal proposal algorithm.
+
+    * ``state`` denotes working memory (e.g., RNN state) that is automatically reset
+      at the beginning of an episode. Any interface with ``state`` as its input must
+      return an updated ``state`` so that ALF will automatically feed the updated
+      one to the next calling of the same interface at the next time step.
+
+    * ``info`` contains anything other than the interface's output and state, for
+      example, tensors for summary, action distributions for training, etc. Depending
+      on the context, it might have two alias names: ``train_info`` and ``rollout_info``.
+      ``train_info`` usually appears in the context where ``info`` is used for computing losses
+      and gradients. ``train_info`` is output by either an on-policy algorithm's
+      :meth:`~.AlgorithmInterface.rollout_step` or an off-policy algorithm's
+      :meth:`~.AlgorithmInterface.train_step`. ``rollout_info`` exists in the
+      context of off-policy training, where the ``info`` of :meth:`~.AlgorithmInterface.rollout_step`
+      is used for reference (e.g., it contains rollout action distributions for computing the
+      probability ratio in PPO). ``info`` will be passed down to :meth:`~.AlgorithmInterface.calc_loss`,
+      :meth:`~.AlgorithmInterface.after_update`, and :meth:`~.AlgorithmInterface.after_train_iter`
+      on the pipeline.
+
+* :meth:`~.AlgorithmInterface.calc_loss` returns a :class:`.LossInfo` instance
+  that can be correctly processed by :meth:`~.Algorithm.update_with_gradient`,
+  in which the losses in :class:`.LossInfo` are combined and gradients are
+  computed for an optimizer step.
+
+
+Tensor shapes
+-------------
+
+It's useful to always remind yourself of that ALF's interfaces process **batched**
+tensors, which means most of the time you can think of the same computations happen
+independently and identically to each entry of sub-tensor along the batch dimension.
+(There are of course exceptions to this mental model, for example, `BatchNorm <https://en.wikipedia.org/wiki/Batch_normalization>`_.)
+
+In the table, :math:`T` denotes the temporal extent (time window length) these
+interfaces are called during one training iteration. Note :math:`T` is
+:attr:`.TrainerConfig.unroll_length` for on-policy algorithms but
+:attr:`.TrainerConfig.mini_batch_length` for off-policy algorithms (because a trajectory
+of a certain length is sampled from the replay buffer, and this length could be
+different from :attr:`.TrainerConfig.unroll_length`). Accordingly, we can see
+that the first three interfaces (``predict_step()``, ``rollout_step()``,
+``train_step()``) are called on a *per-step* basis (
+:math:`t,t+1,\ldots,t+T-1` one by one), while the last three are called once over
+*multiple* time steps (:math:`[t,t+T-1]` at one time). :math:`B_1` is
+always :attr:`.create_environment.num_parallel_environments`.
+:math:`B_2` is :attr:`.TrainerConfig.mini_batch_size` for off-policy algorithms.
+:math:`B_3=B_1` for on-policy algorithms and :math:`B_3=B_2` for off-policy
+algorithms. The tensor batch size of :meth:`~.AlgorithmInterface.predict_step` is
+always :math:`1` because we use only one environment for evaluation.
 
 .. note::
 
     If :attr:`.TrainerConfig.temporally_independent_train_step=True`, we will call
     :meth:`~.AlgorithmInterface.train_step` on steps along a temporal extent in
-    parallel. So the tensor shape is :math:`[TB,\ldots]`. This speeds up the
+    parallel. So the tensor shape is :math:`[TB_2,\ldots]`. This speeds up the
     training forward step and the result will be reshaped to
-    :math:`[T,B,\ldots]` when fed to :meth:`~.AlgorithmInterface.calc_loss`.
+    :math:`[T,B_2,\ldots]` when fed to :meth:`~.AlgorithmInterface.calc_loss`.
 
-In most cases, we only need to override these interfaces while following their
-input/output signatures. Potentially we are able to accomplish many things through
-them.
-
-Argument conventions
---------------------
-
-Here we assume that there is only a single algorithm in the pipeline. In fact, multiple
-algorithms could consist of an *algorithm hierarchy* so that the calling of
-their interfaces of the same name is performed in a nested way. We leave this
-advantaged usage to a later chapter :doc:`./customize_algorithms`.
-
-* ``inputs`` denotes the observations/states based on which
-  an algorithm's interface does computation at every step.
-* ``output`` is specially used to represent a step function's main output, e.g.,
-  action of an RL algorithm, latent embedding of an encoder algorithm, or goal
-  representation of a goal proposal algorithm.
-* ``state`` denotes episodic memory (e.g., RNN state) that is automatically reset
-  at the beginning of an episode. Any interface with ``state`` as its input must
-  return an updated ``state`` so that ALF will automatically feed the updated
-  one to the next calling of the same interface at the next time step.
-* ``info`` contains anything other than the interface's output and state, for
-  example, tensors for summary, action distributions for training, etc. Depending
-  on the context, it might have two alias names: ``train_info`` and ``rollout_info``.
-  ``train_info`` usually appears in the context where ``info`` is used for computing losses
-  and gradients. ``train_info`` is output by either an on-policy algorithm's
-  :meth:`~.AlgorithmInterface.rollout_step` or an off-policy algorithm's
-  :meth:`~.AlgorithmInterface.train_step`. ``rollout_info`` exists in the
-  context of off-policy training, where the ``info`` of :meth:`~.AlgorithmInterface.rollout_step`
-  is used for reference (e.g., it contains rollout action distributions for computing the
-  probability ratio in PPO).
-* ``loss_info`` should be an instance of :class:`~.data_structures.LossInfo`
-  that can be correctly processed by :meth:`~.Algorithm.update_with_gradient`.
 
 It might be a little difficult to digest all these pieces of information at one time
 for a new user. Don't worry! In the following we will revisit them one by one with
 examples.
 
-On-policy interfaces
---------------------
+On-policy interfaces example
+----------------------------
 
 We modify the minimal working example by introducing a new actor-critic algorithm
 that wraps :class:`ActorCriticAlgorithm` and does an additional trivial job of
-inspecting tensor shapes. First we define a new data structure
+inspecting tensor shapes. The idea is that in order to understand how the
+interfaces interact with each other and what their input/output shapes are like,
+we create a new zero tensor of the same shape with inputs/outputs in :meth:`~.AlgorithmInterface.rollout_step`,
+and then pass that zero tensor down to other interfaces (:meth:`~.AlgorithmInterface.calc_loss`,
+:meth:`~.AlgorithmInterface.after_update`, :meth:`~.AlgorithmInterface.after_train_iter`)
+via :attr:`~.AlgStep.info`. We create new tensors instead of directly inspecting
+existing inputs/outputs to additionally show how a user can do customized things
+and propagate the results.
+
+To pass around the newly created zero tensor in different places, we define
+a new data structure
 
 .. code-block:: python
 
     MyACInfo = namedtuple("MyACInfo", ["ac", "zeros"])
 
-with the field ``ac`` storing the :class:`.ActorCriticAlgorithm` info and ``zeros``
-storing a zero tensor that we're going to create during rollout. Then we derive
-from :class:`.ActorCriticAlgorithm` for our new algorithm class and override its
-:meth:`~.ActorCriticAlgorithm.rollout_step`:
+with the field ``ac`` storing the parent :class:`.ActorCriticAlgorithm`'s info and
+``zeros`` storing a zero tensor that we're going to create during rollout. Then
+we derive from :class:`.ActorCriticAlgorithm` for our new algorithm class and override
+its :meth:`~.ActorCriticAlgorithm.rollout_step`:
 
 .. code-block:: python
 
   class MyACAlgorithm(ActorCriticAlgorithm):
     def rollout_step(self, inputs, state):
-        alg_step = super(MyACAlgorithm, self).rollout_step(inputs, state)
+        alg_step = super().rollout_step(inputs, state)
         action = alg_step.output
         zeros = torch.zeros_like(action)
         print("rollout_step: ", zeros.shape)
@@ -114,9 +218,17 @@ from :class:`.ActorCriticAlgorithm` for our new algorithm class and override its
             info=MyACInfo(ac=alg_step.info, zeros=zeros))
         return alg_step
 
+.. note::
+
+  Because the I/O signatures of an interface are fixed, we can't assuming
+  receiving or returning an arbitrary list of arguments. For example, simply
+  returning the zero tensor along ``alg_step`` will break the pipeline. So we
+  need pack it into our own ``info`` structure.
+
 In the new rollout step, we first call the parent's ``rollout_step()``, obtain
-its output action, and create a zero tensor with the same shape. After inspecting
-the tensor shape, we put it in the field ``info.zeros``.
+its output :class:`.AlgStep` (let the parent finish what it's supposed to do),
+and create a zero tensor with the same shape. After printing out the tensor
+shape, we put it in the field ``info.zeros``.
 
 According to the diagram above, multiple (:attr:`.TrainerConfig.unroll_length`)
 instances of ``alg_step`` will be accumulated and input to :meth:`~.AlgorithmInterface.calc_loss`.
@@ -127,10 +239,10 @@ To verify this, we define our own ``calc_loss`` function:
   def calc_loss(self, info: MyACInfo):
     zeros = info.zeros
     print("calc_loss: ", zeros.shape)
-    return super(MyACAlgorithm, self).calc_loss(info.ac)
+    return super().calc_loss(info.ac)
 
 Note that here the input ``info`` is already assumed to be over a temporal extent.
-So we obtain the created and stacked zero tensor and inspect its shape again. We
+So we obtain the created and stacked zero tensor and print its shape again. We
 continue doing the same thing for the other two interfaces:
 
 .. code-block:: python
@@ -138,13 +250,12 @@ continue doing the same thing for the other two interfaces:
   def after_update(self, root_inputs, info: MyACInfo):
     zeros = info.zeros
     print("after_update: ", zeros.shape)
-    super(MyACAlgorithm, self).after_update(root_inputs, info.ac)
+    super().after_update(root_inputs, info.ac)
 
   def after_train_iter(self, root_inputs, rollout_info: MyACInfo):
     zeros = rollout_info.zeros
     print("after_train_iter: ", zeros.shape)
-    super(MyACAlgorithm, self).after_train_iter(root_inputs,
-                                                rollout_info.ac)
+    super().after_train_iter(root_inputs, rollout_info.ac)
 
 The complete example file is at :mod:`.alf.examples.tutorial.on_policy_interfaces_conf.py`.
 Now if we launch the training
@@ -175,8 +286,8 @@ Recall that for this example, we have ``TrainerConfig.unroll_length=8`` and
 expectation.
 
 
-Off-policy interfaces
----------------------
+Off-policy interfaces example
+-----------------------------
 
 As another example, we override :class:`~.sac_algorithm.SacAlgorithm` for the same
 experimentation. First we set up some basic training configurations:
@@ -200,7 +311,7 @@ And define a new class ``MySacAlgorithm`` with a new ``train_step()``
 
     class MySacAlgorithm(SacAlgorithm):
         def train_step(self, inputs, state, rollout_info: MySacInfo):
-            alg_step = super(MySacAlgorithm, self).train_step(
+            alg_step = super().train_step(
                 inputs, state, rollout_info.sac)
             print("train_step rollout zeros:  ", rollout_info.zeros.shape)
             train_zeros = torch.zeros_like(alg_step.output, dtype=torch.uint8)
@@ -209,7 +320,7 @@ And define a new class ``MySacAlgorithm`` with a new ``train_step()``
                 info=MySacInfo(sac=alg_step.info, zeros=train_zeros))
             return alg_step
 
-Here we first inspect the zero tensor shape in the rollout ``info`` generated by
+Here we first print the zero tensor shape in the rollout ``info`` generated by
 ``rollout_step()``, and then create a new zero tensor of the same shape with the
 action output at the current training step. Finally we put this new zero tensor
 in the output ``info`` (and discard the ``rollout_info``).
@@ -219,7 +330,7 @@ The remaining interfaces are defined similarly with ``MyACAlgorihtm`` above.
 .. code-block:: python
 
     def rollout_step(self, inputs, state):
-        alg_step = super(MySacAlgorithm, self).rollout_step(inputs, state)
+        alg_step = super().rollout_step(inputs, state)
         action = alg_step.output
         zeros = torch.zeros_like(action)
         print("rollout_step: ", zeros.shape)
@@ -230,18 +341,17 @@ The remaining interfaces are defined similarly with ``MyACAlgorihtm`` above.
     def calc_loss(self, info: MySacInfo):
         zeros = info.zeros
         print("calc_loss: ", zeros.shape, zeros.dtype)
-        return super(MySacAlgorithm, self).calc_loss(info.sac)
+        return super().calc_loss(info.sac)
 
     def after_update(self, root_inputs, info: MySacInfo):
         zeros = info.zeros
         print("after_update: ", zeros.shape, zeros.dtype)
-        super(MySacAlgorithm, self).after_update(root_inputs, info.sac)
+        super().after_update(root_inputs, info.sac)
 
     def after_train_iter(self, root_inputs, rollout_info: MySacInfo):
         zeros = rollout_info.zeros
         print("after_train_iter: ", zeros.shape, zeros.dtype)
-        super(MySacAlgorithm, self).after_train_iter(root_inputs,
-                                                     rollout_info.sac)
+        super().after_train_iter(root_inputs, rollout_info.sac)
 
 The complete example file is at :mod:`.alf.examples.tutorial.off_policy_interfaces_conf.py`.
 Launch the training the we should see the output
@@ -274,7 +384,7 @@ And finally ``calc_loss()`` an ``after_update()`` see the accumulated zero tenso
 For off-policy training, an important distinction between ``rollout_info`` and
 ``train_info`` exists. In the example, we create zero tensors of ``torch.uint8``
 in ``train_step()``, while the zero tensors in ``rollout_step()`` are by default
-``torch.int64``. From the inspection results, we can see that ``calc_loss()`` and
+``torch.int64``. From the printing results, we can see that ``calc_loss()`` and
 ``after_update()`` indeed use ``train_info``.
 
 Note that by design ``after_train_iter()`` accepts ``rollout_info``. This is useful
@@ -302,10 +412,10 @@ This is because we have chosen to ignore the temporal
 dependency in the sampled trajectory so the forward can be done once to speed up
 inference.
 
-State
------
+State example
+-------------
 
-Let's move on to another simple example showing how episodic memory can be conveniently
+Let's move on to another simple example showing how working memory can be conveniently
 maintained in :meth:`~.AlgorithmInterface.rollout_step` and
 :meth:`~.AlgorithmInterface.train_step`. We first define the training setting:
 
@@ -451,7 +561,7 @@ training
 
 You will find that when a new episode begins (``inputs.is_first()==True``),
 then the state will be automatically reset to zero. So in ALF the user doesn't
-need to worry about when to re-initialize episodic memory.
+need to worry about when to re-initialize working memory.
 
 Summary
 -------
@@ -461,4 +571,4 @@ interfaces should be a good starting point for a new user to understand the inte
 logic of ALF's pipeline and write his/her own simple algorithms. We also talked
 about how on-policy and off-policy algorithms differ regarding the roles of
 :meth:`~.AlgorithmInterface.rollout_step` and :meth:`~.AlgorithmInterface.train_step`,
-and how to correctly manipulate episodic memory (state) in ALF.
+and how to correctly manipulate working memory (state) in ALF.

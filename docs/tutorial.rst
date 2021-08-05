@@ -35,9 +35,9 @@ provides at least two benefits:
    of critical details and tricks that help an algorithm's training.* For example,
 
    * Careful handling of environment step types and their discounts,
-   * Temporally independent training of a rollout trajectory if no episodic memory
+   * Temporally independent training of a rollout trajectory if no working memory
      is used,
-   * A convenient episodic memory infrastructure for easily implementing
+   * A convenient working memory infrastructure for easily implementing
      models that are stateful,
    * Automatically applying various input data transformers during rollout
      and training,
