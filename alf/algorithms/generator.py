@@ -147,7 +147,7 @@ class InverseMVPAlgorithm(Algorithm):
             output_dim (int): output dimension, i.e., dimension of the mvp 
             hidden_size (int): width of hidden layers
             num_hidden_layers (int): number of hidden layers after 
-            activation (nn.functional): activation used for all hidden layers.
+            activation (Callable): activation used for all hidden layers.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this Algorithm.
         """
@@ -188,7 +188,7 @@ class InverseMVPAlgorithm(Algorithm):
             - z (Tensor): of size [N2, K] or [N2, D], representing :math:`z'`,
                 where K is self._z_dim and D is self._vec_dim.
             - vec (Tensor): of size [N2, D] or [N2, N, D], representing 
-                :math:`\nabla_{z'}k(z', z)`.
+                :math:`\nabla_{z'}k(z', z)` in GPVI.
             state: not used.
             
         Returns:
