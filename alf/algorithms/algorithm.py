@@ -1020,7 +1020,12 @@ class Algorithm(AlgorithmInterface):
 
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
-            loss.backward()
+            # In theory, there might be unfinished kernel before backward is called
+            # and and after backward() returns and torch.cuda.synchronize() should
+            # be called to make sure we only measure the computation time for backward.
+            # In practice, we found that the measured time is almost unchanged.
+            with record_time("time/backward"):
+                loss.backward()
 
         all_params = []
         for optimizer in optimizers:
