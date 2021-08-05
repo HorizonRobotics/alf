@@ -1033,6 +1033,7 @@ class Generator(Algorithm):
 
         # [N2, N], [N2, N, D]
         kernel_weight, kernel_grad = self._rbf_func2(gen_inputs2, gen_inputs)
+
         # train inverse_mvp
         for i in range(self._inverse_mvp_solve_iters):
             inverse_mvp_loss = self._inverse_mvp_train_step(
@@ -1040,6 +1041,7 @@ class Generator(Algorithm):
             self._inverse_mvp.update_with_gradient(
                 LossInfo(loss=inverse_mvp_loss))
 
+        # construct functional gradient via inverse_mvp
         J_inv_kernel_grad, _ = self._inverse_mvp.predict_step(
             (gen_inputs2.detach(), kernel_grad.detach())).output  # [N2*N, D]
         J_inv_kernel_grad = J_inv_kernel_grad.reshape(
