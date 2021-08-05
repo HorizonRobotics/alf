@@ -430,7 +430,6 @@ class Generator(Algorithm):
                     assert noise_dim < output_dim
                     force_fullrank = True
                 self._grad_func = self._rkhs_func_grad
-                self._eps_dim = output_dim
                 self._force_fullrank = force_fullrank
                 self._fullrank_diag_weight = fullrank_diag_weight
                 self._inverse_mvp_solve_iters = inverse_mvp_solve_iters
