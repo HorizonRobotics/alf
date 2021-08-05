@@ -74,8 +74,8 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         self.mlp._fc_layers[1].weight = nn.Parameter(w2)
 
         def _minimize_step(inputs, vec):
-            y = self.inverse_mvp.predict_step((inputs, vec)).output[0]
-            jac_y, _ = self.mlp.compute_vjp(inputs, y)
+            y, z_inputs = self.inverse_mvp.predict_step((inputs, vec)).output
+            jac_y, _ = self.mlp.compute_vjp(z_inputs, y)
             jac_y = torch.cat(
                 (jac_y, torch.zeros(jac_y.shape[0], output_dim - input_dim)),
                 dim=-1)
@@ -83,20 +83,20 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
             loss = torch.nn.functional.mse_loss(jac_y, vec)
             return loss
 
-        inputs = torch.rand(batch_size, input_dim, requires_grad=True)
+        inputs = torch.rand(batch_size, output_dim, requires_grad=True)
         vec = torch.rand(batch_size, vec_dim, requires_grad=True)
         for _ in range(5000):
             loss = _minimize_step(inputs, vec.detach())
             self.inverse_mvp.update_with_gradient(LossInfo(loss=loss))
 
-        jac = self.mlp.compute_jac(inputs)
+        y, z_inputs = self.inverse_mvp.predict_step((inputs, vec)).output
+        jac = self.mlp.compute_jac(z_inputs)
         jac = torch.cat(
             (jac, torch.zeros(*jac.shape[:-1] + (output_dim - input_dim, ))),
             dim=-1)
         jac += fullrank_diag_weight * torch.eye(output_dim)
         jac_inv = torch.inverse(jac)
         jac_inv_vec = torch.matmul(vec.unsqueeze(1), jac_inv).squeeze(1)
-        y = self.inverse_mvp.predict_step((inputs, vec)).output[0]
         self.assertArrayEqual(y, jac_inv_vec, 1e-2)
 
 

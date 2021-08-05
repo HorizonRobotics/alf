@@ -182,14 +182,16 @@ class InverseMVPAlgorithm(Algorithm):
         """Predict for one step of inputs.
         Args:
             inputs (tuple of Tensors): inputs (z, vec) for prediction.
-            - z (Tensor): of size [N2, K] or [N2, D], representing :math:`z'`
+            - z (Tensor): of size [N2, K] or [N2, D], representing :math:`z'`,
+                where K is self._z_dim and D is self._vec_dim.
             - vec (Tensor): of size [N2, D] or [N2, N, D], representing 
                 :math:`\nabla_{z'}k(z', z)`.
             state: not used.
             
         Returns:
             AlgStep:
-            - output (torch.Tensor): predictions of InverseMVP network
+            - output (tuple of Tensors): predictions of InverseMVP network
+                and the z_inputs, which is [:, :K] of z.
             - state: not used.
         """
         z_inputs, vec = inputs
@@ -198,7 +200,7 @@ class InverseMVPAlgorithm(Algorithm):
         assert z_inputs.shape[0] == vec.shape[0]
 
         if z_inputs.shape[-1] > self._z_dim:
-            z_inputs = z_inputs[:, self._z_dim]  # [N2, K]
+            z_inputs = z_inputs[:, :self._z_dim]  # [N2, K]
 
         if vec.ndim == 2:
             vec_inputs = vec
@@ -209,7 +211,7 @@ class InverseMVPAlgorithm(Algorithm):
                                      -1)  # [N2*N, D]
         else:
             raise ValueError(
-                "vec must of dimension 3, got vec of dimension {}".format(
+                "vec must be dimension 3, got vec of dimension {}".format(
                     vec.ndim))
 
         outputs = (self._net((z_inputs, vec_inputs))[0], z_inputs)
