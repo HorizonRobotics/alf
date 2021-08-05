@@ -126,7 +126,8 @@ class InverseMVPAlgorithm(Algorithm):
     :math:`f(z)`, and ``vec`` is a vector. This network is used in GPVI in 
     computing the ``functional_gradient`` of the generator, where :math:`J^{-1}`
     is the inverse of the Jacobian of the generator function w.r.t. input noise
-    :math:`z'`, and ``vec`` is the gradient of the kernel :math:`\nabla_{z'}(z', z)`.
+    :math:`z'`, and ``vec`` is the gradient of the kernel 
+    :math:`\nabla_{z'}k(z', z)`.
 
     Training of this network is done outside of the algorithm, where the network is 
     trained to predict :math:`y` that minimize the  objective :math:`||Jy - vec||^2.
@@ -137,6 +138,7 @@ class InverseMVPAlgorithm(Algorithm):
                  output_dim,
                  hidden_size=100,
                  num_hidden_layers=1,
+                 activation=torch.relu_,
                  optimizer=None,
                  name="InverseMVPAlgorithm"):
         r"""Create a InverseMVPAlgorithm.
@@ -145,6 +147,7 @@ class InverseMVPAlgorithm(Algorithm):
             output_dim (int): output dimension, i.e., dimension of the mvp 
             hidden_size (int): width of hidden layers
             num_hidden_layers (int): number of hidden layers after 
+            activation (nn.functional): activation used for all hidden layers.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this Algorithm.
         """
@@ -172,7 +175,7 @@ class InverseMVPAlgorithm(Algorithm):
                                  torch.nn.Linear(self._vec_dim, hidden_size)),
             preprocessing_combiner=alf.layers.NestConcat(),
             fc_layer_params=(2 * hidden_size, ) * num_hidden_layers,
-            activation=torch.relu_,
+            activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=output_dim,
             last_activation=math_ops.identity,
@@ -211,7 +214,7 @@ class InverseMVPAlgorithm(Algorithm):
                                      -1)  # [N2*N, D]
         else:
             raise ValueError(
-                "vec must be dimension 3, got vec of dimension {}".format(
+                "vec must be dimension 2 or 3, got dimension {}".format(
                     vec.ndim))
 
         outputs = (self._net((z_inputs, vec_inputs))[0], z_inputs)
