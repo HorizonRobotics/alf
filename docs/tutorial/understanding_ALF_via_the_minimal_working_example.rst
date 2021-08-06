@@ -7,8 +7,8 @@ is just the tip of the iceberg: a very sophisticated RL training pipeline runs
 under the surface. In this chapter, based on that minimal example, we will
 go through some major concepts of ALF and grasp the big picture.
 
-ALF design overview
--------------------
+ALF overview
+------------
 
 As a good analogy, you can think of ALF as a very flexible
 *circuit board*. A circuit board electrically connects electronic components using
@@ -40,9 +40,90 @@ Importantly, whatever component is changed, ALF's design makes sure that the
 pipeline still runs with the other components unchanged.
 
 And the customization is very easy to implement. The user only needs to write a
-configuration file in Python to specify which components need what changes. As a
+*configuration* file in Python to specify which components need what changes. As a
 typical Python file, this conf file also supports writing new code for any ALF
-component (e.g., defining new algorithms, models, environments, etc).
+component (e.g., defining new algorithms :doc:`./customize_algorithms`,
+models, environments :doc:`./customize_environments_and_wrappers`, etc).
+
+.. _chap2_big_picture:
+
+The big picture
+---------------
+
+Once a conf file is provided to the ALF trainer, the training pipeline runs according
+to the configuration. We will take the `"CartPole" <https://gym.openai.com/envs/CartPole-v0/>`_
+task as an example for a better explanation. The goal is to move left or right
+to keep the balance of the vertical pole on a cart so that the pole doesn't fall down.
+
+.. image:: images/cart_pole.png
+    :width: 200
+    :align: center
+    :alt: CartPole-v0
+
+One can naturally imagine that an RL system collects experience data by trying
+out different actions and observing the consequences, while optimizing its model
+parameters in parallel, as shown below:
+
+.. image:: images/cart_pole_parallel.png
+    :width: 400
+    :align: center
+    :alt: CartPole parallel
+
+In fact, ALF adopts a simplified setting. The training pipeline alternates
+between "unroll" (online data collection) and "update"
+(parameters updates). In general, there are
+two types of pipelines: on-policy and off-policy, corresponding to on-policy
+algorithms (e.g., :class:`.ActorCriticAlgorithm`) and off-policy algorithms
+(e.g., :class:`.SacAlgorithm`).
+
+.. image:: images/pipeline.png
+    :width: 800
+    :align: center
+    :alt: ALF pipeline
+
+1. "unroll": in this process, a behavior policy generates a batch of actions, each
+   output to one of the parallel environments, to collect a batch of experience
+   data per time step. The policy rolls out multiple time steps for data collection
+   before transitioning to "update". For on-policy algorithms, an inference
+   computational graph with grads will be preserved and passed to "update". For
+   off-policy algorithms, no computational graph is preserved and the data directly
+   go to a replay buffer.
+2. "update": a loop of parameter updates are performed. On-policy algorithms compute
+   losses on all samples in the temp buffer while off-policy algorithms compute losses
+   on mini-batch samples from a replay buffer. *The loop length is forced to be 1
+   for on-policy algorithms.*
+
+.. note::
+    The concept of "episode" is orthogonal to the pipeline. A training iteration
+    might divide an episode into multiple segments. In order words, parameter
+    update could happen before a complete episode finishes.
+
+A conf file usually
+
+1. chooses which pipeline to use through the root algorithm configured to :class:`.TrainerConfig`;
+2. tweaks the schedule of a pipeline by changing the "unroll" interval (:attr:`.TrainerConfig.unroll_length`),
+   the "update" loop (:attr:`.TrainerConfig.num_updates_per_train_iter`), the mini-batch
+   shape (:attr:`.TrainerConfig.mini_batch_size` x :attr:`.TrainerConfig.mini_batch_length`), etc;
+3. how on-policy/off-policy losses are computed, for example, which algorithms
+   using what networks computing what losses.
+
+Although very rare, a user can customize a new training pipeline. We will talk about
+this in :doc:`./customize_training_pipeline`.
+
+More than training pipelines
+----------------------------
+
+Another major effort of ALF is providing an extensive set of high-quality tools
+for RL research, including various algorithms, networks, layers, and environments.
+
+.. code-block:: bash
+
+    alf/algorithms/
+    alf/networks/
+    alf/layers.py
+    alf/environments/
+
+A user can easily experiment them via the conf file.
 
 What the minimal example does
 -----------------------------
@@ -113,7 +194,9 @@ We simply use its default value which is equivalent to doing
     alf.config("TrainerConfig", unroll_length=8)
 
 This specifies how many rollout steps are performed in *each* environment before
-updating parameters (in total :math:`30\times 8=240` steps).
+updating parameters (in total :math:`30\times 8=240` steps). In this very simple
+example, after 30 environments unroll 8 steps, the trainer updates the model
+parameters once and the training finishes.
 
 The algorithm itself is configurable, too. Because ALF allows defining a hierarchy
 of algorithms (e.g., an RL algorithm with an auxiliary self-supervised learning
@@ -126,6 +209,7 @@ learning rate of :math:`10^{-3}`.
     many crucial parameters of the training pipeline, for example, random seed, number
     of checkpoints, summary interval, rollout length, etc. The user is highly
     recommended to read the API doc of this class.
+
 
 Everything can be configured!
 -----------------------------
@@ -304,63 +388,6 @@ to a variable and pass this closure around (e.g., to other conf files).
     :class:`.TrainerConfig`, and :func:`.create_environment`), then
     :func:`~alf.config_util.config` will be more convenient.
 
-The big picture of ALF
-----------------------
-
-In the previous section, you've probably already got a good idea of how easily
-each component of ALF can be customized, just like unplug&plug an electrical
-component on a circuit board. In fact, a conf file can do more than this by
-defining completely new environments :doc:`./customize_environments_and_wrappers`
-and algorithms :doc:`./customize_algorithms`.
-
-Once a conf file is provided to ALF trainer, the RL pipeline runs according to
-the configuration. In general, there are two types of pipelines: on-policy and
-off-policy, corresponding to on-policy algorithms (e.g., :class:`.ActorCriticAlgorithm`)
-and off-policy algorithms (e.g., :class:`.SacAlgorithm`).
-
-Either pipeline type follows a simple alternation between "unroll"
-(online data collection) and "update" (parameters updates).
-
-.. image:: images/pipeline.png
-    :width: 800
-    :align: center
-    :alt: ALF pipeline
-
-1. "unroll": in this process, a behavior policy generates a batch of actions, each
-   output to one of the parallel environments, to collect a batch of experience
-   data per time step. The policy rolls out multiple time steps for data collection
-   before transitioning to "update". For on-policy algorithms, an inference
-   computational graph with grads will be preserved and passed to "update". For
-   off-policy algorithms, no computational graph is preserved and the data directly
-   go to a replay buffer.
-2. "update": a loop of parameter updates are performed. On-policy algorithms compute
-   losses on all samples in the temp buffer while off-policy algorithms compute losses
-   on mini-batch samples from a replay buffer. *The loop length is forced to be 1
-   for on-policy algorithms.*
-
-.. note::
-    The concept of "episode" is orthogonal to the pipeline. A training iteration
-    might divide an episode into multiple segments. In order words, parameter
-    update could happen before a complete episode finishes.
-
-A conf file usually
-
-1. tweaks the schedule of a pipeline by changing the "unroll" interval (:attr:`.TrainerConfig.unroll_length`),
-   the "update" loop (:attr:`.TrainerConfig.num_updates_per_train_iter`), the mini-batch
-   shape (:attr:`.TrainerConfig.mini_batch_size` x :attr:`.TrainerConfig.mini_batch_length`), etc.
-2. how on-policy/off-policy losses are computed, for example, which algorithms
-   using what networks computing what losses, as demonstrated in the previous
-   section.
-
-Although very rare, a user can customize a new training pipeline. We will talk about
-this in :doc:`./customize_training_pipeline`.
-
-Which pipeline is used will be automatically determined based on the root algorithm
-configured to :class:`.TrainerConfig`. The above example conf tells ALF to use the
-on-policy training pipeline because an on-policy algorithm :class:`.ActorCriticAlgorithm`
-is configured. In this very simple example, after 30 environments unroll 8 steps,
-the trainer updates the model parameters once and the training finishes.
-
 ALF is flexible
 ---------------
 
@@ -369,7 +396,7 @@ To do so, we just append
 
 .. code-block:: python
 
-    alf.config("create_environment", env_name="LunarLanderContinuous-v2")
+  alf.config("create_environment", env_name="LunarLanderContinuous-v2")
 
 to the example conf file, to replace the default ``CartPole-v0`` environment
 with ``LunarLanderContinuous-v2``.  The conf file can still be trained successfully.
@@ -381,10 +408,10 @@ As another example, we replace the algorithm with PPO by appending:
 
 .. code-block:: python
 
-    from alf.algorithms.ppo_algorithm import PPOAlgorithm
-    alf.config("TrainerConfig",
-               algorithm_ctor=partial(
-                  PPOAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)))
+  from alf.algorithms.ppo_algorithm import PPOAlgorithm
+  alf.config("TrainerConfig",
+             algorithm_ctor=partial(
+                PPOAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)))
 
 The conf file still works without any problem.
 
@@ -401,23 +428,6 @@ In summary, different components on a ALF pipeline are connected by using
 :class:`.TensorSpec` to specify their I/O specs. This also happens within a component,
 for example, between child algorithms, between networks, etc.
 
-More than training pipelines
-----------------------------
-
-Another major effort of ALF is providing an extensive set of high-quality tools
-for RL research, including various algorithms, networks, layers, and environments.
-
-.. code-block:: bash
-
-    alf/algorithms/
-    alf/networks/
-    alf/layers.py
-    alf/environments/
-
-A user can easily experiment them via the conf file. In the example conf,
-:class:`.ActorCriticAlgorithm`, :class:`.ActorDistributionNetwork`, and
-:class:`.NormalProjectionNetwork` are representatives.
-
 Summary
 -------
 
@@ -426,6 +436,6 @@ minimal example. We've shown that ALF is essentially a pipeline that connects
 different components which can be customized by a conf file. Moreover, ALF
 provides various arms for doing RL research.
 
-It might still not be unclear to a user what roles an algorithm plays in the training
+It might still be unclear to a user what roles an algorithm plays in the training
 pipelines. In the next chapter :doc:`./algorithm_interfaces`, we will explain
 the most important common algorithm interfaces to fill in the gap.
