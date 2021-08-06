@@ -234,9 +234,12 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Returns:
         nested Tensor
     """
-    return alf.nest.map_structure(
-        lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s), i_s, s),
-        initial_state, state)
+    if torch.any(reset_mask):
+        return alf.nest.map_structure(
+            lambda i_s, s: torch.where(
+                expand_dims_as(reset_mask, i_s), i_s, s), initial_state, state)
+    else:
+        return state
 
 
 def run_under_record_context(func,

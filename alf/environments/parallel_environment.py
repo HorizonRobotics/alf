@@ -18,6 +18,7 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 from absl import logging
+import numpy
 import torch
 
 import alf
@@ -173,11 +174,13 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         """Given a list of TimeStep, combine to one with a batch dimension."""
         if self._flatten:
             stacked = nest.fast_map_structure_flatten(
-                lambda *arrays: torch.stack(arrays),
+                lambda *arrays: numpy.stack(arrays),
                 self._time_step_with_env_info_spec, *time_steps)
         else:
             stacked = nest.fast_map_structure(
                 lambda *arrays: torch.stack(arrays), *time_steps)
+        stacked = nest.map_structure(
+            lambda x: torch.as_tensor(x, device='cpu'), stacked)
         if alf.get_default_device() == "cuda":
             cpu = stacked
             stacked = nest.map_structure(lambda x: x.cuda(), cpu)
@@ -186,7 +189,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
     def _unstack_actions(self, batched_actions):
         """Returns a list of actions from potentially nested batch of actions."""
-        batched_actions = nest.map_structure(lambda x: x.cpu(),
+        batched_actions = nest.map_structure(lambda x: x.cpu().numpy(),
                                              batched_actions)
         flattened_actions = nest.flatten(batched_actions)
         if self._flatten:
