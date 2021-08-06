@@ -19,7 +19,9 @@ import alf
 from alf.algorithms.td_loss import TDLoss
 from alf.algorithms.data_transformer import ImageScaleTransformer, ObservationNormalizer, RewardNormalizer
 from alf.environments import suite_carla
+from alf.environments.alf_wrappers import AlfEnvironmentBaseWrapper, ActionObservationWrapper, ScalarRewardWrapper
 from alf.environments.carla_controller import VehicleController
+from alf.tensor_specs import BoundedTensorSpec
 
 from alf.examples import carla_conf
 from alf.examples import sac_conf
@@ -39,7 +41,8 @@ alf.config(
     evaluate=False,
     debug_summaries=True,
     summarize_grads_and_vars=True,
-    summary_interval=100,
+    summary_interval=0,
+    num_summaries=1000,
     replay_buffer_length=70000,
     summarize_action_distributions=True,
 )
@@ -60,7 +63,7 @@ alf.config(
 
 alf.config(
     'CarlaEnvironment',
-    vehicle_filter='vehicle.audi.tt',
+    vehicle_filter='vehicle.*',
     num_other_vehicles=20,
     num_walkers=20,
     # 1000 second day length means 4.5 days in replay buffer of 90000 length
@@ -68,8 +71,41 @@ alf.config(
     max_weather_length=500,
 )
 
-alf.define_config('taac', False)
+
+class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
+    """An AlfEnvironment wrapper that converts the last action dim ('reverse') from
+    [0,1] to [-1,1].
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._action_spec = BoundedTensorSpec(
+            shape=env.action_spec().shape,
+            dtype=env.action_spec().dtype,
+            minimum=-1.,
+            maximum=1.)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def _step(self, action):
+        # in: [-1,1] -> [0,1]
+        action[..., -1] = (action[..., -1] + 1.) / 2.
+        return self._env.step(action)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+
+alf.define_config('taac', True)
 taac = alf.get_config_value('taac')
+
+wrappers = [ActionObservationWrapper, ScalarRewardWrapper]
+if taac:
+    wrappers.insert(0, NormalizedActionWrapper)
+alf.config('suite_carla.load', wrappers=wrappers)
 
 if 'camera' in alf.get_raw_observation_spec()['observation']:
     data_transformer_ctor = [ImageScaleTransformer, ObservationNormalizer]
@@ -120,11 +156,6 @@ critic_network_cls = partial(
     use_fc_bn=use_batch_normalization)
 
 from alf.utils.dist_utils import calc_default_target_entropy
-
-reward_weights = None
-if env.reward_spec().numel > 1:
-    reward_weights = [0.] * env.reward_spec().numel
-    reward_weights[0] = 1.0
 
 # config EncodingAlgorithm
 encoder_cls = partial(
@@ -187,16 +218,15 @@ if not taac:
         target_entropy=partial(calc_default_target_entropy, min_prob=0.1),
         target_update_tau=0.005,
         critic_loss_ctor=TDLoss,
-        use_entropy_reward=False,
-        reward_weights=reward_weights)
+        use_entropy_reward=False)
 else:
-    from alf.algorithms.taac_algorithm import TaacAlgorithm
+    from alf.algorithms.taac_algorithm import TaacLAlgorithm
     value_net_cls = partial(
         alf.networks.ValueNetwork,
         fc_layer_params=(256, ),
         output_tensor_spec=env.reward_spec())
 
-    alf.config('Agent', rl_algorithm_cls=TaacAlgorithm)
+    alf.config('Agent', rl_algorithm_cls=TaacLAlgorithm)
     alf.config(
         'TrainerConfig',
         use_rollout_state=True,
@@ -206,7 +236,8 @@ else:
         'TaacAlgorithmBase',
         actor_network_cls=actor_network_cls,
         critic_network_cls=critic_network_cls,
-        reward_weights=reward_weights,
         target_update_tau=0.005,
         target_entropy=(partial(calc_default_target_entropy, min_prob=0.1),
                         partial(calc_default_target_entropy, min_prob=0.1)))
+    # In this particular task, ``inverse_mode=False`` will be much better
+    alf.config('TaacLAlgorithm', inverse_mode=False)

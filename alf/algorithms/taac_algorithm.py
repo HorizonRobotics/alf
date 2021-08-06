@@ -411,10 +411,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         tau_spec = nest.map_structure(lambda m: action_spec if m else (),
                                       tau_mask)
-        tau_embedding = nest.map_structure(
-            lambda _: torch.nn.Sequential(
-                alf.layers.FC(action_spec.numel, observation_spec.numel)),
-            tau_spec)
+        tau_embedding = nest.map_structure(lambda _: None, tau_spec)
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
@@ -739,7 +736,7 @@ class TaacAlgorithm(TaacAlgorithmBase):
     def __init__(self, name="TaacAlgorithm", *args, **kwargs):
         """See ``TaacAlgorithmBase`` for argument description.
         """
-        super(TaacAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super().__init__(*args, name=name, **kwargs)
 
     def _make_networks(self, *args):
         tau_mask = Tau(a=True, v=False, u=False)
@@ -786,10 +783,20 @@ class TaacLAlgorithm(TaacAlgorithmBase):
     :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
-    def __init__(self, name="TaacLAlgorithm", *args, **kwargs):
-        """See ``TaacAlgorithmBase`` for argument description.
+    def __init__(self,
+                 name="TaacLAlgorithm",
+                 inverse_mode=True,
+                 *args,
+                 **kwargs):
+        """See ``TaacAlgorithmBase`` for other argument description.
+
+        Args:
+            inverse_mode (bool): this argument decides how the new traj is computed when
+                ``b=1``. If it's False, then the new action is treated as the
+                new first derivative ``v``; otherwise the new action is treated
+                as the new action ``a``, and ``v`` is inversely inferred.
         """
-        super(TaacLAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super().__init__(*args, name=name, **kwargs)
 
         assert (
             np.all(self._action_spec.minimum == -1)
@@ -797,12 +804,13 @@ class TaacLAlgorithm(TaacAlgorithmBase):
         ), ("Only support actions in [-1, 1]! Consider using env wrappers to "
             "scale your action space first.")
 
+        self._inverse_mode = inverse_mode
+
     def _make_networks(self, *args):
         tau_mask = Tau(a=True, v=True, u=False)
         args = args + (tau_mask, )
         return self._make_networks_impl(*args)
 
-    @torch.no_grad()
     def _update_tau(self, tau):
         """Compute next action on a linear trajectory specified by a pair of
         ('action', 'action derivative').
@@ -811,11 +819,16 @@ class TaacLAlgorithm(TaacAlgorithmBase):
         return tau._replace(a=a)
 
     def _action2tau(self, a, tau):
-        """Given a new action at the next step and the current traj ``tau``, infer
-        the new traj's first derivative.
-        """
-        v = (a - tau.a) / 2.
-        return Tau(a=a, v=v)
+        if self._inverse_mode:
+            # Given a new action at the next step and the current traj ``tau``,
+            # infer the new traj's first derivative.
+            v = (a - tau.a) / 2.
+            return Tau(a=a, v=v)
+        else:
+            # Given a new first derivative and the current traj ``tau``, compute
+            # the new traj's action
+            tau = Tau(a=tau.a, v=a)
+            return self._update_tau(tau)
 
 
 @alf.configurable
@@ -854,17 +867,28 @@ class TaacQAlgorithm(TaacLAlgorithm):
     :math:`a_{t+1}\leftarrow \max(\min(a_t+2v_{t+1},1),-1)`.
     """
 
-    def __init__(self, name="TaacQAlgorithm", *args, **kwargs):
-        """See ``TaacAlgorithmBase`` for argument description.
+    def __init__(self,
+                 name="TaacQAlgorithm",
+                 inverse_mode=True,
+                 *args,
+                 **kwargs):
+        """See ``TaacAlgorithmBase`` for other argument description.
+
+        Args:
+            inverse_mode (bool): this argument decides how the new traj is computed
+                when ``b=1``. If it's False, then the new action is treated as the
+                new second derivative ``u``; otherwise the new action is treated
+                as the new action ``a``, and ``u`` is inversely inferred. In either
+                case, the current ``v`` is first set to 0, and then a new ``v`` is
+                computed.
         """
-        super(TaacQAlgorithm, self).__init__(*args, name=name, **kwargs)
+        super().__init__(*args, name=name, inverse_mode=inverse_mode, **kwargs)
 
     def _make_networks(self, *args):
         tau_mask = Tau(a=True, v=True, u=True)
         args = args + (tau_mask, )
         return self._make_networks_impl(*args)
 
-    @torch.no_grad()
     def _update_tau(self, tau):
         """Compute next action on a quadratic trajectory specified by a triplet
         of ('action', 'action derivative', and 'action second derivative').
@@ -874,9 +898,14 @@ class TaacQAlgorithm(TaacLAlgorithm):
         return Tau(a=a, v=v, u=tau.u)
 
     def _action2tau(self, a, tau):
-        """Given a new action at the next step and the current traj ``tau``, infer
-        the new traj's second derivative, assuming resetting ``tau.v`` to 0 first.
-        """
-        v = (a - tau.a) / 2.
-        u = v / 2.
-        return Tau(a=a, v=v, u=u)
+        if self._inverse_mode:
+            # Given a new action at the next step and the current traj ``tau``,
+            # infer the new traj, assuming resetting ``tau.v`` to 0 first.
+            v = (a - tau.a) / 2.
+            u = v / 2.
+            return Tau(a=a, v=v, u=u)
+        else:
+            # Given a new second derivative at the next step and the current traj
+            # ``tau``, compute the new traj, assuming resetting ``tau.v`` to 0 first.
+            tau = Tau(a=tau.a, v=0, u=a)
+            return self._update_tau(tau)
