@@ -54,7 +54,7 @@ class CriticAlgorithm(Algorithm):
             input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
             hidden_layers (tuple): size of hidden layers.
-            activation (nn.functional): activation used for all critic layers.
+            activation (Callable): activation used for all critic layers.
             net (Network): network for predicting outputs from inputs.
                 If None, a default one with hidden_layers will be created
             use_relu_mlp (bool): whether use ReluMLP as default net constrctor.

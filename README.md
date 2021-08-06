@@ -24,11 +24,12 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 |[MuZero](alf/algorithms/muzero_algorithm.py)|Model-based RL|Schrittwieser et al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)|
 |[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
 |[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
-|[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks." [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
+|[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks" [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
 |[MCTS](alf/algorithms/mcts_algorithm.py)|General|Grill et al. "Monte-Carlo tree search as regularized policy optimization" [arXiv:2007.12509](https://arxiv.org/abs/2007.12509)|
 |[MINE](alf/algorithms/mi_estimator.py)|General|Belghazi et al. "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)|
-|[ParticleVI](alf/algorithms/particle_vi_algorithm.py)|General|Liu and Wang. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471) <br> Liu et al. "Understanding and accelerating particle-based variational inference." [arXiv:1807.01750](https://arxiv.org/abs/1807.01750)|
-|[SVGD optimizer](alf/optimizers/optimizers.py)|General|Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm." [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)|
+|[ParticleVI](alf/algorithms/particle_vi_algorithm.py)|General|Liu and Wang. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm" [arXiv:1608.04471](https://arxiv.org/abs/1608.04471) <br> Liu et al. "Understanding and accelerating particle-based variational inference" [arXiv:1807.01750](https://arxiv.org/abs/1807.01750)|
+|[GPVI](alf/algorithms/generator.py)|General|Ratzlaff, Bai et al. "Generative Particle Variational Inference via Estimation of Functional Gradients" [arXiv:2103.01291](https://arxiv.org/abs/2103.01291)|
+|[SVGD optimizer](alf/optimizers/optimizers.py)|General|Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm" [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)|
 |[VAE](alf/algorithms/vae.py)|General|Higgins et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework" [ICLR2017](https://openreview.net/forum?id=Sy2fzU9gl)|
 
 ## Installation
