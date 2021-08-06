@@ -19,7 +19,9 @@ import alf
 from alf.algorithms.td_loss import TDLoss
 from alf.algorithms.data_transformer import ImageScaleTransformer, ObservationNormalizer, RewardNormalizer
 from alf.environments import suite_carla
+from alf.environments.alf_wrappers import AlfEnvironmentBaseWrapper, ActionObservationWrapper, ScalarRewardWrapper
 from alf.environments.carla_controller import VehicleController
+from alf.tensor_specs import BoundedTensorSpec
 
 from alf.examples import carla_conf
 from alf.examples import sac_conf
@@ -68,8 +70,44 @@ alf.config(
     max_weather_length=500,
 )
 
-alf.define_config('taac', False)
+
+class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
+    """An AlfEnvironment wrapper that converts the last action dim ('reverse') from
+    [0,1] to [-1,1].
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._action_spec = BoundedTensorSpec(
+            shape=env.action_spec().shape,
+            dtype=env.action_spec().dtype,
+            minimum=-1.,
+            maximum=1.)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def _step(self, action):
+        # in: [-1,1] -> [0,1]
+        action[..., -1] = (action[..., -1] + 1.) / 2.
+        return self._env.step(action)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+
+alf.define_config('taac', True)
 taac = alf.get_config_value('taac')
+
+if taac:
+    alf.config(
+        'suite_carla.load',
+        wrappers=[
+            NormalizedActionWrapper, ActionObservationWrapper,
+            ScalarRewardWrapper
+        ])
 
 if 'camera' in alf.get_raw_observation_spec()['observation']:
     data_transformer_ctor = [ImageScaleTransformer, ObservationNormalizer]
@@ -190,13 +228,13 @@ if not taac:
         use_entropy_reward=False,
         reward_weights=reward_weights)
 else:
-    from alf.algorithms.taac_algorithm import TaacAlgorithm
+    from alf.algorithms.taac_algorithm import TaacLAlgorithm
     value_net_cls = partial(
         alf.networks.ValueNetwork,
         fc_layer_params=(256, ),
         output_tensor_spec=env.reward_spec())
 
-    alf.config('Agent', rl_algorithm_cls=TaacAlgorithm)
+    alf.config('Agent', rl_algorithm_cls=TaacLAlgorithm)
     alf.config(
         'TrainerConfig',
         use_rollout_state=True,
