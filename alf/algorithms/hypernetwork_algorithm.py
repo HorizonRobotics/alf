@@ -76,8 +76,7 @@ class HyperNetwork(Algorithm):
                  critic_hidden_layers=(100, 100),
                  critic_iter_num=2,
                  critic_l2_weight=10.,
-                 functional_gradient=None,
-                 force_fullrank=True,
+                 functional_gradient=False,
                  fullrank_diag_weight=1.0,
                  inverse_mvp_solve_iters=1,
                  inverse_mvp_hidden_size=100,
@@ -134,11 +133,7 @@ class HyperNetwork(Algorithm):
             critic_l2_weight (float): L2 penalty on critic to ensure
                 boundednesss
 
-            functional_gradient (string): whether or not to use GPVI. Options
-                are ``rkhs``, for GPVI or ``None``. 
-            force_fullrank (bool): when ``functional_gradient`` is not ``None``, 
-                this option forces the dimension of the jacobian of the
-                generator to be square. 
+            functional_gradient (bool): whether or not to use GPVI.
             fullrank_diag_weight (float): weight on "extra" dimensions when 
                 forcing full rank Jacobian
             inverse_mvp_solve_iters (int): number of iterations to train inverse_mvp
@@ -166,9 +161,7 @@ class HyperNetwork(Algorithm):
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
-                * svgd: empirical expectation of SVGD is evaluated by a single
-                  resampled particle. The main benefit of this choice is it
-                  supports conditional case, while all other options do not.
+                * svgd: same as ``svgd3``. 
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
                   half of the sampled batch. It is a trade-off between
                   computational efficiency and convergence speed.
@@ -282,7 +275,6 @@ class HyperNetwork(Algorithm):
             critic_iter_num=critic_iter_num,
             critic_l2_weight=critic_l2_weight,
             functional_gradient=functional_gradient,
-            force_fullrank=force_fullrank,
             fullrank_diag_weight=fullrank_diag_weight,
             inverse_mvp_solve_iters=inverse_mvp_solve_iters,
             inverse_mvp_hidden_size=inverse_mvp_hidden_size,
