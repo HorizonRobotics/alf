@@ -539,9 +539,12 @@ class EncodingNetwork(PreprocessorNetwork):
                 tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format ``(filters, kernel_size, strides, padding)``,
-                where ``padding`` is optional.
+            conv_layer_params (tuple[tuple]): A tuple of triplets in the form of
+                ``(filters, kernel_size, strides)`` or quadruplets in the form
+                of ``(filters, kernel_size, strides, padding)`` if padding is
+                specified. Each triplet or quadruplet represets the hyper
+                parameters of a convolutionaly layer. Connected sequentially, it
+                forms the CNN part of the encoding network.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for all the layers but
@@ -565,6 +568,7 @@ class EncodingNetwork(PreprocessorNetwork):
                 ``last_layer_size`` is None, ``last_kernel_initializer`` will
                 not be used.
             name (str):
+
         """
         super().__init__(
             input_tensor_spec,
