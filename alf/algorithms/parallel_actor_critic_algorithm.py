@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
     Parallel Actor critic algorithm. 
     
     This algorithm provides a way to maintain n (n should be the same as the number of environments.) different agents, 
-    which means every agent has its own actor network and value network. This is different from the ActorCriticAlgorithm 
-    which will always use one actor network and value network.
+    which means every agent has its own actor network and value network. This is different from directly running ActorCriticAlgorithm 
+    in n batched environments where only one agent is maintained.
     """
 
     def __init__(self,
@@ -105,27 +105,27 @@ class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
         self._num_parallel_agents = config.num_parallel_agents
 
         value_network = value_network_ctor(input_tensor_spec=observation_spec)
-        parallel_value_network = value_network.make_parallel(self._num_parallel_agents)
+        parallel_value_networks = value_network.make_parallel(self._num_parallel_agents)
     
         actor_network = actor_network_ctor(input_tensor_spec=observation_spec, action_spec=action_spec)
-        parallel_actor_network = actor_network.make_parallel(self._num_parallel_agents)
+        parallel_actor_networks = actor_network.make_parallel(self._num_parallel_agents)
 
         super(ParallelActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
             predict_state_spec=ParallelActorCriticState(
-                actors=parallel_actor_network.state_spec),
+                actors=parallel_actor_networks.state_spec),
             train_state_spec=ParallelActorCriticState(
-                actors=parallel_actor_network.state_spec,
-                values=parallel_value_network.state_spec),
+                actors=parallel_actor_networks.state_spec,
+                values=parallel_value_networks.state_spec),
             env=env,
             config=config,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
-        self._actor_network = parallel_actor_network
-        self._value_network = parallel_value_network
+        self._actor_networks = parallel_actor_networks
+        self._value_networks = parallel_value_networks
         
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
@@ -138,25 +138,25 @@ class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
         """
         Predict for one step.
         
-        When the batch_size of the environments is the same as the number of agents, we will think it is in a training procedure.
-        When it is not, we will only use the results from agent 0 temporarily.
+        When the batch_size of the environments is the same as the number of agents, we treat it as the parallel rollout setting, 
+        where each environment is predicted by the corresponding (in indices) agent. Otherwise, for every env, we simply use agent 0 to predict.
         """
         if inputs.observation.shape[0] == self._num_parallel_agents:
-            value, value_state = self._value_network(
+            value, value_state = self._value_networks(
             inputs.observation.unsqueeze(0), state=state.values)
             value = value.squeeze(0)
 
-            action_distribution, actor_state = self._actor_network(
+            action_distribution, actor_state = self._actor_networks(
                 inputs.observation.unsqueeze(0), state=state.actors)
 
             action = dist_utils.sample_action_distribution(action_distribution)
             action = action.squeeze(0)
         else:
-            value, value_state = self._value_network(
+            value, value_state = self._value_networks(
             inputs.observation, state=state.values)
             value = value[:, 0]
 
-            action_distribution, actor_state = self._actor_network(
+            action_distribution, actor_state = self._actor_networks(
                 inputs.observation, state=state.actors)
 
             action = dist_utils.sample_action_distribution(action_distribution)
@@ -175,12 +175,17 @@ class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
                 action_distribution=action_distribution))
 
     def rollout_step(self, inputs: TimeStep, state: ParallelActorCriticState):
-        """Rollout for one step."""
-        value, value_state = self._value_network(
+        """ Rollout for one step.
+            The input shape of two networks should be [B, n, d], where B is the batch size of the environments,
+            n is the number of parallel agents and d is the shape of observation. Since we require B should be 
+            the same as the number of parallel agents, we only need to adapt the shape of inputs.observations to 
+            be [1, B, d]. After adaptation, each environment is handled by the corresponding (in indices) agent.
+        """
+        value, value_state = self._value_networks(
             inputs.observation.unsqueeze(0), state=state.values)
         value = value.squeeze(0)
 
-        action_distribution, actor_state = self._actor_network(
+        action_distribution, actor_state = self._actor_networks(
             inputs.observation.unsqueeze(0), state=state.actors)
 
         action = dist_utils.sample_action_distribution(action_distribution)

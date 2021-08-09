@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,7 +153,7 @@ class ParallelValueNetwork(PreprocessorNetwork):
             state (tuple): Empty for API consistent with ``ValueRNNNetwork``.
         """
 
-        observation, state = super().forward(observation, state, max_outer_rank=2)
+        observation, _ = super().forward(observation, state, max_outer_rank=2)
         value, _ = self._encoding_net(observation)
         value = value.reshape(value.shape[0], *self._output_spec.shape)
         return value, state

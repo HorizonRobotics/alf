@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,11 @@
 # limitations under the License.
 """Tests for alf.networks.actor_distribution_networks."""
 
+from alf.networks.actor_distribution_networks import ParallelActorDistributionNetwork
 from absl.testing import parameterized
 import functools
-
+from absl import logging
+import time
 import torch
 import torch.distributions as td
 
@@ -157,6 +159,60 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         else:
             self.assertEqual(len(state), len(lstm_hidden_size))
 
+    def test_make_parallel(self):
+        obs_spec = TensorSpec((3, 20, 20), torch.float32)
+        network_ctor, _ = self._init(None)
+        replicas = 4
+        batch_size = 128
+
+        # test continuous action
+        action_spec = BoundedTensorSpec((3, ), torch.float32)
+        actor_dist_net = network_ctor(
+            obs_spec,
+            action_spec,
+            conv_layer_params=self._conv_layer_params,
+            fc_layer_params=self._fc_layer_params,
+            continuous_projection_net_ctor=functools.partial(
+                NormalProjectionNetwork, scale_distribution=True))
+
+        pnet = actor_dist_net.make_parallel(replicas)
+        self.assertTrue(isinstance(pnet, ParallelActorDistributionNetwork))
+        self.assertEqual(pnet.name, "parallel_" + actor_dist_net.name)
+        self.assertTrue(
+            isinstance(actor_dist_net.output_spec, DistributionSpec))
+        act_dist, _  = pnet(obs_spec.randn((batch_size, )))
+        actions = act_dist.sample()
+        self.assertEqual(actions.shape, (batch_size, replicas) + action_spec.shape)
+        self.assertTrue(
+            torch.all(actions >= torch.as_tensor(action_spec.minimum)))
+        self.assertTrue(
+            torch.all(actions <= torch.as_tensor(action_spec.maximum)))
+
+        # test discrete action
+        
+        action_spec = TensorSpec((), torch.int32)
+        # action_spec is not bounded
+        self.assertRaises(
+            AttributeError,
+            network_ctor,
+            obs_spec,
+            action_spec,
+            conv_layer_params=self._conv_layer_params)
+
+        action_spec = BoundedTensorSpec((), torch.int32)
+        actor_dist_net = network_ctor(
+            obs_spec,
+            action_spec,
+            conv_layer_params=self._conv_layer_params)
+
+        pnet = actor_dist_net.make_parallel(replicas)
+        act_dist, _  = pnet(obs_spec.randn((batch_size, )))
+        actions = act_dist.sample()
+        self.assertEqual(actions.shape, (batch_size, replicas) + action_spec.shape)
+        self.assertTrue(
+            torch.all(actions >= torch.as_tensor(action_spec.minimum)))
+        self.assertTrue(
+            torch.all(actions <= torch.as_tensor(action_spec.maximum)))
 
 if __name__ == "__main__":
     alf.test.main()

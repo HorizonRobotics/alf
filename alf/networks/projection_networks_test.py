@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,6 +59,23 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertTrue(dists.base_dist.probs.std() > 0)
         self.assertTrue(
             torch.isclose(dists.base_dist.probs.mean(), torch.as_tensor(0.2)))
+
+    def test_make_parallel(self):
+        replicas = 4
+        outer_dim = 3
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.ones(outer_dims=(outer_dim, ))
+
+        net = CategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0)
+        parallel_net = net.make_parallel(replicas)
+        dist, _ = parallel_net(embedding)
+        self.assertTrue(isinstance(parallel_net.output_spec, DistributionSpec))
+        self.assertEqual(dist.batch_shape, (outer_dim,replicas))
+        self.assertEqual(dist.base_dist.batch_shape, (outer_dim,replicas, 1))
+        self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
 
 
 class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):

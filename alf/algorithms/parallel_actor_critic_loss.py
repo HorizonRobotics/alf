@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,17 +18,8 @@ import alf
 from alf.data_structures import LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, dist_utils, value_ops
-from alf.algorithms.actor_critic_loss import ActorCriticLoss, ActorCriticLossInfo
+from alf.algorithms.actor_critic_loss import ActorCriticLoss, ActorCriticLossInfo, _normalize_advantages
 
-
-def _normalize_advantages(advantages, variance_epsilon=1e-8):
-    # advantages is of shape [rollout_steps, num_envs]
-    # this function normalizes over all elements in the input advantages
-    adv_mean = advantages.mean()
-    adv_var = torch.var(advantages, unbiased=False)
-    normalized_advantages = (
-        (advantages - adv_mean) / (torch.sqrt(adv_var) + variance_epsilon))
-    return normalized_advantages
 
 @alf.configurable
 class ParallelActorCriticLoss(ActorCriticLoss):
@@ -44,7 +35,7 @@ class ParallelActorCriticLoss(ActorCriticLoss):
                  entropy_regularization=None,
                  td_loss_weight=1.0,
                  debug_summaries=False,
-                 name="ActorCriticLoss"):
+                 name="ParallelActorCriticLoss"):
         """An parallel actor-critic loss equals to
 
         .. code-block:: python
@@ -52,25 +43,11 @@ class ParallelActorCriticLoss(ActorCriticLoss):
             (policy_gradient_loss
             + td_loss_weight * td_loss
             - entropy_regularization * entropy)
-
-        Args:
-            td_errors_loss_fn (Callable): A function for computing the TD errors
-                loss. This function takes as input the target and the estimated
-                Q values and returns the loss for each element of the batch.
-            use_gae (bool): If True, uses generalized advantage estimation for
-                computing per-timestep advantage. Else, just subtracts value
-                predictions from empirical return.
-            use_td_lambda_return (bool): Only effective if use_gae is True.
-                If True, uses ``td_lambda_return`` for training value function.
-                ``(td_lambda_return = gae_advantage + value_predictions)``.
-            td_lambda (float): Lambda parameter for TD-lambda computation.
-            normalize_advantages (bool): If True, normalize advantage to zero
-                mean and unit variance within batch for caculating policy
-                gradient. This is commonly used for PPO.
-            advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
-            entropy_regularization (float): Coefficient for entropy
-                regularization loss term.
-            td_loss_weight (float): the weigt for the loss of td error.
+        
+        The args are the same as the ActorCriticLoss. 
+        
+        There are only two differnt things from ActorCriticLoss. 
+        Please see the comments in the codes.
         """
         super().__init__(gamma=gamma,
                         td_error_loss_fn=td_error_loss_fn,
@@ -84,22 +61,8 @@ class ParallelActorCriticLoss(ActorCriticLoss):
                         debug_summaries=debug_summaries,
                         name=name)
 
-        self._td_loss_weight = td_loss_weight
-        self._name = name
-        self._gamma = gamma
-        self._td_error_loss_fn = td_error_loss_fn
-        self._use_gae = use_gae
-        self._lambda = td_lambda
-        self._use_td_lambda_return = use_td_lambda_return
-        self._normalize_advantages = normalize_advantages
-        assert advantage_clip is None or advantage_clip > 0, (
-            "Clipping value should be positive!")
-        self._advantage_clip = advantage_clip
-        self._entropy_regularization = entropy_regularization
-        self._debug_summaries = debug_summaries
-
     def forward(self, info):
-        """Cacluate actor critic loss. The first dimension of all the tensors is
+        """Cacluate the parallel actor critic loss. The first dimension of all the tensors is
         time dimension and the second dimesion is the batch dimension.
 
         Args:
@@ -145,6 +108,8 @@ class ParallelActorCriticLoss(ActorCriticLoss):
         if self._entropy_regularization is not None:
             entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
                 info.action_distribution, return_sum=False)
+            # The first one of the two differences from ActorCriticLoss is the following two additional lines.
+            # We need to squeeze one extra dimension in the parallel setting.
             entropy = entropy.squeeze(1)
             entropy_for_gradient = entropy_for_gradient.squeeze(1)
             entropy_loss = alf.nest.map_structure(lambda x: -x, entropy)
@@ -159,4 +124,7 @@ class ParallelActorCriticLoss(ActorCriticLoss):
     def _pg_loss(self, info, advantages):
         action_log_prob = dist_utils.compute_log_probability(
             info.action_distribution, info.action.unsqueeze(1))
-        return -advantages * action_log_prob.squeeze(1)
+        # The second one of the two differences from ActorCriticLoss is the following additional line.
+        # We need to squeeze one extra dimension in the parallel setting.
+        action_log_prob = action_log_prob.squeeze(1)
+        return -advantages * action_log_prob

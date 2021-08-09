@@ -14,22 +14,17 @@ from alf.algorithms.parallel_actor_critic_loss import ParallelActorCriticLoss
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 
 class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
-    def test_parallel_trac_algorithm(self):
+    def test_parallel_ac_algorithm(self):
 
         env_class = PolicyUnittestEnv
         num_env = 5
         num_eval_env = 1
         num_parallel_agents = num_env
         steps_per_episode = 15
-        pac = True
         action_type = ActionType.Discrete
-
-        if pac:
-            ac_algorithm_cls = ParallelActorCriticAlgorithm
-            ac_algorithm_loss = ParallelActorCriticLoss
-        else:
-            ac_algorithm_cls = ActorCriticAlgorithm
-            ac_algorithm_loss = ActorCriticLoss
+        
+        ac_algorithm_cls = ParallelActorCriticAlgorithm
+        ac_algorithm_loss = ParallelActorCriticLoss
 
         config = TrainerConfig(
             root_dir="dummy",
@@ -74,23 +69,26 @@ class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
             debug_summaries=False,
             name="MyParallelActorCritic")
 
+        print(config.initial_collect_steps)
         eval_env.reset()
-        for i in range(700):
+        sum_reward = 0
+        for i in range(2000):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue
             eval_env.reset()
-            eval_time_step = unroll(eval_env, alg, steps_per_episode - 1, pac)
+            eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+            sum_reward = sum_reward + eval_time_step.reward
             logging.log_every_n_seconds(
                 logging.INFO,
-                "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
+                "%d reward=%f" % (i, float(sum_reward / (i+1))),
                 n_seconds=1)
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=0.3)
+            1.0, float(sum_reward / (i+1)), delta=0.3)
 
 
-def unroll(env, algorithm, steps, pac=True):
+def unroll(env, algorithm, steps):
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     trans_state = algorithm.get_initial_transform_state(env.batch_size)
@@ -100,10 +98,7 @@ def unroll(env, algorithm, steps, pac=True):
             time_step.is_first())
         transformed_time_step, trans_state = algorithm.transform_timestep(
             time_step, trans_state)
-        if pac:
-            action, action_state, _ = algorithm.predict_step(transformed_time_step, ParallelActorCriticState(actors=(), values=()))
-        else:
-            action, action_state, _ = algorithm.predict_step(transformed_time_step, ActorCriticState(actor=(), value=()))
+        action, action_state, _ = algorithm.predict_step(transformed_time_step, ParallelActorCriticState(actors=(), values=()))
         time_step = env.step(action)
         policy_state = action_state
     return time_step

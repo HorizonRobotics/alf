@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -171,7 +171,7 @@ class ParallelActorDistributionNetwork(Network):
             inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
             state (tuple): Empty for API consistent with ``ActorDistributionRNNNetwork``.
         """
-        encoding, state = self._encoding_net(observation, state)
+        encoding, _ = self._encoding_net(observation, state)
         act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
                                       self._projection_net)
         return act_dist, state
