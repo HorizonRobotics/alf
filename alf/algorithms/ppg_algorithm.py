@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,51 +11,41 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PPO algorithm."""
+"""Phasic Policy Gradient Algorithm."""
 
 import torch
 
 import alf
-from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.ppo_loss import PPOLoss
+# from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.data_structures import namedtuple, TimeStep
 from alf.utils import value_ops, tensor_utils
 
-PPOInfo = namedtuple(
-    "PPOInfo", [
-        "step_type", "discount", "reward", "action",
-        "rollout_action_distribution", "returns", "advantages",
-        "action_distribution", "value", "reward_weights"
+PPGInfo = namedtuple(
+    "PPGInfo", [
+        "step_type",
+        "discount",
+        "reward",
+        "action",
+        "rollout_action_distribution",
+        "returns",
+        "advantages",
+        "action_distribution",
+        "value",
+        "reward_weights",
+        "train_loop_epoch",
     ],
     default_value=())
 
 
 @alf.configurable
-class PPOAlgorithm(ActorCriticAlgorithm):
-    """PPO Algorithm.
-    Implement the simplified surrogate loss in equation (9) of "Proximal
-    Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
-
-    It works with ``ppo_loss.PPOLoss``. It should have same behavior as
-    `baselines.ppo2`.
+class PPGAlgorithm(PPOAlgorithm):
+    """PPG Algorithm.
     """
 
     @property
     def on_policy(self):
         return False
-
-    def train_step(self, inputs: TimeStep, state, rollout_info):
-        from pudb.remote import set_trace
-        set_trace()
-        alg_step = self._rollout_step(inputs, state)
-        return alg_step._replace(
-            info=rollout_info._replace(
-                step_type=alg_step.info.step_type,
-                reward=alg_step.info.reward,
-                discount=alg_step.info.discount,
-                action_distribution=alg_step.info.action_distribution,
-                value=alg_step.info.value,
-                reward_weights=alg_step.info.reward_weights))
 
     def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
                               batch_info):
@@ -78,8 +68,9 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
 
         returns = rollout_info.value + advantages
-        return root_inputs, PPOInfo(
+        return root_inputs, PPGInfo(
             rollout_action_distribution=rollout_info.action_distribution,
             returns=returns,
             action=rollout_info.action,
-            advantages=advantages)
+            advantages=advantages,
+            train_loop_epoch=0)
