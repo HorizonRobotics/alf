@@ -21,11 +21,12 @@ from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.network import Network
 from alf.networks.projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.data_structures import namedtuple, TimeStep
+from alf.data_structures import namedtuple, TimeStep, AlgStep
 from alf.utils import value_ops, tensor_utils
 from alf.tensor_specs import TensorSpec
 import alf.layers as layers
 from alf.algorithms.config import TrainerConfig
+from alf.utils import common, dist_utils
 
 PPGState = namedtuple(
     "PPGState", ["actor", "value", "aux_value"], default_value=())
@@ -42,7 +43,6 @@ PPGInfo = namedtuple(
         "action_distribution",
         "value",
         "reward_weights",
-        "train_loop_epoch",
     ],
     default_value=())
 
@@ -104,9 +104,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         encoding_net = encoding_network_ctor(
             input_tensor_spec=observation_spec)
-        policy_head = CategoricalProjectionNetwork(
-            input_size=encoding_net.output_spec.shape[0],
-            action_spec=action_spec)
+        policy_head = alf.nn.Sequential(
+            encoding_net,
+            CategoricalProjectionNetwork(
+                input_size=encoding_net.output_spec.shape[0],
+                action_spec=action_spec))
         value_head = alf.nn.Sequential(
             encoding_net,
             layers.FC(
@@ -142,5 +144,18 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     def on_policy(self):
         return False
 
-    def rollout_step(self, inputs: TimeStep, state: PPGState):
-        return super().rollout_step(inputs, state)
+    def rollout_step(self, inputs: TimeStep, state: PPGState) -> AlgStep:
+        value, value_state = self._value_head(
+            inputs.observation, state=state.value)
+
+        action_distribution, actor_state = self._policy_head(
+            inputs.observation, state=state.actor)
+
+        action = dist_utils.sample_action_distribution(action_distribution)
+
+        reward_weigths = ()
+
+        return AlgStep(
+            output=action,
+            state=PPGState(actor=actor_state, value=value_state),
+            info=())
