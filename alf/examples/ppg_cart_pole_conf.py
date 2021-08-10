@@ -13,9 +13,10 @@
 # limitations under the License.
 
 import alf
-from alf.examples import ppo_conf
+from alf.examples import ppg_conf
 from alf.algorithms.data_transformer import RewardScaling
-from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.algorithms.ppg_algorithm import PPGAlgorithm
+from alf.networks.encoding_networks import EncodingNetwork
 from alf.utils.losses import element_wise_huber_loss
 
 # Environment Configuration
@@ -27,23 +28,17 @@ alf.config('TrainerConfig', data_transformer_ctor=RewardScaling)
 alf.config('RewardScaling', scale=0.01)
 
 # algorithm config
-alf.config('ActorDistributionNetwork', fc_layer_params=(100, ))
-alf.config('ValueNetwork', fc_layer_params=(100, ))
+alf.config('EncodingNetwork', fc_layer_params=(100, ))
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=ActorDistributionNetwork,
-    value_network_ctor=ValueNetwork,
-    optimizer=alf.optimizers.AdamTF(lr=1e-3))
-
-alf.config(
-    'PPOLoss',
-    entropy_regularization=1e-4,
-    gamma=0.98,
-    td_error_loss_fn=element_wise_huber_loss,
-    normalize_advantages=False)
+alf.config('PPGAlgorithm', encoding_network_ctor=EncodingNetwork)
 
 # training config
+alf.config(
+    'TrainerConfig',
+    algorithm_ctor=PPGAlgorithm,
+    whole_replay_buffer_training=True,
+    clear_replay_buffer=True)
+
 alf.config(
     'TrainerConfig',
     mini_batch_length=1,

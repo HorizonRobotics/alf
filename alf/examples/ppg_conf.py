@@ -20,16 +20,5 @@ from alf.algorithms.agent import Agent
 from alf.algorithms.ppg_algorithm import PPGAlgorithm
 from alf.algorithms.ppo_algorithm import PPOLoss
 
-alf.config('Agent', rl_algorithm_cls=PPGAlgorithm)
-
 alf.config('EntropyTargetAlgorithm', initial_alpha=1.)
-
 alf.config('PPOLoss', entropy_regularization=None, normalize_advantages=True)
-
-alf.config('PPGAlgorithm', loss_class=PPOLoss)
-
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    whole_replay_buffer_training=True,
-    clear_replay_buffer=True)

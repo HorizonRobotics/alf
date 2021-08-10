@@ -94,6 +94,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
+        print(f'observation_spec={observation_spec}')
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
                 'TrainerConfig.epsilon_greedy')

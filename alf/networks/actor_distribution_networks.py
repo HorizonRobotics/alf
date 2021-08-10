@@ -116,6 +116,9 @@ class ActorDistributionNetwork(Network):
                     action_spec=spec)
             return net
 
+        from pudb.remote import set_trace
+        set_trace()
+
         self._projection_net = nest.map_structure(_create, self._action_spec)
         if nest.is_nested(self._projection_net):
             # need this for torch to pickup the parameters of all the modules

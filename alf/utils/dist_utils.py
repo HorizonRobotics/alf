@@ -706,6 +706,8 @@ def extract_spec(nests, from_dim=1):
             return TensorSpec.from_tensor(obj, from_dim)
         elif isinstance(obj, td.Distribution):
             return DistributionSpec.from_distribution(obj, from_dim)
+        elif isinstance(obj, int):
+            return obj
         else:
             raise ValueError("Unsupported value type: %s" % type(obj))
 
@@ -755,6 +757,8 @@ def params_to_distributions(nests, nest_spec):
             return spec.build_distribution(params)
         elif isinstance(spec, TensorSpec):
             return params
+        elif isinstance(spec, int):
+            return spec
         else:
             raise ValueError(
                 "Only DistributionSpec or TensorSpec is allowed "
@@ -780,6 +784,8 @@ def distributions_to_params(nests):
         if isinstance(dist_or_tensor, td.Distribution):
             return extract_distribution_parameters(dist_or_tensor)
         elif isinstance(dist_or_tensor, torch.Tensor):
+            return dist_or_tensor
+        elif isinstance(dist_or_tensor, int):
             return dist_or_tensor
         else:
             raise ValueError(

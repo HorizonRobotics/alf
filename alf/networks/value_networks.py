@@ -44,7 +44,8 @@ class ValueNetwork(PreprocessorNetwork):
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
-            output_tensor_spec (TensorSpec): spec for the output
+            output_tensor_spec (TensorSpec): spec for the output, if not
+                specified, it defaults to single scalar output.
             input_preprocessors (nested InputPreprocessor): a nest of
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
@@ -73,6 +74,7 @@ class ValueNetwork(PreprocessorNetwork):
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
             name (str):
+
         """
         super().__init__(
             input_tensor_spec,

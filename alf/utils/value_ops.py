@@ -145,14 +145,6 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
                                   "at least 2. Got {s}".format(
                                       s=values.shape[0]))
 
-    print(f'rewards.shape = {rewards.shape}')
-    print(f'values.shape = {values.shape}')
-    print(f'step_types.shape = {step_types.shape}')
-    print(f'discouts = {discounts}')
-
-    from pudb.remote import set_trace
-    set_trace()
-
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
