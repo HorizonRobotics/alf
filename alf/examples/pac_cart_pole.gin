@@ -23,7 +23,6 @@ ParallelActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 ParallelActorCriticAlgorithm.optimizer=@ac/Adam()
 
 import alf.algorithms.parallel_actor_critic_algorithm
-import alf.algorithms.parallel_trac_algorithm
 ParallelActorCriticLoss.entropy_regularization=1e-4
 ParallelActorCriticLoss.gamma=0.98
 ParallelActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss

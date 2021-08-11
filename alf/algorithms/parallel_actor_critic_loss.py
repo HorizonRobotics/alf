@@ -46,8 +46,8 @@ class ParallelActorCriticLoss(ActorCriticLoss):
         
         The args are the same as the ActorCriticLoss. 
         
-        There are only two differnt things from ActorCriticLoss. 
-        Please see the comments in the codes.
+        There are only two different things from ActorCriticLoss. Please see the comments in line 111 and 112 for the first difference. 
+        For the other one, check the comments in line 128 and 129.
         """
         super().__init__(gamma=gamma,
                         td_error_loss_fn=td_error_loss_fn,

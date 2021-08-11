@@ -176,10 +176,11 @@ class ParallelActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: ParallelActorCriticState):
         """ Rollout for one step.
-            The input shape of two networks should be [B, n, d], where B is the batch size of the environments,
-            n is the number of parallel agents and d is the shape of observation. Since we require B should be 
-            the same as the number of parallel agents, we only need to adapt the shape of inputs.observations to 
-            be [1, B, d]. After adaptation, each environment is handled by the corresponding (in indices) agent.
+            The input size of  parallel_actor_networks and parallel_value_networks should be [B, n, d], where B 
+            is the batch size of the environments, n is the number of parallel agents and d is the shape of observation. 
+            Since we require B should be the same as the number of parallel agents, we only need to adapt the shape of 
+            inputs.observations to be [1, B, d]. After adaptation, each environment is handled by the corresponding 
+            (in indices) agent.
         """
         value, value_state = self._value_networks(
             inputs.observation.unsqueeze(0), state=state.values)

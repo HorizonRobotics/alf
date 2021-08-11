@@ -38,20 +38,15 @@ TracInfo = namedtuple(
 @alf.configurable
 class TracAlgorithm(RLAlgorithm):
     """Trust-region actor-critic.
-
     It compares the action distributions after the SGD with the action
     distributions from the previous model. If the average distance is too big,
     the new parameters are shrinked as:
-
     .. code-block:: python
-
         w_new' = old_w + 0.9 * distance_clip / distance * (w_new - w_old)
-
     If the distribution is ``Categorical``, the distance is
     :math:`||logits_1 - logits_2||^2`, and if the distribution is
     ``Deterministic``, it is :math:`||loc_1 - loc_2||^2`,  otherwise it's
     :math:`KL(d1||d2) + KL(d2||d1)`.
-
     The reason of using :math:`||logits_1 - logits_2||^2` for categorical
     distributions is that KL can be small even if there are large differences in
     logits when the entropy is small. This means that KL cannot fully capture
@@ -69,7 +64,6 @@ class TracAlgorithm(RLAlgorithm):
                  debug_summaries=False,
                  name="TracAlgorithm"):
         """
-
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             ac_algorithm_cls (type): Actor Critic Algorithm cls.
@@ -80,7 +74,6 @@ class TracAlgorithm(RLAlgorithm):
         ac_algorithm = ac_algorithm_cls(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            config = config,
             debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
@@ -100,7 +93,6 @@ class TracAlgorithm(RLAlgorithm):
         self._ac_algorithm = ac_algorithm
         self._trusted_updater = None
         self._action_distribution_spec = None
-
 
         def _get_clip(spec):
             dims = np.product(spec.shape)
@@ -153,7 +145,6 @@ class TracAlgorithm(RLAlgorithm):
         ac_info = info.ac._replace(
             action_distribution=info.action_distribution)
         return self._ac_algorithm.calc_loss(ac_info)
-        
 
     def after_update(self, root_inputs, info: TracInfo):
         """Adjust actor parameter according to KL-divergence."""
@@ -181,9 +172,7 @@ class TracAlgorithm(RLAlgorithm):
     @torch.no_grad()
     def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
-
         The distance is:
-
         - :math:`||logits_1 - logits_2||^2` for Categorical distribution
         - :math:`||loc_1 - loc_2||^2` for Deterministic distribution
         - :math:`KL(d1||d2) + KL(d2||d1)` for others

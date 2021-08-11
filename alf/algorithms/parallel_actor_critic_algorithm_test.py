@@ -1,6 +1,7 @@
 from absl import logging
 from functools import partial
 import unittest
+import torch
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -18,7 +19,7 @@ class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
 
         env_class = PolicyUnittestEnv
         num_env = 5
-        num_eval_env = 1
+        num_eval_env = 5
         num_parallel_agents = num_env
         steps_per_episode = 15
         action_type = ActionType.Discrete
@@ -81,11 +82,12 @@ class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
             sum_reward = sum_reward + eval_time_step.reward
             logging.log_every_n_seconds(
                 logging.INFO,
-                "%d reward=%f" % (i, float(sum_reward / (i+1))),
+                 str(i) + " reward=" + ' '.join(map(str, (sum_reward / (i+1)).tolist())),
                 n_seconds=1)
-
-        self.assertAlmostEqual(
-            1.0, float(sum_reward / (i+1)), delta=0.3)
+        x = torch.ones(num_eval_env) 
+        y = sum_reward / (i+1)
+        self.assertEqual(x.shape, y.shape)
+        self.assertLessEqual(float(torch.max(abs(x - y))), 0.3)
 
 
 def unroll(env, algorithm, steps):
