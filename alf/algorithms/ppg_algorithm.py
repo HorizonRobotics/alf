@@ -178,6 +178,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             td_error_loss_fn=element_wise_huber_loss,
             debug_summaries=debug_summaries)
 
+        # TODO(breakds): Try not to maintain states in algorithm itself. The
+        # less stateful the cleaner.
+
+        self._update_epoch = 0
+
     @property
     def on_policy(self) -> bool:
         return False
@@ -208,6 +213,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             inputs: TimeStep,  # nest of [B, T, ...]
             rollout_info: PPGRolloutInfo,
             batch_info) -> Tuple[TimeStep, PPGTrainInfo]:
+        # Initialize the update epoch at the beginning of each iteration
+        self._update_epoch = 0
+
         # Here inputs is a nest of tensors representing a batch of trajectories.
         # Each tensor is expected to be of shape [B, T] or [B, T, ...], where T
         # stands for the temporal extent, where B is the the size of the batch.
@@ -238,4 +246,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
 
     def calc_loss(self, info: PPGTrainInfo):
+        print(f'update epoch = {self._update_epoch}')
         return self._loss(info)
+
+    def after_update(self, root_inputs: TimeStep, info: PPGTrainInfo):
+        self._update_epoch += 1
