@@ -871,27 +871,38 @@ class HindsightExperienceTransformer(DataTransformer):
                     torch.mean(relabeled_rewards[her_indices][:-1]))
             alf.summary.scalar("replayer/" + buffer._name + ".future_distance",
                                torch.mean(future_dist.float()))
+
+        goal_rewards = result.reward
+        if result.reward.ndim > 2:
+            goal_rewards = result.reward[:, :, 0]
+
         # assert reward function is the same as used by the environment.
         if not torch.allclose(relabeled_rewards[non_her_indices],
-                              result.reward[non_her_indices]):
+                              goal_rewards[non_her_indices]):
             not_close = torch.abs(relabeled_rewards[non_her_indices] -
-                                  result.reward[non_her_indices]) > 0.01
+                                  goal_rewards[non_her_indices]) > 0.01
             msg = ("hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
                    "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
                    + "\n{}").format(
                        relabeled_rewards[non_her_indices][not_close],
-                       result.reward[non_her_indices][not_close],
+                       goal_rewards[non_her_indices][not_close],
                        result_ag[non_her_indices][not_close],
                        result_desired_goal[non_her_indices][not_close],
                        env_ids[non_her_indices][not_close[:, 0]],
                        start_pos[non_her_indices][not_close[:, 0]])
             logging.warning(msg)
             # assert False, msg
-            relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
+            # relabeled_rewards[non_her_indices] = goal_rewards[non_her_indices]
+
+        final_relabeled_rewards = relabeled_rewards
+        if result.reward.ndim > 2:
+            # multi dimensional env reward, first dim is goal related reward.
+            final_relabeled_rewards = result.reward.clone()
+            final_relabeled_rewards[:, :, 0] = relabeled_rewards
+        result = result._replace(reward=final_relabeled_rewards)
 
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabeled_goal)
-        result = result._replace(reward=relabeled_rewards)
         info = info._replace(her=her_cond, future_distance=future_dist)
         if alf.get_default_device() != buffer.device:
             result, info = convert_device((result, info))

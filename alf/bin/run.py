@@ -560,6 +560,8 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             #'hindsight_relabel_fn.sparse_reward',
             #'SubgoalPlanningGoalGenerator.sparse_reward',
         ],
+        'aprwdim':
+            'SparseReward.append_reward_dim',
         'succsince':
             'SuccessWrapper.since_episode_steps',
         'rwdcap': [
@@ -784,6 +786,8 @@ def choose_cluster():
     with open('gpucluster.yaml', 'r') as f:
         cluster_str = f.read()
     from conf import Config
+    Config.clusters["share-rtx"] = dict(
+        appid="qCQeKZEZJp", appkey="jSVvwipVSMIhWTuOuUEj")
     assert FLAGS.cluster in Config.clusters, \
         "Cluster name {} is unrecognized!".format(FLAGS.cluster)
     id_and_key = Config.clusters[FLAGS.cluster]
