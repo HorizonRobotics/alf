@@ -163,13 +163,13 @@ class TDLoss(nn.Module):
         if self._improve_w_goal_return:
             batch_length, batch_size = returns.shape[:2]
             her_cond = info.batch_info.her
-            d = info.batch_info.future_distance
             if her_cond != () and torch.any(her_cond):
+                dist = info.batch_info.future_distance
                 if self._positive_reward:
                     goal_return = torch.pow(
-                        self._gamma * torch.ones(her_cond.shape), d)
+                        self._gamma * torch.ones(her_cond.shape), dist)
                 else:
-                    goal_return = -(1. - torch.pow(self._gamma, d)) / (
+                    goal_return = -(1. - torch.pow(self._gamma, dist)) / (
                         1. - self._gamma)
                 goal_return *= self._reward_multiplier
                 returns_0 = returns
