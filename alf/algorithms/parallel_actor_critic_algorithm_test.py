@@ -19,7 +19,7 @@ class ParallelActorCriticAlgorithmTest(alf.test.TestCase):
 
         env_class = PolicyUnittestEnv
         num_env = 5
-        num_eval_env = 5
+        num_eval_env = 3
         num_parallel_agents = num_env
         steps_per_episode = 15
         action_type = ActionType.Discrete

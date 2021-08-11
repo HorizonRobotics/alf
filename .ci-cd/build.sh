@@ -62,6 +62,7 @@ function test() {
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
         alf.algorithms.muzero_algorithm_test \
+	    alf.algorithms.parallel_actor_critic_test \
         alf.algorithms.particle_vi_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.predictive_representation_learner_test \
