@@ -14,6 +14,7 @@
 """Phasic Policy Gradient Algorithm."""
 
 import torch
+from typing import Optional, Tuple
 
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -46,9 +47,11 @@ PPGRolloutInfo = namedtuple(
     default_value=())
 
 PPGTrainInfo = namedtuple(
-    'PPGRolloutInfo', [
-        'action_distribution',
-        'rollout_action_distribution',
+    'PPGTrainInfo',
+    [
+        'action',  # Sampled from the behavior policy
+        'rollout_action_distribution',  # Evaluation of the behavior policy
+        'action_distribution',  # Evaluation of the target policy
         'value',
         'step_type',
         'discount',
@@ -61,8 +64,9 @@ PPGTrainInfo = namedtuple(
 
 
 def merge_rollout_into_train_info(rollout_info: PPGRolloutInfo,
-                                  train_info: PPGTrainInfo):
+                                  train_info: PPGTrainInfo) -> PPGTrainInfo:
     return train_info._replace(
+        action=rollout_info.action,
         action_distribution=rollout_info.action_distribution,
         value=rollout_info.value,
         step_type=rollout_info.step_type,
@@ -82,9 +86,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  encoding_network_ctor: callable = EncodingNetwork,
                  env=None,
-                 config: TrainerConfig = None,
-                 debug_summaries=False,
-                 name="PPGAlgorithm"):
+                 config: Optional[TrainerConfig] = None,
+                 debug_summaries: bool = False,
+                 optimizer: Optional[torch.optim.Optimizer] = None,
+                 name: str = "PPGAlgorithm"):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
@@ -155,7 +160,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             train_state_spec=PPGState(
                 actor=policy_head.state_spec,
                 value=value_head.state_spec,
-                aux_value=aux_value_head.state_spec))
+                aux_value=aux_value_head.state_spec),
+            optimizer=optimizer)
 
         # TODO(breakds): Make this more flexible to allow recurrent networks
         # TODO(breakds): Make this more flexible to allow separate networks
@@ -173,7 +179,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries)
 
     @property
-    def on_policy(self):
+    def on_policy(self) -> bool:
         return False
 
     def rollout_step(self, inputs: TimeStep, state: PPGState) -> AlgStep:
@@ -201,7 +207,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             self,
             inputs: TimeStep,  # nest of [B, T, ...]
             rollout_info: PPGRolloutInfo,
-            batch_info):
+            batch_info) -> Tuple[TimeStep, PPGTrainInfo]:
         # Here inputs is a nest of tensors representing a batch of trajectories.
         # Each tensor is expected to be of shape [B, T] or [B, T, ...], where T
         # stands for the temporal extent, where B is the the size of the batch.
@@ -226,7 +232,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 advantages=advantages))
 
     def train_step(self, inputs: TimeStep, state: PPGState,
-                   prev_train_info: PPGTrainInfo):
+                   prev_train_info: PPGTrainInfo) -> AlgStep:
         alg_step = self._rollout_step(inputs, state)
         return alg_step._replace(
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))

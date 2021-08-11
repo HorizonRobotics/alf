@@ -30,7 +30,10 @@ alf.config('RewardScaling', scale=0.01)
 # algorithm config
 alf.config('EncodingNetwork', fc_layer_params=(100, ))
 
-alf.config('PPGAlgorithm', encoding_network_ctor=EncodingNetwork)
+alf.config(
+    'PPGAlgorithm',
+    encoding_network_ctor=EncodingNetwork,
+    optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
 # training config
 alf.config(
