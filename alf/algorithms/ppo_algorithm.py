@@ -45,8 +45,6 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         return False
 
     def train_step(self, inputs: TimeStep, state, rollout_info):
-        from pudb.remote import set_trace
-        set_trace()
         alg_step = self._rollout_step(inputs, state)
         return alg_step._replace(
             info=rollout_info._replace(
@@ -60,13 +58,15 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
                               batch_info):
         """Compute advantages and put it into exp.rollout_info."""
-
         if rollout_info.reward.ndim == 3:
             # [B, T, D] or [B, T, 1]
             discounts = rollout_info.discount.unsqueeze(-1) * self._loss.gamma
         else:
             # [B, T]
             discounts = rollout_info.discount * self._loss.gamma
+
+        from pudb.remote import set_trace
+        set_trace()
 
         advantages = value_ops.generalized_advantage_estimation(
             rewards=rollout_info.reward,

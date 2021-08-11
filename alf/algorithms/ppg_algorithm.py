@@ -18,33 +18,57 @@ import torch
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
+from alf.algorithms.config import TrainerConfig
+from alf.algorithms.ppo_loss import PPOLoss
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.network import Network
 from alf.networks.projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.data_structures import namedtuple, TimeStep, AlgStep
-from alf.utils import value_ops, tensor_utils
 from alf.tensor_specs import TensorSpec
 import alf.layers as layers
-from alf.algorithms.config import TrainerConfig
-from alf.utils import common, dist_utils
+
+from alf.utils import common, dist_utils, value_ops, tensor_utils
+from alf.utils.losses import element_wise_huber_loss
 
 PPGState = namedtuple(
-    "PPGState", ["actor", "value", "aux_value"], default_value=())
+    'PPGState', ['actor', 'value', 'aux_value'], default_value=())
 
-PPGInfo = namedtuple(
-    "PPGInfo", [
-        "step_type",
-        "discount",
-        "reward",
-        "action",
-        "rollout_action_distribution",
-        "returns",
-        "advantages",
-        "action_distribution",
-        "value",
-        "reward_weights",
+PPGRolloutInfo = namedtuple(
+    'PPGRolloutInfo', [
+        'action_distribution',
+        'action',
+        'value',
+        'step_type',
+        'discount',
+        'reward',
+        'reward_weights',
     ],
     default_value=())
+
+PPGTrainInfo = namedtuple(
+    'PPGRolloutInfo', [
+        'action_distribution',
+        'rollout_action_distribution',
+        'value',
+        'step_type',
+        'discount',
+        'reward',
+        'advantages',
+        'returns',
+        'reward_weights',
+    ],
+    default_value=())
+
+
+def merge_rollout_into_train_info(rollout_info: PPGRolloutInfo,
+                                  train_info: PPGTrainInfo):
+    return train_info._replace(
+        action_distribution=rollout_info.action_distribution,
+        value=rollout_info.value,
+        step_type=rollout_info.step_type,
+        discount=rollout_info.discount,
+        reward=rollout_info.reward,
+        reward_weights=rollout_info.reward_weights)
 
 
 @alf.configurable
@@ -112,11 +136,13 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         value_head = alf.nn.Sequential(
             encoding_net,
             layers.FC(
-                input_size=encoding_net.output_spec.shape[0], output_size=1))
+                input_size=encoding_net.output_spec.shape[0], output_size=1),
+            layers.Reshape(shape=()))
         aux_value_head = alf.nn.Sequential(
             encoding_net, layers.Detach(),
             layers.FC(
-                input_size=encoding_net.output_spec.shape[0], output_size=1))
+                input_size=encoding_net.output_spec.shape[0], output_size=1),
+            layers.Reshape(shape=()))
 
         super().__init__(
             config=config,
@@ -139,6 +165,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._policy_head = policy_head
         self._value_head = value_head
         self._aux_value_head = aux_value_head
+        # TODO(breakds): Put this to the configuration
+        self._loss = PPOLoss(
+            entropy_regularization=1e-4,
+            gamma=0.98,
+            td_error_loss_fn=element_wise_huber_loss,
+            debug_summaries=debug_summaries)
 
     @property
     def on_policy(self):
@@ -153,9 +185,51 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         action = dist_utils.sample_action_distribution(action_distribution)
 
-        reward_weigths = ()
-
         return AlgStep(
             output=action,
             state=PPGState(actor=actor_state, value=value_state),
-            info=())
+            info=PPGRolloutInfo(
+                action_distribution=action_distribution,
+                action=common.detach(action),
+                value=value,
+                step_type=inputs.step_type,
+                discount=inputs.discount,
+                reward=inputs.reward,
+                reward_weights=()))
+
+    def preprocess_experience(
+            self,
+            inputs: TimeStep,  # nest of [B, T, ...]
+            rollout_info: PPGRolloutInfo,
+            batch_info):
+        # Here inputs is a nest of tensors representing a batch of trajectories.
+        # Each tensor is expected to be of shape [B, T] or [B, T, ...], where T
+        # stands for the temporal extent, where B is the the size of the batch.
+
+        discounts = rollout_info.discount * self._loss.gamma
+
+        advantages = value_ops.generalized_advantage_estimation(
+            rewards=rollout_info.reward,
+            values=rollout_info.value,
+            step_types=rollout_info.step_type,
+            discounts=discounts,
+            td_lambda=self._loss._lambda,
+            time_major=False)
+        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
+        returns = rollout_info.value + advantages
+
+        return inputs, merge_rollout_into_train_info(
+            rollout_info,
+            PPGTrainInfo(
+                rollout_action_distribution=rollout_info.action_distribution,
+                returns=returns,
+                advantages=advantages))
+
+    def train_step(self, inputs: TimeStep, state: PPGState,
+                   prev_train_info: PPGTrainInfo):
+        alg_step = self._rollout_step(inputs, state)
+        return alg_step._replace(
+            info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
+
+    def calc_loss(self, info: PPGTrainInfo):
+        return self._loss(info)
