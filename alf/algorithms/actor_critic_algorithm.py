@@ -13,12 +13,14 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
+import torch
+
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.data_structures import TimeStep, AlgStep, namedtuple
-from alf.utils import common, dist_utils
+from alf.utils import common, dist_utils, tensor_utils
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -28,7 +30,7 @@ ActorCriticState = namedtuple(
 ActorCriticInfo = namedtuple(
     "ActorCriticInfo", [
         "step_type", "discount", "reward", "action", "action_distribution",
-        "value"
+        "value", "reward_weights"
     ],
     default_value=())
 
@@ -41,6 +43,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  observation_spec,
                  action_spec,
                  reward_spec=TensorSpec(()),
+                 reward_weights=None,
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
                  epsilon_greedy=None,
@@ -57,6 +60,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
+            reward_weights (None|list[float]): this is only used when the reward is
+                multidimensional. In that case, the weighted sum of the v values
+                is used for training the actor if reward_weights is not None.
+                Otherwise, the sum of the v values is used.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -95,10 +102,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             input_tensor_spec=observation_spec, action_spec=action_spec)
         value_network = value_network_ctor(input_tensor_spec=observation_spec)
 
+        if reward_spec.numel > 1:
+            value_network = alf.networks.NaiveParallelNetwork(
+                value_network, reward_spec.numel)  # value->[B,n]
+
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
+            reward_weights=reward_weights,
             predict_state_spec=ActorCriticState(
                 actor=actor_network.state_spec),
             train_state_spec=ActorCriticState(
@@ -140,6 +152,12 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             inputs.observation, state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
+
+        if self.has_multidim_reward():
+            reward_weights = tensor_utils.tensor_extend_new_dim(
+                self.reward_weights, dim=0, n=value.shape[0])
+        else:
+            reward_weights = ()
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
@@ -149,7 +167,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 step_type=inputs.step_type,
                 reward=inputs.reward,
                 discount=inputs.discount,
-                action_distribution=action_distribution))
+                action_distribution=action_distribution,
+                reward_weights=reward_weights))
 
     def calc_loss(self, info: ActorCriticInfo):
         """Calculate loss."""
