@@ -31,8 +31,7 @@ import alf.layers as layers
 from alf.utils import common, dist_utils, value_ops, tensor_utils
 from alf.utils.losses import element_wise_huber_loss
 
-PPGState = namedtuple(
-    'PPGState', ['actor', 'value', 'aux_value'], default_value=())
+PPGState = namedtuple('PPGState', ['actor', 'value', 'aux'], default_value=())
 
 PPGRolloutInfo = namedtuple(
     'PPGRolloutInfo', [
@@ -138,12 +137,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             CategoricalProjectionNetwork(
                 input_size=encoding_net.output_spec.shape[0],
                 action_spec=action_spec))
-        value_head = alf.nn.Sequential(
+        aux_head = alf.nn.Sequential(
             encoding_net,
             layers.FC(
                 input_size=encoding_net.output_spec.shape[0], output_size=1),
             layers.Reshape(shape=()))
-        aux_value_head = alf.nn.Sequential(
+        value_head = alf.nn.Sequential(
             encoding_net, layers.Detach(),
             layers.FC(
                 input_size=encoding_net.output_spec.shape[0], output_size=1),
@@ -160,7 +159,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             train_state_spec=PPGState(
                 actor=policy_head.state_spec,
                 value=value_head.state_spec,
-                aux_value=aux_value_head.state_spec),
+                aux=aux_head.state_spec),
             optimizer=optimizer)
 
         # TODO(breakds): Make this more flexible to allow recurrent networks
@@ -170,7 +169,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # TODO(breakds): Contiuous cases should be handled
         self._policy_head = policy_head
         self._value_head = value_head
-        self._aux_value_head = aux_value_head
+        self._aux_value_head = aux_head
         # TODO(breakds): Put this to the configuration
         self._loss = PPOLoss(
             entropy_regularization=1e-4,
