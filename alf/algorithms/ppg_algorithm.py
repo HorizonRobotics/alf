@@ -14,6 +14,8 @@
 """Phasic Policy Gradient Algorithm."""
 
 import torch
+import torch.distributions as td
+
 from typing import Optional, Tuple
 
 import alf
@@ -21,10 +23,11 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
+from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.network import Network
 from alf.networks.projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.data_structures import namedtuple, TimeStep, AlgStep
+from alf.data_structures import namedtuple, TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
 import alf.layers as layers
 
@@ -38,6 +41,7 @@ PPGRolloutInfo = namedtuple(
         'action_distribution',
         'action',
         'value',
+        'aux',
         'step_type',
         'discount',
         'reward',
@@ -52,6 +56,7 @@ PPGTrainInfo = namedtuple(
         'rollout_action_distribution',  # Evaluation of the behavior policy
         'action_distribution',  # Evaluation of the target policy
         'value',
+        'aux',
         'step_type',
         'discount',
         'reward',
@@ -68,10 +73,42 @@ def merge_rollout_into_train_info(rollout_info: PPGRolloutInfo,
         action=rollout_info.action,
         action_distribution=rollout_info.action_distribution,
         value=rollout_info.value,
+        aux=rollout_info.aux,
         step_type=rollout_info.step_type,
         discount=rollout_info.discount,
         reward=rollout_info.reward,
         reward_weights=rollout_info.reward_weights)
+
+
+PPGAuxPhaseLossInfo = namedtuple('PPGAuxPhaseLossInfo', [
+    'td_loss_actual',
+    'td_loss_aux',
+    'policy_kl_loss',
+])
+
+
+@alf.configurable
+class PPGAuxPhaseLoss(Loss):
+    def __init__(self,
+                 td_error_loss_fn=element_wise_huber_loss,
+                 policy_kl_loss_weight: float = 1.0):
+        self._td_error_loss_fn = td_error_loss_fn
+        self._policy_kl_loss_weight = policy_kl_loss_weight
+
+    def forward(self, info: PPGTrainInfo):
+        td_loss_actual = self._td_error_loss_fn(info.returns.detach(),
+                                                info.value)
+        td_loss_aux = self._td_error_loss_fn(info.returns.detach(), info.aux)
+        policy_kl_loss = td.kl_divergence(
+            info.rollout_action_distribution.detach(),
+            info.action_distribution)
+        loss = td_loss_actual + td_loss_aux + self._policy_kl_loss_weight
+        return LossInfo(
+            loss=loss,
+            extra=PPGAuxPhaseLossInfo(
+                td_loss_actual=td_loss_actual,
+                td_loss_aux=td_loss_aux,
+                policy_kl_loss=policy_kl_loss))
 
 
 @alf.configurable
@@ -193,15 +230,19 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         action_distribution, actor_state = self._policy_head(
             inputs.observation, state=state.actor)
 
+        aux, aux_state = self._value_head(inputs.observation, state=state.aux)
+
         action = dist_utils.sample_action_distribution(action_distribution)
 
         return AlgStep(
             output=action,
-            state=PPGState(actor=actor_state, value=value_state),
+            state=PPGState(
+                actor=actor_state, value=value_state, aux=aux_state),
             info=PPGRolloutInfo(
                 action_distribution=action_distribution,
                 action=common.detach(action),
                 value=value,
+                aux=aux,
                 step_type=inputs.step_type,
                 discount=inputs.discount,
                 reward=inputs.reward,
