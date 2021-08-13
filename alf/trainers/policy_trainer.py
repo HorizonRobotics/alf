@@ -305,9 +305,6 @@ class RLTrainer(Trainer):
 
         env = alf.get_env()
 
-        assert (config.num_parallel_agents == 1 or config.num_parallel_agents == env.batch_size), \
-            "The Number of the agents should be either one or the same as the number of environments! "
-
         logging.info(
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
