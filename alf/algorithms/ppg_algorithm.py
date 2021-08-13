@@ -187,6 +187,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # TODO(breakds): Add other more complicated network parameters
         # TODO(breakds): Contiuous cases should be handled
         self._dual_actor_value_network = dual_actor_value_network
+        self._shadow_network = dual_actor_value_network.copy()
         # TODO(breakds): Put this to the configuration
         self._loss = PPOLoss(
             entropy_regularization=1e-4,
@@ -198,16 +199,19 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # TODO(breakds): Try not to maintain states in algorithm itself. The
         # less stateful the cleaner.
         self.add_optimizer(main_optimizer, [self._dual_actor_value_network])
-        # self.add_optimizer(aux_optimizer, [self._dual_actor_value_network])
+        self.add_optimizer(aux_optimizer, [self._shadow_network])
         self._update_epoch = 0
 
     @property
     def on_policy(self) -> bool:
         return False
 
-    def rollout_step(self, inputs: TimeStep,
-                     state: DualActorValueNetworkState) -> AlgStep:
-        action_distribution, value, aux, state = self._dual_actor_value_network(
+    def evaluate_network(self,
+                         inputs: TimeStep,
+                         state: DualActorValueNetworkState,
+                         use_shadow: bool = False) -> AlgStep:
+        network = self._shadow_network if use_shadow else self._dual_actor_value_network
+        action_distribution, value, aux, state = network(
             inputs.observation, state=state)
 
         action = dist_utils.sample_action_distribution(action_distribution)
@@ -225,13 +229,16 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 reward=inputs.reward,
                 reward_weights=()))
 
+    def rollout_step(self, inputs: TimeStep,
+                     state: DualActorValueNetworkState) -> AlgStep:
+        return self.evaluate_network(inputs, state)
+
     def preprocess_experience(
             self,
             inputs: TimeStep,  # nest of [B, T, ...]
             rollout_info: PPGRolloutInfo,
             batch_info) -> Tuple[TimeStep, PPGTrainInfo]:
         # Initialize the update epoch at the beginning of each iteration
-        self._update_epoch = 0
 
         # Here inputs is a nest of tensors representing a batch of trajectories.
         # Each tensor is expected to be of shape [B, T] or [B, T, ...], where T
@@ -258,13 +265,24 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: DualActorValueNetworkState,
                    prev_train_info: PPGTrainInfo) -> AlgStep:
-        alg_step = self._rollout_step(inputs, state)
+        if self._update_epoch < 4:
+            alg_step = self.evaluate_network(inputs, state)
+        else:
+            alg_step = self.evaluate_network(inputs, state, use_shadow=True)
+
         return alg_step._replace(
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
 
-    def calc_loss(self, info: PPGTrainInfo):
-        print(f'update epoch = {self._update_epoch}')
+    def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
         return self._loss(info)
 
     def after_update(self, root_inputs: TimeStep, info: PPGTrainInfo):
         self._update_epoch += 1
+        if self._update_epoch == 4:
+            self._shadow_network.load_state_dict(
+                self._dual_actor_value_network.state_dict())
+
+    def after_train_iter(self, root_inputs, rollout_info: PPGTrainInfo):
+        self._update_epoch = 0
+        self._dual_actor_value_network.load_state_dict(
+            self._shadow_network.state_dict())
