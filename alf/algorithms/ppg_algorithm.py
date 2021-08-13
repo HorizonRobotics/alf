@@ -97,9 +97,11 @@ class PPGAuxPhaseLoss(Loss):
         td_loss_actual = self._td_error_loss_fn(info.returns.detach(),
                                                 info.value)
         td_loss_aux = self._td_error_loss_fn(info.returns.detach(), info.aux)
-        policy_kl_loss = td.kl_divergence(
-            info.rollout_action_distribution.detach(),
-            info.action_distribution)
+        # TODO(breakds): Make this work for all other distributions
+        rollout_distribtion = td.Categorical(
+            logits=info.rollout_action_distribution.logits.detach())
+        policy_kl_loss = td.kl_divergence(rollout_distribtion,
+                                          info.action_distribution)
         loss = td_loss_actual + td_loss_aux + self._policy_kl_loss_weight
         return LossInfo(
             loss=loss,
@@ -274,7 +276,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
 
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
-        return self._loss(info)
+        if self._update_epoch < 4:
+            return self._loss(info)
+        else:
+            return self._aux_phase_loss(info)
 
     def after_update(self, root_inputs: TimeStep, info: PPGTrainInfo):
         self._update_epoch += 1
