@@ -87,7 +87,9 @@ PPGAuxPhaseLossInfo = namedtuple('PPGAuxPhaseLossInfo', [
 class PPGAuxPhaseLoss(Loss):
     def __init__(self,
                  td_error_loss_fn=element_wise_huber_loss,
-                 policy_kl_loss_weight: float = 1.0):
+                 policy_kl_loss_weight: float = 1.0,
+                 name='PPGAuxPhaseLoss'):
+        super().__init__(name=name)
         self._td_error_loss_fn = td_error_loss_fn
         self._policy_kl_loss_weight = policy_kl_loss_weight
 
@@ -177,7 +179,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             predict_state_spec=dual_actor_value_network.state_spec,
-            optimizer=main_optimizer,
             # TODO(breakds): Value heads need state as well
             train_state_spec=dual_actor_value_network.state_spec)
 
@@ -192,13 +193,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             gamma=0.98,
             td_error_loss_fn=element_wise_huber_loss,
             debug_summaries=debug_summaries)
+        self._aux_phase_loss = PPGAuxPhaseLoss()
 
         # TODO(breakds): Try not to maintain states in algorithm itself. The
         # less stateful the cleaner.
-        # self.add_optimizer(main_optimizer, [self._value_head])
-        # self.add_optimizer(main_optimizer, [self._value_head, self._policy_head])
-        # self.add_optimizer(aux_optimizer, [
-        #     self._value_head, self._policy_head, self._aux_value_head])
+        self.add_optimizer(main_optimizer, [self._dual_actor_value_network])
+        # self.add_optimizer(aux_optimizer, [self._dual_actor_value_network])
         self._update_epoch = 0
 
     @property
