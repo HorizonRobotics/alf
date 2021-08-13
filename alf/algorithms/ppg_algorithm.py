@@ -25,16 +25,12 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
-from alf.networks.network import Network
-from alf.networks.projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
+from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState
 from alf.data_structures import namedtuple, TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
-import alf.layers as layers
 
 from alf.utils import common, dist_utils, value_ops, tensor_utils
 from alf.utils.losses import element_wise_huber_loss
-
-PPGState = namedtuple('PPGState', ['actor', 'value', 'aux'], default_value=())
 
 PPGRolloutInfo = namedtuple(
     'PPGRolloutInfo', [
@@ -124,7 +120,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  env=None,
                  config: Optional[TrainerConfig] = None,
                  debug_summaries: bool = False,
-                 optimizer: Optional[torch.optim.Optimizer] = None,
+                 main_optimizer: Optional[torch.optim.Optimizer] = None,
+                 aux_optimizer: Optional[torch.optim.Optimizer] = None,
                  name: str = "PPGAlgorithm"):
         """
         Args:
@@ -167,23 +164,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
 
-        encoding_net = encoding_network_ctor(
-            input_tensor_spec=observation_spec)
-        policy_head = alf.nn.Sequential(
-            encoding_net,
-            CategoricalProjectionNetwork(
-                input_size=encoding_net.output_spec.shape[0],
-                action_spec=action_spec))
-        aux_head = alf.nn.Sequential(
-            encoding_net,
-            layers.FC(
-                input_size=encoding_net.output_spec.shape[0], output_size=1),
-            layers.Reshape(shape=()))
-        value_head = alf.nn.Sequential(
-            encoding_net, layers.Detach(),
-            layers.FC(
-                input_size=encoding_net.output_spec.shape[0], output_size=1),
-            layers.Reshape(shape=()))
+        dual_actor_value_network = DualActorValueNetwork(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            encoding_network_ctor=encoding_network_ctor,
+            is_sharing_encoder=False)
 
         super().__init__(
             config=config,
@@ -191,22 +176,16 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
-            predict_state_spec=PPGState(actor=policy_head.state_spec),
+            predict_state_spec=dual_actor_value_network.state_spec,
+            optimizer=main_optimizer,
             # TODO(breakds): Value heads need state as well
-            train_state_spec=PPGState(
-                actor=policy_head.state_spec,
-                value=value_head.state_spec,
-                aux=aux_head.state_spec),
-            optimizer=optimizer)
+            train_state_spec=dual_actor_value_network.state_spec)
 
         # TODO(breakds): Make this more flexible to allow recurrent networks
         # TODO(breakds): Make this more flexible to allow separate networks
         # TODO(breakds): Add other more complicated network parameters
-        self._encoding_net = encoding_net
         # TODO(breakds): Contiuous cases should be handled
-        self._policy_head = policy_head
-        self._value_head = value_head
-        self._aux_value_head = aux_head
+        self._dual_actor_value_network = dual_actor_value_network
         # TODO(breakds): Put this to the configuration
         self._loss = PPOLoss(
             entropy_regularization=1e-4,
@@ -216,28 +195,26 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         # TODO(breakds): Try not to maintain states in algorithm itself. The
         # less stateful the cleaner.
-
+        # self.add_optimizer(main_optimizer, [self._value_head])
+        # self.add_optimizer(main_optimizer, [self._value_head, self._policy_head])
+        # self.add_optimizer(aux_optimizer, [
+        #     self._value_head, self._policy_head, self._aux_value_head])
         self._update_epoch = 0
 
     @property
     def on_policy(self) -> bool:
         return False
 
-    def rollout_step(self, inputs: TimeStep, state: PPGState) -> AlgStep:
-        value, value_state = self._value_head(
-            inputs.observation, state=state.value)
-
-        action_distribution, actor_state = self._policy_head(
-            inputs.observation, state=state.actor)
-
-        aux, aux_state = self._value_head(inputs.observation, state=state.aux)
+    def rollout_step(self, inputs: TimeStep,
+                     state: DualActorValueNetworkState) -> AlgStep:
+        action_distribution, value, aux, state = self._dual_actor_value_network(
+            inputs.observation, state=state)
 
         action = dist_utils.sample_action_distribution(action_distribution)
 
         return AlgStep(
             output=action,
-            state=PPGState(
-                actor=actor_state, value=value_state, aux=aux_state),
+            state=state,
             info=PPGRolloutInfo(
                 action_distribution=action_distribution,
                 action=common.detach(action),
@@ -279,7 +256,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 returns=returns,
                 advantages=advantages))
 
-    def train_step(self, inputs: TimeStep, state: PPGState,
+    def train_step(self, inputs: TimeStep, state: DualActorValueNetworkState,
                    prev_train_info: PPGTrainInfo) -> AlgStep:
         alg_step = self._rollout_step(inputs, state)
         return alg_step._replace(

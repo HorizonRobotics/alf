@@ -33,7 +33,8 @@ alf.config('EncodingNetwork', fc_layer_params=(100, ))
 alf.config(
     'PPGAlgorithm',
     encoding_network_ctor=EncodingNetwork,
-    optimizer=alf.optimizers.AdamTF(lr=1e-3))
+    main_optimizer=alf.optimizers.AdamTF(lr=1e-3),
+    aux_optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
 # training config
 alf.config(
