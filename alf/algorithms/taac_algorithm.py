@@ -58,8 +58,9 @@ TaacActorInfo = namedtuple(
 
 TaacInfo = namedtuple(
     "TaacInfo", [
-        "reward", "step_type", "tau", "discount", "action_distribution",
-        "rollout_b", "b", "actor", "critic", "alpha", "repeats"
+        "reward", "step_type", "tau", "prev_tau", "discount",
+        "action_distribution", "rollout_b", "b", "actor", "critic", "alpha",
+        "repeats"
     ],
     default_value=())
 
@@ -323,7 +324,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
 
-        tau_spec, critic_networks, actor_network = self._make_networks(
+        self._tau_spec, critic_networks, actor_network = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
             critic_network_cls)
 
@@ -331,7 +332,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                      nn.Parameter(torch.zeros(())))
 
         train_state_spec = TaacState(
-            tau=tau_spec, repeats=TensorSpec(shape=(), dtype=torch.int64))
+            tau=self._tau_spec,
+            repeats=TensorSpec(shape=(), dtype=torch.int64))
         super().__init__(
             observation_spec,
             action_spec,
@@ -411,7 +413,10 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         tau_spec = nest.map_structure(lambda m: action_spec if m else (),
                                       tau_mask)
-        tau_embedding = nest.map_structure(lambda _: None, tau_spec)
+        tau_embedding = nest.map_structure(
+            lambda _: torch.nn.Sequential(
+                alf.layers.FC(action_spec.numel, observation_spec.numel)),
+            tau_spec)
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
@@ -425,16 +430,38 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         return tau_spec, critic_networks, actor_network
 
+    def _randomize_first_tau(self, time_step_or_exp, state, rollout_tau=None):
+        """Randomize the first ``tau`` (by default always 0) for better
+        exploration if ``b=0`` is selected.
+
+        If a ``rollout_tau`` is already provided, then directly use it (during
+        training).
+        """
+
+        def _randomize(tau):
+            return alf.nest.map_structure(
+                lambda spec: spec.sample(outer_dims=tau.a.shape[:1]),
+                self._tau_spec)
+
+        if rollout_tau is None:
+            kwargs = dict(tau=state.tau)
+            randomize = _randomize
+        else:
+            kwargs = dict(r_tau=rollout_tau)
+            randomize = lambda r_tau: r_tau
+
+        tau = conditional_update(
+            target=state.tau,
+            cond=(time_step_or_exp.step_type == StepType.FIRST),
+            func=randomize,
+            **kwargs)
+        return state._replace(tau=tau)
+
     def _predict_action(self,
                         time_step,
                         state,
                         epsilon_greedy=None,
                         mode=Mode.rollout):
-
-        # NOTE: when time_step_or_exp is from replay buffer, ``prev_action``
-        # represents the previous action *during rollout* at the current step!!
-        # Its value is determined by the rollout b. To use the ``prev_action``
-        # from ``train_step()``, we need to store it in a train_state.
 
         observation = time_step.observation
 
@@ -638,6 +665,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             info=TaacInfo(action_distribution=ap_out.dists, b=ap_out.b))
 
     def rollout_step(self, inputs: TimeStep, state):
+        state = self._randomize_first_tau(inputs, state)
         ap_out, new_state = self._predict_action(
             inputs, state, mode=Mode.rollout)
         return AlgStep(
@@ -645,6 +673,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             state=new_state,
             info=TaacInfo(
                 action_distribution=ap_out.dists,
+                prev_tau=state.tau,  # for getting randomized tau in training
                 tau=new_state.tau,  # for critic training
                 b=ap_out.b,
                 repeats=state.repeats))
@@ -660,6 +689,11 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state, rollout_info: TaacInfo):
         self._training_started.fill_(True)
+
+        # Because we called ``self._randomize_first_tau`` in rollout_step() while
+        # the random ``tau`` was not stored in the replay buffer, the first step's
+        # ``tau`` here is not accurate. So we need to use the rollout ``tau``.
+        state = self._randomize_first_tau(inputs, state, rollout_info.prev_tau)
 
         ap_out, new_state = self._predict_action(
             inputs, state=state, mode=Mode.train)
