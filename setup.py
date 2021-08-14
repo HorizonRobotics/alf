@@ -15,8 +15,6 @@
 from setuptools import setup, find_packages
 import os
 
-os.system("pip install -e ./alf/nest/cnest")
-
 setup(
     name='alf',
     version='0.0.6',
@@ -47,6 +45,7 @@ setup(
         'torch == 1.8.1',
         'torchvision == 0.9.1',
         'torchtext == 0.9.1',
+        'cnest == 1.0.1',
     ],  # And any other dependencies alf needs
     package_data={'': ['*.gin']},
     packages=find_packages(),
