@@ -2,22 +2,46 @@
   "nodes": {
     "alf-devenv": {
       "inputs": {
+        "ml-pkgs": "ml-pkgs",
         "nixpkgs": [
           "nixpkgs"
         ],
         "utils": "utils"
       },
       "locked": {
-        "lastModified": 1626997680,
-        "narHash": "sha256-osKD7YhkFy2VfYOqcFQzrsT0MmATUdp7VGIfr/0B76s=",
+        "lastModified": 1629241250,
+        "narHash": "sha256-+Vczgt018ChqLGCtAAy8Xnza1DI9wMi546/Hh+ZG9ZU=",
         "owner": "HorizonRobotics",
         "repo": "alf-nix-devenv",
-        "rev": "97f7f1847345a3df094513f74e6e5eb53bfd46e8",
+        "rev": "7b56333488e73cf7ff8e88367d2ba0b58c2f4d6f",
         "type": "github"
       },
       "original": {
         "owner": "HorizonRobotics",
         "repo": "alf-nix-devenv",
+        "type": "github"
+      }
+    },
+    "ml-pkgs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "utils": [
+          "utils"
+        ]
+      },
+      "locked": {
+        "lastModified": 1628720955,
+        "narHash": "sha256-4MXGMB6ZAb4LIrO14Mc9FVs1Vk1ZUBz1RplTSbYv4ps=",
+        "owner": "nixvital",
+        "repo": "ml-pkgs",
+        "rev": "1adb03bd9c723a6623c482ef7506ce9f43b3e9a9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixvital",
+        "repo": "ml-pkgs",
         "type": "github"
       }
     },
