@@ -97,10 +97,7 @@ class PPGAuxPhaseLoss(Loss):
         td_loss_actual = self._td_error_loss_fn(info.returns.detach(),
                                                 info.value)
         td_loss_aux = self._td_error_loss_fn(info.returns.detach(), info.aux)
-        # TODO(breakds): Make this work for all other distributions
-        rollout_distribtion = td.Categorical(
-            logits=info.rollout_action_distribution.logits.detach())
-        policy_kl_loss = td.kl_divergence(rollout_distribtion,
+        policy_kl_loss = td.kl_divergence(info.rollout_action_distribution,
                                           info.action_distribution)
         loss = td_loss_actual + td_loss_aux + self._policy_kl_loss_weight
         return LossInfo(
@@ -246,17 +243,18 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # Each tensor is expected to be of shape [B, T] or [B, T, ...], where T
         # stands for the temporal extent, where B is the the size of the batch.
 
-        discounts = rollout_info.discount * self._loss.gamma
+        with torch.no_grad():
+            discounts = rollout_info.discount * self._loss.gamma
 
-        advantages = value_ops.generalized_advantage_estimation(
-            rewards=rollout_info.reward,
-            values=rollout_info.value,
-            step_types=rollout_info.step_type,
-            discounts=discounts,
-            td_lambda=self._loss._lambda,
-            time_major=False)
-        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
-        returns = rollout_info.value + advantages
+            advantages = value_ops.generalized_advantage_estimation(
+                rewards=rollout_info.reward,
+                values=rollout_info.value,
+                step_types=rollout_info.step_type,
+                discounts=discounts,
+                td_lambda=self._loss._lambda,
+                time_major=False)
+            advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
+            returns = rollout_info.value + advantages
 
         return inputs, merge_rollout_into_train_info(
             rollout_info,
