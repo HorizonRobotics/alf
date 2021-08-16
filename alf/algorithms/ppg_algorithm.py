@@ -26,6 +26,7 @@ from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState
+from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.data_structures import namedtuple, TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
 
@@ -199,7 +200,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # less stateful the cleaner.
         self.add_optimizer(main_optimizer, [self._dual_actor_value_network])
         self.add_optimizer(aux_optimizer, [self._shadow_network])
-        self._update_epoch = 0
+
+        # HACK: Additional Exp Replayer
+        self._in_aux_phase = False
+        self._exp_replayer_backup = None
+        self._aux_exp_replayer = OnetimeExperienceReplayer()
+        self._observers.append(self._aux_exp_replayer.observe)
 
     @property
     def on_policy(self) -> bool:
@@ -265,27 +271,30 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: DualActorValueNetworkState,
                    prev_train_info: PPGTrainInfo) -> AlgStep:
-        if self._update_epoch < 4:
-            alg_step = self.evaluate_network(inputs, state)
-        else:
+        if self._in_aux_phase:
             alg_step = self.evaluate_network(inputs, state, use_shadow=True)
+        else:
+            alg_step = self.evaluate_network(inputs, state)
 
         return alg_step._replace(
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
 
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
-        if self._update_epoch < 4:
-            return self._loss(info)
-        else:
+        if self._in_aux_phase:
             return self._aux_phase_loss(info)
+        else:
+            return self._loss(info)
 
-    def after_update(self, root_inputs: TimeStep, info: PPGTrainInfo):
-        self._update_epoch += 1
-        if self._update_epoch == 4:
-            self._shadow_network.load_state_dict(
-                self._dual_actor_value_network.state_dict())
+    def switch_to_aux_phase(self):
+        self._in_aux_phase = True
+        self._shadow_network.load_state_dict(
+            self._dual_actor_value_network.state_dict())
+        self._exp_replayer_backup = self._exp_replayer
+        self._exp_replayer = self._aux_exp_replayer
 
     def after_train_iter(self, root_inputs, rollout_info: PPGTrainInfo):
-        self._update_epoch = 0
-        self._dual_actor_value_network.load_state_dict(
-            self._shadow_network.state_dict())
+        if self._in_aux_phase:
+            self._in_aux_phase = False
+            self._dual_actor_value_network.load_state_dict(
+                self._shadow_network.state_dict())
+            self._exp_replayer = self._exp_replayer_backup

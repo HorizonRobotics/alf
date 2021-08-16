@@ -1190,7 +1190,6 @@ class Algorithm(AlgorithmInterface):
             env_id=time_step.env_id,
             rollout_info=rollout_info)
         if self._processed_experience_spec is None:
-            print(f'Experience: {type(experience)}')
             self._processed_experience_spec = dist_utils.extract_spec(
                 experience, from_dim=2)
         experience = dist_utils.distributions_to_params(experience)

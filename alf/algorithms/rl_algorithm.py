@@ -593,6 +593,13 @@ class RLAlgorithm(Algorithm):
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
+        # HACK: Add aux iteration
+        if self.switch_to_aux_phase:
+            self.switch_to_aux_phase()
+            if alf.summary.get_global_counter() % 10 == 0:
+                steps += self.train_from_replay_buffer(
+                    update_global_counter=False)
+
         with record_time("time/after_train_iter"):
             train_info = experience.rollout_info
             experience = experience._replace(rollout_info=())
