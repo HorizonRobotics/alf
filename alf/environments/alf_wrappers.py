@@ -806,3 +806,26 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         time_step._cpu = time_step_cpu._replace(
             prev_action=time_step_cpu.prev_action['action'], env_info=info)
         return time_step
+
+
+class CarlaActionWrapper(AlfEnvironmentBaseWrapper):
+    """An ALF Environment wrapper that changes the last action dim ('reverse')
+    from ``[0,1]`` to ``[-1,1]`` in Carla. This basically results in a prior of
+    not activating 'reverse'.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._action_spec = alf.BoundedTensorSpec(
+            shape=env.action_spec().shape,
+            dtype=env.action_spec().dtype,
+            minimum=-1.,
+            maximum=1.)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
