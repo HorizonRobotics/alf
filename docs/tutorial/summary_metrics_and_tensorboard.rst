@@ -56,7 +56,7 @@ provide additional useful functionalities, including
 2. turning on/off of the summary according to conditions,
 3. name scope support.
 
-ALF also provides set of helper summary functions in the context of deep RL (:mod:`alf.utils.summary_utils`).
+ALF also provides a set of helper summary functions in the context of deep RL (:mod:`alf.utils.summary_utils`).
 
 Global counter
 ^^^^^^^^^^^^^^
@@ -123,7 +123,9 @@ If you'd like to enable or disable based on a certain condition, then use the
         for i in in range(100):
             # record only on odd value of i
             with alf.summary.record_if(lambda: i % 2):
-                alf.summary.scalar(...)
+                alf.summary.scalar("i", float(i))
+                # increment the counter otherwise all scalars are written to the same x!
+                alf.summary.increment_global_counter()
 
 Note that ALF maintains a *stack* of ``record_if`` conditions. So if you start
 a ``record_if`` context, then it always overwrites existing conditions. For example,
@@ -133,12 +135,16 @@ a ``record_if`` context, then it always overwrites existing conditions. For exam
         for i in range(100):
             with alf.summary.record_if(lambda: i % 2):
                 with alf.summary.record_if(lambda: i % 3 == 1):
-                    alf.summary.scalar(...) # recorded every one out of three `i`s
-                alf.summary.scalar(...) # recorded every one out of two `i`s
+                    # recorded every one out of three `i`s
+                    alf.summary.scalar("i_3", float(i))
+                # recorded every one out of two `i`s
+                alf.summary.scalar("i_2", float(i))
+            # there will be no data points for even values of i where i % 3 != 1
+            alf.summary.increment_global_counter()
 
-By default, ALF trainer places a ``record_if`` condition at the bottom of the stack.
+By default, ALF's trainer places a ``record_if`` condition at the bottom of the stack.
 This condition is defined by :attr:`TrainerConfig.summary_interval`. It's evaluated
-to be True if
+to be ``True`` if
 
 1. the global step is less than ``summary_interval``, or
 2. the global step is a multiple of ``summary_interval``.
@@ -159,12 +165,14 @@ by another condition on top of the stack:
 
 .. note::
 
-    ``record_if`` stack is only activated when ``alf.summary.enable(True)``.
+    ``record_if`` stack is only activated when ``alf.summary.enable(True)`` has
+    been called. You can use the function :func:`.alf.summary.is_summary_enabled`
+    to check whether the summary is enabled or not.
 
 Summary name scope
 ^^^^^^^^^^^^^^^^^^
 
-ALF also maintains a name scope stack for conveniently managing summary metric
+ALF also maintains a *name scope stack* for conveniently managing summary metric
 names. This stack greatly simplifies naming metrics.
 
 .. code-block:: python
@@ -174,13 +182,15 @@ names. This stack greatly simplifies naming metrics.
         with alf.summary.scope("train"):
             alf.summary.scalar("val", 1) # TB tag is "root/train/val"
 
-It's recommended that you use class or function names as summary scopes.
+It's recommended that you use class or function names as summary scopes so that
+it's easy to locate where the metrics are summarized and what they are for.
 
-Summary utils functions
-^^^^^^^^^^^^^^^^^^^^^^^
+Summary utils functions for RL
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ALF provides various helper functions for summarizing quantities in the context of
 deep RL, for example, :func:`~.alf.utils.summary_utils.summarize_action`,
+:func:`~.alf.utils.summary_utils.summarize_action_dist`,
 :func:`~.alf.utils.summary_utils.summarize_gradients`, etc. See
 :mod:`.alf.utils.summary_utils` for a complete list.
 
@@ -188,7 +198,8 @@ Important metrics for RL
 ------------------------
 
 By default, ALF summarizes several important RL metrics during training and evaluation.
-All these metrics are summarized on episode basis.
+All these metrics (defined in :mod:`.alf.metrics.metrics`) are summarized on the
+*episode basis*.
 
 1. :class:`~.metrics.NumberOfEpisodes`: how many episodes have been trained so far.
 2. :class:`~.metrics.EnvironmentSteps`: how many environment steps have been
@@ -202,8 +213,50 @@ All these metrics are summarized on episode basis.
 6. :class:`~.metrics.AverageDiscountedReturnMetric`: the discounted return of an
    episode, averaged over several most recent episodes.
 
-For 3-6 metrics, you can configure ``buffer_size`` of the classes to decide how
-many recent episodes to use.
+.. note::
+
+    For metrics 3-6, you can configure ``buffer_size`` of the classes to decide how
+    many recent episodes to use.
+
+These important RL metrics are summarized against several types of step counters:
+
+1. the global step counter as introduced earlier,
+2. the total number of environment steps so far, and
+3. the total number of episodes so far.
+
+You will see the tabs "Metrics", "Metrics_vs_EnvironmentSteps", and "Metrics_vs_NumberOfEpisodes"
+respectively in the TB.
+
+Defining new episode metrics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For step-wise summary, we can directly use the summary functions in :mod:`.alf.summary.summary_ops`.
+To define new episode metrics, please take a look at :mod:`.alf.metrics.metrics`
+on how to use :class:`.AverageEpisodicSumMetric` for this purpose.
+
+After defining the new episode metric, you'll need to override the ``__init__()``
+of :class:`.RLAlgorithm` to insert this new metric. The existing ones are currently
+hard-coded as below:
+
+.. code-block:: python
+
+    self._metrics = [
+       alf.metrics.NumberOfEpisodes(),
+       alf.metrics.EnvironmentSteps(),
+       alf.metrics.AverageReturnMetric(
+           batch_size=env.batch_size,
+           buffer_size=metric_buf_size,
+           reward_shape=reward_spec.shape),
+       alf.metrics.AverageEpisodeLengthMetric(
+           batch_size=env.batch_size, buffer_size=metric_buf_size),
+       alf.metrics.AverageEnvInfoMetric(
+           example_env_info=env.reset().env_info,
+           batch_size=env.batch_size,
+           buffer_size=metric_buf_size),
+       alf.metrics.AverageDiscountedReturnMetric(
+           batch_size=env.batch_size,
+           buffer_size=metric_buf_size,
+           reward_shape=reward_spec.shape)]
 
 Summary
 -------
