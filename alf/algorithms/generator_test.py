@@ -105,7 +105,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         else:
             noise_dim = 3
             net = Net(output_dim)
-        if par_vi == 'svgd':
+        if par_vi == 'svgd' and functional_gradient is False:
             use_kernel_averager = True
         else:
             use_kernel_averager = False

@@ -670,7 +670,7 @@ def play(root_dir,
             if a ``record_file`` argument is provided.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
-"""
+    """
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
