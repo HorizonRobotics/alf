@@ -25,7 +25,7 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
-from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState
+from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState, ACNetwork
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.data_structures import namedtuple, TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
@@ -67,13 +67,12 @@ PPGTrainInfo = namedtuple(
 def merge_rollout_into_train_info(rollout_info: PPGRolloutInfo,
                                   train_info: PPGTrainInfo) -> PPGTrainInfo:
     return train_info._replace(
-        action=rollout_info.action,
+        step_type=rollout_info.step_type,
+        reward=rollout_info.reward,
+        discount=rollout_info.discount,
         action_distribution=rollout_info.action_distribution,
         value=rollout_info.value,
         aux=rollout_info.aux,
-        step_type=rollout_info.step_type,
-        discount=rollout_info.discount,
-        reward=rollout_info.reward,
         reward_weights=rollout_info.reward_weights)
 
 
@@ -166,11 +165,14 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
 
-        dual_actor_value_network = DualActorValueNetwork(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            encoding_network_ctor=encoding_network_ctor,
-            is_sharing_encoder=False)
+        # dual_actor_value_network = DualActorValueNetwork(
+        #     observation_spec=observation_spec,
+        #     action_spec=action_spec,
+        #     encoding_network_ctor=encoding_network_ctor,
+        #     is_sharing_encoder=False)
+
+        dual_actor_value_network = ACNetwork(
+            observation_spec=observation_spec, action_spec=action_spec)
 
         super().__init__(
             config=config,
@@ -189,11 +191,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._dual_actor_value_network = dual_actor_value_network
         self._shadow_network = dual_actor_value_network.copy()
         # TODO(breakds): Put this to the configuration
-        self._loss = PPOLoss(
-            entropy_regularization=1e-4,
-            gamma=0.98,
-            td_error_loss_fn=element_wise_huber_loss,
-            debug_summaries=debug_summaries)
+        self._loss = PPOLoss(debug_summaries=debug_summaries)
         self._aux_phase_loss = PPGAuxPhaseLoss()
 
         # TODO(breakds): Try not to maintain states in algorithm itself. The
@@ -250,7 +248,13 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # stands for the temporal extent, where B is the the size of the batch.
 
         with torch.no_grad():
-            discounts = rollout_info.discount * self._loss.gamma
+            if rollout_info.reward.ndim == 3:
+                # [B, T, D] or [B, T, 1]
+                discounts = rollout_info.discount.unsqueeze(
+                    -1) * self._loss.gamma
+            else:
+                # [B, T]
+                discounts = rollout_info.discount * self._loss.gamma
 
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=rollout_info.reward,
@@ -265,6 +269,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         return inputs, merge_rollout_into_train_info(
             rollout_info,
             PPGTrainInfo(
+                action=rollout_info.action,
                 rollout_action_distribution=rollout_info.action_distribution,
                 returns=returns,
                 advantages=advantages))

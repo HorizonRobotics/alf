@@ -84,3 +84,38 @@ class DualActorValueNetwork(Network):
             actor=self._actor_head.state_spec,
             value=self._value_head.state_spec,
             aux=self._aux_head.state_spec)
+
+
+from alf.networks import ActorDistributionNetwork, ValueNetwork
+
+
+@alf.configurable
+class ACNetwork(Network):
+    def __init__(self,
+                 observation_spec: TensorSpec,
+                 action_spec: TensorSpec,
+                 name='DualActorValueNetwork'):
+        super().__init__(input_tensor_spec=observation_spec, name=name)
+
+        self._actor_network = ActorDistributionNetwork(
+            input_tensor_spec=observation_spec,
+            action_spec=action_spec,
+            fc_layer_params=(100, ))
+        self._value_network = ValueNetwork(
+            input_tensor_spec=observation_spec, fc_layer_params=(100, ))
+
+    def forward(self, observation, state: DualActorValueNetworkState):
+        action_distribution, actor_state = self._actor_network(
+            observation, state=state.actor)
+
+        value, value_state = self._value_network(
+            observation, state=state.value)
+
+        return action_distribution, value, (), DualActorValueNetworkState(
+            actor=actor_state, value=value_state)
+
+    @property
+    def state_spec(self):
+        return DualActorValueNetworkState(
+            actor=self._actor_network.state_spec,
+            value=self._value_network.state_spec)

@@ -44,6 +44,13 @@ alf.config(
     clear_replay_buffer=True)
 
 alf.config(
+    'PPOLoss',
+    entropy_regularization=1e-4,
+    gamma=0.98,
+    td_error_loss_fn=element_wise_huber_loss,
+    normalize_advantages=False)
+
+alf.config(
     'TrainerConfig',
     mini_batch_length=1,
     unroll_length=32,
