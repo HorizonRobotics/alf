@@ -262,6 +262,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  debug_summaries=False,
+                 randomize_first_state_tau=False,
                  b1_advantage_clipping=None,
                  target_entropy=None,
                  name="TaacAlgorithmBase"):
@@ -303,6 +304,9 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
             debug_summaries (bool): True if debug summaries should be created.
+            randomize_first_state_tau (bool): whether to randomize ``state.tau``
+                at the beginning of an episode during rollout and training.
+                Potentially this helps exploration.
             b1_advantage_clipping (None|tuple[float]): option for clipping the
                 advantage (defined as :math:`Q(s,\hat{\tau}) - Q(s,\tau^-)`) when
                 computing :math:`\beta_1`. If not ``None``, it should be a pair
@@ -380,6 +384,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             (self._b_spec, action_spec), target_entropy)
 
         self._b1_advantage_clipping = b1_advantage_clipping
+        self._randomize_first_state_tau = randomize_first_state_tau
 
         # Create as a buffer so that training from a checkpoint will have
         # the correct flag.
@@ -665,7 +670,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             info=TaacInfo(action_distribution=ap_out.dists, b=ap_out.b))
 
     def rollout_step(self, inputs: TimeStep, state):
-        state = self._randomize_first_tau(inputs, state)
+        if self._randomize_first_state_tau:
+            state = self._randomize_first_tau(inputs, state)
         ap_out, new_state = self._predict_action(
             inputs, state, mode=Mode.rollout)
         return AlgStep(
@@ -690,10 +696,13 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
     def train_step(self, inputs: TimeStep, state, rollout_info: TaacInfo):
         self._training_started.fill_(True)
 
-        # Because we called ``self._randomize_first_tau`` in rollout_step() while
-        # the random ``tau`` was not stored in the replay buffer, the first step's
-        # ``tau`` here is not accurate. So we need to use the rollout ``tau``.
-        state = self._randomize_first_tau(inputs, state, rollout_info.prev_tau)
+        if self._randomize_first_state_tau:
+            # Because we called ``self._randomize_first_tau`` in rollout_step()
+            # while the random ``tau`` was not stored in the replay buffer, the
+            # first step's ``tau`` here is not accurate. So we need to use the
+            # rollout ``tau``.
+            state = self._randomize_first_tau(inputs, state,
+                                              rollout_info.prev_tau)
 
         ap_out, new_state = self._predict_action(
             inputs, state=state, mode=Mode.train)
