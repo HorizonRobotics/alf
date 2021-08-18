@@ -17,6 +17,7 @@ import torch
 import torch.distributions as td
 
 from typing import Optional, Tuple
+from contextlib import contextmanager
 
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -103,6 +104,22 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     """PPG Algorithm.
     """
 
+    @contextmanager
+    def aux_phase(self):
+        backup_exp_replayer = None
+        try:
+            self._in_aux_phase = True
+            self._shadow_network.load_state_dict(
+                self._dual_actor_value_network.state_dict())
+            backup_exp_replayer = self._exp_replayer
+            self._exp_replayer = self._aux_exp_replayer
+            yield None
+        finally:
+            self._in_aux_phase = False
+            self._dual_actor_value_network.load_state_dict(
+                self._shadow_network.state_dict())
+            self._exp_replayer = backup_exp_replayer
+
     def __init__(self,
                  observation_spec: TensorSpec,
                  action_spec: TensorSpec,
@@ -188,7 +205,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         # HACK: Additional Exp Replayer
         self._in_aux_phase = False
-        self._exp_replayer_backup = None
         self._aux_exp_replayer = OnetimeExperienceReplayer()
         self._observers.append(self._aux_exp_replayer.observe)
 
@@ -212,8 +228,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         # Run aux update periodically
         if alf.summary.get_global_counter() % 32 == 0:
-            self.switch_to_aux_phase()
-            steps += self.train_from_replay_buffer(update_global_counter=False)
+            with self.aux_phase():
+                print('Aux!')
+                steps += self.train_from_replay_buffer(
+                    update_global_counter=False)
 
         with record_time("time/after_train_iter"):
             train_info = experience.rollout_info
@@ -307,17 +325,3 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             return self._aux_phase_loss(info)
         else:
             return self._loss(info)
-
-    def switch_to_aux_phase(self):
-        self._in_aux_phase = True
-        self._shadow_network.load_state_dict(
-            self._dual_actor_value_network.state_dict())
-        self._exp_replayer_backup = self._exp_replayer
-        self._exp_replayer = self._aux_exp_replayer
-
-    def after_train_iter(self, root_inputs, rollout_info: PPGTrainInfo):
-        if self._in_aux_phase:
-            self._in_aux_phase = False
-            self._dual_actor_value_network.load_state_dict(
-                self._shadow_network.state_dict())
-            self._exp_replayer = self._exp_replayer_backup
