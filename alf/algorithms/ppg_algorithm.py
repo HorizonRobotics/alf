@@ -25,13 +25,14 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
-from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState, ACNetwork
+from alf.networks.dual_actor_value_network import DualActorValueNetwork, DualActorValueNetworkState
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.data_structures import namedtuple, TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
 
 from alf.utils import common, dist_utils, value_ops, tensor_utils
 from alf.utils.losses import element_wise_huber_loss
+from alf.utils.summary_utils import record_time
 
 PPGRolloutInfo = namedtuple(
     'PPGRolloutInfo', [
@@ -48,19 +49,8 @@ PPGRolloutInfo = namedtuple(
 
 PPGTrainInfo = namedtuple(
     'PPGTrainInfo',
-    [
-        'action',  # Sampled from the behavior policy
-        'rollout_action_distribution',  # Evaluation of the behavior policy
-        'action_distribution',  # Evaluation of the target policy
-        'value',
-        'aux',
-        'step_type',
-        'discount',
-        'reward',
-        'advantages',
-        'returns',
-        'reward_weights',
-    ],
+    PPGRolloutInfo._fields + ('advantages', 'rollout_action_distribution',
+                              'returns'),
     default_value=())
 
 
@@ -165,14 +155,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
 
-        # dual_actor_value_network = DualActorValueNetwork(
-        #     observation_spec=observation_spec,
-        #     action_spec=action_spec,
-        #     encoding_network_ctor=encoding_network_ctor,
-        #     is_sharing_encoder=False)
-
-        dual_actor_value_network = ACNetwork(
-            observation_spec=observation_spec, action_spec=action_spec)
+        dual_actor_value_network = DualActorValueNetwork(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            encoding_network_ctor=encoding_network_ctor,
+            is_sharing_encoder=False)
 
         super().__init__(
             config=config,
@@ -204,6 +191,37 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._exp_replayer_backup = None
         self._aux_exp_replayer = OnetimeExperienceReplayer()
         self._observers.append(self._aux_exp_replayer.observe)
+
+    def train_iter(self):
+        config: TrainerConfig = self._config
+
+        if not config.update_counter_every_mini_batch:
+            alf.summary.increment_global_counter()
+
+        # Run unroll() with environments
+        with torch.set_grad_enabled(config.unroll_with_grad):
+            with record_time("time/unroll"):
+                self.eval()
+                experience = self.unroll(config.unroll_length)
+                self.summarize_rollout(experience)
+                self.summarize_metrics()
+
+        # Run the normal training
+        self.train()
+        steps = self.train_from_replay_buffer(update_global_counter=True)
+
+        # Run aux update periodically
+        if alf.summary.get_global_counter() % 32 == 0:
+            self.switch_to_aux_phase()
+            steps += self.train_from_replay_buffer(update_global_counter=False)
+
+        with record_time("time/after_train_iter"):
+            train_info = experience.rollout_info
+            experience = experience._replace(rollout_info=())
+            self.after_train_iter(experience, train_info)
+
+        # For now, we only return the steps of the primary algorithm's training
+        return steps
 
     @property
     def on_policy(self) -> bool:
