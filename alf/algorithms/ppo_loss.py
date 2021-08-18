@@ -31,6 +31,7 @@ class PPOLoss(ActorCriticLoss):
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  normalize_advantages=True,
+                 compute_advantages_internally=False,
                  advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,
@@ -98,6 +99,7 @@ class PPOLoss(ActorCriticLoss):
         self._importance_ratio_clipping = importance_ratio_clipping
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
+        self._compute_advantages_internally = compute_advantages_internally
 
     def _pg_loss(self, info, advantages):
         scope = alf.summary.scope(self._name)
@@ -129,4 +131,6 @@ class PPOLoss(ActorCriticLoss):
         return policy_gradient_loss
 
     def _calc_returns_and_advantages(self, info, value):
-        return info.returns, info.advantages
+        if not self._compute_advantages_internally:
+            return info.returns, info.advantages
+        return super()._calc_returns_and_advantages(info, value)
