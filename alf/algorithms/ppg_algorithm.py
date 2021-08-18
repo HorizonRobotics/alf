@@ -99,26 +99,59 @@ class PPGAuxPhaseLoss(Loss):
                 policy_kl_loss=policy_kl_loss))
 
 
+class PPGPhaseContext(object):
+    def __init__(self, main_algorithm: 'PPGAlgorithm',
+                 network: DualActorValueNetwork,
+                 optimizer: torch.optim.Optimizer, loss: Loss,
+                 exp_replayer: Optional[OnetimeExperienceReplayer]):
+        self._main_algorithm = main_algorithm
+        self._network = network
+        self._main_algorithm.add_optimizer(optimizer, [self._network])
+        self._loss = loss
+        self._exp_replayer = exp_replayer
+        if self._exp_replayer is not None:
+            self._main_algorithm._observers.append(self._exp_replayer.observe)
+
+    @property
+    def loss(self):
+        return self._loss
+
+    @property
+    def exp_replayer(self):
+        return self._exp_replayer
+
+    @property
+    def network(self):
+        return self._network
+
+    def on_context_switch_from(self, previous_context: 'PPGPhaseContext'):
+        self._network.load_state_dict(previous_context._network.state_dict())
+
+    def network_forward(self, inputs: TimeStep,
+                        state: DualActorValueNetworkState) -> AlgStep:
+        action_distribution, value, aux, state = self._network(
+            inputs.observation, state=state)
+
+        action = dist_utils.sample_action_distribution(action_distribution)
+
+        return AlgStep(
+            output=action,
+            state=state,
+            info=PPGRolloutInfo(
+                action_distribution=action_distribution,
+                action=common.detach(action),
+                value=value,
+                aux=aux,
+                step_type=inputs.step_type,
+                discount=inputs.discount,
+                reward=inputs.reward,
+                reward_weights=()))
+
+
 @alf.configurable
 class PPGAlgorithm(OffPolicyAlgorithm):
     """PPG Algorithm.
     """
-
-    @contextmanager
-    def aux_phase(self):
-        backup_exp_replayer = None
-        try:
-            self._in_aux_phase = True
-            self._shadow_network.load_state_dict(
-                self._dual_actor_value_network.state_dict())
-            backup_exp_replayer = self._exp_replayer
-            self._exp_replayer = self._aux_exp_replayer
-            yield None
-        finally:
-            self._in_aux_phase = False
-            self._dual_actor_value_network.load_state_dict(
-                self._shadow_network.state_dict())
-            self._exp_replayer = backup_exp_replayer
 
     def __init__(self,
                  observation_spec: TensorSpec,
@@ -185,28 +218,43 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             predict_state_spec=dual_actor_value_network.state_spec,
-            # TODO(breakds): Value heads need state as well
             train_state_spec=dual_actor_value_network.state_spec)
 
-        # TODO(breakds): Make this more flexible to allow recurrent networks
-        # TODO(breakds): Make this more flexible to allow separate networks
-        # TODO(breakds): Add other more complicated network parameters
-        # TODO(breakds): Contiuous cases should be handled
-        self._dual_actor_value_network = dual_actor_value_network
-        self._shadow_network = dual_actor_value_network.copy()
-        # TODO(breakds): Put this to the configuration
-        self._loss = PPOLoss(debug_summaries=debug_summaries)
-        self._aux_phase_loss = PPGAuxPhaseLoss()
+        self._policy_phase = PPGPhaseContext(
+            main_algorithm=self,
+            network=dual_actor_value_network,
+            optimizer=main_optimizer,
+            # TODO(breakds): Put this to the configuration
+            loss=PPOLoss(debug_summaries=debug_summaries),
+            exp_replayer=None)
 
-        # TODO(breakds): Try not to maintain states in algorithm itself. The
-        # less stateful the cleaner.
-        self.add_optimizer(main_optimizer, [self._dual_actor_value_network])
-        self.add_optimizer(aux_optimizer, [self._shadow_network])
+        self._aux_phase = PPGPhaseContext(
+            main_algorithm=self,
+            network=dual_actor_value_network.copy(),
+            optimizer=aux_optimizer,
+            loss=PPGAuxPhaseLoss(),
+            exp_replayer=OnetimeExperienceReplayer())
 
-        # HACK: Additional Exp Replayer
-        self._in_aux_phase = False
-        self._aux_exp_replayer = OnetimeExperienceReplayer()
-        self._observers.append(self._aux_exp_replayer.observe)
+        self._registered_networks = torch.nn.ModuleList(
+            [self._policy_phase.network, self._aux_phase.network])
+
+        self._active_phase = self._policy_phase
+
+    @contextmanager
+    def aux_phase_activated(self):
+        backup_exp_replayer = None
+        try:
+            self._aux_phase.on_context_switch_from(self._policy_phase)
+            self._active_phase = self._aux_phase
+            # Special handling to shadow the current _exp_replayer
+            backup_exp_replayer = self._exp_replayer
+            self._exp_replayer = self._aux_phase.exp_replayer
+            yield
+        finally:
+            self._policy_phase.on_context_switch_from(self._aux_phase)
+            self._active_phase = self._policy_phase
+            # Restore the _exp_replayer
+            self._exp_replayer = backup_exp_replayer
 
     def train_iter(self):
         config: TrainerConfig = self._config
@@ -228,7 +276,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         # Run aux update periodically
         if alf.summary.get_global_counter() % 32 == 0:
-            with self.aux_phase():
+            with self.aux_phase_activated():
                 print('Aux!')
                 steps += self.train_from_replay_buffer(
                     update_global_counter=False)
@@ -245,32 +293,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     def on_policy(self) -> bool:
         return False
 
-    def evaluate_network(self,
-                         inputs: TimeStep,
-                         state: DualActorValueNetworkState,
-                         use_shadow: bool = False) -> AlgStep:
-        network = self._shadow_network if use_shadow else self._dual_actor_value_network
-        action_distribution, value, aux, state = network(
-            inputs.observation, state=state)
-
-        action = dist_utils.sample_action_distribution(action_distribution)
-
-        return AlgStep(
-            output=action,
-            state=state,
-            info=PPGRolloutInfo(
-                action_distribution=action_distribution,
-                action=common.detach(action),
-                value=value,
-                aux=aux,
-                step_type=inputs.step_type,
-                discount=inputs.discount,
-                reward=inputs.reward,
-                reward_weights=()))
-
     def rollout_step(self, inputs: TimeStep,
                      state: DualActorValueNetworkState) -> AlgStep:
-        return self.evaluate_network(inputs, state)
+        return self._policy_phase.network_forward(inputs, state)
 
     def preprocess_experience(
             self,
@@ -284,20 +309,23 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # stands for the temporal extent, where B is the the size of the batch.
 
         with torch.no_grad():
+            gamma = self._policy_phase.loss.gamma
+
             if rollout_info.reward.ndim == 3:
                 # [B, T, D] or [B, T, 1]
-                discounts = rollout_info.discount.unsqueeze(
-                    -1) * self._loss.gamma
+                discounts = rollout_info.discount.unsqueeze(-1) * gamma
             else:
                 # [B, T]
-                discounts = rollout_info.discount * self._loss.gamma
+                discounts = rollout_info.discount * gamma
+
+            td_lambda = self._policy_phase.loss._lambda
 
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=rollout_info.reward,
                 values=rollout_info.value,
                 step_types=rollout_info.step_type,
                 discounts=discounts,
-                td_lambda=self._loss._lambda,
+                td_lambda=td_lambda,
                 time_major=False)
             advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
             returns = rollout_info.value + advantages
@@ -312,16 +340,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: DualActorValueNetworkState,
                    prev_train_info: PPGTrainInfo) -> AlgStep:
-        if self._in_aux_phase:
-            alg_step = self.evaluate_network(inputs, state, use_shadow=True)
-        else:
-            alg_step = self.evaluate_network(inputs, state)
+        alg_step = self._active_phase.network_forward(inputs, state)
 
         return alg_step._replace(
             info=merge_rollout_into_train_info(alg_step.info, prev_train_info))
 
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
-        if self._in_aux_phase:
-            return self._aux_phase_loss(info)
-        else:
-            return self._loss(info)
+        return self._active_phase.loss(info)

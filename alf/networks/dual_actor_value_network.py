@@ -25,6 +25,10 @@ DualActorValueNetworkState = namedtuple(
     'DualActorValueNetworkState', ['actor', 'value', 'aux'], default_value=())
 
 
+# TODO(breakds): Make this more flexible to allow recurrent networks
+# TODO(breakds): Make this more flexible to allow separate networks
+# TODO(breakds): Add other more complicated network parameters
+# TODO(breakds): Contiuous cases should be handled
 @alf.configurable
 class DualActorValueNetwork(Network):
     def __init__(self,
