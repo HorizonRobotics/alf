@@ -30,3 +30,4 @@ from .relu_mlp import ReluMLP
 from .q_networks import *
 from .transformer_networks import TransformerNetwork
 from .value_networks import *
+from .disjoint_policy_value_network import DisjointPolicyValueNetwork, DisjointPolicyValueNetworkState
