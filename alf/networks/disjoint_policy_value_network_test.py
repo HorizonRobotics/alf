@@ -46,6 +46,12 @@ class TestDisjointPolicyValueNetwork(parameterized.TestCase,
             'continuous': BoundedTensorSpec((3, ))
         }
 
+    # This test mainly test that the DisjointPolicyValueNetwork can be
+    # correctly constructed and its forward() can generate outputs
+    # that have the correct shape.
+    #
+    # It tests for the both the "dual" architecture and the "shared"
+    # architecture of the network.
     @parameterized.parameters(False, True)
     def test_architecture(self, is_sharing_encoder):
         network = DisjointPolicyValueNetwork(

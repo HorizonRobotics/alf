@@ -22,15 +22,41 @@ from .network import Network
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from .encoding_networks import EncodingNetwork
 
+# A data structure that holds the RNN state.
 DisjointPolicyValueNetworkState = namedtuple(
     'DisjointPolicyValueNetworkState', ['actor', 'value', 'aux'],
     default_value=())
 
 
-def _create_projection_net_based_on_actor_spec(
+def _create_projection_net_based_on_action_spec(
         discrete_projection_net_ctor: Callable[..., Network],
-        continuous_projection_net_ctor: Callable[..., Network], input_size,
-        action_spec):
+        continuous_projection_net_ctor: Callable[..., Network],
+        input_size: int, action_spec):
+    """Create project network(s) for the potentially nested action spec.
+
+    This function basically creates a projection network for each of the leaf
+    tensor spec in the action spec. Those networks are packed into the same
+    nested structure as the input action spec and returned as a whole.
+
+    Args:
+  
+        discrete_projection_net_ctor (Callable[..., Network]): constructor that
+            generates a discrete projection network that outputs discrete
+            actions.
+
+        continuous_projection_net_ctor (Callable[..., Network): constructor that
+            generates a continuous projection network that outputs continuous
+            actions.
+
+        input_size (int): the input_size for the projection network, which usually
+            comes from the output of an encoding network.
+
+        action_spec (nest of TensorSpec): speficifies the shape and type of the
+            output action. The type of each invidual projection network in the
+            output is derived from this.
+
+    """
+
     def _create_individually(spec):
         constructor = (discrete_projection_net_ctor
                        if spec.is_discrete else continuous_projection_net_ctor)
@@ -39,9 +65,36 @@ def _create_projection_net_based_on_actor_spec(
     return alf.nest.map_structure(_create_individually, action_spec)
 
 
-# TODO(breakds): Make this more flexible to allow recurrent networks
+# TODO(breakds): Add its recurrent network counterpart
 @alf.configurable
 class DisjointPolicyValueNetwork(Network):
+    """A composite network with a policy component and a value component.
+
+    This network capture a category of network as proposed in the Phasic Policy
+    Gradient paper. It consists of two components and 3 heads:
+
+    - Value Component: a single value head that estimates the value function
+
+    - Policy Component: 1 policy head that outputs the action distribution, and
+         1 auxiliary value head that behaves as a secondary value function
+         estimator
+
+    The Value Component and the Policy Component may share the same encoding
+    network or have their own encoding network. When the encoding network is
+    shared, it is called the "shared" architecture. If the encoding network is
+    not shared, it is called the "dual" architecture.
+
+    NOTE that in the "shared" architecture, the encoder is detached before
+    connecting to the value head. This means that the value head will have no
+    power to optimize and update the parameters of the encoder under such
+    constraint.
+
+    See https://github.com/HorizonRobotics/alf/issues/965 for a graphical
+    illustration of such two different architectures.
+
+    """
+
+    # TODO(breakds): Add type hints when nest of tensor type is defined
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -51,7 +104,55 @@ class DisjointPolicyValueNetwork(Network):
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name='DisjointPolicyValueNetwork'):
+        """The constructor of DisjointPolicyValueNetwork
+
+        Note that there are two projection constructor parameters. They exist
+        because in the case when the action spec is a nest of different types
+        where some of them are discrete and some of them are continuous,
+        corresponding projection networks can be created for the two parties
+        individually and respectively.
+
+        Args:
+
+            observation_spec (nest of TesnorSpec): specifies the shape and type
+                of the input observation.
+
+            action_spec (nest of TensorSpec): speficifies the shape and type of
+                the output action. The type of output action distribution is
+                implicitly derived from this.
+
+            encoding_network_ctor (Callable[..., Network]): A constructor that
+                creates the encoding network. Depending whether the encoding
+                network is shared between the value component and the policy
+                component, 1 or 2 encoding network will be created using this
+                constructor.
+
+            is_sharing_encoder (bool): When set to true, the encoding network is
+                shared between the value and the policy component, resulting in
+                a "shared" architecture disjoint network. When set to false, the
+                encoding network is not shared, resulting in a "dual"
+                architecture disjoint network.
+
+            kernel_initializer (Callable): initializer for all the layers
+                excluding the projection net. If none is provided a default
+                xavier_uniform will be used.
+
+            discrete_projection_net_ctor (Callable[..., Network]): constructor
+                that generates a discrete projection network that outputs
+                discrete actions.
+
+            continuous_projection_net_ctor (Callable[..., Network): constructor
+                that generates a continuous projection network that outputs
+                continuous actions.
+
+            name(str): the name of the network
+
+        """
         super().__init__(input_tensor_spec=observation_spec, name=name)
+
+        # +------------------------------------+
+        # | Step 1: The policy network encoder |
+        # +------------------------------------+
 
         if kernel_initializer is None:
             kernel_initializer = torch.nn.init.xavier_uniform_
@@ -60,15 +161,20 @@ class DisjointPolicyValueNetwork(Network):
             input_tensor_spec=observation_spec,
             kernel_initializer=kernel_initializer)
 
-        projection_net = _create_projection_net_based_on_actor_spec(
+        # +------------------------------------------+
+        # | Step 2: Projection for the policy branch |
+        # +------------------------------------------+
+
+        projection_net = _create_projection_net_based_on_action_spec(
             discrete_projection_net_ctor=discrete_projection_net_ctor,
             continuous_projection_net_ctor=continuous_projection_net_ctor,
             input_size=self._actor_encoder.output_spec.shape[0],
             action_spec=action_spec)
 
         if alf.nest.is_nested(projection_net):
-            # Force picking up the parameters inside those project networks into
-            # this DisjointPolicyValueNetwork instance.
+            # In the case when the projection net is multi-fold (because actor
+            # spec is a nest), force picking up the parameters inside those
+            # project networks into this DisjointPolicyValueNetwork instance.
             self._projection_net_module_list = torch.nn.ModuleList(
                 alf.nest.flatten(projection_net))
             self._actor_branch = alf.nn.Sequential(
@@ -78,6 +184,12 @@ class DisjointPolicyValueNetwork(Network):
             self._actor_branch = alf.nn.Sequential(self._actor_encoder,
                                                    projection_net)
 
+        # +------------------------------------------+
+        # | Step 3: Value head of the aux branch     |
+        # +------------------------------------------+
+
+        # Note that the aux branch value head belongs to the policy component.
+
         # Like the value head Aux head is outputing value estimation
         self._aux_branch = alf.nn.Sequential(
             self._actor_encoder,
@@ -85,13 +197,20 @@ class DisjointPolicyValueNetwork(Network):
                 input_size=self._actor_encoder.output_spec.shape[0],
                 output_size=1), alf.layers.Reshape(shape=()))
 
+        # +------------------------------------------+
+        # | Step 4: Value head of the value branch   |
+        # +------------------------------------------+
+
         if is_sharing_encoder:
+            # Use the same encoder, but the encoder is DETACHED.
             self._value_branch = alf.nn.Sequential(
                 self._actor_encoder, alf.layers.Detach(),
                 alf.layers.FC(
                     input_size=self._actor_encoder.output_spec.shape[0],
                     output_size=1), alf.layers.Reshape(shape=()))
         else:
+            # If not sharing encoder, create a separate encoder for the value
+            # component.
             value_encoder = encoding_network_ctor(
                 input_tensor_spec=observation_spec,
                 kernel_initializer=kernel_initializer)
@@ -103,6 +222,23 @@ class DisjointPolicyValueNetwork(Network):
                     output_size=1), alf.layers.Reshape(shape=()))
 
     def forward(self, observation, state: DisjointPolicyValueNetworkState):
+        """Computes the action distribution, aux value and value estimation
+
+        Args:
+
+            observation (nested torch.Tensor): a tensor that is consistent with
+                the encoding network
+
+            state: the state for RNN based network for interface compatibility,
+                which is always set to empty in this case because this network
+                does not have an RNN-based encoder
+
+        Returns:
+            act_dist (torch.distributions): action distribution
+            state: empty
+
+        """
+
         action_distribution, actor_state = self._actor_branch(
             observation, state=state.actor)
 
@@ -114,7 +250,13 @@ class DisjointPolicyValueNetwork(Network):
             actor=actor_state, value=value_state, aux=aux_state)
 
     @property
-    def state_spec(self):
+    def state_spec(self) -> DisjointPolicyValueNetworkState:
+        """Returns the spec of the state
+
+        A short hand for getting a composition of the state spec of all the
+        branches in the network.
+
+        """
         return DisjointPolicyValueNetworkState(
             actor=self._actor_branch.state_spec,
             value=self._value_branch.state_spec,
