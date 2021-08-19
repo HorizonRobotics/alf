@@ -16,15 +16,16 @@ from typing import Callable, Tuple
 
 import torch
 import alf
-from alf.tensor_specs import TensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.data_structures import namedtuple
 from alf.networks import Network, NormalProjectionNetwork, CategoricalProjectionNetwork, EncodingNetwork
 
 
 def _create_projection_net_based_on_action_spec(
-        discrete_projection_net_ctor: Callable[..., Network],
-        continuous_projection_net_ctor: Callable[..., Network],
-        input_size: int, action_spec):
+        discrete_projection_net_ctor: Callable[[int, BoundedTensorSpec],
+                                               Network],
+        continuous_projection_net_ctor: Callable[
+            [int, BoundedTensorSpec], Network], input_size: int, action_spec):
     """Create project network(s) for the potentially nested action spec.
 
     This function basically creates a projection network for each of the leaf
@@ -33,17 +34,14 @@ def _create_projection_net_based_on_action_spec(
 
     Args:
 
-        discrete_projection_net_ctor (Callable[..., Network]): constructor that
-            generates a discrete projection network that outputs discrete
-            actions.
-
-        continuous_projection_net_ctor (Callable[..., Network): constructor that
-            generates a continuous projection network that outputs continuous
-            actions.
-
+        discrete_projection_net_ctor (Callable[[int, BoundedTensorSpec],
+            Network]): constructor that generates a discrete projection network
+            that outputs discrete actions.
+        continuous_projection_net_ctor (Callable[[int, BoundedTensorSpec],
+            Network): constructor that generates a continuous projection network
+            that outputs continuous actions.
         input_size (int): the input_size for the projection network, which usually
             comes from the output of an encoding network.
-
         action_spec (nest of TensorSpec): speficifies the shape and type of the
             output action. The type of each invidual projection network in the
             output is derived from this.
@@ -113,35 +111,28 @@ class DisjointPolicyValueNetwork(Network):
 
             observation_spec (nest of TesnorSpec): specifies the shape and type
                 of the input observation.
-
             action_spec (nest of TensorSpec): speficifies the shape and type of
                 the output action. The type of output action distribution is
                 implicitly derived from this.
-
             encoding_network_ctor (Callable[..., Network]): A constructor that
                 creates the encoding network. Depending whether the encoding
                 network is shared between the value component and the policy
                 component, 1 or 2 encoding network will be created using this
                 constructor.
-
             is_sharing_encoder (bool): When set to true, the encoding network is
                 shared between the value and the policy component, resulting in
                 a "shared" architecture disjoint network. When set to false, the
                 encoding network is not shared, resulting in a "dual"
                 architecture disjoint network.
-
-            kernel_initializer (Callable): initializer for all the layers
-                excluding the projection net. If none is provided a default
-                xavier_uniform will be used.
-
-            discrete_projection_net_ctor (Callable[..., Network]): constructor
-                that generates a discrete projection network that outputs
-                discrete actions.
-
-            continuous_projection_net_ctor (Callable[..., Network): constructor
-                that generates a continuous projection network that outputs
-                continuous actions.
-
+            kernel_initializer (Callable[[Tensor], None]): initializer for all
+                the layers excluding the projection net. If none is provided a
+                default xavier_uniform will be used.
+            discrete_projection_net_ctor (Callable[[int, BoundedTensorSpec],
+                Network]): constructor that generates a discrete projection
+                network that outputs discrete actions.
+            continuous_projection_net_ctor (Callable[[int, BoundedTensorSpec],
+                Network): constructor that generates a continuous projection
+                network that outputs continuous actions.
             name(str): the name of the network
 
         """
@@ -158,6 +149,8 @@ class DisjointPolicyValueNetwork(Network):
             input_tensor_spec=observation_spec,
             kernel_initializer=kernel_initializer)
 
+        encoder_output_size = self._actor_encoder.output_spec.shape[0]
+
         # +------------------------------------------+
         # | Step 2: Projection for the policy branch |
         # +------------------------------------------+
@@ -165,7 +158,7 @@ class DisjointPolicyValueNetwork(Network):
         self._policy_head = _create_projection_net_based_on_action_spec(
             discrete_projection_net_ctor=discrete_projection_net_ctor,
             continuous_projection_net_ctor=continuous_projection_net_ctor,
-            input_size=self._actor_encoder.output_spec.shape[0],
+            input_size=encoder_output_size,
             action_spec=action_spec)
 
         # +------------------------------------------+
@@ -176,15 +169,12 @@ class DisjointPolicyValueNetwork(Network):
 
         # Like the value head Aux head is outputing value estimation
         self._aux_head = alf.nn.Sequential(
-            alf.layers.FC(
-                input_size=self._actor_encoder.output_spec.shape[0],
-                output_size=1), alf.layers.Reshape(shape=()))
+            alf.layers.FC(input_size=encoder_output_size, output_size=1),
+            alf.layers.Reshape(shape=()))
 
         # +------------------------------------------+
         # | Step 4: Assemble network + value head    |
         # +------------------------------------------+
-
-        encoder_output_size = self._actor_encoder.output_spec.shape[0]
 
         if is_sharing_encoder:
             self._composition = alf.nn.Sequential(
@@ -222,6 +212,11 @@ class DisjointPolicyValueNetwork(Network):
                 # Order: policy, value, aux value
                 lambda heads: (heads[0][0], heads[1], heads[0][1]))
 
+    # TODO(breakds): Currently the method ``forward`` always evaluate all 3
+    # heads, which can be wasteful if only 1 of them is needed (for example,
+    # there can be cases when only action distribution is needed). Such overhead
+    # is not significant as the networks are not complex (yet). Will defer the
+    # decision to the future when such performance gain is huge and necessary.
     def forward(self, observation, state):
         """Computes the action distribution, aux value and value estimation
 
@@ -229,7 +224,6 @@ class DisjointPolicyValueNetwork(Network):
 
             observation (nested torch.Tensor): a tensor that is consistent with
                 the encoding network
-
             state: the state(s) for RNN based network
 
         Returns:
@@ -237,7 +231,6 @@ class DisjointPolicyValueNetwork(Network):
             output (Triplet): network output in the order of policy (action
                 distribution), value function estimation, auxiliary value
                 function estimation
-
             state (Triplet): RNN states in the order of policy, value, aux value
 
         """
