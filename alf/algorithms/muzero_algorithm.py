@@ -25,7 +25,7 @@ from alf.algorithms.mcts_algorithm import MCTSAlgorithm, MCTSInfo
 from alf.algorithms.mcts_models import MCTSModel, ModelOutput, ModelTarget
 from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
-from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.tensor_utils import scale_gradient
 from alf.tensor_specs import TensorSpec
 
 MuzeroInfo = namedtuple(
@@ -46,12 +46,6 @@ MuzeroInfo = namedtuple(
         'loss',
     ],
     default_value=())
-
-
-def scale_gradient(tensor, scale):
-    """Scales the gradient for the backward pass."""
-    tensor.register_hook(lambda grad: grad * scale)
-    return tensor
 
 
 @alf.configurable

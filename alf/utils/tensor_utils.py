@@ -328,3 +328,25 @@ def cov(data, rowvar=False):
         out = fact * x.matmul(x.t()).squeeze()
 
     return out
+
+
+def scale_gradient(tensor, scale, clone_input=True):
+    """Scales the gradient of `tensor` for the backward pass.
+    Args:
+        tensor (Tensor): a tensor which requires gradient.
+        scale (float): a scalar factor to be multiplied to the gradient
+            of `tensor`.
+        clone_input (bool): If True, clone the input tensor before applying
+            gradient scaling. This option is useful when there are multiple
+            computational branches originated from `tensor` and we want to
+            apply gradient scaling to part of them without impacting the rest.
+            If False, apply gradient scaling to the input tensor directly.
+    Returns:
+        The (cloned) tensor with gradient scaling hook registered.
+    """
+    if clone_input:
+        output = tensor.clone()
+    else:
+        output = tensor
+    output.register_hook(lambda grad: grad * scale)
+    return output
