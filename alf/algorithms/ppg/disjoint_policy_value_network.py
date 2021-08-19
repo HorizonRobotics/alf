@@ -18,9 +18,7 @@ import torch
 import alf
 from alf.tensor_specs import TensorSpec
 from alf.data_structures import namedtuple
-from .network import Network
-from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from .encoding_networks import EncodingNetwork
+from alf.networks import Network, NormalProjectionNetwork, CategoricalProjectionNetwork, EncodingNetwork
 
 
 def _create_projection_net_based_on_action_spec(
@@ -126,7 +124,7 @@ class DisjointPolicyValueNetwork(Network):
                 network is shared between the value component and the policy
                 component, 1 or 2 encoding network will be created using this
                 constructor.
-
+        
             is_sharing_encoder (bool): When set to true, the encoding network is
                 shared between the value and the policy component, resulting in
                 a "shared" architecture disjoint network. When set to false, the

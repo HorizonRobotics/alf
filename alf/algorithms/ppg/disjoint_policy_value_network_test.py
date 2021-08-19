@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for alf.networks.disjoint_policy_value_network"""
 
-from alf.networks import DisjointPolicyValueNetwork
+from alf.algorithms.ppg import DisjointPolicyValueNetwork
 
 from absl.testing import parameterized
 
