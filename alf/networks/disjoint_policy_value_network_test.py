@@ -13,7 +13,7 @@
 # limitations under the License.
 """Tests for alf.networks.disjoint_policy_value_network"""
 
-from alf.networks import DisjointPolicyValueNetwork, DisjointPolicyValueNetworkState
+from alf.networks import DisjointPolicyValueNetwork
 
 from absl.testing import parameterized
 
@@ -64,16 +64,24 @@ class TestDisjointPolicyValueNetwork(parameterized.TestCase,
                 preprocessing_combiner=NestConcat(dim=1)),
             is_sharing_encoder=is_sharing_encoder)
 
-        self.assertTrue(
-            isinstance(network.output_spec["discrete"], DistributionSpec))
-        self.assertTrue(
-            isinstance(network.output_spec["continuous"], DistributionSpec))
+        # Verify that the output specs are correct
+        action_distribution_spec, aux_spec, value_spec = network.output_spec
 
+        self.assertTrue(
+            isinstance(action_distribution_spec["discrete"], DistributionSpec))
+        self.assertTrue(
+            isinstance(action_distribution_spec["continuous"],
+                       DistributionSpec))
+        self.assertEqual((), aux_spec.shape)
+        self.assertEqual(torch.float32, aux_spec.dtype)
+        self.assertEqual((), value_spec.shape)
+        self.assertEqual(torch.float32, value_spec.dtype)
+
+        # Verify that the outputs have the desired shape and type
         image = zero_tensor_from_nested_spec(self._observation_spec,
                                              self._batch_size)
 
-        action_distribution, value, aux, state = network(
-            image, state=DisjointPolicyValueNetworkState())
+        (action_distribution, value, aux), state = network(image, state=())
 
         self.assertTrue(
             isinstance(action_distribution['discrete'], td.Categorical))

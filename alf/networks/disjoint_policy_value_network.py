@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable
+from typing import Callable, Tuple
 
 import torch
 import alf
@@ -21,11 +21,6 @@ from alf.data_structures import namedtuple
 from .network import Network
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from .encoding_networks import EncodingNetwork
-
-# A data structure that holds the RNN state.
-DisjointPolicyValueNetworkState = namedtuple(
-    'DisjointPolicyValueNetworkState', ['actor', 'value', 'aux'],
-    default_value=())
 
 
 def _create_projection_net_based_on_action_spec(
@@ -39,7 +34,7 @@ def _create_projection_net_based_on_action_spec(
     nested structure as the input action spec and returned as a whole.
 
     Args:
-  
+
         discrete_projection_net_ctor (Callable[..., Network]): constructor that
             generates a discrete projection network that outputs discrete
             actions.
@@ -79,15 +74,20 @@ class DisjointPolicyValueNetwork(Network):
          1 auxiliary value head that behaves as a secondary value function
          estimator
 
-    The Value Component and the Policy Component may share the same encoding
-    network or have their own encoding network. When the encoding network is
-    shared, it is called the "shared" architecture. If the encoding network is
-    not shared, it is called the "dual" architecture.
+    The output of this network is a triplet, corresponding to the 3 heads in the
+    order of (action distribution, value function, auxiliary value function).
 
-    NOTE that in the "shared" architecture, the encoder is detached before
-    connecting to the value head. This means that the value head will have no
-    power to optimize and update the parameters of the encoder under such
-    constraint.
+    About Architecture:
+
+      The Value Component and the Policy Component may share the same encoding
+      network or have their own encoding network. When the encoding network is
+      shared, it is called the "shared" architecture. If the encoding network is
+      not shared, it is called the "dual" architecture.
+
+      NOTE that in the "shared" architecture, the encoder is detached before
+      connecting to the value head. This means that the value head will have no
+      power to optimize and update the parameters of the encoder under such
+      constraint.
 
     See https://github.com/HorizonRobotics/alf/issues/965 for a graphical
     illustration of such two different architectures.
@@ -165,24 +165,16 @@ class DisjointPolicyValueNetwork(Network):
         # | Step 2: Projection for the policy branch |
         # +------------------------------------------+
 
-        projection_net = _create_projection_net_based_on_action_spec(
+        self._policy_head = _create_projection_net_based_on_action_spec(
             discrete_projection_net_ctor=discrete_projection_net_ctor,
             continuous_projection_net_ctor=continuous_projection_net_ctor,
             input_size=self._actor_encoder.output_spec.shape[0],
             action_spec=action_spec)
-
-        if alf.nest.is_nested(projection_net):
-            # In the case when the projection net is multi-fold (because actor
-            # spec is a nest), force picking up the parameters inside those
-            # project networks into this DisjointPolicyValueNetwork instance.
-            self._projection_net_module_list = torch.nn.ModuleList(
-                alf.nest.flatten(projection_net))
-            self._actor_branch = alf.nn.Sequential(
-                self._actor_encoder,
-                alf.nn.Branch(projection_net, name='NestedProjection'))
-        else:
-            self._actor_branch = alf.nn.Sequential(self._actor_encoder,
-                                                   projection_net)
+        # In the case when the projection net is multi-fold (because actor
+        # spec is a nest), force picking up the parameters inside those
+        # project networks into this DisjointPolicyValueNetwork instance.
+        self._projection_net_module_list = torch.nn.ModuleList(
+            alf.nest.flatten(self._policy_head))
 
         # +------------------------------------------+
         # | Step 3: Value head of the aux branch     |
@@ -191,37 +183,54 @@ class DisjointPolicyValueNetwork(Network):
         # Note that the aux branch value head belongs to the policy component.
 
         # Like the value head Aux head is outputing value estimation
-        self._aux_branch = alf.nn.Sequential(
-            self._actor_encoder,
+        self._aux_head = alf.nn.Sequential(
             alf.layers.FC(
                 input_size=self._actor_encoder.output_spec.shape[0],
                 output_size=1), alf.layers.Reshape(shape=()))
 
         # +------------------------------------------+
-        # | Step 4: Value head of the value branch   |
+        # | Step 4: Assemble network + value head    |
         # +------------------------------------------+
 
         if is_sharing_encoder:
             # Use the same encoder, but the encoder is DETACHED.
-            self._value_branch = alf.nn.Sequential(
-                self._actor_encoder, alf.layers.Detach(),
+            self._value_head = alf.nn.Sequential(
+                alf.layers.Detach(),
                 alf.layers.FC(
                     input_size=self._actor_encoder.output_spec.shape[0],
-                    output_size=1), alf.layers.Reshape(shape=()))
+                    output_size=1),
+                alf.layers.Reshape(shape=()),
+                input_tensor_spec=self._actor_encoder.output_spec)
+
+            all_branches = ((self._policy_head, self._aux_head),
+                            self._value_head)
+            self._composition = alf.nn.Sequential(
+                self._actor_encoder,
+                alf.nn.Branch(all_branches, name='AllBranches'))
         else:
-            # If not sharing encoder, create a separate encoder for the value
+            policy_component = alf.nn.Sequential(
+                self._actor_encoder,
+                alf.nn.Branch((self._policy_head, self._aux_head),
+                              name='PolicyComponent'))
+
+            # When not sharing encoder, create a separate encoder for the value
             # component.
-            value_encoder = encoding_network_ctor(
+            self._value_encoder = encoding_network_ctor(
                 input_tensor_spec=observation_spec,
                 kernel_initializer=kernel_initializer)
 
-            self._value_branch = alf.nn.Sequential(
-                value_encoder,
+            self._value_head = alf.nn.Sequential(
                 alf.layers.FC(
                     input_size=self._actor_encoder.output_spec.shape[0],
                     output_size=1), alf.layers.Reshape(shape=()))
 
-    def forward(self, observation, state: DisjointPolicyValueNetworkState):
+            value_component = alf.nn.Sequential(self._value_encoder,
+                                                self._value_head)
+
+            self._composition = alf.nn.Branch(
+                (policy_component, value_component), name='AllBranches')
+
+    def forward(self, observation, state):
         """Computes the action distribution, aux value and value estimation
 
         Args:
@@ -238,26 +247,6 @@ class DisjointPolicyValueNetwork(Network):
             state: empty
 
         """
-
-        action_distribution, actor_state = self._actor_branch(
-            observation, state=state.actor)
-
-        value, value_state = self._value_branch(observation, state=state.value)
-
-        aux, aux_state = self._value_branch(observation, state=state.aux)
-
-        return action_distribution, value, aux, DisjointPolicyValueNetworkState(
-            actor=actor_state, value=value_state, aux=aux_state)
-
-    @property
-    def state_spec(self) -> DisjointPolicyValueNetworkState:
-        """Returns the spec of the state
-
-        A short hand for getting a composition of the state spec of all the
-        branches in the network.
-
-        """
-        return DisjointPolicyValueNetworkState(
-            actor=self._actor_branch.state_spec,
-            value=self._value_branch.state_spec,
-            aux=self._aux_branch.state_spec)
+        ((action_distribution, aux), value), _ = self._composition(
+            observation, state=())
+        return (action_distribution, value, aux), ()
