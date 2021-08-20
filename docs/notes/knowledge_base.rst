@@ -234,10 +234,10 @@ It provides an interface using CPU torch.Tensor and interacts with the underline
 ``AlfEnvironment`` using ``numpy.ndarray``.
 
 6. Use `ParallelAlfEnvironment <../api/alf.environments.html#alf.environments.parallel_environment.ParallelAlfEnvironment>`_
-to manage a set of ``ProcessEnvironment``s and obtain a batched ``ALfEnvironmnet``.
+to manage a set of ``ProcessEnvironment`` s and obtain a batched ``ALfEnvironmnet``.
 During ``step()``, ``ParallelEnvironment`` unstacks the action to get individual
 actions and call ``step()`` of each ``ProcessEnvironment``. After obtaining all
-the individual ``TimeStep``s from ``ProcessEnvironment``, it stacks them as a
+the individual ``TimeStep`` s from ``ProcessEnvironment``, it stacks them as a
 batched ``TimeStep`` and converts it to the default device. The inter-process
 communication takes place inside ``ProcessEnvironment``.
 
