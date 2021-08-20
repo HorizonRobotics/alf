@@ -7,6 +7,10 @@
 
 Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [PyTorch](https://pytorch.org/). The development of [previous version](https://github.com/HorizonRobotics/alf/tree/tensorflow) based on [Tensorflow 2.1](https://www.tensorflow.org/) has stopped as of Feb 2020.
 
+## Tutorial
+A draft tutorial can be accessed on [RTD](https://alf.readthedocs.io/en/latest/tutorial.html). This tutorial is still under
+construction and some chapters are unfinished yet.
+
 ## Algorithms
 
 |Algorithm|Type|Reference|
