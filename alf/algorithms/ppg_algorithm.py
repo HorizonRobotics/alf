@@ -209,7 +209,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             observation_spec=observation_spec,
             action_spec=action_spec,
             encoding_network_ctor=encoding_network_ctor,
-            is_sharing_encoder=False)
+            is_sharing_encoder=True)
 
         super().__init__(
             config=config,
@@ -300,7 +300,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # periodically an extra auxiliary phase update is done.
         if alf.summary.get_global_counter() % self._aux_phase_interval == 0:
             with self.aux_phase_activated():
-                print('Aux!')
                 steps += self.train_from_replay_buffer(
                     update_global_counter=False)
 
