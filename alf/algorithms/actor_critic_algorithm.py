@@ -103,8 +103,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         value_network = value_network_ctor(input_tensor_spec=observation_spec)
 
         if reward_spec.numel > 1:
-            value_network = alf.networks.NaiveParallelNetwork(
-                value_network, reward_spec.numel)  # value->[B,n]
+            value_network = value_network.make_parallel(reward_spec.numel) # value->[B,n] 
 
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,

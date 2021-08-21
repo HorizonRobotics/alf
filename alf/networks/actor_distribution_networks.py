@@ -147,22 +147,22 @@ class ActorDistributionNetwork(Network):
 class ParallelActorDistributionNetwork(Network):
     """Perform ``n`` actor distribution computations in parallel."""
     def __init__(self,
-                actor_distribution_network: ActorDistributionNetwork,
+                actor_network: ActorDistributionNetwork,
                 n: int,
                 name="ParallelActorDistributionNetwork"):
         """
-        It creates a parallelized version of ``actor_distribution_network``.
+        It creates a parallelized version of ``actor_network``.
         Args:
-            actor_distribution_network (ActorDistributionNetwork): non-parallelized actor distribution network
-            n (int): make ``n`` replicas from ``critic_network`` with different
+            actor_network (ActorDistributionNetwork): non-parallelized actor network
+            n (int): make ``n`` replicas from ``actor_network`` with different
                 initialization.
             name (str):
         """
         
-        super().__init__(input_tensor_spec=actor_distribution_network.input_tensor_spec, 
+        super().__init__(input_tensor_spec=actor_network.input_tensor_spec, 
                         name=name)
-        self._encoding_net = actor_distribution_network._encoding_net.make_parallel(n)
-        self._projection_net=actor_distribution_network._projection_net.make_parallel(n)
+        self._encoding_net = actor_network._encoding_net.make_parallel(n)
+        self._projection_net = actor_network._projection_net.make_parallel(n)
         self._output_spec = self._projection_net.output_spec
        
     def forward(self, observation, state=()):

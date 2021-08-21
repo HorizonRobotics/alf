@@ -132,7 +132,7 @@ class ParallelValueNetwork(PreprocessorNetwork):
         It creates a parallelized version of ``value_network``.
         Args:
             value_network (ValueNetwork): non-parallelized value network
-            n (int): make ``n`` replicas from ``critic_network`` with different
+            n (int): make ``n`` replicas from ``value_network`` with different
                 initialization.
             name (str):
         """

@@ -304,7 +304,6 @@ class RLTrainer(Trainer):
         alf.summary.should_summarize_output(config.summarize_output)
 
         env = alf.get_env()
-
         logging.info(
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
