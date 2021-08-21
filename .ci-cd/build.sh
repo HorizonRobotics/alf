@@ -71,6 +71,7 @@ function test() {
         alf.algorithms.oac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
+        alf.algorithms.ppg.disjoint_policy_value_network_test \
         alf.bin.train_play_test \
         alf.data_structures_test \
         alf.device_ctx_test \
