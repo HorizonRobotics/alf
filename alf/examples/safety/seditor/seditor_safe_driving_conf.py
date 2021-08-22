@@ -24,11 +24,6 @@ alf.config(
     'SEditorAlgorithm',
     actor_network_cls=sac_safe_driving_conf.actor_network_cls,
     critic_network_cls=sac_safe_driving_conf.critic_network_cls,
-    target_entropy=(partial(
-        dist_utils.calc_default_target_entropy, min_prob=0.1),
-                    partial(
-                        dist_utils.calc_default_target_entropy,
-                        min_prob=0.05)),
     target_update_tau=0.005)
 
 alf.config('Agent', rl_algorithm_cls=SEditorAlgorithm)

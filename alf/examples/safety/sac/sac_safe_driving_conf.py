@@ -17,10 +17,12 @@ import torch
 
 import alf
 from alf.algorithms.td_loss import TDLoss
-from alf.algorithms.data_transformer import ImageScaleTransformer, ObservationNormalizer, FrameStacker
+from alf.algorithms.data_transformer import (ImageScaleTransformer,
+                                             ObservationNormalizer,
+                                             FrameStacker, RewardNormalizer)
 from alf.algorithms.lagrangian_reward_weight_algorithm import LagrangianRewardWeightAlgorithm
 from alf.environments import suite_carla
-from alf.environments.alf_wrappers import ActionObservationWrapper, AlfEnvironmentBaseWrapper, ScalarRewardWrapper
+from alf.environments.alf_wrappers import ActionObservationWrapper, AlfEnvironmentBaseWrapper, ScalarRewardWrapper, CarlaActionWrapper
 from alf.environments.carla_controller import VehicleController
 from alf.networks import BetaProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -94,7 +96,7 @@ class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
 alf.config(
     'suite_carla.load',
     wrappers=[
-        NormalizedActionWrapper, ActionObservationWrapper, ScalarRewardWrapper,
+        CarlaActionWrapper, ActionObservationWrapper, ScalarRewardWrapper,
         partial(VectorRewardWrapper, keys=['collision'])
     ])
 
@@ -108,7 +110,7 @@ alf.config(
     # Lagrangian weights to combine them.
     max_collision_penalty=0.,
     max_red_light_penalty=0.,
-    #ignore_contiguous_collisions=False,
+    overspeed_penalty_weight=0.,
 
     # uncomment the following line to use PID controller
     # controller_ctor=VehicleController,
@@ -118,7 +120,7 @@ alf.config(
 alf.config(
     'CarlaEnvironment',
     step_time=0.1,
-    vehicle_filter='vehicle.audi.tt',
+    vehicle_filter='vehicle.tesla.model3',
     num_other_vehicles=20,
     num_walkers=20,
     # 1000 second day length means 4.5 days in replay buffer of 90000 length
@@ -132,8 +134,13 @@ activation = torch.relu_
 use_batch_normalization = False
 learning_rate = 1e-4
 
-alf.config("Beta", eps=1e-3)
-proj_net = partial(BetaProjectionNetwork, min_concentration=1.)
+#proj_net = partial(BetaProjectionNetwork, min_concentration=1.)
+proj_net = partial(
+    alf.networks.StableNormalProjectionNetwork,
+    state_dependent_std=True,
+    scale_distribution=True,
+    min_std=1e-3,
+    max_std=10)
 
 actor_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
@@ -146,9 +153,9 @@ actor_network_cls = partial(
 alf.config(
     "TrainerConfig",
     data_transformer_ctor=[
-        partial(FrameStacker, stack_size=4, fields=['observation.camera']),
         partial(ImageScaleTransformer, min=0.0, fields=['observation.camera']),
-        partial(ObservationNormalizer, clipping=5.0)
+        partial(ObservationNormalizer, clipping=5.0),
+        partial(RewardNormalizer, clip_value=5.0)
     ])
 
 env = alf.get_env()
@@ -176,10 +183,8 @@ alf.config('EncodingAlgorithm', encoder_cls=encoder_cls)
 
 alf.config(
     'LagrangianRewardWeightAlgorithm',
-    init_weights=[1., 1.],
-    max_weight=50.,
-    reward_thresholds=[None, -2e-3],
-    optimizer=alf.optimizers.AdamTF(lr=1e-2))
+    reward_thresholds=[None, -1e-3],
+    optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
 alf.config(
     'Agent',
@@ -189,15 +194,12 @@ alf.config(
 
 alf.config('calc_default_target_entropy', min_prob=0.1)
 
-alf.config('TDLoss', gamma=[0.99, 0.95])
 alf.config(
     'SacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     target_update_tau=0.005,
-    critic_loss_ctor=TDLoss,
-    use_parallel_network=True,
-    use_entropy_reward=False)
+    critic_loss_ctor=TDLoss)
 
 # training config
 alf.config(
@@ -209,11 +211,10 @@ alf.config(
     mini_batch_size=64,
     num_updates_per_train_iter=5,
     num_iterations=0,
-    num_env_steps=int(1e7),
-    num_checkpoints=5,
+    num_env_steps=int(5e6),
+    num_checkpoints=1,
     evaluate=False,
     debug_summaries=True,
-    #summarize_grads_and_vars=True,
     num_evals=100,
     num_summaries=100,
     replay_buffer_length=70000)

@@ -408,7 +408,9 @@ def render_heatmap(name,
         dpi (int): resolution of each rendered image
         figsize (tuple[int]): figure size. For the relationship between ``dpi``
             and ``figsize``, please refer to `this post <https://stackoverflow.com/questions/47633546/relationship-between-dpi-and-figure-size>`_.
-        **kwargs: All other arguments that are forwarded to ``ax.imshow``.
+        **kwargs: All other arguments that are forwarded to ``ax.imshow``. For
+            example, to specify the value range on the heatmap, we can use
+            ``vmin`` and ``vmax``.
 
     Returns:
         Image: an output image rendered for the tensor

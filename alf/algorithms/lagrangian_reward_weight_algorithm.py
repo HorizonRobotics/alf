@@ -100,29 +100,32 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
 
         self._reward_weight_normalization = reward_weight_normalization
 
-        lambda_init = torch.tensor(init_weights)
-        if lambda_init.ndim == 0:
-            lambda_init = tensor_utils.tensor_extend_new_dim(
-                lambda_init, 0, reward_spec.numel)
-        assert torch.all(
-            lambda_init >= 0.), "Initial weights must be non-negative!"
+        init_weights = torch.tensor(init_weights)
+        if init_weights.ndim == 0:
+            init_weights = tensor_utils.tensor_extend_new_dim(
+                init_weights, 0, self._reward_spec.numel)
 
-        inv_mapping = dict()
-        inv_mapping[F.softplus] = _inv_softplus
-        inv_mapping[torch.exp] = torch.log
-
-        # convert to softplus space
         self._lambda_transform = lambda_transform
-        self._inv_lambda_transform = inv_mapping[lambda_transform]
+        self._lambdas = self._init_lambdas(init_weights)
+        self._optimizer = optimizer
+        self._optimizer.add_param_group({'params': self._lambdas})
 
-        self._lambdas = nn.Parameter(self._inv_lambda_transform(lambda_init))
         if max_weight is not None:
             self._max_lambda = self._inv_lambda_transform(
                 torch.tensor(max_weight))
         else:
             self._max_lambda = None
-        self._optimizer = optimizer
-        self._optimizer.add_param_group({'params': self._lambdas})
+
+    def _init_lambdas(self, init_weights):
+        # init_weights is in linear space
+        inv_mapping = dict()
+        inv_mapping[F.softplus] = _inv_softplus
+        inv_mapping[torch.exp] = torch.log
+
+        # convert to softplus space
+        self._inv_lambda_transform = inv_mapping[self._lambda_transform]
+        lambdas = nn.Parameter(self._inv_lambda_transform(init_weights))
+        return lambdas
 
     @property
     def reward_weights(self):

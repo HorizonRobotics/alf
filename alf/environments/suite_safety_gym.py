@@ -50,6 +50,8 @@ import gym
 
 import alf
 from alf.environments import suite_gym
+from alf.environments.alf_wrappers import NonEpisodicAgent
+from alf.environments.gym_wrappers import DiscreteActionWrapper
 
 
 def is_available():
@@ -59,7 +61,8 @@ def is_available():
 
 class VisionObservationWrapper(gym.ObservationWrapper):
     """If the observation is a dict and it contains a key 'vision',
-    return an uint8 RGB image in [0,255] every step."""
+    return an uint8 RGB image in [0,255] and a flat vector containing any other
+    info."""
 
     def __init__(self, env):
         super().__init__(env)
@@ -259,6 +262,7 @@ def load(environment_name,
          max_episode_steps=None,
          unconstrained=False,
          sparse_reward=False,
+         actions_num=0,
          episodic=False,
          gym_env_wrappers=(),
          alf_env_wrappers=()):
@@ -271,13 +275,24 @@ def load(environment_name,
         environment_name: Name for the environment to load.
         env_id: A scalar ``Tensor`` of the environment ID of the time step.
         discount: Discount to use for the environment.
-        max_episode_steps: If None or 0 the ``max_episode_steps`` will be set to
-            the default step limit -1 defined in the environment. Otherwise
-            ``max_episode_steps`` will be set to the smaller value of the two.
+        max_episode_steps: If None the ``max_episode_steps`` will be set to
+            the default step limit -1 defined in the environment. If 0, no
+            ``TimeLimit`` wrapper will be used.
         unconstrained (bool): if True, the suite will be used just as an
             unconstrained environment. The reward will always be scalar without
             including constraints.
+        sparse_reward (bool): If True, only give reward when reaching a goal.
+        actions_num (int): number of actions for discretizing each action dimension.
+            If >0, the total number of discrete actions will be ``actions_num ** N``,
+            where ``N`` is the number of action dims. In this case, the original
+            continuous action space will be replaced by the discretized one.
         episodic (bool): whether terminate the episode when a goal is achieved.
+            Note that if True, both ``EpisodicWrapper`` and ``NonEpisodicAgent``
+            wrapper will be used to simulate an infinite horizon even though the
+            success rate is computed on per-goal basis. This is for approximating
+            an average constraint reward objective. ``EpisodicWrapper`` first
+            returns ``done=True`` to signal the end of an episode, and ``NonEpisodicAgent``
+            replaces ``discount=0`` with ``discount=1``.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         alf_env_wrappers: Iterable with references to wrapper classes to use on
@@ -304,16 +319,20 @@ def load(environment_name,
 
     if episodic:
         env = EpisodicWrapper(env)
+        alf_env_wrappers = alf_env_wrappers + (NonEpisodicAgent, )
 
     env = VisionObservationWrapper(env)
+
+    if actions_num > 0:
+        env = DiscreteActionWrapper(env, actions_num)
 
     # Have to -1 on top of the original env max steps here, because the
     # underlying gym env will output ``done=True`` when reaching the time limit
     # ``env.num_steps`` (before the ``AlfGymWrapper``), which is incorrect:
     # https://github.com/openai/safety-gym/blob/f31042f2f9ee61b9034dd6a416955972911544f5/safety_gym/envs/engine.py#L1302
-    if not max_episode_steps:  # None or 0
+    if max_episode_steps is None:
         max_episode_steps = env.num_steps - 1
-    max_episode_steps = min(env.num_steps - 1, max_episode_steps)
+        max_episode_steps = min(env.num_steps - 1, max_episode_steps)
 
     return suite_gym.wrap_env(
         env,

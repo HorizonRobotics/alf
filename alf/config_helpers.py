@@ -30,7 +30,7 @@ from alf.utils.per_process_context import PerProcessContext
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
-    'get_action_spec', 'get_env', 'parse_config'
+    'get_action_spec', 'get_reward_spec', 'get_env', 'parse_config'
 ]
 
 _env = None
@@ -98,6 +98,18 @@ def get_action_spec():
     """
     env = get_env()
     return env.action_spec()
+
+
+def get_reward_spec():
+    """Get the spec of the reward returned by the environment.
+
+    Note: you need to finish all the config for environments and
+    TrainerConfig.random_seed before using this function.
+
+    Returns:
+        TensorSpec: a spec that describes the shape and dtype of reward.
+    """
+    return get_env().reward_spec()
 
 
 _is_parsing = False

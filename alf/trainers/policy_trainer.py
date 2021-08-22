@@ -97,7 +97,7 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
             ddp_rank (int): process (and also device) ID of the process, if the
                 process participates in a DDP process group to run distributed
-                data parallel training. A value of -1 indicates regular single 
+                data parallel training. A value of -1 indicates regular single
                 process training.
         """
         Trainer._trainer_progress = _TrainerProgress()
@@ -163,6 +163,7 @@ class Trainer(object):
                 self._train,
                 summary_dir=self._train_dir,
                 summary_interval=self._summary_interval,
+                summarize_first_interval=self._config.summarize_first_interval,
                 flush_secs=self._summaries_flush_secs,
                 summary_max_queue=self._summary_max_queue)
 
@@ -303,7 +304,7 @@ class RLTrainer(Trainer):
             config (TrainerConfig): configuration used to construct this trainer
             ddp_rank (int): process (and also device) ID of the process, if the
                 process participates in a DDP process group to run distributed
-                data parallel training. A value of -1 indicates regular single 
+                data parallel training. A value of -1 indicates regular single
                 process training.
         """
         super().__init__(config, ddp_rank)
@@ -331,6 +332,8 @@ class RLTrainer(Trainer):
         common.set_global_env(env)
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
+        logging.info("transformed_observation_spec=%s" %
+                     pprint.pformat(observation_spec))
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,

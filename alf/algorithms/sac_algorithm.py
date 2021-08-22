@@ -50,8 +50,7 @@ SacState = namedtuple(
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
 SacActorInfo = namedtuple(
-    "SacActorInfo", ["actor_loss", "neg_entropy", "dqda_cos"],
-    default_value=())
+    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
     "SacInfo", [
@@ -260,11 +259,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._use_entropy_reward = use_entropy_reward
 
         if reward_spec.numel > 1:
-            assert not use_entropy_reward, (
-                "use_entropy_reward=True is not supported for multidimensional reward"
-            )
-            assert self._act_type == ActionType.Continuous, (
-                "Only continuous action is supported for multidimensional reward"
+            assert self._act_type != ActionType.Mixed, (
+                "Only continuous/discrete action is supported for multidimensional reward"
             )
 
         def _init_log_alpha():
@@ -417,8 +413,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
-            assert reward_spec.numel == 1, (
-                "Discrete action is not supported for multidimensional reward")
             act_type = ActionType.Discrete
             assert len(alf.nest.flatten(discrete_action_spec)) == 1, (
                 "Only support at most one discrete action currently! "
@@ -463,21 +457,21 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous_action = dist_utils.rsample_action_distribution(
                     continuous_action_dist)
 
-        critic_network_inputs = observation
+        critic_network_inputs = (observation, None)
         if self._act_type == ActionType.Mixed:
             critic_network_inputs = (observation, continuous_action)
 
         q_values = None
         if self._act_type != ActionType.Continuous:
-            q_values, critic_state = self._critic_networks(
-                critic_network_inputs, state=state.critic)
+            q_values, critic_state = self._compute_critics(
+                self._critic_networks, *critic_network_inputs, state.critic)
+
             new_state = new_state._replace(critic=critic_state)
             if self._act_type == ActionType.Discrete:
                 alpha = torch.exp(self._log_alpha).detach()
             else:
                 alpha = torch.exp(self._log_alpha[0]).detach()
             # p(a|s) = exp(Q(s,a)/alpha) / Z;
-            q_values = q_values.min(dim=1)[0]
             logits = q_values / alpha
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
@@ -516,75 +510,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
-
-        info = dict(info=SacInfo(action_distribution=action_dist))
-        import alf.summary.render as render
-        import itertools
-        if render.is_rendering_enabled():
-            # Sample an action 2D grid and compute a Q value grid
-            a = np.arange(-1, 1.1, 0.2)
-            acts = torch.tensor(list(itertools.product(a,
-                                                       a)))  # # 11x11 actions
-
-            q, _ = self._compute_critics(
-                self._critic_networks,
-                # [1, N] -> [111, N]
-                time_step.observation.expand(acts.shape[0], -1),
-                acts,  # [111, 2]
-                state)
-
-            if self.has_multidim_reward():
-                # Multidimensional reward: [B, replicas, reward_dim]
-                q = q * self.reward_weights
-            # min over replicas and sum
-            q = q.min(dim=1)[0].sum(dim=-1)
-
-            with alf.summary.scope(self._name):
-                labels = list(map(lambda x: "%.1f" % x, a))
-                q_img = render.render_heatmap(
-                    name="Q_grid2d",
-                    data=q.reshape(len(a), -1),
-                    row_labels=labels,
-                    col_labels=labels,
-                    img_height=1024,
-                    img_width=1024,
-                    figsize=(4, 4),
-                    cmap="magma_r",
-                    annotate_format="",
-                    val_label="Q_sa")
-                q_contour_img = render.render_contour(
-                    name="Q_contour",
-                    data=q.reshape(len(a), -1),
-                    x_ticks=a,
-                    y_ticks=a,
-                    x_label="action dim 1",
-                    y_label="action dim 0",
-                    img_height=1024,
-                    img_width=1024,
-                    levels=10,
-                    figsize=(4, 4))
-                action_img = render.render_action(
-                    name="action",
-                    action=action,
-                    action_spec=self._action_spec)
-                action_dist_img = render.render_action_distribution(
-                    name="action_dist",
-                    act_dist=action_dist,
-                    action_spec=self._action_spec)
-
-                info.update({
-                    "q_img": q_img,
-                    "q_contour_img": q_contour_img,
-                    "action_img": action_img,
-                    "action_dist_img": action_dist_img
-                })
-
-            # DEBUG: select action according to the Q table
-            #maxq_idx = torch.argmax(q)
-            #action = acts[maxq_idx].unsqueeze(0)
-
         return AlgStep(
-            output=action, state=SacState(action=action_state), info=info)
+            output=action,
+            state=SacState(action=action_state),
+            info=SacInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -624,7 +553,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=new_state,
             info=SacInfo(action=action, action_distribution=action_dist))
 
-    def _compute_critics(self, critic_net, observation, action, critics_state):
+    def _compute_critics(self,
+                         critic_net,
+                         observation,
+                         action,
+                         critics_state,
+                         replica_min=True,
+                         apply_reward_weights=True):
         if self._act_type == ActionType.Continuous:
             observation = (observation, action)
         elif self._act_type == ActionType.Mixed:
@@ -632,10 +567,45 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # discrete/mixed: critics shape [B, replicas, num_actions]
         # continuous: critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
+
+        # For mult-dim reward, do
+        # continuous: [B, replicas * reward_dim] -> [B, replicas, reward_dim]
+        # discrete: [B, replicas * reward_dim, num_actions]
+        #        -> [B, replicas, reward_dim, num_actions]
+        # For scalar reward, do nothing
         if self.has_multidim_reward():
-            # [B, replicas * reward_dim] -> [B, replicas, reward_dim]
+            remaining_shape = critics.shape[2:]
             critics = critics.reshape(-1, self._num_critic_replicas,
-                                      *self._reward_spec.shape)
+                                      *self._reward_spec.shape,
+                                      *remaining_shape)
+            if self._act_type == ActionType.Discrete:
+                # permute: [B, replicas, reward_dim, num_actions]
+                #       -> [B, replicas, num_actions, reward_dim]
+                order = [0, 1, -1] + list(
+                    range(2, 2 + len(self._reward_spec.shape)))
+                critics = critics.permute(*order)
+
+        if replica_min:
+            if self.has_multidim_reward():
+                sign = self.reward_weights.sign()
+                critics = (critics * sign).min(dim=1)[0] * sign
+            else:
+                critics = critics.min(dim=1)[0]
+
+        if apply_reward_weights and self.has_multidim_reward():
+            critics = critics * self.reward_weights
+            critics = critics.sum(dim=-1)
+
+        # The returns have the following shapes in different circumstances:
+        # [replica_min=True, apply_reward_weights=True]
+        #   discrete/mixed: critics shape [B, num_actions]
+        #   continuous: critics shape [B]
+        # [replica_min=True, apply_reward_weights=False]
+        #   discrete/mixed: critics shape [B, num_actions, reward_dim]
+        #   continuous: critics shape [B, reward_dim]
+        # [replica_min=False, apply_reward_weights=False]
+        #   discrete/mixed: critics shape [B, replicas, num_actions, reward_dim]
+        #   continuous: critics shape [B, replicas, reward_dim]
         return critics, critics_state
 
     def _actor_train_step(self, inputs: TimeStep, state, action, critics,
@@ -647,15 +617,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             return (), LossInfo(extra=SacActorInfo(neg_entropy=neg_entropy))
 
         if self._act_type == ActionType.Continuous:
-            critics, critics_state = self._compute_critics(
+            q_value, critics_state = self._compute_critics(
                 self._critic_networks, inputs.observation, action, state)
-
-            if self.has_multidim_reward():
-                # Multidimensional reward: [B, replicas, reward_dim]
-                critics = critics * self.reward_weights
-            # min over replicas
-            q_value = critics.min(dim=1)[0]
-
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
         else:
@@ -667,18 +630,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
-        if False:
-            # This sum() will reduce all dims so q_value can be any rank
-            dqda = nest_utils.grad(action, q_value.sum())
-        else:
-            # separately compute dqda for different Q values and see how much their
-            # directions differ
-            dqda1 = nest_utils.grad(
-                action, q_value[..., 0].sum(), retain_graph=True)
-            dqda2 = nest_utils.grad(action, q_value[..., 1].sum())
-            cos = torch.nn.CosineSimilarity(dim=-1)
-            dqda_cos = cos(dqda1, dqda2)
-            dqda = dqda1 + dqda2
+        # This sum() will reduce all dims so q_value can be any rank
+        dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -692,45 +645,52 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
         actor_info = LossInfo(
             loss=actor_loss + cont_alpha * continuous_log_pi,
-            extra=SacActorInfo(
-                actor_loss=actor_loss,
-                neg_entropy=neg_entropy,
-                dqda_cos=dqda_cos))
+            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
         return critics_state, actor_info
 
     def _select_q_value(self, action, q_values):
         """Use ``action`` to index and select Q values.
         Args:
             action (Tensor): discrete actions with shape ``[batch_size]``.
-            q_values (Tensor): Q values with shape ``[batch_size, replicas, num_actions]``.
+            q_values (Tensor): Q values with shape
+                ``[batch_size, replicas, num_actions, reward_dim]``, where
+                ``reward_dim`` is optional for multi-dim reward.
         Returns:
-            Tensor: selected Q values with shape ``[batch_size, replicas]``.
+            Tensor: selected Q values with shape
+                ``[batch_size, replicas, reward_dim]``.
         """
-        # action shape: [batch_size] -> [batch_size, n, 1]
-        action = action.view(q_values.shape[0], 1, -1).expand(
-            -1, q_values.shape[1], -1).long()
-        return q_values.gather(-1, action).squeeze(-1)
+        ones = [1] * len(self._reward_spec.shape)
+        # [batch_size] -> [batch_size, 1, 1, ...]
+        action = action.view(q_values.shape[0], 1, 1, *ones)
+        # [batch_size, 1, 1, ...] -> [batch_size, n, 1, reward_dim]
+        action = action.expand(-1, q_values.shape[1], -1,
+                               *self._reward_spec.shape).long()
+        return q_values.gather(2, action).squeeze(2)
 
     def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
                            rollout_info: SacInfo, action, action_distribution):
         critics, critics_state = self._compute_critics(
-            self._critic_networks, inputs.observation, rollout_info.action,
-            state.critics)
+            self._critic_networks,
+            inputs.observation,
+            rollout_info.action,
+            state.critics,
+            replica_min=False,
+            apply_reward_weights=False)
 
         target_critics, target_critics_state = self._compute_critics(
-            self._target_critic_networks, inputs.observation, action,
-            state.target_critics)
-
-        if self.has_multidim_reward():
-            sign = self.reward_weights.sign()
-            target_critics = (target_critics * sign).min(dim=1)[0] * sign
-        else:
-            target_critics = target_critics.min(dim=1)[0]
+            self._target_critic_networks,
+            inputs.observation,
+            action,
+            state.target_critics,
+            apply_reward_weights=False)
 
         if self._act_type == ActionType.Discrete:
             critics = self._select_q_value(rollout_info.action, critics)
-            target_critics = self._select_q_value(
-                action, target_critics.unsqueeze(dim=1))
+            # [B, num_actions] -> [B, num_actions, reward_dim]
+            probs = common.expand_dims_as(action_distribution.probs,
+                                          target_critics)
+            # [B, reward_dim]
+            target_critics = torch.sum(probs * target_critics, dim=1)
         elif self._act_type == ActionType.Mixed:
             critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
@@ -833,13 +793,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # This doesn't affect one-step TD loss, however.
         if self._use_entropy_reward:
             with torch.no_grad():
+                log_pi = info.log_pi
                 entropy_reward = nest.map_structure(
                     lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
-                    info.log_pi)
+                    log_pi)
                 entropy_reward = sum(nest.flatten(entropy_reward))
-                gamma = self._critic_losses[0].gamma
+                discount = self._critic_losses[0].gamma * info.discount
                 info = info._replace(
-                    reward=info.reward + entropy_reward * gamma)
+                    reward=(info.reward + common.expand_dims_as(
+                        entropy_reward * discount, info.reward)))
 
         critic_info = info.critic
         critic_losses = []

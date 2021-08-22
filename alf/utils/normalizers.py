@@ -122,8 +122,7 @@ class Normalizer(nn.Module):
                 with alf.summary.scope(self._name):
                     if val.ndim == 0:
                         alf.summary.scalar(name + "." + suffix, val)
-                    elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
-                          and alf.summary.should_summarize_output()):
+                    elif val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
                         for i in range(val.shape[0]):
                             alf.summary.scalar(
                                 name + "_" + str(i) + "." + suffix, val[i])
@@ -134,7 +133,7 @@ class Normalizer(nn.Module):
             def _summarize_all(path, t, m2, m):
                 if path:
                     path += "."
-                spec = TensorSpec.from_tensor(m2 or m)
+                spec = TensorSpec.from_tensor(m if m2 is None else m2)
                 _summary(path + "tensor.batch_min",
                          _reduce_along_batch_dims(t, spec, torch.min))
                 _summary(path + "tensor.batch_max",

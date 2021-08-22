@@ -15,17 +15,19 @@
 import gym
 from gym import spaces
 import numpy as np
+from absl.testing import parameterized
 
 import alf
 from alf.environments.gym_wrappers import (FrameStack, ContinuousActionClip,
-                                           ContinuousActionMapping)
+                                           ContinuousActionMapping,
+                                           DiscreteActionWrapper)
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
 class FakeEnvironment(gym.Env):
-    def __init__(self):
+    def __init__(self, action_dims=1):
         self.action_space = spaces.Box(
-            shape=(1, ), low=-2, high=3, dtype=np.float32)
+            shape=(action_dims, ), low=-2, high=3, dtype=np.float32)
         self.observation_space = spaces.Box(
             shape=(10, ), low=-1, high=1, dtype=np.float32)
         self.action = None
@@ -107,7 +109,7 @@ class FrameStackTest(alf.test.TestCase):
             all_shapes) + " doesn't match exptected " + str(expected)
 
 
-class ActionWrappersTest(alf.test.TestCase):
+class ActionWrappersTest(parameterized.TestCase, alf.test.TestCase):
     def test_continuous_action_clipping(self):
         env = ContinuousActionClip(FakeEnvironment())
         action = env.action_space.high + 0.1
@@ -134,6 +136,24 @@ class ActionWrappersTest(alf.test.TestCase):
         action = np.array([0.])  # from [-1, 2] to [-2, 3]
         env.step(action)
         self.assertAlmostEqual(float(unwrapped.action), -1. / 3)
+
+    @parameterized.parameters((5, 1), (2, 3))
+    def test_discrete_action_wrapper(self, actions_num, action_dims):
+        unwrapped = FakeEnvironment(action_dims=action_dims)
+        low, high = unwrapped.action_space.low, unwrapped.action_space.high
+        env = DiscreteActionWrapper(unwrapped, actions_num=actions_num)
+        self.assertTrue(isinstance(env.action_space, spaces.Discrete))
+
+        actual_actions = []
+        for a in range(actions_num**action_dims):
+            env.step(a)
+            actual_actions.append(unwrapped.action)
+
+        self.assertTrue(np.allclose(actual_actions[0], low))
+        self.assertTrue(np.allclose(actual_actions[-1], high))
+        # evenly distributed values
+        self.assertTrue(
+            np.allclose(actual_actions[1] - low, high - actual_actions[-2]))
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
   "desc": [],
   "use_gpu": true,
   "gpus": [
-    1
+    0
   ],
   "max_worker_num": 1,
   "repeats": 1,

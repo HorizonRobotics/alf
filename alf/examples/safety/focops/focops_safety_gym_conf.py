@@ -12,15 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import alf
-from alf.algorithms.seditor_algorithm import SEditorAlgorithm
+from functools import partial
 
-from alf.examples.safety.sac import sac_safety_gym_conf
+import alf
+from alf.examples.safety.ppo import ppo_safety_gym_conf
+from alf.algorithms.focops_loss import FOCOPSLoss
+
+alf.config('PPOAlgorithm', loss_class=FOCOPSLoss)
 
 alf.config(
-    'SEditorAlgorithm',
-    actor_network_cls=sac_safety_gym_conf.actor_network_cls,
-    critic_network_cls=sac_safety_gym_conf.critic_network_cls,
-    target_update_tau=0.005)
-
-alf.config('Agent', rl_algorithm_cls=SEditorAlgorithm)
+    'FOCOPSLoss',
+    normalize_advantages=True,
+    debug_summaries=True,
+    kld_bound=0.02,
+    kld_weight=1.5)
