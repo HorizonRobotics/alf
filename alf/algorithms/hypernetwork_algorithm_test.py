@@ -60,10 +60,12 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(('gfsf', False), ('svgd2', False),
                               ('svgd3', False), ('minmax', False),
-                              ('gfsf', True), ('svgd2', True), ('svgd3', True))
+                              ('gfsf', True), ('svgd2', True), ('svgd3', True),
+                              ('svgd', False, True))
     def test_bayesian_linear_regression(self,
                                         par_vi='svgd3',
                                         function_vi=False,
+                                        functional_gradient=False,
                                         train_batch_size=10,
                                         num_particles=128):
         r"""
@@ -92,19 +94,27 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
 
+        if functional_gradient:
+            hidden_layers = ()
+        else:
+            hidden_layers = None
+
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
             use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
             noise_dim=noise_dim,
-            hidden_layers=None,
+            hidden_layers=hidden_layers,
             loss_type='regression',
             par_vi=par_vi,
             function_vi=function_vi,
-            function_bs=train_batch_size,
+            functional_gradient=functional_gradient,
             critic_hidden_layers=(hidden_size, hidden_size),
+            inverse_mvp_hidden_layers=3,
+            function_bs=train_batch_size,
             optimizer=alf.optimizers.Adam(lr=2e-3),
+            inverse_mvp_optimizer=alf.optimizers.Adam(lr=1e-4),
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))

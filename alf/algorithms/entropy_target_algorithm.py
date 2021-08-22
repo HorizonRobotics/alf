@@ -407,10 +407,10 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         if alf.nest.is_nested(algs):
             self._nested_algs = alf.nest.utils.make_nested_module(algs)
 
-    def predict_step(self, distribution_and_step_type, state):
+    def predict_step(self, distribution_and_step_type, state=None):
         return AlgStep()
 
-    def rollout_step(self, distribution_and_step_type, state):
+    def rollout_step(self, distribution_and_step_type, state=None):
         if self.on_policy:
             return self.train_step(distribution_and_step_type)
         else:

@@ -26,7 +26,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
-from alf.networks import EncodingNetwork, ParamNetwork
+from alf.networks import EncodingNetwork, ParamNetwork, ReluMLP
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
@@ -53,8 +53,8 @@ class HyperNetwork(Algorithm):
 
     * Remove the mixer and the discriminator.
 
-    * The generator is trained with Amortized particle-based variational
-      inference (ParVI) methods, please refer to generator.py for details.
+    * The generator may be trained with generative particle-based variational
+      inference (ParVI) method. Please refer to generator.py for details.
 
     """
 
@@ -76,6 +76,11 @@ class HyperNetwork(Algorithm):
                  critic_hidden_layers=(100, 100),
                  critic_iter_num=2,
                  critic_l2_weight=10.,
+                 functional_gradient=False,
+                 fullrank_diag_weight=1.0,
+                 inverse_mvp_solve_iters=1,
+                 inverse_mvp_hidden_size=100,
+                 inverse_mvp_hidden_layers=1,
                  function_vi=False,
                  function_bs=None,
                  function_extra_bs_ratio=0.1,
@@ -86,6 +91,7 @@ class HyperNetwork(Algorithm):
                  par_vi="svgd",
                  num_train_classes=10,
                  critic_optimizer=None,
+                 inverse_mvp_optimizer=None,
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -122,6 +128,20 @@ class HyperNetwork(Algorithm):
 
             critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
             critic_hidden_layers (tuple): sizes of critic hidden layeres.
+            critic_iter_num (int): number of minmax optimization iterations to 
+                train critic
+            critic_l2_weight (float): L2 penalty on critic to ensure
+                boundednesss
+
+            functional_gradient (bool): whether or not to use GPVI.
+            fullrank_diag_weight (float): weight on "extra" dimensions when 
+                forcing full rank Jacobian
+            inverse_mvp_solve_iters (int): number of iterations to train inverse_mvp
+                network each training iteration of generator.
+            inverse_mvp_hidden_size (int): width of hidden layers of inverse_mvp 
+                network.
+            inverse_mvp_hidden_layers (int): number of hidden layers in inverse_mvp 
+                network. 
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
@@ -141,9 +161,7 @@ class HyperNetwork(Algorithm):
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
-                * svgd: empirical expectation of SVGD is evaluated by a single
-                  resampled particle. The main benefit of this choice is it
-                  supports conditional case, while all other options do not.
+                * svgd: same as ``svgd3``. 
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
                   half of the sampled batch. It is a trade-off between
                   computational efficiency and convergence speed.
@@ -201,13 +219,21 @@ class HyperNetwork(Algorithm):
 
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
-        net = EncodingNetwork(
-            noise_spec,
-            fc_layer_params=hidden_layers,
-            use_fc_bn=use_fc_bn,
-            last_layer_size=gen_output_dim,
-            last_activation=math_ops.identity,
-            name="Generator")
+
+        if functional_gradient:
+            net = ReluMLP(
+                noise_spec,
+                hidden_layers=hidden_layers,
+                output_size=gen_output_dim,
+                name='Generator')
+        else:
+            net = EncodingNetwork(
+                noise_spec,
+                fc_layer_params=hidden_layers,
+                use_fc_bn=use_fc_bn,
+                last_layer_size=gen_output_dim,
+                last_activation=math_ops.identity,
+                name="Generator")
 
         if logging_network:
             logging.info("Generated network")
@@ -248,6 +274,12 @@ class HyperNetwork(Algorithm):
             critic_hidden_layers=critic_hidden_layers,
             critic_iter_num=critic_iter_num,
             critic_l2_weight=critic_l2_weight,
+            functional_gradient=functional_gradient,
+            fullrank_diag_weight=fullrank_diag_weight,
+            inverse_mvp_solve_iters=inverse_mvp_solve_iters,
+            inverse_mvp_hidden_size=inverse_mvp_hidden_size,
+            inverse_mvp_hidden_layers=inverse_mvp_hidden_layers,
+            inverse_mvp_optimizer=inverse_mvp_optimizer,
             optimizer=None,
             critic_optimizer=critic_optimizer,
             name=name)
@@ -258,6 +290,7 @@ class HyperNetwork(Algorithm):
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
+        self._functional_gradient = functional_gradient
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
@@ -369,6 +402,10 @@ class HyperNetwork(Algorithm):
         alf.summary.increment_global_counter()
         with record_time("time/train"):
             loss = 0.
+            if self._functional_gradient:
+                inverse_mvp_loss = 0.
+            else:
+                inverse_mvp_loss = None
             if self._loss_type == 'classification':
                 avg_acc = []
             for batch_idx, (data, target) in enumerate(self._train_loader):
@@ -379,6 +416,8 @@ class HyperNetwork(Algorithm):
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
                 loss += loss_info.extra.generator.loss
+                if self._functional_gradient:
+                    inverse_mvp_loss += loss_info.extra.inverse_mvp
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)
         acc = None
@@ -388,7 +427,12 @@ class HyperNetwork(Algorithm):
             if self._loss_type == 'classification':
                 logging.info("Avg acc: {}".format(acc))
             logging.info("Cum loss: {}".format(loss))
-        self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
+        self.summarize_train(
+            loss_info,
+            params,
+            cum_loss=loss,
+            avg_acc=acc,
+            inverse_mvp_loss=inverse_mvp_loss)
         return batch_idx + 1
 
     def train_step(self,
@@ -628,7 +672,12 @@ class HyperNetwork(Algorithm):
         alf.summary.scalar(name='eval/auroc_variance', data=auroc_variance)
         return auroc_entropy, auroc_variance
 
-    def summarize_train(self, loss_info, params, cum_loss=None, avg_acc=None):
+    def summarize_train(self,
+                        loss_info,
+                        params,
+                        cum_loss=None,
+                        avg_acc=None,
+                        inverse_mvp_loss=None):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
         (with grads) and the loss. An algorithm can override this for additional
@@ -644,6 +693,7 @@ class HyperNetwork(Algorithm):
             params (list[Parameter]): list of parameters with gradients.
             cum_loss (float): cumulative training loss of epoch.
             avg_acc (float): average accuracy across batches in epoch.
+            inverse_mvp_loss (float): cumulative training loss of InverseMVPNet
         """
         if self._config is not None:
             if self._config.summarize_grads_and_vars:
@@ -655,3 +705,6 @@ class HyperNetwork(Algorithm):
             alf.summary.scalar(name='train_epoch/neglogprob', data=cum_loss)
         if avg_acc is not None:
             alf.summary.scalar(name='train_epoch/avg_acc', data=avg_acc)
+        if inverse_mvp_loss is not None:
+            alf.summary.scalar(
+                name='train_epoch/inverse_mvp_loss', data=inverse_mvp_loss)

@@ -379,6 +379,7 @@ class DiagMultivariateNormal(td.Independent):
         return self.base_dist.stddev
 
 
+@alf.configurable(whitelist=['eps'])
 class Beta(td.Beta):
     r"""Beta distribution parameterized by ``concentration1`` and ``concentration0``.
 
@@ -392,17 +393,31 @@ class Beta(td.Beta):
     ``td.Dirichlet.concentration`` instead of ``td.Beta.concentration0`` or
     ``td.Beta.concentration1``.
 
-    Args:
-        concentration1 (float or Tensor): 1st concentration parameter of the distribution
-            (often referred to as alpha)
-        concentration0 (float or Tensor): 2nd concentration parameter of the distribution
-            (often referred to as beta)
     """
 
-    def __init__(self, concentration1, concentration0, validate_args=None):
+    def __init__(self,
+                 concentration1,
+                 concentration0,
+                 eps=None,
+                 validate_args=None):
+        """
+        Args:
+            concentration1 (float or Tensor): 1st concentration parameter of the distribution
+                (often referred to as alpha)
+            concentration0 (float or Tensor): 2nd concentration parameter of the distribution
+                (often referred to as beta)
+            eps (float): a very small value indicating the interval ``[eps, 1-eps]``
+                into which the sampled values will be clipped. This clipping can
+                prevent ``NaN`` and ``Inf`` values in the gradients. If None,
+                a small value defined by PyTorch will be used.
+        """
         self._concentration1 = concentration1
         self._concentration0 = concentration0
         super().__init__(concentration1, concentration0, validate_args)
+        if eps is None:
+            self._eps = torch.finfo(self._dirichlet.concentration.dtype).eps
+        else:
+            self._eps = float(eps)
 
     @property
     def concentration0(self):
@@ -411,6 +426,15 @@ class Beta(td.Beta):
     @property
     def concentration1(self):
         return self._concentration1
+
+    def rsample(self, sample_shape=()):
+        """We override the original ``rsample()`` in order to clamp the output
+        to avoid `NaN` and `Inf` values in the gradients. See Pyro's
+        ``rsample()`` implementation in
+        `<https://docs.pyro.ai/en/dev/_modules/pyro/distributions/affine_beta.html#AffineBeta>`_.
+        """
+        x = super(Beta, self).rsample(sample_shape)
+        return torch.clamp(x, min=self._eps, max=1 - self._eps)
 
 
 class DiagMultivariateBeta(td.Independent):

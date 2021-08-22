@@ -2,19 +2,16 @@ A minimal working example
 =========================
 
 We start with a minimal working example of ALF. The example, as a pure ALF
-configuration file, is located at ``<ALF_ROOT>/alf/examples/tutorial/minimal_example_conf.py``,
+configuration file, is :mod:`alf.examples.tutorial.minimal_example_conf`,
 and consists of only 8 lines.
 
-Train and play
---------------
-
-Let's ignore its content for a moment (see the next section
+Let's ignore its content for a moment (see the next chapter
 :doc:`./understanding_ALF_via_the_minimal_working_example` for an explanation of
 the configuration content), and just focus on how to launch the training,
 interpret the output training messages, and evaluate a trained model.
 
 Train from scratch
-^^^^^^^^^^^^^^^^^^
+------------------
 
 We can train from scratch by
 
@@ -31,7 +28,7 @@ assuming ``/tmp/alf_tutorial1`` doesn't exist or is empty.
     output log, etc) are stored.
 
 The training will finish in several seconds, but with some informative messages
-shown in the terminal. First of all, you should see a message from ``checkpoint_utils.py``
+shown in the terminal. First of all, you should see a message from :mod:`.checkpoint_utils`
 like
 
 ::
@@ -40,7 +37,7 @@ like
     from scratch
 
 which basically confirms that the training is from scratch and all algorithm parameters
-and states are randomly initialized. Also ``policy_trainer.py`` will output
+and states are randomly initialized. Also :mod:`.policy_trainer` will output
 message lines like
 
 ::
@@ -63,7 +60,7 @@ as the training finishes. Here we have the checkpoint numbered by the training
 iteration, which is '1' because only one iteration is performed by this example.
 
 Train from a checkpoint
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 By launching the same command again, this time the checkpoint messages are different.
 First it should say
@@ -75,7 +72,7 @@ First it should say
 which means the training is no longer from scratch, but instead reads the saved
 checkpoint from the last run. By default ALF reads the most recent checkpoint in
 a training root dir if multiple checkpoints exist. Also at the end of training,
-``checkpoint_utils.py`` outputs:
+:mod:`.checkpoint_utils` outputs:
 
 ::
 
@@ -93,16 +90,17 @@ While the training is ongoing, we can monitor the real-time progress by
 
     tensorboard --logdir /tmp/alf_tutorial1
 
-We leave the interpretation of various Tensorboard statistics to later sections.
+We leave the interpretation of various Tensorboard statistics to a later chapter
+:doc:`./summary_metrics_and_tensorboard`.
 
 Play from a checkpoint
-^^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 ALF defines the term *play* as evaluating a model on a task and possibly also visualizing
 the evaluation process, for example, by rendering environment frames or various
 inference statistics.
 
-Here we only introduce three basic usages of the ALF ``play`` module. For advanced
+Here we only introduce three basic usages of the ALF :mod:`.play` module. For advanced
 play (e.g., rendering customized model inference results, play from an ALF snapshot,
 headless rendering, etc), we refer the reader to :doc:`./advanced_play_and_alf_snapshot`.
 
@@ -125,7 +123,7 @@ Or you can save the rendered result to a ``mp4`` video file:
 
     python -m alf.bin.play --root_dir /tmp/alf_tutorial1 --record_file /tmp/alf_tutorial1.mp4
 
-We recommend the reader to read the various commandline flags in ``<ALF_ROOT>/alf/bin/play.py``,
+We recommend the reader to read the various commandline flags in :mod:`.play`,
 for specifying different options such as checkpoint number and number of episodes to
 evaluate.
 
@@ -133,7 +131,7 @@ Summary
 -------
 
 So far, we've talked about how to train a conf file and play the trained model,
-with very basic options of ``train.py`` and ``play.py``. This covers a usual
+with very basic options of :mod:`.train` and :mod:`.play.py`. This covers a usual
 command-line usage of ALF. We really haven't explained the content of the
-example and the ALF pipeline yet. In the next section, we will try to get a
+example and the ALF pipeline yet. In the next chapter, we will try to get a
 rough picture of ALF through the lens of this minimal working example.

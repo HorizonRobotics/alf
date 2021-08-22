@@ -31,25 +31,6 @@ from alf.data_structures import TimeStep
 import alf.nest as nest
 
 
-def array_to_tensor(data):
-    def _array_to_cpu_tensor(obj):
-        return torch.as_tensor(
-            obj, device='cpu') if isinstance(obj,
-                                             (np.ndarray, np.number)) else obj
-
-    return nest.map_structure(_array_to_cpu_tensor, data)
-
-
-def tensor_to_array(data):
-    def _tensor_to_array(obj):
-        if torch.is_tensor(obj):
-            return obj.cpu().numpy()
-        else:
-            return obj
-
-    return nest.map_structure(_tensor_to_array, data)
-
-
 class _MessageType(Enum):
     """Message types for communication via the pipe.
 
@@ -112,6 +93,13 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
                 break
             raise KeyError(
                 'Received message of unknown type {}'.format(message))
+    except KeyboardInterrupt:
+        # When worker receives interruption from keyboard (i.e. Ctrl-C), notify
+        # the parent process to shut down quietly by sending the CLOSE message.
+        #
+        # This is to avoid sometimes tens of environment processes panicking
+        # simultaneously.
+        conn.send((_MessageType.CLOSE, None))
     except Exception:  # pylint: disable=broad-except
         etype, evalue, tb = sys.exc_info()
         stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
@@ -157,8 +145,18 @@ class ProcessEnvironment(object):
         Args:
             wait_to_start (bool): Whether the call should wait for an env initialization.
         """
-        self._conn, conn = multiprocessing.Pipe()
-        self._process = multiprocessing.Process(
+        # The following context made sure that the newly created child process
+        # (for environment) is started using the "fork" start method.
+        #
+        # This is to prevent multiprocessing from accidentally creating the
+        # child process with the "spawn" start method. Using "fork" start method
+        # is required here because we would like to have the child process
+        # inherit the alf configurations from the parent process, so that such
+        # confiurations are effective for the to-be-created environments in the
+        # child process.
+        mp_ctx = multiprocessing.get_context('fork')
+        self._conn, conn = mp_ctx.Pipe()
+        self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)
@@ -227,7 +225,6 @@ class ProcessEnvironment(object):
             Promise object that blocks and provides the return value when called.
         """
         payload = name, args, kwargs
-        payload = tensor_to_array(payload)
         self._conn.send((_MessageType.CALL, payload))
         return self._receive
 
@@ -284,14 +281,17 @@ class ProcessEnvironment(object):
             Payload object of the message.
         """
         message, payload = self._conn.recv()
-        payload = array_to_tensor(payload)
 
         # Re-raise exceptions in the main process.
         if message == _MessageType.EXCEPTION:
             stacktrace = payload
             raise Exception(stacktrace)
-        if message == _MessageType.RESULT:
+        elif message == _MessageType.RESULT:
             return payload
+        elif message == _MessageType.CLOSE:
+            # When notified that the child process is going to shut down, do not
+            # panic and handle it quietly.
+            return None
         self.close()
         raise KeyError(
             'Received message of unexpected type {}'.format(message))

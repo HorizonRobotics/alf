@@ -90,11 +90,15 @@ class Trainer(object):
 
     _trainer_progress = _TrainerProgress()
 
-    def __init__(self, config: TrainerConfig):
+    def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
         """
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
+            ddp_rank (int): process (and also device) ID of the process, if the
+                process participates in a DDP process group to run distributed
+                data parallel training. A value of -1 indicates regular single 
+                process training.
         """
         Trainer._trainer_progress = _TrainerProgress()
         root_dir = config.root_dir
@@ -129,6 +133,7 @@ class Trainer(object):
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
         self._random_seed = config.random_seed
+        self._rank = ddp_rank
 
     def train(self):
         """Perform training."""
@@ -174,7 +179,11 @@ class Trainer(object):
             self._save_checkpoint()
             checkpoint_saved = True
         finally:
-            if self._config.confirm_checkpoint_upon_crash and not checkpoint_saved:
+            if (self._config.confirm_checkpoint_upon_crash
+                    and not checkpoint_saved and self._rank <= 0):
+                # Prompts for checkpoint only when running single process
+                # training (rank is -1) or master process of DDP training (rank
+                # is 0).
                 ans = input("Do you want to save checkpoint? (y/n): ")
                 if ans.lower().startswith('y'):
                     self._save_checkpoint()
@@ -249,8 +258,11 @@ class Trainer(object):
         self._debug_requested = True
 
     def _save_checkpoint(self):
-        global_step = alf.summary.get_global_counter()
-        self._checkpointer.save(global_step=global_step)
+        # Saving checkpoint is only enabled when running single process training
+        # (rank is -1) or master process of DDP training (rank is 0).
+        if self._rank <= 0:
+            global_step = alf.summary.get_global_counter()
+            self._checkpointer.save(global_step=global_step)
 
     def _restore_checkpoint(self, checkpointer):
         """Retore from saved checkpoint.
@@ -284,13 +296,17 @@ class Trainer(object):
 class RLTrainer(Trainer):
     """Trainer for reinforcement learning. """
 
-    def __init__(self, config: TrainerConfig):
+    def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
         """
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
+            ddp_rank (int): process (and also device) ID of the process, if the
+                process participates in a DDP process group to run distributed
+                data parallel training. A value of -1 indicates regular single 
+                process training.
         """
-        super().__init__(config)
+        super().__init__(config, ddp_rank)
 
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
@@ -324,6 +340,13 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
+        if ddp_rank >= 0:
+            if not self._algorithm.on_policy:
+                raise RuntimeError(
+                    'Mutli-GPU with DDP does not support off-policy training yet'
+                )
+            # Activate the DDP training
+            self._algorithm.activate_ddp(ddp_rank)
 
         self._eval_env = None
         # Create a thread env to expose subprocess gin/alf configurations
@@ -400,8 +423,9 @@ class RLTrainer(Trainer):
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
-                '%s -> %s: %s time=%.3f throughput=%0.2f' %
-                (common.get_conf_file(),
+                '%s%s -> %s: %s time=%.3f throughput=%0.2f' %
+                ('' if self._rank == -1 else f'[rank {self._rank:02d}] ',
+                 common.get_conf_file(),
                  os.path.basename(self._root_dir.strip('/')), iter_num, t,
                  int(train_steps) / t),
                 n_seconds=1)
@@ -646,7 +670,7 @@ def play(root_dir,
             if a ``record_file`` argument is provided.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
-"""
+    """
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')

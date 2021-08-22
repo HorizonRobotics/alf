@@ -59,7 +59,7 @@ def load_test(train_bs=50, test_bs=10, num_workers=0):
         trainset, batch_size=train_bs, shuffle=True, num_workers=num_workers)
 
     test_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=test_bs, shuffle=True, num_workers=num_workers)
+        testset, batch_size=test_bs, shuffle=True, num_workers=num_workers)
 
     return train_loader, test_loader
 
@@ -111,7 +111,7 @@ def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
     trainset = datasets.MNIST(
-        root=path, train=False, download=True, transform=data_transform)
+        root=path, train=True, download=True, transform=data_transform)
     testset = datasets.MNIST(root=path, train=False, transform=data_transform)
 
     if label_idx is not None:

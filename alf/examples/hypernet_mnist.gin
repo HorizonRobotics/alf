@@ -26,7 +26,6 @@ HyperNetwork.optimizer=@hypernet/Adam()
 HyperNetwork.logging_training=True
 HyperNetwork.logging_evaluate=True
 
-import alf.algorithms.hypernetwork_networks
 ParamConvNet.use_bias=True
 
 # training config

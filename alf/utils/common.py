@@ -42,6 +42,7 @@ import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
+from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
 
 
@@ -233,9 +234,12 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Returns:
         nested Tensor
     """
-    return alf.nest.map_structure(
-        lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s), i_s, s),
-        initial_state, state)
+    if torch.any(reset_mask):
+        return alf.nest.map_structure(
+            lambda i_s, s: torch.where(
+                expand_dims_as(reset_mask, i_s), i_s, s), initial_state, state)
+    else:
+        return state
 
 
 def run_under_record_context(func,
@@ -255,6 +259,12 @@ def run_under_record_context(func,
         summary_max_queue (int): the largest number of summaries to keep in a queue;
             will flush once the queue gets bigger than this. Defaults to 10.
     """
+    # Disable summary if in distributed mode and the running process isn't the
+    # master process (i.e. rank = 0)
+    if PerProcessContext().ddp_rank > 0:
+        func()
+        return
+
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = alf.summary.create_summary_writer(
         summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
@@ -1123,11 +1133,9 @@ def get_alf_snapshot_env_vars(root_dir):
     points to the ALF snapshot under this directory.
     """
     alf_repo = os.path.join(root_dir, "alf")
-    alf_cnest = os.path.join(alf_repo,
-                             "alf/nest/cnest")  # path to archived cnest.so
     alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_cnest, alf_examples, python_path])
+    python_path = ":".join([alf_repo, alf_examples, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars

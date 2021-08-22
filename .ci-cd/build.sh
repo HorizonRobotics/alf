@@ -41,8 +41,6 @@ function check_style() {
 
 function test() {
     cd alf
-    pip3 install -e ./nest/cnest
-    export PYTHONPATH=$PYTHONPATH:`pwd`/nest/cnest
     python3 -m unittest -v \
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
@@ -57,6 +55,7 @@ function test() {
         alf.algorithms.hypernetwork_algorithm_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
+        alf.algorithms.inverse_mvp_algorithm_test \
         alf.algorithms.lagrangian_reward_weight_algorithm_test \
         alf.algorithms.mcts_algorithm_test \
         alf.algorithms.merlin_algorithm_test \
@@ -72,6 +71,7 @@ function test() {
         alf.algorithms.oac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
+        alf.algorithms.ppg.disjoint_policy_value_network_test \
         alf.bin.train_play_test \
         alf.data_structures_test \
         alf.device_ctx_test \
@@ -93,7 +93,6 @@ function test() {
         alf.experience_replayers.segment_tree_test \
         alf.layers_test \
         alf.metrics.metrics_test \
-        alf.nest.cnest_test \
         alf.nest.nest_test \
         alf.networks.action_encoder_test \
         alf.networks.actor_distribution_networks_test \

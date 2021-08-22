@@ -519,12 +519,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_bullet_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], 195)
 
-        self._test(conf_file='ppo_cart_pole.gin', test_perf_func=_test_func)
+        self._test(
+            conf_file='ppo_cart_pole_conf.py', test_perf_func=_test_func)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icm_super_mario_intrinsic_only(self):
