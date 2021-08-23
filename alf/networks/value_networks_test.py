@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,9 @@
 """Tests for alf.networks.value_networks."""
 
 from absl.testing import parameterized
+from absl import logging
 import functools
-
+import time
 import torch
 
 import alf
@@ -72,7 +73,34 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(value_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
+    
+    def test_make_parallel(self):
+        obs_spec = TensorSpec((20, ), torch.float32)
+        value_net = ValueNetwork(obs_spec, fc_layer_params=(256,))
 
+        replicas = 4
+        batch_size = 128
+
+        def _train(pnet, name):
+            t0 = time.time()
+            optimizer = alf.optimizers.AdamTF(lr=1e-4)
+            optimizer.add_param_group({'params': list(pnet.parameters())})
+            for _ in range(100):
+                obs = obs_spec.randn((batch_size, ))
+                values = pnet(obs)[0]
+                target = torch.randn_like(values)
+                cost = ((values - target)**2).sum()
+                optimizer.zero_grad()
+                cost.backward()
+                optimizer.step()
+            logging.info(
+                "%s time=%s cost=%s" % (name, time.time() - t0, float(cost)))
+
+        pnet = value_net.make_parallel(replicas)
+        _train(pnet, "ParallelValueNetwork")
+
+        pnet = alf.networks.network.NaiveParallelNetwork(value_net, replicas)
+        _train(pnet, "NaiveParallelNetwork")
 
 if __name__ == "__main__":
     alf.test.main()

@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -115,6 +115,48 @@ class ValueNetwork(PreprocessorNetwork):
         value = value.reshape(value.shape[0], *self._output_spec.shape)
         return value, state
 
+    def make_parallel(self, n):
+        """Create a ``ParallelValueNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        """
+        return ParallelValueNetwork(self, n, "parallel_" + self._name)
+
+class ParallelValueNetwork(PreprocessorNetwork):
+    """Perform ``n`` value computations in parallel."""
+
+    def __init__(self,
+                value_network: ValueNetwork,
+                n: int,
+                name="ParallelValueNetwork"):
+        """
+        It creates a parallelized version of ``value_network``.
+        Args:
+            value_network (ValueNetwork): non-parallelized value network
+            n (int): make ``n`` replicas from ``value_network`` with different
+                initialization.
+            name (str):
+        """
+
+        # TODO: handle input_preprocessors
+        assert value_network._input_preprocessors is None
+        
+        super().__init__(input_tensor_spec=value_network.input_tensor_spec, 
+                        name=name)
+        self._encoding_net = value_network._encoding_net.make_parallel(n)
+        self._output_spec = TensorSpec((n, ) +
+                                       value_network.output_spec.shape)
+
+    def forward(self, observation, state=()):
+        """Computes values given a batch of observations.
+        Args:
+            inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
+            state (tuple): Empty for API consistent with ``ValueRNNNetwork``.
+        """
+
+        observation, _ = super().forward(observation, state, max_outer_rank=2)
+        value, _ = self._encoding_net(observation)
+        value = value.reshape(value.shape[0], *self._output_spec.shape)
+        return value, state
 
 @alf.configurable
 class ValueRNNNetwork(PreprocessorNetwork):

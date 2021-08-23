@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -78,6 +78,68 @@ class CategoricalProjectionNetwork(Network):
         else:
             return td.Categorical(logits=logits), state
 
+    def make_parallel(self, n):
+        """Creates a ``ParallelCategoricalProjectionNetwork`` using ``n``
+        replicas of ``self``. The initialized layer parameters will
+        be different.
+        """
+        parallel_proj_net_args = dict(**self.saved_args)
+        parallel_proj_net_args.update(n=n, name="parallel_" + self.name)
+        return ParallelCategoricalProjectionNetwork(**parallel_proj_net_args)
+
+@alf.configurable
+class ParallelCategoricalProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 n,
+                 logits_init_output_factor=0.1,
+                 name="ParallelCategoricalProjectionNetwork"):
+        """Creates an instance of ParallelCategoricalProjectionNetwork.
+
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            n (int): number of the parallel networks
+            name (str): name of this network.
+        """
+        super(ParallelCategoricalProjectionNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        assert isinstance(action_spec, TensorSpec)
+
+        unique_num_actions = np.unique(action_spec.maximum -
+                                       action_spec.minimum + 1)
+        if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
+            raise ValueError(
+                'Bounds on discrete actions must be the same for all '
+                'dimensions and have at least 1 action. Projection '
+                'Network requires num_actions to be equal across '
+                'action dimensions. Implement a more general '
+                'categorical projection if you need more flexibility.')
+                
+        output_shape = action_spec.shape + (int(unique_num_actions), )
+        self._output_shape = output_shape
+
+        self._projection_layer = layers.ParallelFC(
+            input_size,
+            np.prod(output_shape),
+            n,
+            kernel_init_gain=logits_init_output_factor)
+        self._n = n
+
+
+    def forward(self, inputs, state=()):
+        logits = self._projection_layer(inputs)
+        logits = logits.reshape(inputs.shape[0], self._n, *self._output_shape)
+        if len(self._output_shape) > 1:
+            return td.Independent(
+                td.Categorical(logits=logits),
+                reinterpreted_batch_ndims=len(self._output_shape) - 1), state
+        else:
+            return td.Categorical(logits=logits), state
 
 @alf.configurable
 class NormalProjectionNetwork(Network):

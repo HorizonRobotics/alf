@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -134,6 +134,44 @@ class ActorDistributionNetwork(Network):
             state: empty
         """
         encoding, state = self._encoding_net(observation, state)
+        act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
+                                      self._projection_net)
+        return act_dist, state
+
+    def make_parallel(self, n):
+        """Create a ``ParallelActorDistributionNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        """
+        return ParallelActorDistributionNetwork(self, n, "parallel_" + self._name)
+
+class ParallelActorDistributionNetwork(Network):
+    """Perform ``n`` actor distribution computations in parallel."""
+    def __init__(self,
+                actor_network: ActorDistributionNetwork,
+                n: int,
+                name="ParallelActorDistributionNetwork"):
+        """
+        It creates a parallelized version of ``actor_network``.
+        Args:
+            actor_network (ActorDistributionNetwork): non-parallelized actor network
+            n (int): make ``n`` replicas from ``actor_network`` with different
+                initialization.
+            name (str):
+        """
+        
+        super().__init__(input_tensor_spec=actor_network.input_tensor_spec, 
+                        name=name)
+        self._encoding_net = actor_network._encoding_net.make_parallel(n)
+        self._projection_net = actor_network._projection_net.make_parallel(n)
+        self._output_spec = self._projection_net.output_spec
+       
+    def forward(self, observation, state=()):
+        """Computes action distribution given a batch of observations.
+        Args:
+            inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
+            state (tuple): Empty for API consistent with ``ActorDistributionRNNNetwork``.
+        """
+        encoding, _ = self._encoding_net(observation, state)
         act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
                                       self._projection_net)
         return act_dist, state
