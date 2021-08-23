@@ -55,4 +55,5 @@ alf.config(
     evaluate=True,
     eval_interval=50,
     debug_summaries=False,
+    summarize_grads_and_vars=False,
     summary_interval=5)

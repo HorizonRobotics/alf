@@ -120,16 +120,35 @@ class PPGPhaseContext(object):
         """
         self._network.load_state_dict(previous_context._network.state_dict())
 
-    def network_forward(self, inputs: TimeStep, state) -> AlgStep:
+    def network_forward(self,
+                        inputs: TimeStep,
+                        state,
+                        epsilon_greedy: Optional[float] = None) -> AlgStep:
         """Evaluates the underlying network for roll out or training
 
         The signature mimics ``rollout_step()`` of ``Algorithm`` completedly.
+
+        Args:
+
+            inputs (TimeStep): carries the observation that is needed
+                as input to the network
+            state (nested Tesnor): carries the state for RNN-based network
+            epsilon_greedy (Optional[float]): if set to None, the action will be
+                sampled strictly based on the action distribution. If set to a
+                value in [0, 1], epsilon-greedy sampling will be used to sample
+                the action from the action distribution, and the float value
+                determines the chance of action sampling instead of taking
+                argmax.
 
         """
         (action_distribution, value, aux), state = self._network(
             inputs.observation, state=state)
 
-        action = dist_utils.sample_action_distribution(action_distribution)
+        if epsilon_greedy is not None:
+            action = dist_utils.epsilon_greedy_sample(action_distribution,
+                                                      epsilon_greedy)
+        else:
+            action = dist_utils.sample_action_distribution(action_distribution)
 
         return AlgStep(
             output=action,
@@ -176,6 +195,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  encoding_network_ctor: callable = EncodingNetwork,
                  policy_optimizer: Optional[torch.optim.Optimizer] = None,
                  aux_optimizer: Optional[torch.optim.Optimizer] = None,
+                 epsilon_greedy=None,
                  debug_summaries: bool = False,
                  name: str = "PPGAlgorithm"):
         """Args:
@@ -200,6 +220,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 the policy phase of PPG.
             aux_optimizer (torch.optim.Optimizer): The optimizer for training
                 the auxiliary phase of PPG.
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation. If None, its value is taken
+                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``. It
+                is used in ``predict_step()`` during evaluation.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
 
@@ -209,7 +235,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             observation_spec=observation_spec,
             action_spec=action_spec,
             encoding_network_ctor=encoding_network_ctor,
-            is_sharing_encoder=True)
+            is_sharing_encoder=False)
 
         super().__init__(
             config=config,
@@ -221,6 +247,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             train_state_spec=dual_actor_value_network.state_spec)
 
         self._aux_phase_interval = aux_phase_interval
+        if epsilon_greedy is None:
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy')
+        self._predict_step_epsilon_greedy = epsilon_greedy
 
         # The policy phase uses the main experience replayer with the PPO Loss
         self._policy_phase = PPGPhaseContext(
@@ -240,7 +270,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             exp_replayer=OnetimeExperienceReplayer())
 
         # Register the two networks so that they are picked up as part of the
-        # Algorithm by ptyroch.
+        # Algorithm by pytorch.
         self._registered_networks = torch.nn.ModuleList(
             [self._policy_phase.network, self._aux_phase.network])
 
@@ -374,3 +404,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         """Phase context dependent loss function evaluation
         """
         return self._active_phase.loss(info)
+
+    def predict_step(self, inputs: TimeStep, state):
+        """Predict for one step."""
+        return self._active_phase.network_forward(
+            inputs, state, self._predict_step_epsilon_greedy)
