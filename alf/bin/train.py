@@ -112,12 +112,41 @@ def _setup_device(rank: int = 0):
         torch.cuda.set_device(rank)
 
 
+def _train(root_dir, rank=0, world_size=1):
+    """Launch the trainer after the conf file has been parsed. This function
+    could be called by grid search after the config has been modified.
+
+    Args:
+        root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
+        rank (int): The ID of the process among all of the DDP processes. For
+            non-distributed training, this id should be 0.
+        world_size (int): The number of processes in total. If set to 1, it is
+            interpreted as "non distributed mode".
+    """
+    trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
+
+    if trainer_conf.ml_type == 'rl':
+        ddp_rank = rank if world_size > 1 else -1
+        trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank)
+    elif trainer_conf.ml_type == 'sl':
+        # NOTE: SLTrainer does not support distributed training yet
+        if world_size > 1:
+            raise RuntimeError(
+                "Multi-GPU DDP training does not support supervised learning")
+        trainer = policy_trainer.SLTrainer(trainer_conf)
+    else:
+        raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
+
+    trainer.train()
+
+
 def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
     """An executable instance that trains and evaluate the algorithm
 
     Args:
         rank (int): The ID of the process among all of the DDP processes.
-        world_size (int): The number of processes in total. If set to 1, it is interpreted as "non distributed mode".
+        world_size (int): The number of processes in total. If set to 1, it is
+            interpreted as "non distributed mode".
         conf_file (str): Path to the training configuration.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
     """
@@ -139,22 +168,7 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
-        trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-
-        if trainer_conf.ml_type == 'rl':
-            ddp_rank = rank if world_size > 1 else -1
-            trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank)
-        elif trainer_conf.ml_type == 'sl':
-            # NOTE: SLTrainer does not support distributed training yet
-            if world_size > 1:
-                raise RuntimeError(
-                    "Multi-GPU DDP training does not support supervised learning"
-                )
-            trainer = policy_trainer.SLTrainer(trainer_conf)
-        else:
-            raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
-
-        trainer.train()
+        _train(root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
     except Exception as e:

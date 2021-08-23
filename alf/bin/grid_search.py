@@ -43,20 +43,41 @@ import os
 from pathos import multiprocessing
 import pathlib
 import random
+import re
 import subprocess
 import sys
 import time
 import torch
 import traceback
 from typing import Iterable
+import unicodedata
 
 import alf
-from alf.bin.train import train_eval
+from alf.bin.train import _define_flags as _train_define_flags
+from alf.bin.train import _train
 from alf.utils import common
 
 
+def _slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Also strip leading and trailing whitespace, dashes,
+    and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode(
+            'ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value)
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+
 def _define_flags():
-    alf.bin.train._define_flags()
+    _train_define_flags()
     flags.DEFINE_string('search_config', None,
                         'Path to the grid search config file.')
     flags.DEFINE_bool(
@@ -230,24 +251,20 @@ class GridSearch(object):
             def _initials(t):
                 words = [w for w in t.split('_') if w]
                 len_per_word = max(l // len(words), 1)
-                return '_'.join([w[:len_per_word] for w in words])
+                return _slugify('_'.join([w[:len_per_word] for w in words]))
 
             if isinstance(x, str):
                 tokens = x.replace("/", "_").split(".")
                 tokens = [_initials(t) for t in tokens]
                 return ".".join(tokens)
             else:
-                return str(x)
+                return _abbr_single(str(x), l)
 
         def _abbr(x, l):
             if isinstance(x, Iterable) and not isinstance(x, str):
                 strs = []
-                for key in x:
-                    try:
-                        val = x.get(key)
-                        strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
-                    except:
-                        strs.append("%s" % _abbr(key, l))
+                for key, val in x.items():
+                    strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
                 return "+".join(strs)
             else:
                 return _abbr_single(x, l)
@@ -342,12 +359,16 @@ class GridSearch(object):
 
             # init env random seed differently for each worker
             alf.get_env()
-            train_eval(root_dir)
+            # current only support non-distributed training for each individual
+            # job of grid search
+            _train(root_dir)
 
             device_queue.put(device)
         except Exception as e:
             logging.info(traceback.format_exc())
             raise e
+        finally:
+            alf.close_env()
 
 
 def search():
