@@ -303,44 +303,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             # Restore the _exp_replayer
             self._exp_replayer = backup_exp_replayer
 
-    def train_iter(self):
-        """PPG operates in a (slightly) different pipleine
-
-        Overrides the original ``train_iter()`` to achieve that
-
-        """
-        config: TrainerConfig = self._config
-
-        if not config.update_counter_every_mini_batch:
-            alf.summary.increment_global_counter()
-
-        # Run unroll() with environments
-        with torch.set_grad_enabled(config.unroll_with_grad):
-            with record_time("time/unroll"):
-                self.eval()
-                experience = self.unroll(config.unroll_length)
-                self.summarize_rollout(experience)
-                self.summarize_metrics()
-
-        # Run the normal training
-        self.train()
-        steps = self.train_from_replay_buffer(update_global_counter=True)
-
-        # This is the only difference from the original pipeline, where
-        # periodically an extra auxiliary phase update is done.
-        if alf.summary.get_global_counter() % self._aux_phase_interval == 0:
-            with self.aux_phase_activated():
-                steps += self.train_from_replay_buffer(
-                    update_global_counter=False)
-
-        with record_time("time/after_train_iter"):
-            train_info = experience.rollout_info
-            experience = experience._replace(rollout_info=())
-            self.after_train_iter(experience, train_info)
-
-        # For now, we only return the steps of the primary algorithm's training
-        return steps
-
     @property
     def on_policy(self) -> bool:
         return False
@@ -409,3 +371,21 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         """Predict for one step."""
         return self._active_phase.network_forward(
             inputs, state, self._predict_step_epsilon_greedy)
+
+    def after_train_iter(self, experience, info: PPGTrainInfo):
+        """Run auxiliary update if conditions are met
+
+        PPG requires running auxiliary update after certain number of
+        iterations policy update. This is checked and performed at the
+        after_train_iter() hook currently.
+
+        """
+
+        if alf.summary.get_global_counter() % self._aux_phase_interval == 0:
+            with self.aux_phase_activated():
+                # TODO(breakds): currently auxiliary update steps are not
+                # counted towards the total steps. If needed in the future, we
+                # should return this from after_train_iter() and add some logic
+                # to handle this in the call site of after_train_iter().
+                aux_steps = self.train_from_replay_buffer(
+                    update_global_counter=False)
