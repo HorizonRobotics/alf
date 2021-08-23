@@ -23,6 +23,7 @@ from alf.nest import (flatten, flatten_up_to, get_field, map_structure,
 from alf.nest.utils import get_nested_field
 from alf.utils.spec_utils import is_same_spec
 from .network import Network, get_input_tensor_spec, wrap_as_network
+from alf.layers import make_parallel_spec
 
 
 def Sequential(*modules,
@@ -253,6 +254,27 @@ class _Sequential(Network):
     def __getitem__(self, i):
         return self._networks[i]
 
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        new_networks = []
+        new_named_networks = {}
+        for net, input, output in zip(self._networks, self._inputs,
+                                      self._outputs):
+            pnet = alf.layers.make_parallel_net(net, n)
+            if not output:
+                new_networks.append((input, pnet))
+            else:
+                new_named_networks[output] = (input, pnet)
+        input_spec = make_parallel_spec(self._input_tensor_spec, n)
+        return _Sequential(new_networks, new_named_networks, self._output,
+                           input_spec, "parallel_" + self.name)
+
 
 class Parallel(Network):
     """Apply each Network in the nest of Network to the corresponding input.
@@ -342,6 +364,19 @@ class Parallel(Network):
     @property
     def networks(self):
         return self._networks
+
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        networks = map_structure(
+            lambda net: alf.layers.make_parallel_net(net, n), self._networks)
+        input_spec = make_parallel_spec(self._input_tensor_spec, n)
+        return Parallel(networks, input_spec, 'parallel_' + self.name)
 
 
 def Branch(*modules, input_tensor_spec=None, name="Branch", **named_modules):
@@ -456,6 +491,22 @@ class _Branch(Network):
     def networks(self):
         return self._networks
 
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        networks = map_structure(
+            lambda net: alf.layers.make_parallel_net(net, n), self._networks)
+        input_spec = make_parallel_spec(self._input_tensor_spec, n)
+        return Branch(
+            networks,
+            input_tensor_spec=input_spec,
+            name='parallel_' + self.name)
+
 
 class Echo(Network):
     """Echo network.
@@ -567,3 +618,15 @@ class Echo(Network):
             real_output = block_output['output']
             echo_output = block_output['echo']
         return real_output, (block_state, echo_output)
+
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        return Echo(
+            alf.layers.make_parallel_net(self._block),
+            make_parallel_spec(self._input_tensor_spec, n))

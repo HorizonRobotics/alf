@@ -218,7 +218,7 @@ class Network(nn.Module):
         """Make a parallelized version of this network.
 
         A parallel network has ``n`` copies of network with the same structure but
-        different indepently initialized parameters.
+        different independently initialized parameters.
 
         By default, it creates ``NaiveParallelNetwork``, which simply making
         ``n`` copies of this network and use a loop to call them in ``forward()``.
@@ -293,13 +293,13 @@ class NaiveParallelNetwork(Network):
                 inp = alf.nest.map_structure(lambda x: x[:, i, ...], inputs)
             s = alf.nest.map_structure(lambda x: x[:, i, ...], state)
             ret = self._networks[i](inp, s)
-            ret = alf.nest.map_structure(lambda x: x.unsqueeze(1), ret)
             output_states.append(ret)
         if self._n > 1:
             output, new_state = alf.nest.map_structure(
-                lambda *tensors: torch.cat(tensors, dim=1), *output_states)
+                lambda *tensors: torch.stack(tensors, dim=1), *output_states)
         else:
-            output, new_state = output_states[0]
+            output, new_state = alf.nest.map_structure(
+                lambda x: x.unsqueeze(1), output_states[0])
 
         return output, new_state
 
@@ -331,6 +331,11 @@ class NetworkWrapper(Network):
         alf.layers.reset_parameters(module)
 
         return NetworkWrapper(module, self._input_tensor_spec)
+
+    def make_parallel(self, n: int):
+        return NetworkWrapper(
+            alf.layers.make_parallel_net(self._module, n),
+            alf.layers.make_parallel_spec(self.input_tensor_spec, n))
 
 
 def get_input_tensor_spec(net):

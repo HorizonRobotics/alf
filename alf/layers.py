@@ -13,14 +13,14 @@
 # limitations under the License.
 """Some basic layers."""
 
+from absl import logging
 import copy
-
 from functools import partial
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Callable
+from typing import Optional, Union, Callable
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -84,6 +84,9 @@ class Cast(nn.Module):
     def forward(self, x):
         return x.to(self._dtype)
 
+    def make_parallel(self, n: int):
+        return Cast(self._dtype)
+
 
 class Transpose(nn.Module):
     """A layer that perform the transpose of channels.
@@ -109,6 +112,9 @@ class Transpose(nn.Module):
     def forward(self, x):
         return x.transpose(self._dim0, self._dim1)
 
+    def make_parallel(self, n: int):
+        return Transpose(self._dim0, self._dim1)
+
 
 class Permute(nn.Module):
     """A layer that perform the permutation of channels."""
@@ -126,6 +132,9 @@ class Permute(nn.Module):
 
     def forward(self, x):
         return x.permute(*self._dims)
+
+    def make_parallel(self, n: int):
+        return Permute(*self._dims)
 
 
 class BatchSquash(object):
@@ -182,6 +191,9 @@ class OneHot(nn.Module):
     def forward(self, input):
         return nn.functional.one_hot(
             input, num_classes=self._num_classes).to(torch.float32)
+
+    def make_parallel(self, n: int):
+        return OneHot(self._num_classes)
 
 
 @alf.configurable
@@ -432,7 +444,7 @@ class FC(nn.Module):
     def bias(self):
         return self._bias
 
-    def make_parallel(self, n):
+    def make_parallel(self, n: int):
         """Create a ``ParallelFC`` using ``n`` replicas of ``self``.
         The initialized layer parameters will be different.
         """
@@ -639,6 +651,8 @@ class ParallelFC(nn.Module):
             bias_init_value (float): a constant
         """
         super().__init__()
+        self._input_size = input_size
+        self._output_size = output_size
         self._activation = activation
         self._weight = nn.Parameter(torch.Tensor(n, output_size, input_size))
         if use_bias:
@@ -1085,6 +1099,11 @@ class Conv2D(nn.Module):
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
+        # get the argument list with vals
+        self._kwargs = copy.deepcopy(locals())
+        self._kwargs.pop('self')
+        self._kwargs.pop('__class__')
+
         super(Conv2D, self).__init__()
         if use_bias is None:
             use_bias = not use_bn
@@ -1135,6 +1154,9 @@ class Conv2D(nn.Module):
     @property
     def bias(self):
         return self._conv2d.bias
+
+    def make_parallel(self, n: int):
+        return ParallelConv2D(n=n, **self._kwargs)
 
 
 @alf.configurable
@@ -1490,6 +1512,10 @@ class ConvTranspose2D(nn.Module):
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
+        # get the argument list with vals
+        self._kwargs = copy.deepcopy(locals())
+        self._kwargs.pop('self')
+        self._kwargs.pop('__class__')
         super(ConvTranspose2D, self).__init__()
         if use_bias is None:
             use_bias = not use_bn
@@ -1533,6 +1559,9 @@ class ConvTranspose2D(nn.Module):
     def bias(self):
         return self._conv_trans2d.bias
 
+    def make_parallel(self, n: int):
+        return ParallelConvTranspose2D(n=n, **self._kwargs)
+
 
 @alf.configurable
 class ParallelConvTranspose2D(nn.Module):
@@ -1544,6 +1573,7 @@ class ParallelConvTranspose2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
+                 output_padding=0,
                  use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
@@ -1560,6 +1590,9 @@ class ParallelConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
+            output_padding (int or tuple): Additional size added to one side of
+                each dimension in the output shape. Default: 0. See pytorch
+                documentation for more detail.
             use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
@@ -1585,6 +1618,7 @@ class ParallelConvTranspose2D(nn.Module):
             groups=n,
             stride=strides,
             padding=padding,
+            output_padding=output_padding,
             bias=use_bias)
 
         for i in range(n):
@@ -2073,6 +2107,9 @@ class Reshape(nn.Module):
 
     def forward(self, x):
         return x.reshape(x.shape[0], *self._shape)
+
+    def make_parallel(self, n: int):
+        return Reshape((n, ) + self._shape)
 
 
 def _tuplify2d(x):
@@ -2604,6 +2641,9 @@ class GetFields(nn.Module):
         return alf.nest.map_structure(
             lambda path: alf.nest.get_field(input, path), self._fields)
 
+    def make_parallel(self, n: int):
+        return GetFields(self._fields)
+
 
 class Sum(nn.Module):
     """Sum over given dimension(s).
@@ -2623,6 +2663,9 @@ class Sum(nn.Module):
 
     def forward(self, input):
         return input.sum(dim=self._dim)
+
+    def make_parallel(self, n: int):
+        return Sum(self._dim)
 
 
 def reset_parameters(module):
@@ -2654,6 +2697,9 @@ class Detach(nn.Module):
 
     def forward(self, input):
         return common.detach(input)
+
+    def make_parallel(self, n: int):
+        return Detach()
 
 
 class Branch(nn.Module):
@@ -2709,6 +2755,18 @@ class Branch(nn.Module):
 
     def reset_parameters(self):
         alf.nest.map_structure(reset_parameters, self._networks)
+
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        new_networks = alf.nest.map_structure(
+            lambda net: make_parallel_net(net, n), self._networks)
+        return Branch(new_networks)
 
 
 class Sequential(nn.Module):
@@ -2854,3 +2912,146 @@ class Sequential(nn.Module):
 
     def __getitem__(self, i):
         return self._networks[i]
+
+    def make_parallel(self, n: int):
+        """Create a parallelized version of this network.
+
+        Args:
+            n (int): the number of copies
+        Returns:
+            the parallelized version of this network
+        """
+        new_networks = []
+        new_named_networks = {}
+        for net, input, output in zip(self._networks, self._inputs,
+                                      self._outputs):
+            pnet = alf.layers.make_parallel_net(net, n)
+            if not output:
+                new_networks.append((input, pnet))
+            else:
+                new_named_networks[output] = (input, pnet)
+        return Sequential(
+            *new_networks, output=self._output, **new_named_networks)
+
+
+def make_parallel_net(module, n: int):
+    """Make a parallelized version of ``module``.
+
+    A parallel network has ``n`` copies of network with the same structure but
+    different independently initialized parameters. The parallel network can
+    process a batch of the data with shape [batch_size, n, ...] using ``n``
+    networks with same structure.
+
+    If ``module`` has member function make_parallel, it will be called to make
+    the parallel network. Otherwise, it will creates a ``NaiveParallelLayer``,
+    which simply making ``n`` copies of ``module`` and use a loop to call them
+    in ``forward()``.
+
+    Examples:
+
+    Applying parallel net on same input:
+
+    .. code-block:: python
+
+        pnet = make_parallel_net(net, n)
+        # replicate input.
+        # pinput will have shape [batch_size, n, ...], if input has shape [batch_size, ...]
+        pinput = make_parallel_input(input)
+        poutput = pnet(pinput)
+
+    If you already have parallel input with shape [batch_size, n, ...], you can
+    omit the call to ``make_parallel_input`` in the above code.
+
+    Args:
+        module (Network | nn.Module | Callable): the network to be parallelized.
+        n (int): the number of copies
+    Returns:
+        the parallelized network.
+    """
+    if hasattr(module, 'make_parallel'):
+        return module.make_parallel(n)
+    else:
+        logging.warning(
+            "%s does not have make_parallel. A naive parallel layer "
+            "will be created." % str(module))
+        return NaiveParallelLayer(module, n)
+
+
+class NaiveParallelLayer(nn.Module):
+    def __init__(self, module: Union[nn.Module, Callable], n: int):
+        """
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
+        ``NaiveParallelLayer`` creats ``n`` independent networks with the same
+        structure as ``network`` and evaluate them separately in a loop during
+        ``forward()``.
+
+        Args:
+            module (nn.Module | Callable): the parallel network will have ``n`
+                copies of ``module``.
+            n (int): ``n`` copies of ``module``
+        """
+        super().__init__()
+        if isinstance(module, nn.Module):
+            self._networks = nn.ModuleList(
+                [copy.deepcopy(module) for i in range(n)])
+        else:
+            self._networks = [module] * n
+        self._n = n
+
+    def forward(self, inputs):
+        """Compute the output.
+
+        Args:
+            inputs (nested torch.Tensor): its shape is ``[B, n, ...]``
+        Returns:
+            output (nested torch.Tensor): its shape is ``[B, n, ...]``
+        """
+        outputs = []
+        for i in range(self._n):
+            inp = alf.nest.map_structure(lambda x: x[:, i, ...], inputs)
+            ret = self._networks[i](inp)
+            outputs.append(ret)
+        if self._n > 1:
+            output = alf.nest.map_structure(
+                lambda *tensors: torch.stack(tensors, dim=1), *outputs)
+        else:
+            output = alf.nest.map_structure(lambda tensor: tensor.unsqueeze(1),
+                                            outputs[0])
+
+        return output
+
+
+def make_parallel_input(inputs, n: int):
+    """Replicate ``inputs`` over dim 1 for ``n`` times so it can be processed by
+    parallel networks.
+
+    Args:
+        inputs (nested Tensor): a nest of Tensor
+        n (int): ``inputs`` will be replicated ``n`` times.
+    Returns:
+        inputs replicated over dim 1
+    """
+    return map_structure(lambda x: x.unsqueeze(1).expand(-1, n, *x.shape[1:]),
+                         inputs)
+
+
+def make_parallel_spec(specs, n: int):
+    """Make the spec for parallel network.
+
+    Args:
+        specs (nested TensorSpec): the input spec for the non-parallelized network
+        n (int): the number of copies of the parallelized network
+    Returns:
+        input tensor spec for the parallelized network
+    """
+
+    def _make_spec(spec):
+        if type(spec) == alf.TensorSpec:
+            return alf.TensorSpec((n, ) + spec.shape, spec.dtype)
+        else:  # BoundedTensorSpec
+            return alf.BoundedTensorSpec((n, ) + spec.shape, spec.dtype,
+                                         spec.minimum, spec.maximum)
+
+    return map_structure(_make_spec, specs)

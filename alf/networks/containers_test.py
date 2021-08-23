@@ -24,6 +24,28 @@ def _randn_from_spec(specs, batch_size):
 
 
 class ContainersTest(alf.test.TestCase):
+    def _test_make_parallel(self, net, tolerance=1e-5):
+        batch_size = 10
+        spec = net.input_tensor_spec
+        for n in (1, 2, 5):
+            pnet = net.make_parallel(n)
+            nnet = alf.nn.NaiveParallelNetwork(net, n)
+            for i in range(n):
+                for pp, np in zip(pnet.parameters(),
+                                  nnet._networks[i].parameters()):
+                    self.assertEqual(pp.shape, (n, ) + np.shape)
+                    np.data.copy_(pp[i])
+            pspec = alf.layers.make_parallel_spec(spec, n)
+            input = _randn_from_spec(pspec, batch_size)
+            presult = pnet(input)
+            nresult = nnet(input)
+            alf.nest.map_structure(
+                lambda p, n: self.assertEqual(p.shape, n.shape), presult,
+                nresult)
+            alf.nest.map_structure(
+                lambda p, n: self.assertTensorClose(p, n, tolerance), presult,
+                nresult)
+
     def _verify_parameter_copy(self, src, copy):
         """net.copy() only copy the structure, not the values of parameters."""
         for s, c in zip(src.parameters(), copy.parameters()):
@@ -112,6 +134,7 @@ class ContainersTest(alf.test.TestCase):
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
+        self._test_make_parallel(net)
 
     def test_sequential_complex2(self):
         net = alf.nn.Sequential(
@@ -136,6 +159,7 @@ class ContainersTest(alf.test.TestCase):
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
+        self._test_make_parallel(net)
 
     def test_sequential_complex3(self):
         net = alf.nn.Sequential(
@@ -160,6 +184,7 @@ class ContainersTest(alf.test.TestCase):
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
+        self._test_make_parallel(net)
 
     def test_parallel1(self):
         net = alf.nn.Parallel((alf.layers.FC(4, 6), alf.nn.GRUCell(6, 8),
@@ -213,6 +238,7 @@ class ContainersTest(alf.test.TestCase):
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
+        self._test_make_parallel(net)
 
     def test_branch1(self):
         net = alf.nn.Branch((alf.layers.FC(4, 6), alf.nn.GRUCell(4, 8),
@@ -262,6 +288,7 @@ class ContainersTest(alf.test.TestCase):
 
         net_copy = net.copy()
         self._verify_parameter_copy(net, net_copy)
+        self._test_make_parallel(net)
 
 
 if __name__ == '__main__':
