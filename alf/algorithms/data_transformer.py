@@ -28,6 +28,7 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.nest.utils import convert_device
 from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from alf.utils import common
+from alf.utils.math_ops import l2_dist_close_reward_fn
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 FrameStackState = namedtuple('FrameStackState', ['steps', 'prev_frames'])
@@ -646,27 +647,6 @@ class RewardScaling(SimpleDataTransformer):
     def _transform(self, timestep_or_exp):
         return timestep_or_exp._replace(
             reward=timestep_or_exp.reward * self._scale)
-
-
-@alf.configurable
-def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
-    """Giving -1/0 reward based on how close the achieved state is to the goal state.
-
-    Args:
-        achieved_goal (Tensor): achieved state, of shape ``[batch_size, batch_length, ...]``
-        goal (Tensor): goal state, of shape ``[batch_size, batch_length, ...]``
-        threshold (float): L2 distance threshold for the reward.
-
-    Returns:
-        Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
-    """
-
-    if goal.dim() == 2:  # when goals are 1-dimentional
-        assert achieved_goal.dim() == goal.dim()
-        achieved_goal = achieved_goal.unsqueeze(2)
-        goal = goal.unsqueeze(2)
-    return -(torch.norm(achieved_goal - goal, dim=2) >= threshold).to(
-        torch.float32)
 
 
 @alf.configurable

@@ -36,6 +36,7 @@ from alf.environments.parallel_environment import ParallelAlfEnvironment
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils import spec_utils
+from alf.utils.math_ops import l2_dist_close_reward_fn_np
 from alf.utils.tensor_utils import to_tensor
 
 
@@ -798,3 +799,77 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         time_step._cpu = time_step_cpu._replace(
             prev_action=time_step_cpu.prev_action['action'], env_info=info)
         return time_step
+
+
+@alf.configurable
+class DistractionAndPenaltyWrapper(AlfEnvironmentBaseWrapper):
+    def __init__(self,
+                 env,
+                 reward_fn=l2_dist_close_reward_fn_np,
+                 range=0.5,
+                 scale=10.):
+        """Add distraction coordinates and reward to timestep.
+        Assumes ``timestep.observation['achieved_goal']`` exists.
+        Adds ``timestep.observation['distraction']`` tensor shaped as the
+        ``'achieved_goal'``, and adds hit penalty as a separate reward dimension.
+        Args:
+            env (AlfEnvironment): An AlfEnvironment isinstance to wrap.
+            reward_fn (Callable): used to judge whether agent is too close to the
+                distraction.
+            range (float): how close (uniform from 0 to range) the distraction
+                should be added relative to the ``'desired_goal'``.  Only the first two
+                dimensions are perturbed from the ``'desired_goal'``.
+            scale (float): scale of reward: ``[-scale, 0]``
+        """
+        super().__init__(env)
+        self._time_step_spec = self._add_distraction(
+            env.time_step_spec(), mode='spec')
+        self._observation_spec = self._time_step_spec.observation
+        self._reward_spec = self._time_step_spec.reward
+        self._reward_fn = reward_fn
+        self._range = range
+        self._scale = scale
+
+    def reward_spec(self):
+        return self._reward_spec
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _reset(self):
+        return self._add_distraction(self._env.reset(), mode='reset')
+
+    def _step(self, action):
+        return self._add_distraction(self._env.step(action))
+
+    def _add_noise(self, pos):
+        pos[:2] += np.random.rand(2) * self._range
+        return pos
+
+    def _add_distraction(self, time_step, mode='regular'):
+        obs = time_step.observation.copy()
+        if mode in ('spec', 'reset'):
+            self._distraction_pos = obs['desired_goal']
+            if mode == 'reset':
+                self._distraction_pos = self._add_noise(
+                    self._distraction_pos.copy())
+            if mode == 'spec':
+                if time_step.reward.ndim == 0:
+                    shape = 1
+                else:
+                    shape = time_step.reward.shape[0]
+                reward = ts.TensorSpec((shape + 1, ),
+                                       dtype=time_step.reward.dtype)
+        if mode != 'spec':
+            reward = time_step.reward.astype(
+                ts.torch_dtype_to_str(self._reward_spec.dtype))
+            if reward.ndim == 0:
+                reward = np.expand_dims(reward, axis=0)
+            reward = np.concatenate(
+                (reward, self._scale * (-1 * self._reward_fn(
+                    obs['achieved_goal'], self._distraction_pos) - 1)))
+        obs['distraction'] = self._distraction_pos
+        return time_step._replace(observation=obs, reward=reward)

@@ -18,6 +18,9 @@ SuccessWrapper.since_episode_steps=0
 suite_robotics.load.use_success_wrapper=False
 suite_robotics.load.gym_env_wrappers=(@SuccessWrapper,)
 
+#suite_robotics.load.alf_env_wrappers=(@DistractionAndPenaltyWrapper,)
+l2_dist_close_reward_fn_np.threshold=0.5
+
 hidden_layers=(256, 256, 256)
 
 AdamTF.lr=1e-3
