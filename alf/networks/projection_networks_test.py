@@ -73,8 +73,8 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         parallel_net = net.make_parallel(replicas)
         dist, _ = parallel_net(embedding)
         self.assertTrue(isinstance(parallel_net.output_spec, DistributionSpec))
-        self.assertEqual(dist.batch_shape, (outer_dim,replicas))
-        self.assertEqual(dist.base_dist.batch_shape, (outer_dim,replicas, 1))
+        self.assertEqual(dist.batch_shape, (outer_dim, replicas))
+        self.assertEqual(dist.base_dist.batch_shape, (outer_dim, replicas, 1))
         self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
 
 

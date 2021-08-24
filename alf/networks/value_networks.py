@@ -121,13 +121,14 @@ class ValueNetwork(PreprocessorNetwork):
         """
         return ParallelValueNetwork(self, n, "parallel_" + self._name)
 
+
 class ParallelValueNetwork(PreprocessorNetwork):
     """Perform ``n`` value computations in parallel."""
 
     def __init__(self,
-                value_network: ValueNetwork,
-                n: int,
-                name="ParallelValueNetwork"):
+                 value_network: ValueNetwork,
+                 n: int,
+                 name="ParallelValueNetwork"):
         """
         It creates a parallelized version of ``value_network``.
         Args:
@@ -139,12 +140,11 @@ class ParallelValueNetwork(PreprocessorNetwork):
 
         # TODO: handle input_preprocessors
         assert value_network._input_preprocessors is None
-        
-        super().__init__(input_tensor_spec=value_network.input_tensor_spec, 
-                        name=name)
+
+        super().__init__(
+            input_tensor_spec=value_network.input_tensor_spec, name=name)
         self._encoding_net = value_network._encoding_net.make_parallel(n)
-        self._output_spec = TensorSpec((n, ) +
-                                       value_network.output_spec.shape)
+        self._output_spec = TensorSpec((n, ) + value_network.output_spec.shape)
 
     def forward(self, observation, state=()):
         """Computes values given a batch of observations.
@@ -157,6 +157,7 @@ class ParallelValueNetwork(PreprocessorNetwork):
         value, _ = self._encoding_net(observation)
         value = value.reshape(value.shape[0], *self._output_spec.shape)
         return value, state
+
 
 @alf.configurable
 class ValueRNNNetwork(PreprocessorNetwork):

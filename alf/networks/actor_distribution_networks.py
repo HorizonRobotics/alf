@@ -142,14 +142,17 @@ class ActorDistributionNetwork(Network):
         """Create a ``ParallelActorDistributionNetwork`` using ``n`` replicas of ``self``.
         The initialized network parameters will be different.
         """
-        return ParallelActorDistributionNetwork(self, n, "parallel_" + self._name)
+        return ParallelActorDistributionNetwork(self, n,
+                                                "parallel_" + self._name)
+
 
 class ParallelActorDistributionNetwork(Network):
     """Perform ``n`` actor distribution computations in parallel."""
+
     def __init__(self,
-                actor_network: ActorDistributionNetwork,
-                n: int,
-                name="ParallelActorDistributionNetwork"):
+                 actor_network: ActorDistributionNetwork,
+                 n: int,
+                 name="ParallelActorDistributionNetwork"):
         """
         It creates a parallelized version of ``actor_network``.
         Args:
@@ -158,13 +161,13 @@ class ParallelActorDistributionNetwork(Network):
                 initialization.
             name (str):
         """
-        
-        super().__init__(input_tensor_spec=actor_network.input_tensor_spec, 
-                        name=name)
+
+        super().__init__(
+            input_tensor_spec=actor_network.input_tensor_spec, name=name)
         self._encoding_net = actor_network._encoding_net.make_parallel(n)
         self._projection_net = actor_network._projection_net.make_parallel(n)
         self._output_spec = self._projection_net.output_spec
-       
+
     def forward(self, observation, state=()):
         """Computes action distribution given a batch of observations.
         Args:
