@@ -26,7 +26,7 @@ from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.data_structures import TimeStep, AlgStep, LossInfo, make_experience
 from alf.tensor_specs import TensorSpec
 
 from alf.utils import common, dist_utils, value_ops, tensor_utils
@@ -55,7 +55,7 @@ class PPGPhaseContext(object):
 
     """
 
-    def __init__(self, main_algorithm: 'PPGAlgorithm',
+    def __init__(self, ppg_algorithm: 'PPGAlgorithm',
                  network: DisjointPolicyValueNetwork,
                  optimizer: torch.optim.Optimizer, loss: Loss,
                  exp_replayer: Optional[OnetimeExperienceReplayer]):
@@ -66,7 +66,7 @@ class PPGPhaseContext(object):
 
         Args:
 
-            main_algorithm (PPGAlgorithm): reference to the PPGAlgorithm which
+            ppg_algorithm (PPGAlgorithm): reference to the PPGAlgorithm which
                 will be used to register the observer and the optimizer
             network (DisjointPolicyValueNetwork): the network to use during
                 training in the corresponding phase
@@ -84,13 +84,11 @@ class PPGPhaseContext(object):
                 in the algorithm will be used.
 
         """
-        self._main_algorithm = main_algorithm
+        self._ppg_algorithm = ppg_algorithm
         self._network = network
-        self._main_algorithm.add_optimizer(optimizer, [self._network])
+        self._ppg_algorithm.add_optimizer(optimizer, [self._network])
         self._loss = loss
         self._exp_replayer = exp_replayer
-        if self._exp_replayer is not None:
-            self._main_algorithm._observers.append(self._exp_replayer.observe)
 
     @property
     def loss(self):
@@ -99,6 +97,10 @@ class PPGPhaseContext(object):
     @property
     def exp_replayer(self):
         return self._exp_replayer
+
+    @exp_replayer.setter
+    def exp_replayer(self, value):
+        self._exp_replayer = value
 
     @property
     def network(self):
@@ -206,10 +208,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 the reward(s).
             aux_phase_interval (int): perform auxiliary phase update after every
                 aux_phase_interval iterations
-            env (Environment): The environment to interact with. env is a batched
-                environment, which means that it runs multiple simulations
-                simultateously. env only needs to be provided to the root
-                Algorithm.
+            env (Environment): The environment to interact with. env is a
+                batched environment, which means that it runs multiple
+                simulations simultateously. env only needs to be provided to the
+                root Algorithm. NOTE: env will default to None if PPGAlgorithm
+                is run via Agent.
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -252,9 +255,16 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 'TrainerConfig.epsilon_greedy')
         self._predict_step_epsilon_greedy = epsilon_greedy
 
+        if env is None:
+            # Special Case Handling: set the replay buffer type to "One Time".
+            # We need to explicitly set this if PPGAlgorithm is running under
+            # Agent or other parent algorithsm, where env is not provided but
+            # managed by the parent algorithm.
+            self._exp_replayer_type = 'one_time'
+
         # The policy phase uses the main experience replayer with the PPO Loss
         self._policy_phase = PPGPhaseContext(
-            main_algorithm=self,
+            ppg_algorithm=self,
             network=dual_actor_value_network,
             optimizer=policy_optimizer,
             loss=PPOLoss(debug_summaries=debug_summaries),
@@ -263,7 +273,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # The auxiliary phase uses an extra experience replayer with the loss
         # specific to the auxiliary update phase.
         self._aux_phase = PPGPhaseContext(
-            main_algorithm=self,
+            ppg_algorithm=self,
             network=dual_actor_value_network.copy(),
             optimizer=aux_optimizer,
             loss=PPGAuxPhaseLoss(),
@@ -289,26 +299,61 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         network, replay buffer and loss in the auxiliary phase contex.
 
         """
-        backup_exp_replayer = None
+        previous_exp_replayer = None
         try:
             self._aux_phase.on_context_switch_from(self._policy_phase)
             self._active_phase = self._aux_phase
             # Special handling to shadow the current _exp_replayer
-            backup_exp_replayer = self._exp_replayer
+            previous_exp_replayer = self._exp_replayer
             self._exp_replayer = self._aux_phase.exp_replayer
             yield
         finally:
             self._policy_phase.on_context_switch_from(self._aux_phase)
             self._active_phase = self._policy_phase
             # Restore the _exp_replayer
-            self._exp_replayer = backup_exp_replayer
+            self._exp_replayer = previous_exp_replayer
 
     @property
     def on_policy(self) -> bool:
         return False
 
+    def _observe_for_aux_replay(self, inputs: TimeStep, state,
+                                policy_step: AlgStep):
+        """Construct the experience and save it in the replay buffer for auxiliary
+        phase update.
+
+        Args:
+
+            inputs (nested Tensor): inputs towards network prediction
+            state (nested Tensor): state for RNN-based network
+            policy_step (AlgStep): a data structure wrapping the information
+                fromm the rollout
+
+        """
+        # Note that we need to release the ``untransformed`` from the time step
+        # (inputs) before constructing the experience.
+        lite_time_step = inputs._replace(untransformed=())
+        exp = make_experience(lite_time_step, policy_step, state)
+        if not self._use_rollout_state:
+            exp = exp._replace(state=())
+        # Set the experience spec explicitly if it is not set, based on this
+        # (sample) experience
+        if not self._experience_spec:
+            self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
+        exp = dist_utils.distributions_to_params(exp)
+        self._aux_phase.exp_replayer.observe(exp)
+
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
-        return self._policy_phase.network_forward(inputs, state)
+        """Rollout step for PPG algorithm
+
+        Besides running the network prediction, it does one extra thing to store
+        the experience in the auxiliary replay buffer so that it can be consumed
+        by the auxiliary phase updates.
+
+        """
+        policy_step = self._policy_phase.network_forward(inputs, state)
+        self._observe_for_aux_replay(inputs, state, policy_step)
+        return policy_step
 
     def preprocess_experience(
             self,
