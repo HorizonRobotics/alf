@@ -73,10 +73,10 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(value_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
-    
+
     def test_make_parallel(self):
         obs_spec = TensorSpec((20, ), torch.float32)
-        value_net = ValueNetwork(obs_spec, fc_layer_params=(256,))
+        value_net = ValueNetwork(obs_spec, fc_layer_params=(256, ))
 
         replicas = 4
         batch_size = 128
@@ -101,6 +101,7 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
         pnet = alf.networks.network.NaiveParallelNetwork(value_net, replicas)
         _train(pnet, "NaiveParallelNetwork")
+
 
 if __name__ == "__main__":
     alf.test.main()

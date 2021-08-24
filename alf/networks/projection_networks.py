@@ -87,6 +87,7 @@ class CategoricalProjectionNetwork(Network):
         parallel_proj_net_args.update(n=n, name="parallel_" + self.name)
         return ParallelCategoricalProjectionNetwork(**parallel_proj_net_args)
 
+
 @alf.configurable
 class ParallelCategoricalProjectionNetwork(Network):
     def __init__(self,
@@ -119,7 +120,7 @@ class ParallelCategoricalProjectionNetwork(Network):
                 'Network requires num_actions to be equal across '
                 'action dimensions. Implement a more general '
                 'categorical projection if you need more flexibility.')
-                
+
         output_shape = action_spec.shape + (int(unique_num_actions), )
         self._output_shape = output_shape
 
@@ -130,7 +131,6 @@ class ParallelCategoricalProjectionNetwork(Network):
             kernel_init_gain=logits_init_output_factor)
         self._n = n
 
-
     def forward(self, inputs, state=()):
         logits = self._projection_layer(inputs)
         logits = logits.reshape(inputs.shape[0], self._n, *self._output_shape)
@@ -140,6 +140,7 @@ class ParallelCategoricalProjectionNetwork(Network):
                 reinterpreted_batch_ndims=len(self._output_shape) - 1), state
         else:
             return td.Categorical(logits=logits), state
+
 
 @alf.configurable
 class NormalProjectionNetwork(Network):

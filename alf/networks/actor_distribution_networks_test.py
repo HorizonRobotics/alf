@@ -180,16 +180,17 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(pnet.name, "parallel_" + actor_dist_net.name)
         self.assertTrue(
             isinstance(actor_dist_net.output_spec, DistributionSpec))
-        act_dist, _  = pnet(obs_spec.randn((batch_size, )))
+        act_dist, _ = pnet(obs_spec.randn((batch_size, )))
         actions = act_dist.sample()
-        self.assertEqual(actions.shape, (batch_size, replicas) + action_spec.shape)
+        self.assertEqual(actions.shape,
+                         (batch_size, replicas) + action_spec.shape)
         self.assertTrue(
             torch.all(actions >= torch.as_tensor(action_spec.minimum)))
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
 
         # test discrete action
-        
+
         action_spec = TensorSpec((), torch.int32)
         # action_spec is not bounded
         self.assertRaises(
@@ -201,18 +202,18 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
 
         action_spec = BoundedTensorSpec((), torch.int32)
         actor_dist_net = network_ctor(
-            obs_spec,
-            action_spec,
-            conv_layer_params=self._conv_layer_params)
+            obs_spec, action_spec, conv_layer_params=self._conv_layer_params)
 
         pnet = actor_dist_net.make_parallel(replicas)
-        act_dist, _  = pnet(obs_spec.randn((batch_size, )))
+        act_dist, _ = pnet(obs_spec.randn((batch_size, )))
         actions = act_dist.sample()
-        self.assertEqual(actions.shape, (batch_size, replicas) + action_spec.shape)
+        self.assertEqual(actions.shape,
+                         (batch_size, replicas) + action_spec.shape)
         self.assertTrue(
             torch.all(actions >= torch.as_tensor(action_spec.minimum)))
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
+
 
 if __name__ == "__main__":
     alf.test.main()
