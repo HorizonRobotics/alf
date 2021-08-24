@@ -13,6 +13,8 @@
 # limitations under the License.
 """Phasic Policy Gradient Algorithm."""
 
+from __future__ import annotations
+
 import torch
 
 from typing import Optional, Tuple
@@ -55,7 +57,7 @@ class PPGPhaseContext(object):
 
     """
 
-    def __init__(self, ppg_algorithm: 'PPGAlgorithm',
+    def __init__(self, ppg_algorithm: PPGAlgorithm,
                  network: DisjointPolicyValueNetwork,
                  optimizer: torch.optim.Optimizer, loss: Loss,
                  exp_replayer: Optional[OnetimeExperienceReplayer]):
