@@ -1,7 +1,7 @@
 absl-py==0.7.0
 atari_py==0.1.7
 fasteners
-gym==0.12.5
+gym==0.15.3
 pyglet==1.3.2
 Box2D-kengz==2.3.3
 gym-retro

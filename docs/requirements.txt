@@ -4,7 +4,7 @@ bsuite
 carla
 fasteners
 git+git://github.com/HorizonRobotics/gin-config@master#egg=gin-config
-gym==0.12.5
+gym==0.15.3
 matplotlib
 opencv-python>=3.4.1.15
 pathos==0.2.4
