@@ -123,8 +123,7 @@ def wrap_env(gym_env,
         # gym3 under the hood with a special rendering scheme. Apply the
         # AlfGym3Wrapper to them before all other wrappers to transparently work
         # that around.
-        from alf.environments.alf_gym3_wrapper import AlfGym3Wrapper
-        gym_env = AlfGym3Wrapper(gym_env)
+        gym_env = gym_wrappers.Gym3RenderWrapper(gym_env)
 
     for wrapper in gym_env_wrappers:
         gym_env = wrapper(gym_env)
