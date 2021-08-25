@@ -17,11 +17,55 @@ import numpy as np
 import torch
 from typing import Iterable
 
-from alf.layers import BatchSquash
 import alf.nest as nest
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from . import dist_utils
+
+
+class BatchSquash(object):
+    """Facilitates flattening and unflattening batch dims of a tensor. Copied
+    from `tf_agents`.
+
+    Exposes a pair of matched flatten and unflatten methods. After flattening
+    only 1 batch dimension will be left. This facilitates evaluating networks
+    that expect inputs to have only 1 batch dimension.
+    """
+
+    def __init__(self, batch_dims):
+        """Create two tied ops to flatten and unflatten the front dimensions.
+
+        Args:
+            batch_dims (int): Number of batch dimensions the flatten/unflatten
+                ops should handle.
+
+        Raises:
+            ValueError: if batch dims is negative.
+        """
+        if batch_dims < 0:
+            raise ValueError('Batch dims must be non-negative.')
+        self._batch_dims = batch_dims
+        self._original_tensor_shape = None
+
+    def flatten(self, tensor):
+        """Flattens and caches the tensor's batch_dims."""
+        if self._batch_dims == 1:
+            return tensor
+        self._original_tensor_shape = tensor.shape
+        return torch.reshape(tensor,
+                             (-1, ) + tuple(tensor.shape[self._batch_dims:]))
+
+    def unflatten(self, tensor):
+        """Unflattens the tensor's batch_dims using the cached shape."""
+        if self._batch_dims == 1:
+            return tensor
+
+        if self._original_tensor_shape is None:
+            raise ValueError('Please call flatten before unflatten.')
+
+        return torch.reshape(
+            tensor, (tuple(self._original_tensor_shape[:self._batch_dims]) +
+                     tuple(tensor.shape[1:])))
 
 
 def spec_means_and_magnitudes(spec: BoundedTensorSpec):

@@ -30,6 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
+from alf.utils.spec_utils import BatchSquash
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -126,51 +127,6 @@ class Permute(nn.Module):
 
     def forward(self, x):
         return x.permute(*self._dims)
-
-
-class BatchSquash(object):
-    """Facilitates flattening and unflattening batch dims of a tensor. Copied
-    from `tf_agents`.
-
-    Exposes a pair of matched flatten and unflatten methods. After flattening
-    only 1 batch dimension will be left. This facilitates evaluating networks
-    that expect inputs to have only 1 batch dimension.
-    """
-
-    def __init__(self, batch_dims):
-        """Create two tied ops to flatten and unflatten the front dimensions.
-
-        Args:
-            batch_dims (int): Number of batch dimensions the flatten/unflatten
-                ops should handle.
-
-        Raises:
-            ValueError: if batch dims is negative.
-        """
-        if batch_dims < 0:
-            raise ValueError('Batch dims must be non-negative.')
-        self._batch_dims = batch_dims
-        self._original_tensor_shape = None
-
-    def flatten(self, tensor):
-        """Flattens and caches the tensor's batch_dims."""
-        if self._batch_dims == 1:
-            return tensor
-        self._original_tensor_shape = tensor.shape
-        return torch.reshape(tensor,
-                             (-1, ) + tuple(tensor.shape[self._batch_dims:]))
-
-    def unflatten(self, tensor):
-        """Unflattens the tensor's batch_dims using the cached shape."""
-        if self._batch_dims == 1:
-            return tensor
-
-        if self._original_tensor_shape is None:
-            raise ValueError('Please call flatten before unflatten.')
-
-        return torch.reshape(
-            tensor, (tuple(self._original_tensor_shape[:self._batch_dims]) +
-                     tuple(tensor.shape[1:])))
 
 
 @alf.configurable
