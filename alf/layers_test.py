@@ -1011,7 +1011,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         layer = alf.layers.Permute(2, 1, 0)
         self._test_make_parallel(layer, input_spec)
 
-    def test_onehost(self):
+    def test_onehot(self):
         input_spec = alf.BoundedTensorSpec((10, ),
                                            dtype=torch.int64,
                                            minimum=0,

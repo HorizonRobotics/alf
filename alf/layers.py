@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Union, Callable
+from typing import Union, Callable
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -30,6 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
+from alf.utils.spec_utils import BatchSquash
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -113,6 +114,16 @@ class Transpose(nn.Module):
         return x.transpose(self._dim0, self._dim1)
 
     def make_parallel(self, n: int):
+        """Create a Transpose layer to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are not considered for transpose.
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a ``Transpose`` layer to handle parallel batch.
+        """
         return Transpose(self._dim0, self._dim1)
 
 
@@ -134,52 +145,17 @@ class Permute(nn.Module):
         return x.permute(*self._dims)
 
     def make_parallel(self, n: int):
-        return Permute(*self._dims)
+        """Create a Permute layer to handle parallel batch.
 
-
-class BatchSquash(object):
-    """Facilitates flattening and unflattening batch dims of a tensor. Copied
-    from `tf_agents`.
-
-    Exposes a pair of matched flatten and unflatten methods. After flattening
-    only 1 batch dimension will be left. This facilitates evaluating networks
-    that expect inputs to have only 1 batch dimension.
-    """
-
-    def __init__(self, batch_dims):
-        """Create two tied ops to flatten and unflatten the front dimensions.
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are not considered for permute.
 
         Args:
-            batch_dims (int): Number of batch dimensions the flatten/unflatten
-                ops should handle.
-
-        Raises:
-            ValueError: if batch dims is negative.
+            n (int): the number of replicas.
+        Returns:
+            a ``Permute`` layer to handle parallel batch.
         """
-        if batch_dims < 0:
-            raise ValueError('Batch dims must be non-negative.')
-        self._batch_dims = batch_dims
-        self._original_tensor_shape = None
-
-    def flatten(self, tensor):
-        """Flattens and caches the tensor's batch_dims."""
-        if self._batch_dims == 1:
-            return tensor
-        self._original_tensor_shape = tensor.shape
-        return torch.reshape(tensor,
-                             (-1, ) + tuple(tensor.shape[self._batch_dims:]))
-
-    def unflatten(self, tensor):
-        """Unflattens the tensor's batch_dims using the cached shape."""
-        if self._batch_dims == 1:
-            return tensor
-
-        if self._original_tensor_shape is None:
-            raise ValueError('Please call flatten before unflatten.')
-
-        return torch.reshape(
-            tensor, (tuple(self._original_tensor_shape[:self._batch_dims]) +
-                     tuple(tensor.shape[1:])))
+        return Permute(*self._dims)
 
 
 @alf.configurable
@@ -2112,13 +2088,6 @@ class Reshape(nn.Module):
         return Reshape((n, ) + self._shape)
 
 
-def _tuplify2d(x):
-    if isinstance(x, tuple):
-        assert len(x) == 2
-        return x
-    return (x, x)
-
-
 def _conv_transpose_2d(in_channels,
                        out_channels,
                        kernel_size,
@@ -2665,6 +2634,16 @@ class Sum(nn.Module):
         return input.sum(dim=self._dim)
 
     def make_parallel(self, n: int):
+        """Create a Sum layer to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are counted for ``dim``
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a ``Sum`` layer to handle parallel batch.
+        """
         return Sum(self._dim)
 
 
@@ -2956,7 +2935,7 @@ def make_parallel_net(module, n: int):
         pnet = make_parallel_net(net, n)
         # replicate input.
         # pinput will have shape [batch_size, n, ...], if input has shape [batch_size, ...]
-        pinput = make_parallel_input(input)
+        pinput = make_parallel_input(input, n)
         poutput = pnet(pinput)
 
     If you already have parallel input with shape [batch_size, n, ...], you can
@@ -2983,7 +2962,7 @@ class NaiveParallelLayer(nn.Module):
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
 
-        ``NaiveParallelLayer`` creats ``n`` independent networks with the same
+        ``NaiveParallelLayer`` creates ``n`` independent networks with the same
         structure as ``network`` and evaluate them separately in a loop during
         ``forward()``.
 

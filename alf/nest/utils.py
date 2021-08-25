@@ -78,6 +78,9 @@ class NestConcat(NestCombiner):
         It assumes that all the selected tensors have the same tensor spec.
         Can be used as a preprocessing combiner in ``EncodingNetwork``.
 
+        Note that batch dimension is not considered for concat. This means that
+        dim=0 means the first dimension after batch dimension.
+
         Args:
             nest_mask (nest|None): nest structured mask indicating which of the
                 tensors in the nest to be selected or not, indicated by a
@@ -90,7 +93,7 @@ class NestConcat(NestCombiner):
         super(NestConcat, self).__init__(name)
         self._nest_mask = nest_mask
         self._flat_mask = nest.flatten(nest_mask) if nest_mask else nest_mask
-        self._dim = dim
+        self._dim = dim if dim < 0 else dim + 1
 
     def _combine_flat(self, tensors):
         if self._flat_mask is not None:
@@ -106,8 +109,17 @@ class NestConcat(NestCombiner):
             return torch.cat(tensors, dim=self._dim)
 
     def make_parallel(self, n):
-        dim = self._dim if self._dim < 0 else self._dim + 1
-        return NestConcat(self._nest_mask, dim, "parallel_" + self._name)
+        """Create a NestConcat layer to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are not considered for concat.
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a ``Transpose`` layer to handle parallel batch.
+        """
+        return NestConcat(self._nest_mask, self._dim, "parallel_" + self._name)
 
 
 @alf.configurable

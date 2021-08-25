@@ -42,7 +42,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         self._conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
         self._fc_layer_params = (100, )
         self._input_preprocessors = [torch.tanh, None]
-        self._preprocessing_combiner = NestConcat(dim=1)
+        self._preprocessing_combiner = NestConcat(dim=0)
 
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
