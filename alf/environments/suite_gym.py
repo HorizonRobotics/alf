@@ -118,6 +118,14 @@ def wrap_env(gym_env,
         An AlfEnvironment instance.
     """
 
+    if gym_env.spec.id.startswith('procgen-'):
+        # Procgen environments has an env id with 'procgen-' prefixes. They use
+        # gym3 under the hood with a special rendering scheme. Apply the
+        # AlfGym3Wrapper to them before all other wrappers to transparently work
+        # that around.
+        from alf.environments.alf_gym3_wrapper import AlfGym3Wrapper
+        gym_env = AlfGym3Wrapper(gym_env)
+
     for wrapper in gym_env_wrappers:
         gym_env = wrapper(gym_env)
 

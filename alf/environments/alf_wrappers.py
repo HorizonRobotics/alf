@@ -113,6 +113,21 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
     def wrapped_env(self):
         return self._env
 
+    def replace_wrapped_env(self, new_env):
+        """Replace the underlying environment with a new one
+
+        WARNING: Normally you shouldn't use this function unless you have a
+        strong reason to control the underlying environment instance.
+
+        Args:
+        
+            new_env (AlfEnvironment|compatible environment type): a new
+                environment instance that will be used to replace the existing
+                one as ``self._env``.
+
+        """
+        self._env = new_env
+
 
 # Used in ALF
 @alf.configurable
