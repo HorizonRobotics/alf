@@ -109,7 +109,7 @@ class NestConcat(NestCombiner):
             return torch.cat(tensors, dim=self._dim)
 
     def make_parallel(self, n):
-        """Create a NestConcat layer to handle parallel batch.
+        """Create a ``NestConcat`` layer to handle parallel batch.
 
         It is assumed that a parallel batch has shape [B, n, ...] and both the
         batch dimension and replica dimension are not considered for concat.
@@ -117,7 +117,7 @@ class NestConcat(NestCombiner):
         Args:
             n (int): the number of replicas.
         Returns:
-            a ``Transpose`` layer to handle parallel batch.
+            a ``NestConcat`` layer to handle parallel batch.
         """
         return NestConcat(self._nest_mask, self._dim, "parallel_" + self._name)
 

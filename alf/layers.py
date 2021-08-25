@@ -30,7 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
-from alf.utils.spec_utils import BatchSquash
+from alf.utils.tensor_utils import BatchSquash
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -2637,7 +2637,7 @@ class Sum(nn.Module):
         """Create a Sum layer to handle parallel batch.
 
         It is assumed that a parallel batch has shape [B, n, ...] and both the
-        batch dimension and replica dimension are counted for ``dim``
+        batch dimension and replica dimension are not counted for ``dim``
 
         Args:
             n (int): the number of replicas.
