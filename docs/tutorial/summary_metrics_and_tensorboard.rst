@@ -194,6 +194,8 @@ deep RL, for example, :func:`~.alf.utils.summary_utils.summarize_action`,
 :func:`~.alf.utils.summary_utils.summarize_gradients`, etc. See
 :mod:`.alf.utils.summary_utils` for a complete list.
 
+.. _chap4_metrics:
+
 Important metrics for RL
 ------------------------
 
