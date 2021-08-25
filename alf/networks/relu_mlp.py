@@ -99,6 +99,10 @@ class ReluMLP(Network):
         last_fc = SimpleFC(input_size, self._output_size, activation=identity)
         self._fc_layers.append(last_fc)
 
+    def __getitem__(self, i):
+        """Get i-th (zero-based) FC layer"""
+        return self._fc_layers[i]
+
     def forward(self,
                 inputs,
                 state=(),

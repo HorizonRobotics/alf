@@ -179,8 +179,8 @@ class ICMAlgorithm(Algorithm):
         prev_feature = state
 
         forward_pred, _ = self._forward_net(
-            inputs=[prev_feature.detach(),
-                    self._encode_action(prev_action)])
+            [prev_feature.detach(),
+             self._encode_action(prev_action)])
         # nn.MSELoss doesn't support reducing along a dim
         forward_loss = 0.5 * torch.mean(
             math_ops.square(forward_pred - feature.detach()), dim=-1)

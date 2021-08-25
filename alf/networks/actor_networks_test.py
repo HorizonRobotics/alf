@@ -32,12 +32,13 @@ class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
                 actor_fc_layer_params=actor_fc_layer_params)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
-            state = []
+            state = [()]
             for size in lstm_hidden_size:
                 state.append((torch.randn((
                     1,
                     size,
                 ), dtype=torch.float32), ) * 2)
+            state.append(())
         else:
             network_ctor = actor_network.ActorNetwork
             state = ()

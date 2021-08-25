@@ -115,8 +115,12 @@ def Sequential(*modules,
 
 
 class _Sequential(Network):
-    def __init__(self, elements, element_dict, output, input_tensor_spec,
-                 name):
+    def __init__(self,
+                 elements=(),
+                 element_dict={},
+                 output='',
+                 input_tensor_spec=None,
+                 name='Sequential'):
         state_spec = []
         modules = []
         inputs = []

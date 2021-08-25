@@ -558,17 +558,19 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
             _check_parallel_param(n_net)
 
         # 2) test parameter number for the case of using non-shared preprocessor
-        p_net_wo_preprocessor = alf.networks.network.NaiveParallelNetwork(
-            network_wo_preprocessor, replicas)
-        p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
+        p_net_wo_preprocessor = network_wo_preprocessor.make_parallel(
+            replicas, True)
+        p_net_w_preprocessor = network_w_preprocessor.make_parallel(
+            replicas, True)
 
-        # the number of parameters of parallel network with input_preprocessor
-        # should be equal to that of the naive parallel network without
-        # input processor + the number of parameters of input processor * replicas
-        self.assertEqual(
-            len(p_net_w_preprocessor.state_dict()),
-            len(p_net_wo_preprocessor.state_dict()) +
-            replicas * len(input_preprocessors.state_dict()))
+        if lstm:
+            # the number of parameters of parallel network with input_preprocessor
+            # should be equal to that of the naive parallel network without
+            # input processor + the number of parameters of input processor * replicas
+            self.assertEqual(
+                len(p_net_w_preprocessor.state_dict()),
+                len(p_net_wo_preprocessor.state_dict()) +
+                replicas * len(input_preprocessors.state_dict()))
 
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
@@ -582,16 +584,16 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
                 input_spec, embedding_dim=10).singleton())
 
         p_net_w_shared_preprocessor = network_w_shared_preprocessor.make_parallel(
-            replicas)
+            replicas, True)
 
-        # the number of parameters of parallel network with a shared
-        # input_preprocessor should be equal to that of the naive parallel
-        # network without input processor + the number of parameters of input processor
-
-        self.assertEqual(
-            len(p_net_w_shared_preprocessor.state_dict()),
-            len(p_net_wo_preprocessor.state_dict()) + len(
-                input_preprocessors.state_dict()))
+        if lstm:
+            # the number of parameters of parallel network with a shared
+            # input_preprocessor should be equal to that of the naive parallel
+            # network without input processor + the number of parameters of input processor
+            self.assertEqual(
+                len(p_net_w_shared_preprocessor.state_dict()),
+                len(p_net_wo_preprocessor.state_dict()) + len(
+                    input_preprocessors.state_dict()))
 
         self.assertEqual(
             len(p_net_w_shared_preprocessor.state_dict()),

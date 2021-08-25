@@ -40,6 +40,7 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
                     1,
                     size,
                 ), dtype=torch.float32), ) * 2)
+            state.append(())
         else:
             network_ctor = ValueNetwork
             state = ()
@@ -66,6 +67,7 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
                     conv_layer_params=conv_layer_params), None
             ],
             preprocessing_combiner=NestConcat())
+        logging.info("----%s" % str(value_net.state_spec))
 
         value, state = value_net([image, vector], state)
 
