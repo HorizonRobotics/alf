@@ -41,7 +41,7 @@ class LSTMCell(Network):
     where :math:`\sigma` is the sigmoid function, and :math:`*` is the Hadamard product.
     """
 
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, name='LSTMCell'):
         """
         Args:
             input_size (int): The number of expected features in the input `x`
@@ -51,7 +51,8 @@ class LSTMCell(Network):
                       alf.TensorSpec((hidden_size, )))
         super().__init__(
             input_tensor_spec=alf.TensorSpec((input_size, )),
-            state_spec=state_spec)
+            state_spec=state_spec,
+            name=name)
         self._cell = nn.LSTMCell(
             input_size=input_size, hidden_size=hidden_size)
 
@@ -75,7 +76,7 @@ class GRUCell(Network):
     where :math:`\sigma` is the sigmoid function, and :math:`*` is the Hadamard product.
     """
 
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, name='GRUCell'):
         """
         Args:
             input_size (int): The number of expected features in the input `x`
@@ -83,7 +84,8 @@ class GRUCell(Network):
         """
         super().__init__(
             input_tensor_spec=alf.TensorSpec((input_size, )),
-            state_spec=alf.TensorSpec((hidden_size, )))
+            state_spec=alf.TensorSpec((hidden_size, )),
+            name=name)
         self._cell = nn.GRUCell(input_size, hidden_size)
 
     def forward(self, input, state):
@@ -97,7 +99,11 @@ class Residue(Network):
     It performs ``y = activation(x + block(x))``.
     """
 
-    def __init__(self, block, input_tensor_spec=None, activation=torch.relu_):
+    def __init__(self,
+                 block,
+                 input_tensor_spec=None,
+                 activation=torch.relu_,
+                 name='Residue'):
         """
         Args:
             block (Callable):
@@ -108,7 +114,8 @@ class Residue(Network):
         block = wrap_as_network(block, input_tensor_spec)
         super().__init__(
             input_tensor_spec=block.input_tensor_spec,
-            state_spec=block.state_spec)
+            state_spec=block.state_spec,
+            name='Residue')
         self._block = block
         self._activation = activation
 
@@ -171,7 +178,8 @@ class TemporalPool(Network):
                  stack_size,
                  pooling_size=1,
                  dtype=torch.float32,
-                 mode='skip'):
+                 mode='skip',
+                 name='TemporalPool'):
         """
         Args:
             input_size (int|tuple[int]): shape of the input
@@ -218,7 +226,7 @@ class TemporalPool(Network):
             state_spec = (alf.TensorSpec(shape, input_tensor_spec.dtype),
                           pool_state_spec, alf.TensorSpec((),
                                                           dtype=torch.int64))
-        super().__init__(input_tensor_spec, state_spec=state_spec)
+        super().__init__(input_tensor_spec, state_spec=state_spec, name=name)
 
     def forward(self, x, state):
         if self._pooling_size == 1:

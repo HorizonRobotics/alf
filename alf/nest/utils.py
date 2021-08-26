@@ -78,6 +78,9 @@ class NestConcat(NestCombiner):
         It assumes that all the selected tensors have the same tensor spec.
         Can be used as a preprocessing combiner in ``EncodingNetwork``.
 
+        Note that batch dimension is not considered for concat. This means that
+        dim=0 means the first dimension after batch dimension.
+
         Args:
             nest_mask (nest|None): nest structured mask indicating which of the
                 tensors in the nest to be selected or not, indicated by a
@@ -88,8 +91,9 @@ class NestConcat(NestCombiner):
             name (str):
         """
         super(NestConcat, self).__init__(name)
+        self._nest_mask = nest_mask
         self._flat_mask = nest.flatten(nest_mask) if nest_mask else nest_mask
-        self._dim = dim
+        self._dim = dim if dim < 0 else dim + 1
 
     def _combine_flat(self, tensors):
         if self._flat_mask is not None:
@@ -103,6 +107,19 @@ class NestConcat(NestCombiner):
             return torch.cat(selected_tensors, dim=self._dim)
         else:
             return torch.cat(tensors, dim=self._dim)
+
+    def make_parallel(self, n):
+        """Create a ``NestConcat`` layer to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are not considered for concat.
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a ``NestConcat`` layer to handle parallel batch.
+        """
+        return NestConcat(self._nest_mask, self._dim, "parallel_" + self._name)
 
 
 @alf.configurable
@@ -129,6 +146,10 @@ class NestSum(NestCombiner):
             ret *= 1 / float(len(tensors))
         return self._activation(ret)
 
+    def make_parallel(self, n):
+        return NestSum(self._average, self._activation,
+                       "parallel_" + self._name)
+
 
 @alf.configurable
 class NestMultiply(NestCombiner):
@@ -150,6 +171,9 @@ class NestMultiply(NestCombiner):
     def _combine_flat(self, tensors):
         ret = alf.utils.math_ops.mul_n(tensors)
         return self._activation(ret)
+
+    def make_parallel(self, n):
+        return NestMultiply(self._activation, "parallel_" + self._name)
 
 
 def stack_nests(nests, dim=0):

@@ -86,7 +86,7 @@ class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
                 TestInputpreprocessor.input_spec
             ],
             input_preprocessors=[input_preprocessor, torch.relu],
-            preprocessing_combiner=NestConcat(dim=1))
+            preprocessing_combiner=NestConcat(dim=0))
 
         # 2) test copied network has its own parameters, including
         # parameters from input preprocessors

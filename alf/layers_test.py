@@ -23,6 +23,31 @@ from alf.utils import math_ops
 
 
 class LayersTest(parameterized.TestCase, alf.test.TestCase):
+    def _test_make_parallel(
+            self,
+            net,
+            spec,
+            tolerance=1e-6,
+            get_pnet_parameters=lambda pnet: pnet.parameters()):
+        batch_size = 10
+        for n in (1, 2, 5):
+            pnet = net.make_parallel(n)
+            nnet = alf.layers.NaiveParallelLayer(net, n)
+            for i in range(n):
+                for pp, np in zip(
+                        get_pnet_parameters(pnet),
+                        nnet._networks[i].parameters()):
+                    self.assertEqual(pp.shape, (n, ) + np.shape)
+                    np.data.copy_(pp[i])
+            pspec = alf.layers.make_parallel_spec(spec, n)
+            input = alf.nest.map_structure(lambda s: s.sample([batch_size]),
+                                           pspec)
+            presult = pnet(input)
+            nresult = nnet(input)
+            alf.nest.map_structure(
+                lambda p, n: self.assertTensorClose(p, n, tolerance), presult,
+                nresult)
+
     @parameterized.parameters(
         dict(n=1, act=torch.relu, use_bias=False, parallel_x=False),
         dict(n=1, act=math_ops.identity, use_bias=False, parallel_x=False),
@@ -881,6 +906,9 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         x4 = net[3]((x2, x3, x))
         self.assertEqual(x4, y)
 
+        input_spec = alf.BoundedTensorSpec((4, ))
+        self._test_make_parallel(net, input_spec)
+
     def test_sequential2(self):
         # test wrong field name
         net = alf.layers.Sequential(
@@ -914,6 +942,9 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(y['b'], b)
         self.assertEqual(y['c'], c)
 
+        input_spec = alf.BoundedTensorSpec((4, ))
+        self._test_make_parallel(net, input_spec)
+
     def test_sequential4(self):
         # test output
         net = alf.layers.Sequential(
@@ -931,6 +962,82 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         b = net[2](a)
         c = a + b
         self.assertEqual(c, y)
+
+        input_spec = alf.BoundedTensorSpec((4, ))
+        self._test_make_parallel(net, input_spec)
+
+    def test_branch(self):
+        net = alf.layers.Branch(alf.layers.FC(4, 6), alf.layers.FC(4, 8))
+        input_spec = alf.BoundedTensorSpec((4, ))
+        self._test_make_parallel(net, input_spec)
+
+    def test_fc(self):
+        input_spec = alf.BoundedTensorSpec((5, ))
+        layer = alf.layers.FC(5, 7)
+        self._test_make_parallel(layer, input_spec)
+
+    def test_conv2d(self):
+        input_spec = alf.BoundedTensorSpec((3, 10, 10))
+        layer = alf.layers.Conv2D(3, 5, 3)
+        self._test_make_parallel(
+            layer,
+            input_spec,
+            get_pnet_parameters=lambda pnet: (pnet.weight, pnet.bias))
+
+    def test_conv_transpose_2d(self):
+        input_spec = alf.BoundedTensorSpec((3, 10, 10))
+        layer = alf.layers.ConvTranspose2D(3, 5, 3)
+        self._test_make_parallel(
+            layer,
+            input_spec,
+            get_pnet_parameters=lambda pnet: (pnet.weight, pnet.bias))
+
+    def test_cast(self):
+        input_spec = alf.BoundedTensorSpec((8, ), dtype=torch.uint8)
+        layer = alf.layers.Cast()
+        self._test_make_parallel(layer, input_spec)
+
+    def test_transpose(self):
+        input_spec = alf.BoundedTensorSpec((8, 4, 10))
+        layer = alf.layers.Transpose()
+        self._test_make_parallel(layer, input_spec)
+        layer = alf.layers.Transpose(0, 2)
+        self._test_make_parallel(layer, input_spec)
+        layer = alf.layers.Transpose(-2, -1)
+        self._test_make_parallel(layer, input_spec)
+
+    def test_permute(self):
+        input_spec = alf.BoundedTensorSpec((8, 4, 10))
+        layer = alf.layers.Permute(2, 1, 0)
+        self._test_make_parallel(layer, input_spec)
+
+    def test_onehot(self):
+        input_spec = alf.BoundedTensorSpec((10, ),
+                                           dtype=torch.int64,
+                                           minimum=0,
+                                           maximum=11)
+        layer = alf.layers.OneHot(12)
+        self._test_make_parallel(layer, input_spec)
+
+    def test_reshape(self):
+        input_spec = alf.BoundedTensorSpec((8, 4, 10))
+        layer = alf.layers.Reshape((32, 10))
+        self._test_make_parallel(layer, input_spec)
+
+    def test_get_fields(self):
+        input_spec = dict(
+            a=alf.BoundedTensorSpec((8, 4, 10)),
+            b=alf.BoundedTensorSpec((4, )),
+            c=alf.BoundedTensorSpec((3, )))
+        layer = alf.layers.GetFields(('a', 'c'))
+        self._test_make_parallel(layer, input_spec)
+
+    def test_sum(self):
+        input_spec = alf.BoundedTensorSpec((8, 4, 10))
+        layer = alf.layers.Sum(dim=1)
+        self._test_make_parallel(layer, input_spec)
+        layer = alf.layers.Sum(dim=-1)
+        self._test_make_parallel(layer, input_spec)
 
 
 if __name__ == "__main__":

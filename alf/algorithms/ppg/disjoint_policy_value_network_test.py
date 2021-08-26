@@ -61,7 +61,7 @@ class TestDisjointPolicyValueNetwork(parameterized.TestCase,
                 EncodingNetwork,
                 conv_layer_params=self._conv_layer_params,
                 fc_layer_params=self._fc_layer_params,
-                preprocessing_combiner=NestConcat(dim=1)),
+                preprocessing_combiner=NestConcat(dim=0)),
             is_sharing_encoder=is_sharing_encoder)
 
         # Verify that the output specs are correct

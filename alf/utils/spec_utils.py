@@ -17,11 +17,11 @@ import numpy as np
 import torch
 from typing import Iterable
 
-from alf.layers import BatchSquash
 import alf.nest as nest
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from . import dist_utils
+from alf.utils.tensor_utils import BatchSquash
 
 
 def spec_means_and_magnitudes(spec: BoundedTensorSpec):
