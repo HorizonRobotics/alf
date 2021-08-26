@@ -62,10 +62,7 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
             optimizer=optimizer)
         mlp_spec = TensorSpec((input_dim, ))
         self.mlp = ReluMLP(
-            mlp_spec,
-            output_size=output_dim,
-            activation=identity,
-            hidden_layers=(2, ))
+            mlp_spec, output_size=output_dim, hidden_layers=(2, ))
         # make Jac better behaved
         w1 = torch.tensor([[1., 2.], [2., 1.]])
         w2 = torch.tensor([[2., 1.], [1, 1], [1., 2.]])

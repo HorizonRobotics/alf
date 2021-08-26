@@ -76,8 +76,7 @@ class CriticAlgorithm(Algorithm):
             if use_relu_mlp:
                 net = ReluMLP(
                     input_tensor_spec=input_tensor_spec,
-                    hidden_layers=hidden_layers,
-                    activation=activation)
+                    hidden_layers=hidden_layers)
             else:
                 net = EncodingNetwork(
                     input_tensor_spec=input_tensor_spec,

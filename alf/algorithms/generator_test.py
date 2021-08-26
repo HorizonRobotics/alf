@@ -97,11 +97,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         if functional_gradient:
             noise_dim = 2
             input_dim = TensorSpec((noise_dim, ))
-            net = ReluMLP(
-                input_dim,
-                hidden_layers=(),
-                activation=identity,
-                output_size=output_dim)
+            net = ReluMLP(input_dim, hidden_layers=(), output_size=output_dim)
         else:
             noise_dim = 3
             net = Net(output_dim)
