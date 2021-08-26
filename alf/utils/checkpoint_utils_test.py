@@ -558,10 +558,8 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
             _check_parallel_param(n_net)
 
         # 2) test parameter number for the case of using non-shared preprocessor
-        p_net_wo_preprocessor = network_wo_preprocessor.make_parallel(
-            replicas, True)
-        p_net_w_preprocessor = network_w_preprocessor.make_parallel(
-            replicas, True)
+        p_net_wo_preprocessor = network_wo_preprocessor.make_parallel(replicas)
+        p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
 
         if lstm:
             # the number of parameters of parallel network with input_preprocessor
@@ -584,7 +582,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
                 input_spec, embedding_dim=10).singleton())
 
         p_net_w_shared_preprocessor = network_w_shared_preprocessor.make_parallel(
-            replicas, True)
+            replicas)
 
         if lstm:
             # the number of parameters of parallel network with a shared
