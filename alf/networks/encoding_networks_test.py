@@ -183,7 +183,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(output.size()[1], 1)
 
     @parameterized.parameters((True, ), (False, ))
-    def test_encoding_network_nested_input(self, lstm=False):
+    def test_encoding_network_nested_input(self, lstm):
         input_spec = dict(
             a=TensorSpec((3, 80, 80)),
             b=[

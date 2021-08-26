@@ -400,9 +400,6 @@ class EncodingNetwork(_Sequential):
         """Make a parallelized version of ``module``.
 
         A parallel network has ``n`` copies of network with the same structure but
-        different independently initialized parameters.
-
-        A parallel network has ``n`` copies of network with the same structure but
         different independently initialized parameters. The parallel network can
         process a batch of the data with shape [batch_size, n, ...] using ``n``
         networks with same structure.
@@ -460,8 +457,8 @@ def ParallelEncodingNetwork(input_tensor_spec,
                             last_kernel_initializer=None,
                             last_use_fc_bn=False,
                             name="ParallelEncodingNetwork"):
-    """Parallel feed-forward network with FC layers which allows the last layer
-    to have different settings from the other layers.
+    """Parallel encoding network which effectively runs ``n`` individual encoding
+    network simultaneuosl.
 
     Args:
         input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
