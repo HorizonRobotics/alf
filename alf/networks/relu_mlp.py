@@ -65,14 +65,13 @@ class ReluMLP(Network):
                  input_tensor_spec,
                  output_size=None,
                  hidden_layers=(64, 64),
-                 activation=torch.relu_,
                  name="ReluMLP"):
         """Create a ReluMLP.
 
         Args:
             input_tensor_spec (TensorSpec):
+            output_size (int): output dimension.
             hidden_layers (tuple): size of hidden layers.
-            activation (nn.functional): activation used for each layer.
             name (str):
         """
         assert len(input_tensor_spec.shape) == 1, \
@@ -92,7 +91,7 @@ class ReluMLP(Network):
         self._fc_layers = nn.ModuleList()
         input_size = self._input_size
         for size in hidden_layers:
-            fc = SimpleFC(input_size, size, activation=activation)
+            fc = SimpleFC(input_size, size, activation=torch.relu_)
             self._fc_layers.append(fc)
             input_size = size
 
