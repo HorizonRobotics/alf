@@ -574,7 +574,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
 
         # the number of parameters of a parallel network with a shared
         # input_preprocessor should be equal to that of the parallel network
-        # with non-shared input processor - replicas * the number of parameters
+        # with non-shared input processor - (replicas-1) * the number of parameters
         # of input processors
         self.assertEqual(
             len(p_net_w_shared_preprocessor.state_dict()),
