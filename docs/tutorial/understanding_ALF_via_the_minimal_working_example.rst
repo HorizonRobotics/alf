@@ -43,7 +43,7 @@ And the customization is very easy to implement. The user only needs to write a
 *configuration* file in Python to specify which components need what changes. As a
 typical Python file, this conf file also supports writing new code for any ALF
 component (e.g., defining new algorithms :doc:`./customize_algorithms`,
-models, environments :doc:`./customize_environments_and_wrappers`, etc).
+models, environments :doc:`./environments_and_wrappers`, etc).
 
 .. _chap2_big_picture:
 

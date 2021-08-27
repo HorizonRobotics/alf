@@ -29,6 +29,8 @@ There are several key interfaces (**bold** in the figure above) that play
 important roles in assembling a training pipeline of an ALF algorithm, and their
 signatures are summarized below.
 
+.. _algo_interfaces_table:
+
 ======================================================  =============================================  =======================================  =============================== ===============
 Interface                                               Input and output tensor shapes                 Input                                    Output                          Which pipeline?
 ======================================================  =============================================  =======================================  =============================== ===============

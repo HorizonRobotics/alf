@@ -98,7 +98,7 @@ TimeStep
 --------
 
 :code:`TimeStep` is a data structure that stores the information from the result
-of each environment step. It contains six fields:
+of each environment step. It contains eight fields:
 
 * :code:`step_type`: type of this step. It has three possible values:
 
@@ -170,7 +170,7 @@ at the last step. However, if an episode ends because the
 :code:`max_episode_steps` is reached, it wants to use the original
 :code:`discount` instead of 0 so that the value estimation at the last step can
 be properly used to estimate the value of previous steps. In order to achieve
-this, we create an environemnt in the following way to avoid
+this, we create an environment in the following way to avoid
 :code:`gym.wrappers.time_limit.TimeLimit`:
 
 .. code-block:: python
