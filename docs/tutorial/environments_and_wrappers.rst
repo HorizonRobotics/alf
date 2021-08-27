@@ -50,6 +50,11 @@ convert a dense reward task to a sparse reward one, assuming that we binarize
         """
 
         def __init__(self, env):
+            """
+            Args:
+                env (gym.Env): the gym env to be wrapped. It can be later accessed
+                    by ``self.env``.
+            """
             gym.Wrapper.__init__(self, env)
 
         def step(self, action):
@@ -67,6 +72,13 @@ The second example is to always clip the observation vector to a pre-defined ran
         """
 
         def __init__(self, env, min_v=-200., max_v=200.):
+            """
+            Args:
+                env (gym.Env): the gym env to be wrapped. It can be later accessed
+                    by ``self.env``.
+                min_v (float): the min value to clip an observation to
+                max_v (float): the max value to clip an observation to
+            """
             super().__init__(env)
             self._min_v = min_v
             self._max_v = max_v
@@ -90,6 +102,11 @@ The last example is to avoid early termination of an episode by always returning
         """Make a gym environment non-episodic by always setting ``done=False``."""
 
         def __init__(self, env):
+            """
+            Args:
+                env (gym.Env): the gym env to be wrapped. It can be later accessed
+                    by ``self.env``.
+            """
             super().__init__(env)
 
         def step(self, action):
@@ -150,6 +167,15 @@ result of each environment step. It contains eight fields:
   is used to discount the future reward. There are some subtle details on how
   this value is set which we will describe later.
 
+  .. note::
+
+    The ``discount`` here should be differentiated from the discount (usually
+    termed ``gamma``) used for computing discounted return. There, ``gamma`` is a
+    choice of a specific algorithm (e.g., 0.99). Here the environment discount
+    contained in a :class:`~.TimeStep` is used merely to denote an episode end,
+    combined with the ``step_type`` field
+    (see :ref:`step type and discount <step_type_discount>`).
+
 * ``observation``: observation from the environment. It can be a nest of
   Tensors. It is obtained after the environment execute a previous action.
 
@@ -166,7 +192,12 @@ result of each environment step. It contains eight fields:
   environments' ``info`` field.
 
 In a word, :class:`~.AlfGymWrapper` processes and packs time step data from the
-lower-level Gym wrappers, in preparation for ALF algorithms' use.
+lower-level Gym wrappers, in preparation for ALF algorithms' use. For most RL
+algorithms, :class:`~.TimeStep` is the type of the argument ``inputs`` for
+:meth:`~.AlgorithmInterface.predict_step`, :meth:`~.AlgorithmInterface.rollout_step`,
+:meth:`~.AlgorithmInterface.train_step` (see :ref:`algorithm interfaces <algo_interfaces_table>`).
+
+.. _step_type_discount:
 
 ``step_type`` and ``discount``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
