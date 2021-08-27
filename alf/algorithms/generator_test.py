@@ -138,7 +138,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
                 inputs=None, loss_func=_neglogprob, batch_size=batch_size)
             generator.update_with_gradient(alg_step.info)
 
-        for i in range(2000):
+        for i in range(2100):
             _train()
             if functional_gradient:
                 weight = net._fc_layers[0].weight

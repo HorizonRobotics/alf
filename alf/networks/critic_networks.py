@@ -224,8 +224,9 @@ class ParallelCriticNetwork(Network):
         """
         super().__init__(
             input_tensor_spec=critic_network.input_tensor_spec, name=name)
-        self._obs_encoder = critic_network._obs_encoder.make_parallel(n)
-        self._action_encoder = critic_network._action_encoder.make_parallel(n)
+        self._obs_encoder = critic_network._obs_encoder.make_parallel(n, True)
+        self._action_encoder = critic_network._action_encoder.make_parallel(
+            n, True)
         self._joint_encoder = critic_network._joint_encoder.make_parallel(n)
         self._output_spec = TensorSpec((n, ) +
                                        critic_network.output_spec.shape)

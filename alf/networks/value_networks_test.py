@@ -40,6 +40,7 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
                     1,
                     size,
                 ), dtype=torch.float32), ) * 2)
+            state.append(())
         else:
             network_ctor = ValueNetwork
             state = ()

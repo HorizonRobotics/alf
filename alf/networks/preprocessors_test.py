@@ -112,8 +112,8 @@ class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
             outer_dims=(batch_size, ))
 
         if lstm:
-            state = [(torch.zeros((batch_size, 1)), ) * 2]
-            p_state = [(torch.zeros((batch_size, replicas, 1)), ) * 2]
+            state = [(), (torch.zeros((batch_size, 1)), ) * 2, ()]
+            p_state = [(), (torch.zeros((batch_size, replicas, 1)), ) * 2, ()]
         else:
             state = ()
             p_state = ()

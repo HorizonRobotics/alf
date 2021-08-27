@@ -636,26 +636,40 @@ class ParallelFC(nn.Module):
         else:
             self._bias = None
 
-        for i in range(n):
-            if kernel_initializer is None:
-                variance_scaling_init(
-                    self._weight.data[i],
-                    gain=kernel_init_gain,
-                    nonlinearity=self._activation)
-            else:
-                kernel_initializer(self._weight.data[i])
-
-        if use_bias:
-            nn.init.constant_(self._bias.data, bias_init_value)
+        self._n = n
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
+        self._use_bn = use_bn
+        self._use_ln = use_ln
         if use_bn:
             self._bn = nn.BatchNorm1d(n * output_size)
         else:
             self._bn = None
-
         if use_ln:
             self._ln = nn.GroupNorm(n, n * output_size)
         else:
             self._ln = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for i in range(self._n):
+            if self._kernel_initializer is None:
+                variance_scaling_init(
+                    self._weight.data[i],
+                    gain=self._kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                self._kernel_initializer(self._weight.data[i])
+
+        if self._use_bias:
+            nn.init.constant_(self._bias.data, self._bias_init_value)
+
+        if self._use_ln:
+            self._ln.reset_parameters()
+        if self._use_bn:
+            self._bn.reset_parameters()
 
     def forward(self, inputs):
         """Forward

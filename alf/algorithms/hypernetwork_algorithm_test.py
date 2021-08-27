@@ -139,12 +139,12 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         def _test(i, sampled_predictive=False):
             print("-" * 68)
-            weight = algorithm._generator._net._fc_layers[0].weight
+            weight = algorithm._generator._net[0].weight
             learned_cov = weight @ weight.t()
             print("norm of generator weight: {}".format(weight.norm()))
             print("norm of learned_cov: {}".format(learned_cov.norm()))
 
-            learned_mean = algorithm._generator._net._fc_layers[0].bias
+            learned_mean = algorithm._generator._net[0].bias
             predicts = inputs @ learned_mean  # [batch]
             pred_err = torch.norm(predicts - targets.squeeze())
             print("train_iter {}: pred err {}".format(i, pred_err))
@@ -183,10 +183,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             if i % 1000 == 0:
                 _test(i)
 
-        learned_mean = algorithm._generator._net._fc_layers[0].bias
+        learned_mean = algorithm._generator._net[0].bias
         mean_err = torch.norm(learned_mean - true_mean.squeeze())
         mean_err = mean_err / torch.norm(true_mean)
-        weight = algorithm._generator._net._fc_layers[0].weight
+        weight = algorithm._generator._net[0].weight
         learned_cov = weight @ weight.t()
         cov_err = torch.norm(learned_cov - true_cov)
         cov_err = cov_err / torch.norm(true_cov)

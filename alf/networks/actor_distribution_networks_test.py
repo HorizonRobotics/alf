@@ -52,12 +52,13 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
                 actor_fc_layer_params=(64, 32))
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
-            state = []
+            state = [()]
             for size in lstm_hidden_size:
                 state.append((torch.randn((
                     1,
                     size,
                 ), dtype=torch.float32), ) * 2)
+            state.append(())
         else:
             network_ctor = ActorDistributionNetwork
             state = ()
@@ -157,7 +158,8 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         if lstm_hidden_size is None:
             self.assertEqual(state, ())
         else:
-            self.assertEqual(len(state), len(lstm_hidden_size))
+            self.assertEqual(
+                len(alf.nest.flatten(state)), 2 * len(lstm_hidden_size))
 
     def test_make_parallel(self):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)

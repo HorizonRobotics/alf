@@ -36,7 +36,7 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
                 QRNNNetwork, lstm_hidden_size=lstm_hidden_size)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
-            state = []
+            state = [()]
             for size in lstm_hidden_size:
                 state.append((torch.randn((
                     1,

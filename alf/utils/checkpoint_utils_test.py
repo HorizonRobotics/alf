@@ -557,24 +557,12 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
                 network, replicas)
             _check_parallel_param(n_net)
 
-        # 2) test parameter number for the case of using non-shared preprocessor
-        p_net_wo_preprocessor = alf.networks.network.NaiveParallelNetwork(
-            network_wo_preprocessor, replicas)
+        # 2) test parameter number for networks with preprocessor
         p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
-
-        # the number of parameters of parallel network with input_preprocessor
-        # should be equal to that of the naive parallel network without
-        # input processor + the number of parameters of input processor * replicas
-        self.assertEqual(
-            len(p_net_w_preprocessor.state_dict()),
-            len(p_net_wo_preprocessor.state_dict()) +
-            replicas * len(input_preprocessors.state_dict()))
 
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
             len(list(p_net_w_preprocessor.parameters())))
-
-        # 3) test parameter number when using shared preprocessor
 
         network_w_shared_preprocessor = network_ctor(
             input_tensor_spec=input_spec,
@@ -584,14 +572,14 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
         p_net_w_shared_preprocessor = network_w_shared_preprocessor.make_parallel(
             replicas)
 
-        # the number of parameters of parallel network with a shared
-        # input_preprocessor should be equal to that of the naive parallel
-        # network without input processor + the number of parameters of input processor
-
+        # the number of parameters of a parallel network with a shared
+        # input_preprocessor should be equal to that of the parallel network
+        # with non-shared input processor - (replicas-1) * the number of parameters
+        # of input processors
         self.assertEqual(
             len(p_net_w_shared_preprocessor.state_dict()),
-            len(p_net_wo_preprocessor.state_dict()) + len(
-                input_preprocessors.state_dict()))
+            len(p_net_w_preprocessor.state_dict()) -
+            (replicas - 1) * len(input_preprocessors.state_dict()))
 
         self.assertEqual(
             len(p_net_w_shared_preprocessor.state_dict()),
