@@ -419,26 +419,24 @@ class EncodingNetwork(_Sequential):
         """
         pnet = super().make_parallel(n)
         if allow_non_parallel_input:
-            return alf.nn.Sequential(
-                _ReplicateInputForParallel(self.input_tensor_spec, n),
-                pnet,
-                name=pnet.name)
+            return _ReplicateInputForParallel(self.input_tensor_spec, n, pnet)
         else:
             return pnet
 
 
 class _ReplicateInputForParallel(Network):
-    def __init__(self, input_tensor_spec, n):
-        super().__init__(input_tensor_spec)
+    def __init__(self, input_tensor_spec, n, pnet):
+        super().__init__(
+            input_tensor_spec, state_spec=pnet.state_spec, name=pnet.name)
         self._input_tensor_spec = input_tensor_spec
         self._n = n
+        self._pnet = pnet
 
     def forward(self, inputs, state=()):
         outer_rank = get_outer_rank(inputs, self._input_tensor_spec)
-        if outer_rank == 2:
-            return inputs, state
-        else:
-            return alf.layers.make_parallel_input(inputs, self._n), state
+        if outer_rank == 1:
+            inputs = alf.layers.make_parallel_input(inputs, self._n)
+        return self._pnet(inputs, state)
 
 
 @alf.configurable
@@ -535,6 +533,7 @@ class LSTMEncodingNetwork(_Sequential):
 
     def __init__(self,
                  input_tensor_spec,
+                 output_tensor_spec=None,
                  input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
@@ -553,6 +552,15 @@ class LSTMEncodingNetwork(_Sequential):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
+            output_tensor_spec (None|TensorSpec): spec for the output. If None,
+                the output tensor spec will be assumed as
+                ``TensorSpec((output_size, ))``, where ``output_size`` is
+                inferred from network output. Otherwise, the output tensor
+                spec will be ``output_tensor_spec`` and the network output
+                will be reshaped according to ``output_tensor_spec``.
+                Note that ``output_tensor_spec`` is only used for reshaping
+                the network outputs for interpretation purpose and is not used
+                for specifying any network layers.
             input_preprocessors (nested InputPreprocessor): a nest of
                 ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
@@ -656,4 +664,37 @@ class LSTMEncodingNetwork(_Sequential):
                 last_activation=last_activation,
                 last_kernel_initializer=last_kernel_initializer)
             nets.append(net)
+            input_size = net.output_spec.numel
+
+        if output_tensor_spec is not None:
+            assert output_tensor_spec.numel == input_size, (
+                "network output "
+                "size {a} is inconsisent with specified out_tensor_spec "
+                "of size {b}".format(a=input_size, b=output_tensor_spec.numel))
+            nets.append(alf.layers.Reshape(output_tensor_spec.shape))
+
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+    def make_parallel(self, n: int, allow_non_parallel_input=False):
+        """Make a parallelized version of ``module``.
+
+        A parallel network has ``n`` copies of network with the same structure but
+        different independently initialized parameters. The parallel network can
+        process a batch of the data with shape [batch_size, n, ...] using ``n``
+        networks with same structure.
+
+        Args:
+            n (int): the number of copies
+            allow_non_parallel_input (bool): if True, the returned network will
+                also accept non-parallel input with shape [batch_size, ...]. In
+                this case, the network will check whether the input is parallel
+                input. If not, the input will be automatically replicated ``n``
+                times at the beginning.
+        Returns:
+            the parallelized network.
+        """
+        pnet = super().make_parallel(n)
+        if allow_non_parallel_input:
+            return _ReplicateInputForParallel(self.input_tensor_spec, n, pnet)
+        else:
+            return pnet

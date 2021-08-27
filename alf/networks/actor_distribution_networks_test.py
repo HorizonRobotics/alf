@@ -113,7 +113,6 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
             conv_layer_params=self._conv_layer_params,
             continuous_projection_net_ctor=functools.partial(
                 NormalProjectionNetwork, scale_distribution=True))
-        logging.info("---- %s" % str(actor_dist_net.state_spec))
         act_dist, _ = actor_dist_net(self._image, state)
         actions = act_dist.sample((100, ))
 
