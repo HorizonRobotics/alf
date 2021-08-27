@@ -26,6 +26,7 @@ from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
+from alf.networks.network_test import test_net_copy
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops
@@ -213,6 +214,8 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             input_tensor_spec=input_spec,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=NestConcat())
+        test_net_copy(network)
+
         output, _ = network(imgs, state=[(), (torch.zeros((1, 100)), ) * 2])
 
         if lstm:
@@ -266,6 +269,8 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                  (replicas, *output_spec.shape))
 
         pnet = network.make_parallel(replicas, True)
+        test_net_copy(pnet)
+
         self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
         _benchmark(pnet, "ParallelEncodingNetwork")
         self.assertEqual(pnet.name, "parallel_" + network.name)

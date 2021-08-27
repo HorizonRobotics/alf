@@ -21,8 +21,9 @@ import torch
 
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.networks import CriticNetwork, CriticRNNNetwork, ParallelCriticNetwork
+from alf.networks import CriticNetwork, CriticRNNNetwork
 from alf.networks.network import NaiveParallelNetwork
+from alf.networks.network_test import test_net_copy
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.nest.utils import NestConcat
 
@@ -49,7 +50,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         return network_ctor, state
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_critic(self, lstm_hidden_size):
+    def test_critic(self, lstm_hidden_size=(200, 100)):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
@@ -70,6 +71,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
             observation_conv_layer_params=observation_conv_layer_params,
             action_fc_layer_params=action_fc_layer_params,
             joint_fc_layer_params=joint_fc_layer_params)
+        test_net_copy(critic_net)
 
         value, state = critic_net._test_forward()
         self.assertEqual(value.shape, (1, ))
@@ -84,6 +86,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         # test make_parallel
         pnet = critic_net.make_parallel(6)
+        test_net_copy(pnet)
 
         if lstm_hidden_size is not None:
             # shape of state should be [B, n, ...]
@@ -91,11 +94,6 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         state = alf.nest.map_structure(
             lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
-
-        if lstm_hidden_size is None:
-            self.assertTrue(isinstance(pnet, ParallelCriticNetwork))
-        else:
-            self.assertTrue(isinstance(pnet, NaiveParallelNetwork))
 
         value, state = pnet(network_input, state)
         self.assertEqual(pnet.output_spec, TensorSpec((6, )))
@@ -135,7 +133,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         pnet = critic_net.make_parallel(replicas)
         _train(pnet, "ParallelCriticNetwork")
 
-        pnet = alf.networks.network.NaiveParallelNetwork(critic_net, replicas)
+        pnet = NaiveParallelNetwork(critic_net, replicas)
         _train(pnet, "NaiveParallelNetwork")
 
     @parameterized.parameters((CriticNetwork, ), (CriticRNNNetwork, ))

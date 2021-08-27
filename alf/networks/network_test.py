@@ -26,6 +26,18 @@ from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks.network import NaiveParallelNetwork
 
 
+def test_net_copy(net):
+    """Test whether net.copy() is correctly implemented"""
+    new_net = net.copy()
+    params = dict(net.named_parameters())
+    new_params = dict(new_net.named_parameters())
+    for n, p in new_params.items():
+        assert p.shape == params[n].shape
+        assert id(p) != id(
+            params[n]), ("The parameter of the copied parameter "
+                         "is the same parameter of the original network")
+
+
 class BaseNetwork(alf.networks.Network):
     def __init__(self, v1, **kwargs):
         super().__init__(v1, **kwargs)
