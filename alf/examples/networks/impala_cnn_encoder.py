@@ -20,7 +20,8 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
 
-def _create_residual_cnn_block(input_tensor_spec):
+def _create_residual_cnn_block(
+        input_tensor_spec, kernel_initializer=torch.nn.init.xavier_uniform_):
     """Create a CNN block with 2 Conv2D plus a residual connection
 
     It essentially performs
@@ -38,6 +39,8 @@ def _create_residual_cnn_block(input_tensor_spec):
         input_tensor_spec (nested TesnorSpec): The spec of the input tensor,
             denotated as ``x`` in the above formula. The shape of the input
             tensor omitting batch size should be (C, W, H).
+        kernel_initializer (Callable[[Tensor], None]): initializer for
+            the Conv2D and FC layers in the module.
     
     Returns:
 
@@ -59,14 +62,17 @@ def _create_residual_cnn_block(input_tensor_spec):
             input_channels,
             kernel_size=3,
             padding=1,
-            activation=identity),
+            activation=identity,
+            kernel_initializer=kernel_initializer),
         final=(('input', 'residual'), lambda x: x[0] + x[1]),
         input_tensor_spec=input_tensor_spec)
 
 
-def _create_downsampling_cnn_stack(input_tensor_spec,
-                                   output_channels: int,
-                                   num_residual_blocks: int = 2):
+def _create_downsampling_cnn_stack(
+        input_tensor_spec,
+        output_channels: int,
+        num_residual_blocks: int = 2,
+        kernel_initializer=torch.nn.init.xavier_uniform_):
     """Create a stack of Convolutional layers that also does downsampling
     
     It essentially performs one ``Conv2D`` that changes the number of channels,
@@ -85,6 +91,8 @@ def _create_downsampling_cnn_stack(input_tensor_spec,
             number of channels in the resulting module.
         num_residual_blocks (int): specifies how many residual blocks to apply
             after the ``Conv2D`` and the downsampling max pooling filter.
+        kernel_initializer (Callable[[Tensor], None]): initializer for
+            the Conv2D and FC layers in the module.
 
     Returns:
         
@@ -104,11 +112,13 @@ def _create_downsampling_cnn_stack(input_tensor_spec,
             output_channels,
             kernel_size=3,
             padding=1,
-            activation=identity),
+            activation=identity,
+            kernel_initializer=kernel_initializer),
         # Downsample via a max pooling filter
         torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         *[
-            _create_residual_cnn_block(output_tensor_spec)
+            _create_residual_cnn_block(
+                output_tensor_spec, kernel_initializer=kernel_initializer)
             for _ in range(num_residual_blocks)
         ],
         input_tensor_spec=input_tensor_spec)
@@ -117,7 +127,8 @@ def _create_downsampling_cnn_stack(input_tensor_spec,
 def create(input_tensor_spec,
            cnn_channel_list: List[int] = (16, 32, 32),
            num_blocks_per_stack: int = 2,
-           output_size: int = 256):
+           output_size: int = 256,
+           kernel_initializer=torch.nn.init.xavier_uniform_):
     """Create the Impala CNN Encoder
 
     Here the so called Impala CNN Encoder is essentially a series of CNN
@@ -144,6 +155,8 @@ def create(input_tensor_spec,
             all the CNN downsampling stacks.
         output_size (int): the size of the output vector for each of the input
             image in the mini batch.
+        kernel_initializer (Callable[[Tensor], None]): initializer for
+            the Conv2D and FC layers in the network.
     
     Returns:
         
@@ -154,8 +167,11 @@ def create(input_tensor_spec,
     last_output_spec = input_tensor_spec
     for output_channels in cnn_channel_list:
         stacks.append(
-            _create_downsampling_cnn_stack(last_output_spec, output_channels,
-                                           num_blocks_per_stack))
+            _create_downsampling_cnn_stack(
+                last_output_spec,
+                output_channels,
+                num_blocks_per_stack,
+                kernel_initializer=kernel_initializer))
         last_output_spec = stacks[-1].output_spec
     stack_output_spec = stacks[-1].output_spec
     return alf.nn.Sequential(
@@ -166,4 +182,5 @@ def create(input_tensor_spec,
         alf.layers.FC(
             input_size=stack_output_spec.numel,
             output_size=output_size,
-            activation=torch.relu_))
+            activation=torch.relu_,
+            kernel_initializer=kernel_initializer))
