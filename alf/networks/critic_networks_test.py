@@ -50,7 +50,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         return network_ctor, state
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_critic(self, lstm_hidden_size=(200, 100)):
+    def test_critic(self, lstm_hidden_size):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
