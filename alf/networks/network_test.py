@@ -32,7 +32,10 @@ def test_net_copy(net):
     params = dict(net.named_parameters())
     new_params = dict(new_net.named_parameters())
     for n, p in new_params.items():
-        assert p.shape == params[n].shape
+        assert p.shape == params[n].shape, (
+            "The shape of the parameter of the "
+            "copied network is different from that of the original network: "
+            " %s vs %s" % (p.shape, params[n].shape))
         assert id(p) != id(
             params[n]), ("The parameter of the copied parameter "
                          "is the same parameter of the original network")

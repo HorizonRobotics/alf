@@ -219,42 +219,6 @@ class _Sequential(Network):
             x = get_nested_field(var_dict, self._output)
         return x, new_state
 
-    def copy(self, name=None):
-        """Create a copy of this network or return the current instance.
-
-        If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the modules and re-initialize
-        their parameters.
-
-        Args:
-            name (str): name of the new network. Only used if not self._singleton_instance.
-        Returns:
-            Sequential:
-        """
-        if self._singleton_instance:
-            return self
-
-        if name is None:
-            name = self.name
-
-        new_networks = []
-        new_named_networks = {}
-        for n, input, output in zip(self._networks, self._inputs,
-                                    self._outputs):
-            if isinstance(n, Network):
-                net = n.copy()
-            elif isinstance(n, nn.Module):
-                net = copy.deepcopy(n)
-                alf.layers.reset_parameters(net)
-            else:
-                net = n
-            if not output:
-                new_networks.append((input, net))
-            else:
-                new_named_networks[output] = (input, net)
-        return _Sequential(new_networks, new_named_networks, self._output,
-                           self._input_tensor_spec, name)
-
     def __getitem__(self, i):
         return self._networks[i]
 
@@ -343,27 +307,6 @@ class Parallel(Network):
             state = map_structure_up_to(self._networks, lambda os: os[1],
                                         output_and_state)
         return output, state
-
-    def copy(self, name=None):
-        """Create a copy of this network or return the current instance.
-
-        If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the modules and re-initialize
-        their parameters.
-
-        Args:
-            name (str): name of the new network. Only used if not self._singleton_instance.
-        Returns:
-            Parallel:
-        """
-        if self._singleton_instance:
-            return self
-
-        if name is None:
-            name = self.name
-
-        networks = map_structure(lambda net: net.copy(), self._networks)
-        return Parallel(networks, self._input_tensor_spec, name)
 
     @property
     def networks(self):
@@ -468,28 +411,6 @@ class _Branch(Network):
             state = pack_sequence_as(self._networks,
                                      [s for o, s in output_state])
         return output, state
-
-    def copy(self, name=None):
-        """Create a copy of this network or return the current instance.
-
-        If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the modules and re-initialize
-        their parameters.
-
-        Args:
-            name (str): name of the new network. Only used if not self._singleton_instance.
-        Returns:
-            Branch:
-        """
-        if self._singleton_instance:
-            return self
-
-        if name is None:
-            name = self.name
-
-        networks = map_structure(lambda net: net.copy(), self._networks)
-        return Branch(
-            networks, input_tensor_spec=self._input_tensor_spec, name=name)
 
     @property
     def networks(self):

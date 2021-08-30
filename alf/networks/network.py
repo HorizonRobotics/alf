@@ -164,7 +164,19 @@ class Network(nn.Module):
         if self._singleton_instance:
             return self
         else:
-            return type(self)(**dict(self._saved_kwargs, **kwargs))
+
+            def _copy(a):
+                if isinstance(a, Network):
+                    return a.copy()
+                elif isinstance(a, torch.nn.Module):
+                    b = copy.deepcopy(a)
+                    alf.layers.reset_parameters(b)
+                    return b
+                else:
+                    return a
+
+            copied_kwargs = alf.nest.map_structure(_copy, self._saved_kwargs)
+            return type(self)(**dict(copied_kwargs, **kwargs))
 
     @property
     def saved_args(self):
@@ -322,15 +334,6 @@ class NetworkWrapper(Network):
 
     def forward(self, x, state=()):
         return self._module(x), state
-
-    def copy(self):
-        if self._singleton_instance:
-            return self
-
-        module = copy.deepcopy(self._module)
-        alf.layers.reset_parameters(module)
-
-        return NetworkWrapper(module, self._input_tensor_spec)
 
     def make_parallel(self, n: int):
         return NetworkWrapper(

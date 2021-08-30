@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union, Callable
+from typing import Union, Callable, Iterable
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -2671,6 +2671,35 @@ class Sum(nn.Module):
             a ``Sum`` layer to handle parallel batch.
         """
         return Sum(self._dim)
+
+
+class AddN(nn.Module):
+    """Add several tensors"""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input: Iterable[torch.Tensor]):
+        """
+        Args:
+            input (Iterable[Tensor]): a sequence of tensors to be summed
+        Returns:
+            Tensor: the sum of all the tensors
+        """
+        return sum(input)
+
+    def make_parallel(self, n: int):
+        """Create an AddN layer to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...] and both the
+        batch dimension and replica dimension are not counted for ``dim``
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a ``Sum`` layer to handle parallel batch.
+        """
+        return AddN()
 
 
 def reset_parameters(module):
