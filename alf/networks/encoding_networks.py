@@ -419,15 +419,16 @@ class EncodingNetwork(_Sequential):
         """
         pnet = super().make_parallel(n)
         if allow_non_parallel_input:
-            return _ReplicateInputForParallel(self.input_tensor_spec, n, pnet)
+            return _ReplicateInputForParallel(
+                self.input_tensor_spec, n, pnet, name=pnet.name)
         else:
             return pnet
 
 
 class _ReplicateInputForParallel(Network):
-    def __init__(self, input_tensor_spec, n, pnet):
+    def __init__(self, input_tensor_spec, n, pnet, name):
         super().__init__(
-            input_tensor_spec, state_spec=pnet.state_spec, name=pnet.name)
+            input_tensor_spec, state_spec=pnet.state_spec, name=name)
         self._input_tensor_spec = input_tensor_spec
         self._n = n
         self._pnet = pnet
@@ -437,6 +438,11 @@ class _ReplicateInputForParallel(Network):
         if outer_rank == 1:
             inputs = alf.layers.make_parallel_input(inputs, self._n)
         return self._pnet(inputs, state)
+
+    def copy(self, name=None):
+        pnet = self._pnet.copy(name)
+        return _ReplicateInputForParallel(self.input_tensor_spec, self._n,
+                                          pnet, pnet.name)
 
 
 @alf.configurable
@@ -695,6 +701,7 @@ class LSTMEncodingNetwork(_Sequential):
         """
         pnet = super().make_parallel(n)
         if allow_non_parallel_input:
-            return _ReplicateInputForParallel(self.input_tensor_spec, n, pnet)
+            return _ReplicateInputForParallel(
+                self.input_tensor_spec, n, pnet, name=pnet.name)
         else:
             return pnet

@@ -1352,8 +1352,13 @@ class ParallelConv2D(nn.Module):
             use_bias = not use_bn
         self._activation = activation
         self._n = n
+        self._use_bias = use_bias
         self._in_channels = in_channels
         self._out_channels = out_channels
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+
         self._kernel_size = common.tuplify2d(kernel_size)
         self._conv2d = nn.Conv2d(
             in_channels * n,
@@ -1364,34 +1369,30 @@ class ParallelConv2D(nn.Module):
             padding=padding,
             bias=use_bias)
 
-        for i in range(n):
-            if kernel_initializer is None:
-                variance_scaling_init(
-                    self._conv2d.weight.data[i * out_channels:(i + 1) *
-                                             out_channels],
-                    gain=kernel_init_gain,
-                    nonlinearity=self._activation)
-            else:
-                kernel_initializer(
-                    self._conv2d.weight.data[i * out_channels:(i + 1) *
-                                             out_channels])
-
-        # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
-        self._weight = self._conv2d.weight.view(
-            self._n, self._out_channels, self._in_channels,
-            self._kernel_size[0], self._kernel_size[1])
-
-        if use_bias:
-            nn.init.constant_(self._conv2d.bias.data, bias_init_value)
-            # [n*C']->[n, C']
-            self._bias = self._conv2d.bias.view(self._n, self._out_channels)
-        else:
-            self._bias = None
-
         if use_bn:
             self._bn = nn.BatchNorm2d(n * out_channels)
         else:
             self._bn = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        for i in range(self._n):
+            if self._kernel_initializer is None:
+                variance_scaling_init(
+                    self._conv2d.weight.data[i * self._out_channels:(i + 1) *
+                                             self._out_channels],
+                    gain=self._kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                self._kernel_initializer(
+                    self._conv2d.weight.data[i * self._out_channels:(i + 1) *
+                                             self._out_channels])
+
+        if self._use_bias:
+            nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
+
+        if self._bn:
+            self._bn.reset_parameters()
 
     def forward(self, img):
         """Forward
@@ -1454,11 +1455,22 @@ class ParallelConv2D(nn.Module):
 
     @property
     def weight(self):
-        return self._weight
+        # The reason that weight cannot pre-computed at __init__ is deepcopy will
+        # fail. deepcopy is needed to implement the copy for the container networks.
+        # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
+        return self._conv2d.weight.view(
+            self._n, self._out_channels, self._in_channels,
+            self._kernel_size[0], self._kernel_size[1])
 
     @property
     def bias(self):
-        return self._bias
+        if self._use_bias:
+            # The reason that weight cannot pre-computed at __init__ is deepcopy will
+            # fail. deepcopy is needed to implement the copy for the container networks.
+            # [n*C']->[n, C']
+            return self._conv2d.bias.view(self._n, self._out_channels)
+        else:
+            return None
 
 
 @alf.configurable
