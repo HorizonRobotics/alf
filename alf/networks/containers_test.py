@@ -16,6 +16,7 @@ import torch
 import alf
 
 from alf.utils.spec_utils import is_same_spec
+from alf.networks.network_test import test_net_copy
 
 
 def _randn_from_spec(specs, batch_size):
@@ -29,6 +30,7 @@ class ContainersTest(alf.test.TestCase):
         spec = net.input_tensor_spec
         for n in (1, 2, 5):
             pnet = net.make_parallel(n)
+            test_net_copy(pnet)
             nnet = alf.nn.NaiveParallelNetwork(net, n)
             for i in range(n):
                 for pp, np in zip(pnet.parameters(),
@@ -45,15 +47,6 @@ class ContainersTest(alf.test.TestCase):
             alf.nest.map_structure(
                 lambda p, n: self.assertTensorClose(p, n, tolerance), presult,
                 nresult)
-
-    def _verify_parameter_copy(self, src, copy):
-        """net.copy() only copy the structure, not the values of parameters."""
-        for s, c in zip(src.parameters(), copy.parameters()):
-            if (s == 0).all():
-                self.assertTrue((c == 0).all())
-            else:
-                self.assertFalse((c == 0).all())
-                self.assertFalse((c == s).all())
 
     def test_sequential1(self):
         net = alf.nn.Sequential(
@@ -79,8 +72,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(s1, new_state[1])
         self.assertEqual(s2, new_state[2])
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
 
     def test_sequential_complex1(self):
         net = alf.nn.Sequential(
@@ -114,6 +106,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(s1, new_state[1])
         self.assertEqual(s2, new_state[2])
         self.assertEqual(s3, new_state[3])
+        test_net_copy(net)
 
     def test_sequential2(self):
         net = alf.nn.Sequential(
@@ -132,9 +125,8 @@ class ContainersTest(alf.test.TestCase):
         x3 = net[2](x2)
         self.assertEqual(x3, y)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
         self._test_make_parallel(net)
+        test_net_copy(net)
 
     def test_sequential_complex2(self):
         net = alf.nn.Sequential(
@@ -157,8 +149,7 @@ class ContainersTest(alf.test.TestCase):
         x4 = net[3]((x2, x3))
         self.assertEqual(x4, y)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
         self._test_make_parallel(net)
 
     def test_sequential_complex3(self):
@@ -166,7 +157,7 @@ class ContainersTest(alf.test.TestCase):
             alf.layers.FC(4, 6),
             a=alf.layers.FC(6, 8),
             b=alf.layers.FC(8, 8),
-            c=(('a', 'b'), lambda x: x[0] + x[1]))
+            c=(('a', 'b'), alf.layers.AddN()))
 
         self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
         self.assertEqual(net.state_spec, ())
@@ -182,8 +173,7 @@ class ContainersTest(alf.test.TestCase):
         x4 = x2 + x3
         self.assertEqual(x4, y)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
         self._test_make_parallel(net)
 
     def test_parallel1(self):
@@ -212,8 +202,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(new_state[1], state1)
         self.assertEqual(new_state[2], state2)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
 
     def test_parallel2(self):
         net = alf.nn.Parallel((alf.layers.FC(4, 6), alf.layers.FC(6, 8),
@@ -236,8 +225,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(y[1], y1)
         self.assertEqual(y[2], y2)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
         self._test_make_parallel(net)
 
     def test_branch1(self):
@@ -264,8 +252,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(new_state[1], state1)
         self.assertEqual(new_state[2], state2)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
 
     def test_branch2(self):
         net = alf.nn.Branch((alf.layers.FC(4, 6), alf.layers.FC(4, 8),
@@ -286,8 +273,7 @@ class ContainersTest(alf.test.TestCase):
         self.assertEqual(y[1], y1)
         self.assertEqual(y[2], y2)
 
-        net_copy = net.copy()
-        self._verify_parameter_copy(net, net_copy)
+        test_net_copy(net)
         self._test_make_parallel(net)
 
 

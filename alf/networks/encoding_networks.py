@@ -439,11 +439,6 @@ class _ReplicateInputForParallel(Network):
             inputs = alf.layers.make_parallel_input(inputs, self._n)
         return self._pnet(inputs, state)
 
-    def copy(self, name=None):
-        pnet = self._pnet.copy(name)
-        return _ReplicateInputForParallel(self.input_tensor_spec, self._n,
-                                          pnet, pnet.name)
-
 
 @alf.configurable
 def ParallelEncodingNetwork(input_tensor_spec,
