@@ -1,0 +1,71 @@
+digraph {
+    graph [fontsize=8 fontname="Verdana" compound=true, ranksep=0.3 ];
+    node [ fontname="Handlee", fontsize=8, shape=component];
+    edge [ fontname="Handlee", fontsize=6 ];
+    rankdir = TB;
+
+    ob [ label=<Observation>, shape=box3d ];
+
+    subgraph cluster_downsample_1 {
+        label = "Downsampling Stack 1";
+        style = "filled";
+        fillcolor = white;
+        node [style=filled,fillcolor=white];
+
+        first_conv_1 [ label=<Conv2D 3x3, stride 1>, style=filled, fillcolor=burlywood1 ];
+        maxpool_1 [ label=<MaxPool 3x3, stride 2>, style=filled, fillcolor=lightgreen ];
+
+        subgraph cluster_residual_1_1 {
+            label = "Residual Block";
+            style = "filled";
+            fillcolor = azure1;
+            node [style=filled,fillcolor=white];
+
+            input_1_1 [ label=<>, shape=point ];
+
+            first_relu_1_1 [ label=<ReLU>, fillcolor=cyan4 ];
+            first_res_conv_1_1 [ label=<Conv2D 3x3, stride 1, keep channels>, style=filled, fillcolor=burlywood1 ];
+            second_relu_1_1 [ label=<ReLU>, fillcolor=cyan4 ];
+            second_res_conv_1_1 [ label=<Conv2D 3x3, stride 1, keep channels>, style=filled, fillcolor=burlywood1 ];
+
+            output_1_1 [ label=<+>, shape=circle ];
+
+            input_1_1 -> first_relu_1_1 -> first_res_conv_1_1 -> second_relu_1_1 -> second_res_conv_1_1 -> output_1_1;
+            input_1_1 -> output_1_1;
+        }
+
+        subgraph cluster_residual_1_2 {
+            label = "Residual Block";
+            style = "filled";
+            fillcolor = azure1;
+            node [style=filled,fillcolor=white];
+
+            input_1_2 [ label=<>, shape=point ];
+
+            first_relu_1_2 [ label=<ReLU>, fillcolor=cyan4 ];
+            first_res_conv_1_2 [ label=<Conv2D 3x3, stride 1, keep channels>, style=filled, fillcolor=burlywood1 ];
+            second_relu_1_2 [ label=<ReLU>, fillcolor=cyan4 ];
+            second_res_conv_1_2 [ label=<Conv2D 3x3, stride 1, keep channels>, style=filled, fillcolor=burlywood1 ];
+
+            output_1_2 [ label=<+>, shape=circle ];
+
+            input_1_2 -> first_relu_1_2 -> first_res_conv_1_2 -> second_relu_1_2 -> second_res_conv_1_2 -> output_1_2;
+            input_1_2 -> output_1_2;
+        }
+
+        first_conv_1 -> maxpool_1;
+        maxpool_1 -> input_1_1;
+        output_1_1 -> input_1_2;
+    }
+
+    downsample_2 [ label=<Downsampling Stack 2 ...>, fillcolor=white, shape=record ];
+    downsample_3 [ label=<Downsampling Stack 3 ...>, fillcolor=white, shape=record ];
+    pre_relu [ label=<ReLU>, fillcolor=cyan4, style=filled ];
+    FC [ label=<FC>, fillcolor=lightblue, style=filled ];
+    after_relu [ label=<ReLU>, fillcolor=cyan4, style=filled ];
+    output [ label=<Encoded>, shape=box3d ];
+
+    // Network
+    ob -> first_conv_1;
+    output_1_2 -> downsample_2 -> downsample_3 -> pre_relu -> FC -> after_relu -> output;
+}
