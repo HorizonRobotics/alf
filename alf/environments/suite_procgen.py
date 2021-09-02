@@ -41,19 +41,12 @@ def load(env_name: str, batch_size: int = 1):
 
     Args:
     
-        env_name (str): the name of the procgen environment, such as
-            'goldrun', 'bossfight', etc.
+        env_name: the name of the procgen environment, such as 'goldrun',
+            'bossfight', etc.
 
-        batch_size (int): the number of parallel environments to run
-            simultaneously.
+        batch_size: the number of parallel environments to run simultaneously.
 
     """
-    env = ProcgenGym3Env(
-        num=batch_size, env_name=env_name, render_mode='rgb_array')
-    # This extracts the 'rgb' field in the observation dictionary
-    # every time when step() is called, so that the observation is
-    # an image that our algorithm can consume.
-    env = gym3.ExtractDictObWrapper(env, 'rgb')
     return AlfGym3Wrapper(
         _load_procgen(env_name, batch_size, render=False),
         image_channel_first=True,

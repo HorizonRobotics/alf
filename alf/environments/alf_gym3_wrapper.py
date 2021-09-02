@@ -98,9 +98,9 @@ def _extract_env_info_spec(sampe_env_info, ignored_info_keys: List[str] = []):
             whose array specification will be extracted and converted to nested
             TesnorSpec.
 
-        ignored_info_keys (List[str]): a list of keys that should be ignored
-            from the environment info. Only the top level keys in the nested
-            structure obey this.
+        ignored_info_keys: a list of keys that should be ignored from the
+            environment info. Only the top level keys in the nested structure
+            obey this.
 
     Returns:
 
@@ -161,28 +161,28 @@ class AlfGym3Wrapper(AlfEnvironment):
 
         Args:
 
-            gym3_env (gym3.Env): the input environment which should be an
-                instance of a class that derives from gym3.Env
-            image_channel_first (bool): when set to True, the image-based (of 3
+            gym3_env: the input environment which should be an instance of a
+                class that derives from gym3.Env
+            image_channel_first: when set to True, the image-based (of 3
                 channels) observation will be permuted so that the channel
                 dimension comes first.
-            ignored_info_keys (List[str]): a list of keys in the env info that
-                should not be included in the env info of the TimeStep. This is
-                useful when some huge but not useful information are stored in
-                the env info of the underlying Gym3 environment, and ignoring
-                them is crucial to achieve better performance.
-            support_force_reset (bool): Gym3 environments do not support force
-                reset in general. However, some of the environments such as
-                procgen allows sending action -1 to reset the environments. Set
-                this to True to enable such behavior.
-            render_activator (Optional[Callable[[], gym3.Env]]): when set to
-                None, it indicates that this environment does not support
-                rendering. Otherwise it will be a function that re-creates a
-                Gym3 environment with render enabled. See render() for details.
-            frame_extractor (Optional[Callable[[gym3.Env], Any]]): when set to
-                None, it indicates that this environment does not support
-                recording. Otherwise it will be a function that extracts the
-                rendered frame for recording from the environment.
+            ignored_info_keys: a list of keys in the env info that should not be
+                included in the env info of the TimeStep. This is useful when
+                some huge but not useful information are stored in the env info
+                of the underlying Gym3 environment, and ignoring them is crucial
+                to achieve better performance.
+            support_force_reset: Gym3 environments do not support force reset in
+                general. However, some of the environments such as procgen
+                allows sending action -1 to reset the environments. Set this to
+                True to enable such behavior.
+            render_activator: when set to None, it indicates that this
+                environment does not support rendering. Otherwise it will be a
+                function that re-creates a Gym3 environment with render enabled.
+                See render() for details.
+            frame_extractor: when set to None, it indicates that this
+                environment does not support recording. Otherwise it will be a
+                function that extracts the rendered frame for recording from the
+                environment.
 
         """
         assert isinstance(gym3_env, gym3.Env), \
@@ -199,7 +199,7 @@ class AlfGym3Wrapper(AlfEnvironment):
         # +--------------------------+
 
         # When initially constructed, render is not enabled until the first call
-        # to render() is invoked. USe self._render_enabled to make sure render
+        # to render() is invoked. Use self._render_enabled to make sure render
         # is not enabled for more than once.
         self._render_enabled = False
         self._render_activator = render_activator
@@ -250,7 +250,7 @@ class AlfGym3Wrapper(AlfEnvironment):
 
     @property
     def batched(self):
-        return self._gym3_env.num > 1
+        return True
 
     @property
     def batch_size(self):
@@ -390,6 +390,14 @@ class AlfGym3Wrapper(AlfEnvironment):
 
     def render(self, mode: str):
         """Enables rendering by re-activating the environment
+
+        Args:
+
+            mode: A string indicate the rendering mode. This is to make it
+                compatible with Gym environments' rendering interface. For
+                AlfGym3Wrapper, it returns the RGB array image if mode is
+                specified as `rgb_array`, and None for other modes.
+
         """
         if not self._render_enabled:
             assert self._render_activator is not None, \
