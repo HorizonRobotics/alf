@@ -81,6 +81,7 @@ Please comment all the public functions with the following style:
 **NOTE** that in recent versions of Python, `type hints <https://docs.python.org/3/library/typing.html>`_ are supported to tag the types of the arguments to a functions and the type of the return value. When possible, it is **recommended** to add the type hints to the input arguments. When type hints are present, it is no longer required to have typing labels in the docstring. For example, the above code would become:
 
 .. code-block:: python
+
     from typing import Tuple
 
     def func(a: <type of a>, b: <type of b>) -> Tuple[<type 1>, <type 2>]:
