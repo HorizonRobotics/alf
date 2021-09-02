@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
+from typing import List, Callable
 
 import torch
+from torch import Tensor
+from torch.nn.init import xavier_uniform_
+
 import alf
 from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
 
 def _create_residual_cnn_block(
-        input_tensor_spec, kernel_initializer=torch.nn.init.xavier_uniform_):
+        input_tensor_spec,
+        kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create a CNN block with 2 Conv2D plus a residual connection
 
     It essentially performs
@@ -39,12 +43,13 @@ def _create_residual_cnn_block(
         input_tensor_spec (nested TesnorSpec): The spec of the input tensor,
             denotated as ``x`` in the above formula. The shape of the input
             tensor omitting batch size should be (C, W, H).
-        kernel_initializer (Callable[[Tensor], None]): initializer for
-            the Conv2D and FC layers in the module.
+        kernel_initializer: initializer for the Conv2D and FC layers in the
+            module.
     
     Returns:
 
         A module that perofrms the described operations.
+
     """
 
     input_channels = input_tensor_spec.shape[0]
@@ -72,7 +77,7 @@ def _create_downsampling_cnn_stack(
         input_tensor_spec,
         output_channels: int,
         num_residual_blocks: int = 2,
-        kernel_initializer=torch.nn.init.xavier_uniform_):
+        kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create a stack of Convolutional layers that also does downsampling
     
     It essentially performs one ``Conv2D`` that changes the number of channels,
@@ -86,13 +91,13 @@ def _create_downsampling_cnn_stack(
             denotated as ``x`` in the above formula. The shape of the input
             tensor omitting batch size should be (C, W, H), where C is the input
             number of channels.
-        output_channels (int): specifies the number of output channels of the
+        output_channels: specifies the number of output channels of the
             first ``Conv2D``, which is the only layer that changes the
             number of channels in the resulting module.
-        num_residual_blocks (int): specifies how many residual blocks to apply
+        num_residual_blocks: specifies how many residual blocks to apply
             after the ``Conv2D`` and the downsampling max pooling filter.
-        kernel_initializer (Callable[[Tensor], None]): initializer for
-            the Conv2D and FC layers in the module.
+        kernel_initializer: initializer for the Conv2D and FC layers in the
+            module.
 
     Returns:
         
@@ -128,7 +133,7 @@ def create(input_tensor_spec,
            cnn_channel_list: List[int] = (16, 32, 32),
            num_blocks_per_stack: int = 2,
            output_size: int = 256,
-           kernel_initializer=torch.nn.init.xavier_uniform_):
+           kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create the Impala CNN Encoder
 
     Here the so called Impala CNN Encoder is essentially a series of CNN
@@ -155,8 +160,8 @@ def create(input_tensor_spec,
             all the CNN downsampling stacks.
         output_size (int): the size of the output vector for each of the input
             image in the mini batch.
-        kernel_initializer (Callable[[Tensor], None]): initializer for
-            the Conv2D and FC layers in the network.
+        kernel_initializer: initializer for the Conv2D and FC layers in the
+            network.
     
     Returns:
         
