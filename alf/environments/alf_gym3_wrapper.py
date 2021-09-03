@@ -153,6 +153,9 @@ class AlfGym3Wrapper(AlfEnvironment):
     For example, ``suite_procgen.load()`` is used to construct procgen
     environments which themselves are Gym3-based environments.
 
+    NOTE: TimeLimit is currently not applicable to Gym3 environments
+    are it does not offer reset() interface.
+
     """
 
     def __init__(self,
@@ -220,7 +223,7 @@ class AlfGym3Wrapper(AlfEnvironment):
         # +--------------------------+
 
         # NOTE(breakds): when needed, expose this and allow an user to set it.
-        self._discount = torch.full((self.batch_size, ), 1.0)
+        self._discount = 1.0
         self._observation_spec = _gym3_space_to_tensor_spec(
             self._gym3_env.ob_space)
 
@@ -296,10 +299,16 @@ class AlfGym3Wrapper(AlfEnvironment):
             for info in self._gym3_env.get_info()
         ]
 
+        # In the case when we assume no timeouts, all episode end will
+        # be due to success or failure, where discount is set to 0.0.
+        discount = [
+            0.0 if s == ds.StepType.LAST else self._discount for s in step_type
+        ]
+
         return ds.TimeStep(
             step_type=torch.as_tensor(step_type),
             reward=torch.as_tensor(reward),
-            discount=self._discount,
+            discount=torch.as_tensor(discount),
             observation=observation,
             env_id=torch.arange(self.batch_size),
             prev_action=torch.as_tensor(action),
