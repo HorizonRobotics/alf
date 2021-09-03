@@ -86,6 +86,11 @@ def _gym3_space_to_tensor_spec(space):
                 f'AlfGym3Wrapper does not support space element type {eltype} yet'
             )
 
+    if isinstance(space, gym3.types.DictType):
+        return {
+            key: nest.map_structure(lambda x: __convert(x), space[key])
+            for key in space.keys()
+        }
     return nest.map_structure(lambda x: __convert(x), space)
 
 
@@ -280,7 +285,8 @@ class AlfGym3Wrapper(AlfEnvironment):
         3. Trim ignored keys from the env info
 
         """
-        observation = torch.as_tensor(observation)
+        observation = nest.map_structure(lambda x: torch.as_tensor(x),
+                                         observation)
         if self._image_channel_first:
             observation = nest.map_structure(
                 lambda x: x.permute(0, 3, 1, 2).contiguous(), observation)
@@ -369,6 +375,13 @@ class AlfGym3Wrapper(AlfEnvironment):
         for i in range(self.batch_size):
             if first[i]:
                 observation[i] = prev_observation[i]
+
+        # TODO(breakds): More properly deal with this by pre-process the
+        # experiences in the replay buffer so that if the next step has first =
+        # True, the previous step is considered an END frame. The current
+        # implementation will incur an unnecessarily non-zero TD error with the
+        # last 2 frames of an episode when TimeLimit is applied, but when the
+        # episodes are long enough, the impact will be small.
 
         # This does the trick of repeating end-of-episode frames and throwing
         # away first-of-episode frames.

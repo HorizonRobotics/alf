@@ -28,7 +28,6 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
         env = ProcgenGym3Env(num=4, env_name='bossfight')
-        env = gym3.ExtractDictObWrapper(env, 'rgb')
         self._env = AlfGym3Wrapper(env, support_force_reset=True)
 
     def test_batch_size(self):
@@ -42,12 +41,14 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
             'prev_level_seed': TensorSpec(shape=(), dtype=torch.int32)
         }, self._env.env_info_spec())
 
-        self.assertEqual(
-            BoundedTensorSpec(
-                shape=(3, 64, 64),
-                dtype=torch.uint8,
-                minimum=np.array(0),
-                maximum=np.array(255)), self._env.observation_spec())
+        self.assertEqual({
+            'rgb':
+                BoundedTensorSpec(
+                    shape=(3, 64, 64),
+                    dtype=torch.uint8,
+                    minimum=np.array(0),
+                    maximum=np.array(255))
+        }, self._env.observation_spec())
 
         self.assertEqual(
             BoundedTensorSpec(
@@ -62,10 +63,10 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
         time_step = self._env.step(action)
         self.assertEqual(
             torch.tensor([StepType.FIRST] * 4), time_step.step_type)
-        self.assertEqual((4, 3, 64, 64), time_step.observation.shape)
+        self.assertEqual((4, 3, 64, 64), time_step.observation['rgb'].shape)
         time_step = self._env.step(action)
         self.assertEqual(torch.tensor([StepType.MID] * 4), time_step.step_type)
-        self.assertEqual((4, 3, 64, 64), time_step.observation.shape)
+        self.assertEqual((4, 3, 64, 64), time_step.observation['rgb'].shape)
 
 
 if __name__ == "__main__":
