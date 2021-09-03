@@ -254,7 +254,7 @@ class AlfGym3Wrapper(AlfEnvironment):
 
         # A list representing whether the corresponding single environment
         # finishes the current episode
-        self._done = [False] * self.batch_size
+        self._prev_first = [False] * self.batch_size
 
     @property
     def batched(self):
@@ -329,7 +329,7 @@ class AlfGym3Wrapper(AlfEnvironment):
         """
         if self._support_force_reset:
             self._gym3_env.act(np.array([-1] * self.batch_size))
-            self._done = [False] * self.batch_size
+            self._prev_first = [False] * self.batch_size
         else:
             logging.warning('reset() ignored by AlfGym3Wrapper')
 
@@ -397,7 +397,7 @@ class AlfGym3Wrapper(AlfEnvironment):
         step_type = [
             ds.StepType.FIRST if d else
             (ds.StepType.LAST if f else ds.StepType.MID)
-            for d, f in zip(self._done, first)
+            for d, f in zip(self._prev_first, first)
         ]
 
         time_step = self._create_time_step(
@@ -406,7 +406,7 @@ class AlfGym3Wrapper(AlfEnvironment):
             step_type=step_type,
             action=action)
 
-        self._done = first
+        self._prev_first = first
 
         return time_step
 
