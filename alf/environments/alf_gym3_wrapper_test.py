@@ -68,6 +68,38 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
         self.assertEqual(torch.tensor([StepType.MID] * 4), time_step.step_type)
         self.assertEqual((4, 3, 64, 64), time_step.observation['rgb'].shape)
 
+        # Now send -1 to the 1st and 3rd environments to reset them (this is
+        # valid because the envrionment is procgen).
+        action = torch.as_tensor([-1, 0, -1, 0])
+        new_time_step = self._env.step(action)
+        self.assertEqual(
+            torch.tensor(
+                [StepType.LAST, StepType.MID, StepType.LAST, StepType.MID]),
+            new_time_step.step_type)
+
+        # Assert that the special handling (retain last frame for end of
+        # episode) is done properly for the 1st and 3rd observation.
+
+        def __observation_diff(a: torch.Tensor, b: torch.Tensor):
+            return torch.sum(torch.abs(a - b))
+
+        self.assertEqual(
+            0,
+            __observation_diff(time_step.observation['rgb'][0],
+                               new_time_step.observation['rgb'][0]))
+        self.assertNotEqual(
+            0,
+            __observation_diff(time_step.observation['rgb'][1],
+                               new_time_step.observation['rgb'][1]))
+        self.assertEqual(
+            0,
+            __observation_diff(time_step.observation['rgb'][2],
+                               new_time_step.observation['rgb'][2]))
+        self.assertNotEqual(
+            0,
+            __observation_diff(time_step.observation['rgb'][3],
+                               new_time_step.observation['rgb'][3]))
+
 
 if __name__ == "__main__":
     alf.test.main()
