@@ -75,7 +75,29 @@ Please comment all the public functions with the following style:
         Returns:
             return type:
             - return value1 (type 1): purpose
-            - return value2 (type 1): purpose
+            - return value2 (type 2): purpose
+        """
+
+**NOTE** that in recent versions of Python, `type hints <https://docs.python.org/3/library/typing.html>`_ are supported to tag the types of the arguments to a functions and the type of the return value. When possible, it is **recommended** to add the type hints to the input arguments. When type hints are present, it is no longer required to have typing labels in the docstring. For example, the above code would become:
+
+.. code-block:: python
+
+    from typing import Tuple
+
+    def func(a: <type of a>, b: <type of b>) -> Tuple[<type 1>, <type 2>]:
+        """Short summary of the function
+
+        Detailed explanation of the function. Including math equations and
+        references. The explanation should be detail enough for the user to have a
+        clear understanding of its function without reading its implementation.
+
+        Args:
+            a: purpose
+            b: purpose
+        Returns:
+            return type:
+            - return value1: purpose
+            - return value2: purpose
         """
 
 For a comprehensive guide on how to write docstrings for public functions, see
