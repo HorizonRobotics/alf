@@ -94,10 +94,10 @@ class Trainer(object):
         """
 
         Args:
-            config (TrainerConfig): configuration used to construct this trainer
-            ddp_rank (int): process (and also device) ID of the process, if the
+            config: configuration used to construct this trainer
+            ddp_rank: process (and also device) ID of the process, if the
                 process participates in a DDP process group to run distributed
-                data parallel training. A value of -1 indicates regular single 
+                data parallel training. A value of -1 indicates regular single
                 process training.
         """
         Trainer._trainer_progress = _TrainerProgress()
@@ -303,7 +303,7 @@ class RLTrainer(Trainer):
             config (TrainerConfig): configuration used to construct this trainer
             ddp_rank (int): process (and also device) ID of the process, if the
                 process participates in a DDP process group to run distributed
-                data parallel training. A value of -1 indicates regular single 
+                data parallel training. A value of -1 indicates regular single
                 process training.
         """
         super().__init__(config, ddp_rank)
