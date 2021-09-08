@@ -121,6 +121,12 @@ def lean_function(func: Callable) -> Callable:
          error if ``func`` does not satisfies these requirements and error will
          be silently ignored.
 
+    Note: pytorch also has a function with similar functionality. See https://pytorch.org/docs/stable/checkpoint.html
+    for detail. ``lean_function`` has several advantage over pytorch's implementation:
+
+        1. Keyword arguments are supported.
+        2. Both ``torch.autograd.grad`` and ``torch.autograd.backward`` are supported.
+
     Examples:
 
     1. Apply to simple function:
