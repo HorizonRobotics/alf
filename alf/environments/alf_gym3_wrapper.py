@@ -384,12 +384,10 @@ class AlfGym3Wrapper(AlfEnvironment):
 
         def __override_with_prev_observation(ob_array: np.ndarray,
                                              prev_ob_array: np.ndarray):
-            new_ob_array = ob_array
-            new_ob_array[first] = prev_ob_array[first]
-            return new_ob_array
+            ob_array[first] = prev_ob_array[first]
 
-        observation = nest.map_structure(__override_with_prev_observation,
-                                         observation, prev_observation)
+        nest.map_structure(__override_with_prev_observation, observation,
+                           prev_observation)
 
         # TODO(breakds): More properly deal with this by pre-process the
         # experiences in the replay buffer so that if the next step has first =
