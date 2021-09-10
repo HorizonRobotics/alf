@@ -28,10 +28,12 @@ class _LeanFunction(torch.autograd.Function):
     def forward(ctx, func, num_parameters, keywords, *args):
         """
         Args:
-            ctx (_LeanFunction):
+            ctx (_LeanFunction): context of the computation. It is the same object
+                passed for the corresponding backward().
             func (Callable): func/module to be wrapped
             num_parameters (int): the number of nn.Parameters of func if it is an
-                nn.Module. 0 otherwise
+                nn.Module. 0 otherwise. If ``func`` is a module, the first
+                ``num_parameters`` of arguments in args are the parameters of ``func``.
             keywords (tuple of str): the name of the keys of the keyword arguments
                 for ``func``
             args (Any): all the arguments (positional and keyword) for ``func``.
@@ -108,11 +110,15 @@ def lean_function(func: Callable) -> Callable:
 
         1. All the Tensor inputs to ``func`` must be explicitly listed as arguments
           of ``func``. For example, a tuple of Tensors as argument is not allowed.
-          Using Tensors outside of ``func`` is not allowed either unless ``func``
-          is a ``nn.Module``.
+          Using Tensors outside of ``func`` (e.g., tensors from class member variables)
+          is not allowed either unless ``func`` is a ``nn.Module``. On the other
+          hand, if ``func`` is a module, its parameters should not be put as arguments
+          as they are automatically taken care of.
+
         2. If ``func`` is not a ``Network``, its return value must be a Tensor
           or a tuple of Tensors. If it is a ``Network``, its return value (output
           and state) must be a nest of Tensors.
+
         3. ``func```` must be deterministic so that repeated evaluation with the
           same input will get same output.
 
