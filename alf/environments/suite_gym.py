@@ -15,7 +15,6 @@
 import collections
 import gym
 import gym.spaces
-import gym3
 
 import alf
 from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
@@ -118,12 +117,6 @@ def wrap_env(gym_env,
     Returns:
         An AlfEnvironment instance.
     """
-
-    if isinstance(gym_env, gym3.interop.ToGymEnv):
-        # Gym3 environments use gym3 under the hood with a special rendering
-        # scheme. Apply the AlfGym3RenderWrapper to them before all other
-        # wrappers to transparently work that around.
-        gym_env = gym_wrappers.Gym3RenderWrapper(gym_env)
 
     for wrapper in gym_env_wrappers:
         gym_env = wrapper(gym_env)
