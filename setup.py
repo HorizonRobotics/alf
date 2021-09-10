@@ -44,7 +44,7 @@ setup(
         'sphinx-autodoc-typehints',
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
-        'tensorboard == 2.1.0',
+        'tensorboard == 2.6.0',
         'torch == 1.8.1',
         'torchvision == 0.9.1',
         'torchtext == 0.9.1',

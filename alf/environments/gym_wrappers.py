@@ -689,3 +689,48 @@ class NonEpisodicEnv(gym.Wrapper):
     def step(self, action):
         ob, reward, done, info = self.env.step(action)
         return ob, reward, False, info
+
+
+@alf.configurable
+class DiscreteActionWrapper(gym.ActionWrapper):
+    """Discretize each continuous action dim into several evenly distributed
+    values. Currently only support unnested action space as ``gym.spaces.Box``
+    with a rank-1 shape.
+    """
+
+    def __init__(self, env: gym.Env, actions_num: int):
+        """
+        Args:
+            env: Gym env to be wrapped
+            actions_num: number of values to discretize each action dim into
+        """
+        super().__init__(env)
+        action_space = _gym_space_to_nested_space(self.action_space)
+        assert not alf.nest.is_nested(action_space), (
+            "This wrapper doesn't support nested action space!")
+        assert isinstance(action_space, gym.spaces.Box), (
+            "This wrapper only supports bounded continuous action space!")
+        assert len(action_space.shape) == 1, (
+            "This wrapper only supports rank-1 action!")
+        assert actions_num > 1, "Should define at least 2 actions!"
+        self._actions_num = actions_num
+        self._action_delta = (
+            (action_space.high - action_space.low) / (actions_num - 1))
+        self._N = action_space.shape[0]
+        self._dtype = action_space.dtype
+        self._low = action_space.low
+        # expose the new discrete action space
+        self.action_space = gym.spaces.Discrete(n=actions_num**self._N)
+
+    def action(self, action):
+        # convert the discrete action to a multi-dim continuous action
+        idx = []
+        base = self._actions_num**(self._N - 1)
+        # convert to an idx number with base ``actions_num``
+        for i in range(self._N):
+            idx.append(action // base)
+            action %= base
+            base //= self._actions_num
+        idx = np.array(idx, dtype=self._dtype)
+        action = self._low + idx * self._action_delta
+        return action
