@@ -193,7 +193,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  observation_spec: TensorSpec,
                  action_spec: TensorSpec,
                  reward_spec=TensorSpec(()),
-                 aux_phase_interval: int = 32,
+                 aux_phase_interval: Optional[int] = 32,
                  env=None,
                  config: Optional[TrainerConfig] = None,
                  encoding_network_ctor: callable = EncodingNetwork,
@@ -274,17 +274,21 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         # The auxiliary phase uses an extra experience replayer with the loss
         # specific to the auxiliary update phase.
-        self._aux_phase = PPGPhaseContext(
-            ppg_algorithm=self,
-            network=dual_actor_value_network.copy(),
-            optimizer=aux_optimizer,
-            loss=PPGAuxPhaseLoss(),
-            exp_replayer=OnetimeExperienceReplayer())
+        if aux_phase_interval is not None:
+            self._aux_phase = PPGPhaseContext(
+                ppg_algorithm=self,
+                network=dual_actor_value_network.copy(),
+                optimizer=aux_optimizer,
+                loss=PPGAuxPhaseLoss(),
+                exp_replayer=OnetimeExperienceReplayer())
+        else:
+            self._aux_phase = None
 
         # Register the two networks so that they are picked up as part of the
         # Algorithm by pytorch.
         self._registered_networks = torch.nn.ModuleList(
-            [self._policy_phase.network, self._aux_phase.network])
+            [self._policy_phase.network] +
+            ([self._aux_phase.network] if self._aux_phase else []))
 
         self._active_phase = self._policy_phase
 
@@ -343,7 +347,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         if not self._experience_spec:
             self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
         exp = dist_utils.distributions_to_params(exp)
-        self._aux_phase.exp_replayer.observe(exp)
+        if self._aux_phase is not None:
+            self._aux_phase.exp_replayer.observe(exp)
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
@@ -428,7 +433,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         """
 
-        if alf.summary.get_global_counter() % self._aux_phase_interval == 0:
+        if self._aux_phase_interval is not None and alf.summary.get_global_counter(
+        ) % self._aux_phase_interval == 0:
             with self.aux_phase_activated():
                 # TODO(breakds): currently auxiliary update steps are not
                 # counted towards the total steps. If needed in the future, we

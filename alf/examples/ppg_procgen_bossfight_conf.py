@@ -40,10 +40,10 @@ def encoding_network_ctor(input_tensor_spec, kernel_initializer):
 
 alf.config(
     'PPGAlgorithm',
-    aux_phase_interval=32,
+    aux_phase_interval=None,
     encoding_network_ctor=encoding_network_ctor,
-    policy_optimizer=alf.optimizers.AdamTF(lr=5e-4),
-    aux_optimizer=alf.optimizers.AdamTF(lr=5e-4))
+    policy_optimizer=alf.optimizers.AdamTF(lr=2e-4),
+    aux_optimizer=alf.optimizers.AdamTF(lr=2e-4))
 
 alf.config(
     'PPOLoss',
@@ -57,9 +57,9 @@ alf.config(
     'TrainerConfig',
     unroll_length=256,
     mini_batch_length=1,
-    mini_batch_size=1024,
+    mini_batch_size=2048,
     num_updates_per_train_iter=3,
-    num_iterations=6400,
+    num_iterations=6000,
     num_checkpoints=5,
     evaluate=True,
     eval_interval=50,
