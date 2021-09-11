@@ -41,7 +41,7 @@ setup(
         'rectangle-packer==2.0.0',
         'sphinx==3.0',
         'sphinx-autobuild',
-        'sphinx-autodoc-typehints',
+        'sphinx-autodoc-typehints@git+https://github.com/hnyu/sphinx-autodoc-typehints.git',
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard == 2.1.0',

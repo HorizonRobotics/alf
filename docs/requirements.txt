@@ -9,7 +9,9 @@ matplotlib
 opencv-python>=3.4.1.15
 pathos==0.2.4
 psutil
-sphinx==2.4.4
+sphinx==3.0
+sphinx-autobuild
+git+git://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typehints
 sphinxcontrib-napoleon==0.7
 --find-links https://download.pytorch.org/whl/torch_stable.html
 tensorboard==2.1.0
