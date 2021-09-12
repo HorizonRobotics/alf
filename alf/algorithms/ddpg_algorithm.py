@@ -194,10 +194,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor = OneStepTDLoss
         critic_loss_ctor = functools.partial(
             critic_loss_ctor, debug_summaries=debug_summaries)
-        self._critic_losses = [None] * num_critic_replicas
+        
+        self._critic_losses = []
         for i in range(num_critic_replicas):
-            self._critic_losses[i] = critic_loss_ctor(
-                name=("critic_loss" + str(i)))
+            self._critic_losses.append(critic_loss_ctor(name=("critic_loss" + str(i))))
 
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
@@ -335,12 +335,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 actor_loss=policy_step.info))
 
     def calc_loss(self, info: DdpgInfo):
-        critic_losses = [None] * self._num_critic_replicas
-        for i in range(self._num_critic_replicas):
-            critic_losses[i] = self._critic_losses[i](
-                info=info,
-                value=info.critic.q_values[:, :, i, ...],
-                target_value=info.critic.target_q_values).loss
+        critic_losses = []
+        for i, l in enumerate(self._critic_losses):
+            critic_losses.append(l(info=info,
+                                   value=info.critic.q_values[:, :, i, ...],
+                                   target_value=info.critic.target_q_values).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
