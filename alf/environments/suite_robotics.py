@@ -31,6 +31,7 @@ except ImportError:
 import functools
 import numpy as np
 import gym
+from gym import ObservationWrapper
 
 import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
@@ -41,6 +42,28 @@ _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
 def is_available():
     return mujoco_py is not None
+
+
+class FlattenObservation(ObservationWrapper):
+    r"""Observation wrapper that flattens the observation.
+    Fixed Gym's ``FlattenObservation`` which has a bug when modifying
+    ``self.observation_space``.
+    """
+
+    def __init__(self, env):
+        super(FlattenObservation, self).__init__(env)
+
+        flatdim = gym.spaces.flatdim(env.observation_space)
+        self._original_observation_space = self.observation_space
+        self.observation_space = gym.spaces.Box(
+            low=-float('inf'),
+            high=float('inf'),
+            shape=(flatdim, ),
+            dtype=np.float32)
+
+    def observation(self, observation):
+        return gym.spaces.flatten(self._original_observation_space,
+                                  observation)
 
 
 class SparseReward(gym.Wrapper):
@@ -170,7 +193,7 @@ def load(environment_name,
     if concat_desired_goal:
         keys = ["observation", "desired_goal"]
         try:  # for modern Gym (>=0.15.4)
-            from gym.wrappers import FilterObservation, FlattenObservation
+            from gym.wrappers import FilterObservation
             env = FlattenObservation(FilterObservation(env, keys))
         except ImportError:  # for older gym (<=0.15.3)
             from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
