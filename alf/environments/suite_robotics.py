@@ -169,10 +169,11 @@ def load(environment_name,
     # concat robot's observation and the goal location
     if concat_desired_goal:
         keys = ["observation", "desired_goal"]
-        try:  # for modern Gym (>=0.15.4)
+        try:  # for modern Gym (>=0.15.3)
+            # 0.15.3 has a bug in ``FlattenObservation``, so avoid using it!
             from gym.wrappers import FilterObservation, FlattenObservation
             env = FlattenObservation(FilterObservation(env, keys))
-        except ImportError:  # for older gym (<=0.15.3)
+        except ImportError:  # for older gym (<0.15.3)
             from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
             env = FlattenDictWrapper(env, keys)
     if use_success_wrapper:
