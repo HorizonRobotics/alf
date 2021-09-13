@@ -829,3 +829,79 @@ class CarlaActionWrapper(AlfEnvironmentBaseWrapper):
 
     def time_step_spec(self):
         return self._time_step_spec
+
+
+@alf.configurable
+class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
+    """Discretize each continuous action dim into several evenly distributed
+    values. Currently only support unnested action spec with a rank-1 shape.
+
+    This wrapper can be used in both batch env mode (tensors) and individual env
+    mode (numpy array).
+    """
+
+    def __init__(self, env: AlfEnvironment, actions_num: int):
+        """
+        Args:
+            env: ALF env to be wrapped
+            actions_num: number of values to discretize each action dim into
+        """
+        super().__init__(env)
+        action_spec = env.action_spec()
+        assert not alf.nest.is_nested(action_spec), (
+            "This wrapper doesn't support nested action spec!")
+        assert (
+            isinstance(action_spec, ts.BoundedTensorSpec)
+            and action_spec.is_continuous), (
+                "This wrapper only supports bounded continuous action spec!")
+        assert action_spec.ndim == 1, (
+            "This wrapper only supports rank-1 action!")
+        assert actions_num > 1, "Should define at least 2 discrete actions!"
+        self._actions_num = actions_num
+        self._action_delta = (
+            (action_spec.maximum - action_spec.minimum) / (actions_num - 1))
+        self._N = action_spec.numel
+        self._dtype = action_spec.dtype
+        self._minimum = action_spec.minimum
+        # create the new discrete action spec
+        self._action_spec = ts.BoundedTensorSpec(
+            shape=(), dtype=torch.int64, maximum=actions_num**self._N - 1)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _reset(self):
+        time_step = self._env.reset()
+        if _is_numpy_array(time_step.prev_action):
+            prev_action = np.zeros_like(time_step.step_type)
+        else:
+            prev_action = torch.zeros_like(time_step.step_type)
+        return time_step._replace(prev_action=prev_action)
+
+    def _step(self, action):
+        # convert the discrete action to a multi-dim continuous action
+        # action shape: [B] or []
+        idx = []
+        base = self._actions_num**(self._N - 1)
+        prev_action = action
+        # convert to an idx number with base ``actions_num``
+        for i in range(self._N):
+            idx.append(action // base)
+            action %= base
+            base //= self._actions_num
+        if _is_numpy_array(action):
+            idx = np.stack(
+                idx, axis=-1).astype(ts.torch_dtype_to_str(self._dtype))
+            action = idx * self._action_delta + self._minimum
+        else:
+            idx = torch.stack(idx, dim=-1).to(self._dtype)
+            action = (idx * torch.as_tensor(self._action_delta) +
+                      torch.as_tensor(self._minimum))
+        # action: [B, action_dim] or [action_dim]
+        time_step = self._env.step(action)
+        return time_step._replace(prev_action=prev_action)

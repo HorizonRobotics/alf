@@ -571,7 +571,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # continuous: critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
 
-        # For mult-dim reward, do
+        # For multi-dim reward, do
         # continuous: [B, replicas * reward_dim] -> [B, replicas, reward_dim]
         # discrete: [B, replicas * reward_dim, num_actions]
         #        -> [B, replicas, reward_dim, num_actions]

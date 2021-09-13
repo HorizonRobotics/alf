@@ -21,6 +21,7 @@ import gym
 import math
 import torch
 import numpy as np
+from functools import partial
 
 import alf
 import alf.data_structures as ds
@@ -271,6 +272,69 @@ class CurriculumWrapperTest(alf.test.TestCase):
                 time_step.env_info['curriculum_task_prob'].values())
             self.assertTrue(
                 torch.all((sum_probs == 0.) | ((sum_probs - 1.).abs() < 1e-3)))
+
+
+class DiscreteWrapperTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((
+        5,
+        "MountainCarContinuous-v0",
+        True,
+    ), (3, "LunarLanderContinuous-v2", False))
+    def test_discrete_action_wrapper(self, actions_num, env_name, batched):
+        unwrapped = gym.make(env_name)
+        low, high = unwrapped.action_space.low, unwrapped.action_space.high
+
+        class ActionInfoWrapper(gym.Wrapper):
+            def __init__(self, env):
+                super().__init__(env)
+
+            def step(self, action):
+                obs, reward, done, info = self.env.step(action)
+                info['action'] = action
+                return obs, reward, done, info
+
+        if batched:
+            batched_wrappers = [
+                partial(
+                    alf_wrappers.DiscreteActionWrapper,
+                    actions_num=actions_num)
+            ]
+            load_fn = partial(
+                suite_gym.load, gym_env_wrappers=[ActionInfoWrapper])
+        else:
+            batched_wrappers = []
+            load_fn = partial(
+                suite_gym.load,
+                gym_env_wrappers=[ActionInfoWrapper],
+                alf_env_wrappers=[
+                    partial(
+                        alf_wrappers.DiscreteActionWrapper,
+                        actions_num=actions_num)
+                ])
+
+        env = create_environment(
+            env_name=env_name,
+            env_load_fn=load_fn,
+            num_parallel_environments=4,
+            batched_wrappers=batched_wrappers)
+
+        self.assertTrue(env.action_spec().is_discrete)
+
+        time_step = env.reset()
+        self.assertTrue(torch.all(time_step.prev_action == 0))
+        actual_actions = []
+        for a in range(actions_num**unwrapped.action_space.shape[0]):
+            a = torch.full_like(time_step.step_type, a)
+            time_step = env.step(a)
+            self.assertTensorEqual(time_step.prev_action, a)  # discrete
+            actual_actions.append(time_step.env_info['action'])  # continuous
+
+        self.assertTrue(np.allclose(actual_actions[0].cpu().numpy(), low))
+        self.assertTrue(np.allclose(actual_actions[-1].cpu().numpy(), high))
+        # evenly distributed values
+        self.assertTrue(
+            np.allclose(actual_actions[1].cpu().numpy() - low,
+                        high - actual_actions[-2].cpu().numpy()))
 
 
 if __name__ == '__main__':
