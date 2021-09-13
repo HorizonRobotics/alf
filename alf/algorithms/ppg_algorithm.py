@@ -347,8 +347,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         if not self._experience_spec:
             self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
         exp = dist_utils.distributions_to_params(exp)
-        if self._aux_phase is not None:
-            self._aux_phase.exp_replayer.observe(exp)
+        self._aux_phase.exp_replayer.observe(exp)
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
@@ -359,7 +358,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         """
         policy_step = self._policy_phase.network_forward(inputs, state)
-        self._observe_for_aux_replay(inputs, state, policy_step)
+        if self._aux_phase is not None:
+            self._observe_for_aux_replay(inputs, state, policy_step)
         return policy_step
 
     def preprocess_experience(
