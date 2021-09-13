@@ -462,7 +462,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         critic_network_inputs = (observation, None)
         if self._act_type == ActionType.Mixed:
-            critic_network_inputs = (observation, continuous_action)
+            critic_network_inputs = (observation, (None, continuous_action))
 
         q_values = None
         if self._act_type != ActionType.Continuous:

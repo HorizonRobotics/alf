@@ -15,7 +15,6 @@
 import gym
 from gym import spaces
 import numpy as np
-from absl.testing import parameterized
 
 import alf
 from alf.environments.gym_wrappers import (FrameStack, ContinuousActionClip,
@@ -108,7 +107,7 @@ class FrameStackTest(alf.test.TestCase):
             all_shapes) + " doesn't match exptected " + str(expected)
 
 
-class ActionWrappersTest(parameterized.TestCase, alf.test.TestCase):
+class ActionWrappersTest(alf.test.TestCase):
     def test_continuous_action_clipping(self):
         env = ContinuousActionClip(FakeEnvironment())
         action = env.action_space.high + 0.1
