@@ -186,6 +186,8 @@ class TDLoss(nn.Module):
                     alf.summary.scalar("goal_return", torch.mean(goal_return))
                 if len(returns.shape) > 2:
                     returns[:, :, 0] = returns_0
+                else:
+                    returns = returns_0
 
         value = value[:-1]
         if self._normalize_target:
