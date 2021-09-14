@@ -179,8 +179,9 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, ), (False, ))
-    def test_sac_algorithm_discrete(self, use_naive_parallel_network):
+    @parameterized.parameters((True, 1), (False, 3))
+    def test_sac_algorithm_discrete(self, use_naive_parallel_network,
+                                    reward_dim):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -195,13 +196,20 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
         steps_per_episode = 13
         env = env_class(
-            num_env, steps_per_episode, action_type=ActionType.Discrete)
+            num_env,
+            steps_per_episode,
+            action_type=ActionType.Discrete,
+            reward_dim=reward_dim)
 
         eval_env = env_class(
-            100, steps_per_episode, action_type=ActionType.Discrete)
+            100,
+            steps_per_episode,
+            action_type=ActionType.Discrete,
+            reward_dim=reward_dim)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
+        reward_spec = env._reward_spec
 
         fc_layer_params = (10, 10)
 
@@ -213,7 +221,9 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             q_network_cls=q_network,
+            use_entropy_reward=(reward_dim == 1),
             epsilon_greedy=0.1,
             env=env,
             config=config,
