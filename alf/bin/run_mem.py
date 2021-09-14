@@ -35,7 +35,10 @@ def encoding_network_ctor(input_tensor_spec, kernel_initializer):
         kernel_initializer=kernel_initializer)
 
 
-def run_wrapped(num_envs=64, unroll_length=256, run_network=True):
+def run_wrapped(num_envs=64,
+                unroll_length=256,
+                run_network=True,
+                batch_size=2048):
     alf.config(
         'create_environment',
         env_name='bossfight',
@@ -56,18 +59,10 @@ def run_wrapped(num_envs=64, unroll_length=256, run_network=True):
 
     step = 0
     replay_buffer = []
-    result_buffer = []
     while True:
         actions = env.action_spec().ones(outer_dims=(num_envs, ))
         time_step = env.step(actions)
         time_step, _ = data_transformer.transform_timestep(time_step, ())
-        if run_network:
-            (action_distribution, value,
-             aux), state = dual_actor_value_network(
-                 time_step.observation, state=())
-            result_buffer = []
-            result_buffer.append((action_distribution, value, aux))
-
         replay_buffer.append(time_step)
         step += 1
 
@@ -75,8 +70,21 @@ def run_wrapped(num_envs=64, unroll_length=256, run_network=True):
             print(
                 f'step: {step}, replay_buffer size: {len(replay_buffer)}, shape: {replay_buffer[0].observation.shape}, dtype={replay_buffer[0].observation.dtype}'
             )
-            replay_buffer = []
+
             result_buffer = []
+            if run_network:
+                concat_length = batch_size // num_envs
+                observation = torch.cat([
+                    sample.observation
+                    for sample in replay_buffer[:concat_length]
+                ],
+                                        dim=0)
+                (action_distribution, value,
+                 aux), state = dual_actor_value_network(
+                     observation, state=())
+                result_buffer.append((action_distribution, value, aux))
+
+            replay_buffer = []
             time.sleep(1)
 
 
