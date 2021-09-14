@@ -100,7 +100,7 @@ ALF defines the term *play* as evaluating a model on a task and possibly also vi
 the evaluation process, for example, by rendering environment frames or various
 inference statistics.
 
-Here we only introduce three basic usages of the ALF :mod:`.play` module. For advanced
+Here we only introduce three basic use cases of the ALF :mod:`.play` module. For advanced
 play (e.g., rendering customized model inference results, play from an ALF snapshot,
 headless rendering, etc), we refer the reader to :doc:`./advanced_play_and_alf_snapshot`.
 
