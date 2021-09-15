@@ -30,9 +30,18 @@ import alf
 from alf.examples import ppo_conf
 from alf.examples import procgen_conf
 from alf.examples.networks import impala_cnn_encoder
+from alf.algorithms.data_transformer import ImageScaleTransformer
 
 # Environment Configuration
 alf.config('create_environment', num_parallel_environments=96)
+
+# Explicitly apply data transformer here so that the network does not
+# have to do this. This incurs more GPU memory consumption as we are
+# effectively storing float32 images instead of int8 images (4x GPU
+# memory), but this will make the training process noticeably faster
+# (by a factor of 12%).
+alf.config('ImageScaleTransformer', min=0.0, max=1.0)
+alf.config('TrainerConfig', data_transformer_ctor=[ImageScaleTransformer])
 
 # Construct the networks
 
@@ -44,7 +53,8 @@ def policy_network_ctor(input_tensor_spec, action_spec):
             input_tensor_spec=input_tensor_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=encoder_output_size),
+            output_size=encoder_output_size,
+            apply_image_scale_transform=False),
         alf.networks.CategoricalProjectionNetwork(
             input_size=encoder_output_size, action_spec=action_spec))
 
@@ -56,7 +66,8 @@ def value_network_ctor(input_tensor_spec):
             input_tensor_spec=input_tensor_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=encoder_output_size),
+            output_size=encoder_output_size,
+            apply_image_scale_transform=False),
         alf.layers.FC(input_size=encoder_output_size, output_size=1),
         alf.layers.Reshape(shape=()))
 

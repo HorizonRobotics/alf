@@ -29,7 +29,7 @@ def _create_residual_cnn_block(
     """Create a CNN block with 2 Conv2D plus a residual connection
 
     It essentially performs
-    
+
     .. math::
 
         f(x) = x + \textrm{Conv2D}(\textrm{Conv2D}(\textrm{ReLU}(x)))
@@ -39,13 +39,13 @@ def _create_residual_cnn_block(
     channels (i.e. the dimension of :math:`x` remains the same).
 
     Args:
-        
+
         input_tensor_spec (nested TesnorSpec): The spec of the input tensor,
             denotated as ``x`` in the above formula. The shape of the input
             tensor omitting batch size should be (C, W, H).
         kernel_initializer: initializer for the Conv2D and FC layers in the
             module.
-    
+
     Returns:
 
         A module that perofrms the described operations.
@@ -79,7 +79,7 @@ def _create_downsampling_cnn_stack(
         num_residual_blocks: int = 2,
         kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create a stack of Convolutional layers that also does downsampling
-    
+
     It essentially performs one ``Conv2D`` that changes the number of channels,
     a max pooling filter that downsamples the image by half, followed by a
     series of residual CNN blocks. The number of CNN blocks in the series is
@@ -100,7 +100,7 @@ def _create_downsampling_cnn_stack(
             module.
 
     Returns:
-        
+
         A module that perofrms the described operations.
 
     """
@@ -133,7 +133,8 @@ def create(input_tensor_spec,
            cnn_channel_list: List[int] = (16, 32, 32),
            num_blocks_per_stack: int = 2,
            output_size: int = 256,
-           kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
+           kernel_initializer: Callable[[Tensor], None] = xavier_uniform_,
+           apply_image_scale_transform: bool = False):
     """Create the Impala CNN Encoder
 
     Here the so called Impala CNN Encoder is essentially a series of CNN
@@ -162,14 +163,28 @@ def create(input_tensor_spec,
             image in the mini batch.
         kernel_initializer: initializer for the Conv2D and FC layers in the
             network.
-    
+        apply_image_scale_transform: when set to ``True``, the input image will
+            first go through a scale transformation so that the pixels are
+            converted from 0 - 255 integer to 0.0 - 1.0 float.
+
     Returns:
-        
+
         A module representing the Impala CNN encoding network.
 
     """
     stacks = []
-    last_output_spec = input_tensor_spec
+    if apply_image_scale_transform:
+        scale_factor = 1.0 / 255.0
+        stacks.append(alf.layers.Cast(dtype=torch.float32))
+        stacks.append(lambda x: x * scale_factor)
+        last_output_spec = alf.BoundedTensorSpec(
+            input_tensor_spec.shape,
+            dtype=torch.float32,
+            minimum=0.0,
+            maximum=1.0)
+    else:
+        last_output_spec = input_tensor_spec
+
     for output_channels in cnn_channel_list:
         stacks.append(
             _create_downsampling_cnn_stack(
@@ -179,6 +194,7 @@ def create(input_tensor_spec,
                 kernel_initializer=kernel_initializer))
         last_output_spec = stacks[-1].output_spec
     stack_output_spec = stacks[-1].output_spec
+
     return alf.nn.Sequential(
         *stacks,
         # Flatten the images
@@ -188,4 +204,5 @@ def create(input_tensor_spec,
             input_size=stack_output_spec.numel,
             output_size=output_size,
             activation=torch.relu_,
-            kernel_initializer=kernel_initializer))
+            kernel_initializer=kernel_initializer),
+        input_tensor_spec=input_tensor_spec)
