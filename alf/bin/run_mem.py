@@ -17,6 +17,8 @@ import torch
 import gym3
 import time
 from procgen import ProcgenGym3Env
+from torchviz import make_dot
+
 from alf.examples import procgen_conf
 
 from alf.algorithms.ppg import DisjointPolicyValueNetwork
@@ -28,7 +30,7 @@ def encoding_network_ctor(input_tensor_spec, kernel_initializer):
     encoder_output_size = 256
     return impala_cnn_encoder.create(
         input_tensor_spec=input_tensor_spec,
-        cnn_channel_list=(16, 32, 32),
+        cnn_channel_list=(16, ),
         num_blocks_per_stack=2,
         output_size=encoder_output_size,
         kernel_initializer=kernel_initializer)
@@ -37,7 +39,11 @@ def encoding_network_ctor(input_tensor_spec, kernel_initializer):
 def openai_encoding_network_ctor(input_tensor_spec, kernel_initializer):
     encoder_output_size = 256
     return alf.nn.Sequential(
-        ImpalaEncoder(inshape=input_tensor_spec.shape),
+        ImpalaEncoder(
+            inshape=input_tensor_spec.shape,
+            outsize=256,
+            chans=(16, ),
+            nblock=2),
         input_tensor_spec=input_tensor_spec)
 
 
@@ -58,7 +64,7 @@ def run_wrapped(num_envs=64,
         dual_actor_value_network = DisjointPolicyValueNetwork(
             observation_spec=observation_spec,
             action_spec=env.action_spec(),
-            encoding_network_ctor=openai_encoding_network_ctor,
+            encoding_network_ctor=encoding_network_ctor,
             is_sharing_encoder=False)
 
     step = 0
@@ -86,6 +92,8 @@ def run_wrapped(num_envs=64,
                  aux), state = dual_actor_value_network(
                      observation, state=())
                 result_buffer.append((action_distribution, value, aux))
+                make_dot(value).render(
+                    '/home/breakds/tmp/network', format='png')
 
             replay_buffer = []
             time.sleep(1)

@@ -57,7 +57,7 @@ alf.config(
     'TrainerConfig',
     unroll_length=256,
     mini_batch_length=1,
-    mini_batch_size=2048,
+    mini_batch_size=4096,
     num_updates_per_train_iter=3,
     num_iterations=6000,
     num_checkpoints=5,

@@ -174,6 +174,7 @@ class CnnBasicBlock(nn.Module):
         self.inchan = inchan
         self.batch_norm = batch_norm
         s = math.sqrt(scale)
+        print(f'scale={scale}')
         self.conv0 = NormedConv2d(
             self.inchan, self.inchan, 3, padding=1, scale=s)
         self.conv1 = NormedConv2d(
@@ -217,6 +218,7 @@ class CnnDownStack(nn.Module):
 
     def forward(self, x):
         x = self.firstconv(x)
+        print(f'pool = {getattr(self, "pool", True)}')
         if getattr(self, "pool", True):
             x = F.max_pool2d(x, kernel_size=3, stride=2, padding=1)
         for block in self.blocks:
@@ -245,7 +247,7 @@ class ImpalaCNN(nn.Module):
                  **kwargs):
         super().__init__()
         self.scale_ob = scale_ob
-        h, w, c = inshape
+        c, h, w = inshape
         curshape = (c, h, w)
         s = 1 / math.sqrt(len(chans))  # per stack scale
         self.stacks = nn.ModuleList()
@@ -263,7 +265,7 @@ class ImpalaCNN(nn.Module):
 
         # b, t = x.shape[:-3]
         # x = x.reshape(b * t, *x.shape[-3:])
-        x = transpose(x, "bhwc", "bchw")
+        # x = transpose(x, "bhwc", "bchw")
         x = sequential(self.stacks, x, diag_name=self.name)
         # x = x.reshape(b, t, *x.shape[1:])
         x = flatten_image(x)
