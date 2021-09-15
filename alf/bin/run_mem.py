@@ -18,11 +18,10 @@ import gym3
 import time
 from procgen import ProcgenGym3Env
 from alf.examples import procgen_conf
-from alf.algorithms.data_transformer import create_data_transformer
-from alf.algorithms.data_transformer import ImageScaleTransformer
 
 from alf.algorithms.ppg import DisjointPolicyValueNetwork
 from alf.examples.networks import impala_cnn_encoder
+from alf.examples.networks.openai_impala import ImpalaEncoder
 
 
 def encoding_network_ctor(input_tensor_spec, kernel_initializer):
@@ -35,6 +34,13 @@ def encoding_network_ctor(input_tensor_spec, kernel_initializer):
         kernel_initializer=kernel_initializer)
 
 
+def openai_encoding_network_ctor(input_tensor_spec, kernel_initializer):
+    encoder_output_size = 256
+    return alf.nn.Sequential(
+        ImpalaEncoder(inshape=input_tensor_spec.shape),
+        input_tensor_spec=input_tensor_spec)
+
+
 def run_wrapped(num_envs=64,
                 unroll_length=256,
                 run_network=True,
@@ -44,17 +50,15 @@ def run_wrapped(num_envs=64,
         env_name='bossfight',
         num_parallel_environments=num_envs)
     env = alf.get_env()
-    data_transformer = create_data_transformer([ImageScaleTransformer],
-                                               env.observation_spec())
 
-    observation_spec = data_transformer.transformed_observation_spec
-    print(f'Transformed observation spec: {observation_spec}')
+    observation_spec = env.observation_spec()
+    print(f'observation spec: {observation_spec}')
 
     if run_network:
         dual_actor_value_network = DisjointPolicyValueNetwork(
             observation_spec=observation_spec,
             action_spec=env.action_spec(),
-            encoding_network_ctor=encoding_network_ctor,
+            encoding_network_ctor=openai_encoding_network_ctor,
             is_sharing_encoder=False)
 
     step = 0
@@ -62,7 +66,6 @@ def run_wrapped(num_envs=64,
     while True:
         actions = env.action_spec().ones(outer_dims=(num_envs, ))
         time_step = env.step(actions)
-        time_step, _ = data_transformer.transform_timestep(time_step, ())
         replay_buffer.append(time_step)
         step += 1
 

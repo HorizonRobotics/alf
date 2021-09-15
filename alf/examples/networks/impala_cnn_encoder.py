@@ -29,7 +29,7 @@ def _create_residual_cnn_block(
     """Create a CNN block with 2 Conv2D plus a residual connection
 
     It essentially performs
-    
+
     .. math::
 
         f(x) = x + \textrm{Conv2D}(\textrm{Conv2D}(\textrm{ReLU}(x)))
@@ -39,13 +39,13 @@ def _create_residual_cnn_block(
     channels (i.e. the dimension of :math:`x` remains the same).
 
     Args:
-        
+
         input_tensor_spec (nested TesnorSpec): The spec of the input tensor,
             denotated as ``x`` in the above formula. The shape of the input
             tensor omitting batch size should be (C, W, H).
         kernel_initializer: initializer for the Conv2D and FC layers in the
             module.
-    
+
     Returns:
 
         A module that perofrms the described operations.
@@ -79,7 +79,7 @@ def _create_downsampling_cnn_stack(
         num_residual_blocks: int = 2,
         kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create a stack of Convolutional layers that also does downsampling
-    
+
     It essentially performs one ``Conv2D`` that changes the number of channels,
     a max pooling filter that downsamples the image by half, followed by a
     series of residual CNN blocks. The number of CNN blocks in the series is
@@ -100,7 +100,7 @@ def _create_downsampling_cnn_stack(
             module.
 
     Returns:
-        
+
         A module that perofrms the described operations.
 
     """
@@ -162,14 +162,18 @@ def create(input_tensor_spec,
             image in the mini batch.
         kernel_initializer: initializer for the Conv2D and FC layers in the
             network.
-    
+
     Returns:
-        
+
         A module representing the Impala CNN encoding network.
 
     """
     stacks = []
-    last_output_spec = input_tensor_spec
+    last_output_spec = alf.BoundedTensorSpec(
+        input_tensor_spec.shape,
+        dtype=torch.float32,
+        minimum=0.0,
+        maximum=255.0)
     for output_channels in cnn_channel_list:
         stacks.append(
             _create_downsampling_cnn_stack(
@@ -180,6 +184,7 @@ def create(input_tensor_spec,
         last_output_spec = stacks[-1].output_spec
     stack_output_spec = stacks[-1].output_spec
     return alf.nn.Sequential(
+        alf.layers.Cast(dtype=torch.float32),
         *stacks,
         # Flatten the images
         alf.layers.Reshape((-1, )),
@@ -188,4 +193,5 @@ def create(input_tensor_spec,
             input_size=stack_output_spec.numel,
             output_size=output_size,
             activation=torch.relu_,
-            kernel_initializer=kernel_initializer))
+            kernel_initializer=kernel_initializer),
+        input_tensor_spec=input_tensor_spec)
