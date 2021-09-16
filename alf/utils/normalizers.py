@@ -122,8 +122,7 @@ class Normalizer(nn.Module):
                 with alf.summary.scope(self._name):
                     if val.ndim == 0:
                         alf.summary.scalar(name + "." + suffix, val)
-                    elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
-                          and alf.summary.should_summarize_output()):
+                    elif val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
                         for i in range(val.shape[0]):
                             alf.summary.scalar(
                                 name + "_" + str(i) + "." + suffix, val[i])
