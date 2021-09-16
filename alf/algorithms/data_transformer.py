@@ -599,6 +599,10 @@ class RewardNormalizer(SimpleDataTransformer):
         super().__init__(observation_spec)
         if normalizer is None:
             normalizer = AdaptiveNormalizer(
+                # ``get_reward_spec()`` is only a tmp solution. In some rare cases,
+                # reward spec might have been changed by data transformers before
+                # this one.
+                # TODO: we should pass a ``time_step`` spec to the constructor.
                 tensor_spec=alf.get_reward_spec(),
                 auto_update=False,
                 debug_summaries=True)
