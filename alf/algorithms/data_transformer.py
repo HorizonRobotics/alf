@@ -597,7 +597,10 @@ class RewardNormalizer(SimpleDataTransformer):
         """
         super().__init__(observation_spec)
         if normalizer is None:
-            normalizer = ScalarAdaptiveNormalizer(auto_update=False)
+            normalizer = AdaptiveNormalizer(
+                tensor_spec=alf.get_reward_spec(),
+                auto_update=False,
+                debug_summaries=True)
         self._normalizer = normalizer
         self._clip_value = clip_value
         self._update_mode = update_mode

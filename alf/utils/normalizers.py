@@ -134,7 +134,7 @@ class Normalizer(nn.Module):
             def _summarize_all(path, t, m2, m):
                 if path:
                     path += "."
-                spec = TensorSpec.from_tensor(m2 or m)
+                spec = TensorSpec.from_tensor(m if m2 is None else m2)
                 _summary(path + "tensor.batch_min",
                          _reduce_along_batch_dims(t, spec, torch.min))
                 _summary(path + "tensor.batch_max",
