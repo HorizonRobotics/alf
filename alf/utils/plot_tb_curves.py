@@ -558,35 +558,49 @@ class CurvesPlotter(object):
 
 
 def _get_curve_path(dir):
-    return os.path.join(os.getenv("HOME"), "tensorboard_curves", dir)
+    return os.path.join(os.getenv("HOME"), "tmp", dir)
 
 
 if __name__ == "__main__":
     """Plotting examples."""
-    methods = ["sac", "ddpg"]
-    tasks = ["kickball", "navigation"]
+    method_tag = {"gdist": "lbQ", "her": "HER"}
+    methods = ["gdist", "her"]
+    tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
+
+    def _run_name(m, t):
+        return "her%s%s-env_20-rblen_100000-crirep_2-sparserwd-posrwd_0-sd" % (
+            t.lower(), "" if m == "her" else "-gdist")
+
+    train = "train"  # "train" or "eval"
 
     curve_readers = [[
         EnvironmentStepsReturnReader(
-            event_file=glob.glob(_get_curve_path("%s_%s/*/eval" % (m, t))),
-            x_steps=np.arange(0, 5000000, 10000),
-            name="%s_%s" % (m, t),
+            event_file=glob.glob(
+                _get_curve_path(
+                    "%s*/tboardlog/%s" % (_run_name(m, t), train))),
+            x_steps=np.arange(0, 2000000,
+                              10000 if train == "train" else 100000),
+            name="%s_%s" % (method_tag[m], t),
             smoothing=3) for t in tasks
     ] for m in methods]
 
-    # Scale and align x-axis of SAC and DDPG on task "kickball"
-    plotter = CurvesPlotter([cr[0]() for cr in curve_readers],
-                            x_label=curve_readers[0][0].x_label,
-                            y_label=curve_readers[0][0].y_label,
-                            y_range=(0, 1.0),
-                            x_range=(0, 5000000))
-    plotter.plot(output_path="/tmp/kickball.pdf")
+    for i, t in enumerate(tasks):
+        # Scale and align x-axis of methods on task1
+        plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
+                                x_label=curve_readers[0][0].x_label,
+                                y_label=curve_readers[0][0].y_label,
+                                y_range=(-50., 0.),
+                                x_range=(0, 2000000))
+        plotter.plot(
+            output_path=os.path.join(
+                os.getenv("HOME"), "tmp", t + "-" + train + ".pdf"))
 
     # Now, to compare SAC with DDPG on navigation and kickball at the same time,
     # we use the normalized score.
     # [kickball, navigation]
-    random_return = [0., -10.]  # obtained by evaluating a random policy
-    sac_trained_return = [100., 50.]  # obtained by evaluating trained SAC
+    random_return = [-50., -50.,
+                     -50.]  # obtained by evaluating a random policy
+    sac_trained_return = [-5., -5., -5.]  # obtained by evaluating trained SAC
     task_performance_ranges = list(zip(random_return, sac_trained_return))
 
     curve_group_readers = [
@@ -595,7 +609,10 @@ if __name__ == "__main__":
     ]
 
     plotter = CurvesPlotter([cgr() for cgr in curve_group_readers],
-                            x_range=(0, 5000000),
+                            x_range=(0, 2000000),
                             x_label=curve_group_readers[0].x_label,
                             y_label=curve_group_readers[0].y_label)
-    plotter.plot(output_path="/tmp/normalized_score.pdf")
+    plotter.plot(
+        output_path=os.path.join(
+            os.getenv("HOME"), "tmp", "lbQvsHER_normalized_score-" + train +
+            ".pdf"))
