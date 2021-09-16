@@ -76,6 +76,54 @@ which indicates that you're indeed using a snapshot version.
     It's possible to turn off the snapshot feature. When training or grid searching,
     appending the option ``--nostore_snapshot`` will do so.
 
+The special case of config file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The config file of a training job will also be archived in a snapshot, if it's
+*located under ALF root*. However, ALF also archives another config copy
+directly under the job directory named as ``alf_config.py``. This special config
+file also records *command-line config parameters and grid search parameters*, so
+it's generally more accurate than the snapshot version.
+
+In the above training example, if we add a command-line config parameter:
+
+.. code-block:: bash
+
+    rm -rf /tmp/alf_tutorial1
+    python -m alf.bin.train --root_dir /tmp/alf_tutorial1 --conf <ALF_ROOT>/alf/examples/tutorial/minimal_example_conf.py --conf_param="TrainerConfig.summary_interval=100"
+
+Again, ALF will store a snapshot at ``/tmp/alf_tutorial1/alf`` and we can get
+the config file at
+
+.. code-block:: bash
+
+    /tmp/alf_tutorial1/alf/examples/tutorial/minimal_example_conf.py
+
+However, this is just a copy of the original config file: it *doesn't* record
+our command-line parameter ``TrainerConfig.summary_interval=100``.
+
+In contrast, if we look at ``/tmp/alf_tutorial1/alf_config.py``, we'll see something
+like
+
+.. code-block:: python
+
+    ########### pre-configs ###########
+
+    import alf
+    alf.pre_config({
+        'TrainerConfig.summary_interval': 100,
+    })
+
+    ########### end pre-configs ###########
+
+on the very top of the file.
+
+Regardless of whether having the flag ``--use_alf_snapshot`` when playing a model,
+ALF will always use ``alf_config.py``. So if we'd like to make changes to the
+config file for play, we need to modify ``alf_config.py`` in either case.
+For other changes to make for play, we need to modify the snapshot code if
+``--use_alf_snapshot`` is provided, and modify the current ALF repo otherwise.
+
 Advanced play by rendering
 --------------------------
 
@@ -189,7 +237,7 @@ rendered frames are:
 .. note::
 
     Currently with ``--alg_render`` the rendering speed will be slow (less than
-    one frame per second, depending on how many plots each frame has). This
+    10 FPS, depending on how many plots each frame has). This
     inefficiency is largely due to `Matplotlib <https://matplotlib.org/>`_.
 
 Summary
