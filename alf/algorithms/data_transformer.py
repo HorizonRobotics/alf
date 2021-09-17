@@ -588,7 +588,8 @@ class RewardNormalizer(SimpleDataTransformer):
             observation_spec (nested TensorSpec): describing the observation in
                 timestep
             normalizer (Normalizer): the normalizer to be used to normalizer the
-                reward. If None, will use ``ScalarAdaptiveNormalizer``.
+                reward. If None, will use ``AdaptiveNormalizer`` according to
+                env reward spec.
             update_max_calls (int): If >0, then the normalier's statistics will
                 only be updated so many first calls of ``_transform()``.
             clip_value (float): if > 0, will clip the normalized reward within
@@ -597,7 +598,14 @@ class RewardNormalizer(SimpleDataTransformer):
         """
         super().__init__(observation_spec)
         if normalizer is None:
-            normalizer = ScalarAdaptiveNormalizer(auto_update=False)
+            normalizer = AdaptiveNormalizer(
+                # ``get_reward_spec()`` is only a tmp solution. In some rare cases,
+                # reward spec might have been changed by data transformers before
+                # this one.
+                # TODO: we should pass a ``time_step`` spec to the constructor.
+                tensor_spec=alf.get_reward_spec(),
+                auto_update=False,
+                debug_summaries=True)
         self._normalizer = normalizer
         self._clip_value = clip_value
         self._update_mode = update_mode

@@ -24,9 +24,8 @@ from alf.utils import common, math_ops
 from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
+@alf.configurable(whitelist=['max_dims_to_summarize'])
 class Normalizer(nn.Module):
-    MAX_DIMS_TO_OUTPUT = 30
-
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
@@ -34,6 +33,7 @@ class Normalizer(nn.Module):
                  unit_std=False,
                  variance_epsilon=1e-10,
                  debug_summaries=False,
+                 max_dims_to_summarize=10,
                  name="Normalizer"):
         r"""Create a base normalizer using a first-moment and a second-moment
         averagers.
@@ -75,6 +75,10 @@ class Normalizer(nn.Module):
                 If True, then the rewards are just subtracted by the mean.
             variance_epsilon (float): a small value added to std for normalizing
             debug_summaries (bool): True if debug summaries should be created.
+            max_dims_to_summarize (int): when ``debug_summaries=True``, the max
+                number of dims of the normalizer's statistics will be summarized.
+                Note that a large number could potentially dump a lot of TB plots,
+                consume much disk space, and slow down training. Default: 10.
             name (str):
         """
         super().__init__()
@@ -93,6 +97,7 @@ class Normalizer(nn.Module):
         else:
             self._m2_averager = None
         self._debug_summaries = debug_summaries
+        self._max_dims_to_summarize = max_dims_to_summarize
 
     @abstractmethod
     def _create_averager(self):
@@ -122,8 +127,7 @@ class Normalizer(nn.Module):
                 with alf.summary.scope(self._name):
                     if val.ndim == 0:
                         alf.summary.scalar(name + "." + suffix, val)
-                    elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
-                          and alf.summary.should_summarize_output()):
+                    elif val.shape[0] < self._max_dims_to_summarize:
                         for i in range(val.shape[0]):
                             alf.summary.scalar(
                                 name + "_" + str(i) + "." + suffix, val[i])
@@ -134,7 +138,7 @@ class Normalizer(nn.Module):
             def _summarize_all(path, t, m2, m):
                 if path:
                     path += "."
-                spec = TensorSpec.from_tensor(m2 or m)
+                spec = TensorSpec.from_tensor(m if m2 is None else m2)
                 _summary(path + "tensor.batch_min",
                          _reduce_along_batch_dims(t, spec, torch.min))
                 _summary(path + "tensor.batch_max",
@@ -196,6 +200,7 @@ class Normalizer(nn.Module):
         return self._normalize(input)
 
 
+@alf.configurable
 class WindowNormalizer(Normalizer):
     """Normalization according to a recent window of samples.
     """
@@ -240,6 +245,7 @@ class WindowNormalizer(Normalizer):
             tensor_spec=self._tensor_spec, window_size=self._window_size)
 
 
+@alf.configurable
 class ScalarWindowNormalizer(WindowNormalizer):
     def __init__(self,
                  window_size=1000,
@@ -260,6 +266,7 @@ class ScalarWindowNormalizer(WindowNormalizer):
             name=name)
 
 
+@alf.configurable
 class EMNormalizer(Normalizer):
     """Exponential moving normalizer: the normalization assigns exponentially
     decayed weights to history samples.
