@@ -207,17 +207,20 @@ class ReluMLP(Network):
         """
 
         ndim = inputs.ndim
-        assert vec.ndim == ndim, \
-            ("ndim of inputs and vec must be consistent!")
+        assert vec.ndim == ndim, ("ndim of inputs and vec must be consistent!")
         if ndim > 1:
-            assert ndim == 2, \
-                ("inputs must be a vector or matrix!")
-            assert inputs.shape[0] == vec.shape[0], \
-                ("batch size of inputs and vec must agree!")
-        assert inputs.shape[-1] == self._input_size, \
-            ("inputs should has shape {}!".format(self._input_size))
-        assert vec.shape[-1] == self._output_size, \
-            ("vec should has shape {}!".format(self._output_size))
+            assert ndim == 2, ("inputs must be a vector or matrix!")
+            assert inputs.shape[0] == vec.shape[0], (
+                "batch size of inputs and vec must agree!")
+        assert inputs.shape[-1] == self._input_size, (
+            "inputs should has shape {}!".format(self._input_size))
+        if output_partial_idx is None:
+            assert vec.shape[-1] == self._output_size, (
+                "vec should has shape {}!".format(self._output_size))
+        else:
+            assert vec.shape[-1] >= len(output_partial_idx), (
+                "vec should has shape greater than {}!".format(
+                    len(output_partial_idx)))
 
         outputs, _ = self.forward(inputs)
         vjp = self._compute_vjp(vec, output_partial_idx=output_partial_idx)
