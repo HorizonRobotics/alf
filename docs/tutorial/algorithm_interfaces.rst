@@ -42,6 +42,8 @@ Interface                                               Input and output tensor 
 :meth:`~.AlgorithmInterface.after_train_iter`           :math:`[T,B_3,\ldots]`                         ``root_inputs``, ``rollout_info``        ``None``                        On/Off-policy
 ======================================================  =============================================  =======================================  =============================== ===============
 
+.. _interfaces_tasks:
+
 What the interfaces do
 ----------------------
 

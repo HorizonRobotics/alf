@@ -47,14 +47,23 @@ has exactly the same structure with the ALF repo (i.e., it is a clone).
 .. note::
 
     ALF relies on `rsync <https://man7.org/linux/man-pages/man1/rsync.1.html>`_
-    to copy all ``*.py``, ``*.gin``, and ``*.json`` files under the ALF repo to
+    to copy all ``*.py``, ``*.gin``, and ``*.json`` files of the ALF repo to
     a snapshot. The size of a snapshot is roughly 15M which is acceptable given
     modern disk storage capacity.
 
 In this way, each trained model is accompanied with an ALF snapshot which is exactly
 the code version that trained that model. Even if we implement our own algorithms
-without touching ALF, our own code will get a snapshot if *it's put under the ALF
-repo*.
+without touching ALF, our own code will get a snapshot if its path *starts with
+the ALF root*.
+
+Note that in the case of continuing training an existing ``root_dir``, a new snapshot
+will be generated to overwrite the existing one.
+
+.. code-block:: bash
+
+    python -m alf.bin.train --root_dir /tmp/alf_tutorial1
+
+This will generate a new snapshot at ``/tmp/alf_tutorial1/alf``.
 
 When playing a trained model with snapshot enabled, we can add an option ``--use_alf_snapshot``
 to use the archived ALF version instead of the current one:
@@ -79,8 +88,8 @@ which indicates that you're indeed using a snapshot version.
 The special case of config file
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The config file of a training job will also be archived in a snapshot, if it's
-*located under ALF root*. However, ALF also archives another config copy
+The config file of a training job will also be archived in a snapshot, if its
+path *starts with ALF root*. However, ALF also archives another config copy
 directly under the job directory named as ``alf_config.py``. This special config
 file also records *command-line config parameters and grid search parameters*, so
 it's generally more accurate than the snapshot version.
@@ -130,14 +139,18 @@ Advanced play by rendering
 Besides playing with a snapshot, another advanced play case is to utilize the
 :mod:`.alf.summary.render` module. This module contains several helper functions
 that convert arrays and tensors to :class:`~.render.Image` objects for visualization
-on screen or in a video. Any :class:`~.render.Image` object, once put into
-``info`` of an ``AlgStep`` returned by an algorithm's ``predict_step()``, will
-be concatenated to the corresponding environment frame by the side. Below we'll
-walk through an example to show how to use :mod:`.alf.summary.render`. The complete
-code is located at :mod:`.alf.examples.tutorial.ac_render_conf`.
+on screen or in a video. Recall that ALF's play calls an algorithm's
+:meth:`~.AlgorithmInterface.predict_step` to do online action prediction given
+a trained model (see :ref:`algorithm interfaces <interfaces_tasks>`). The :class:`AlgStep`
+output of a ``predict_step()`` call will be used for environment interaction and
+retrieve the next environment frame. At every step of this prediction loop, any
+:class:`~.render.Image` object, once put into ``info`` of an ``AlgStep`` returned
+by an algorithm's ``predict_step()``, will be concatenated to the corresponding
+environment frame by the side. Below we'll walk through an example to show how to
+use :mod:`.alf.summary.render`. The complete code is located at :mod:`.alf.examples.tutorial.ac_render_conf`.
 
-We will again train a model on the "CartPole-v0" task. So first of all, we import
-all the configuration from :mod:`.alf.examples.ac_cart_pole_conf`:
+We will again train a model on the "CartPole-v0" task. So first of all, we activate
+all the configurations of :mod:`.alf.examples.ac_cart_pole_conf` by importing it:
 
 .. code-block:: python
 
@@ -160,12 +173,12 @@ Then to tell the :mod:`~.alf.bin.play` module what to render, we overwrite
            action = alg_step.output
            action_dist = alg_step.info.action_distribution
            with alf.summary.scope("ACRender"):
-               # Render an action image
+               # Render an action image of type ``render.Image``.
                action_img = render.render_action(
                    name="predicted_action",
                    action=action,
                    action_spec=self._action_spec)
-               # Render an action distribution image
+               # Render an action distribution image of type ``render.Image``.
                action_dist_img = render.render_action_distribution(
                    name="predicted_action_distribution",
                    act_dist=action_dist,
@@ -195,7 +208,7 @@ Finally, we tell ALF to use our newly defined algorithm:
 .. code-block:: python
 
     alf.config(
-        'TrainerConfig',
+        "TrainerConfig",
         algorithm_ctor=partial(
             ACRenderAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)))
 
@@ -204,6 +217,8 @@ Now let's train and play this conf file:
 .. code-block:: bash
 
     python -m alf.bin.train --root_dir /tmp/ac_render --conf <ALF_ROOT>/alf/examples/tutorial/ac_render_conf.py
+    # After several minutes the above training command will finish.
+    # Once finished, Run the following command to play the trained model.
     python -m alf.bin.play --root_dir /tmp/ac_render --num_episodes 1 --record_file /tmp/tmp.mp4 --alg_render
 
 Note that when playing, we need to add the flag ``--alg_render`` to turn on the

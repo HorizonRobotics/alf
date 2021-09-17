@@ -29,12 +29,12 @@ class ACRenderAlgorithm(ActorCriticAlgorithm):
         action = alg_step.output
         action_dist = alg_step.info.action_distribution
         with alf.summary.scope("ACRender"):
-            # Render an action image
+            # Render an action image of type ``render.Image``.
             action_img = render.render_action(
                 name="predicted_action",
                 action=action,
                 action_spec=self._action_spec)
-            # Render an action distribution image
+            # Render an action distribution image of type ``render.Image``.
             action_dist_img = render.render_action_distribution(
                 name="predicted_action_distribution",
                 act_dist=action_dist,
@@ -51,6 +51,6 @@ class ACRenderAlgorithm(ActorCriticAlgorithm):
 
 # configure which RL algorithm to use
 alf.config(
-    'TrainerConfig',
+    "TrainerConfig",
     algorithm_ctor=partial(
         ACRenderAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)))
