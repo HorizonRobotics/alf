@@ -27,12 +27,12 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
-from alf.experience_replayers.experience_replay import SyncExperienceReplayer
 from alf.experience_replayers.replay_buffer import BatchInfo
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
+from alf.experience_replayers.replay_buffer import ReplayBuffer
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
@@ -131,11 +131,11 @@ class Algorithm(AlgorithmInterface):
 
         self._observers = []
         self._metrics = []
-        self._exp_replayer = None
+        self._replay_buffer = None
 
-        # These 3 parameters are only set when ``set_exp_replayer()`` is called.
-        self._exp_replayer_num_envs = None
-        self._exp_replayer_length = None
+        # These 3 parameters are only set when ``set_replay_buffer()`` is called.
+        self._replay_buffer_num_envs = None
+        self._replay_buffer_max_length = None
         self._prioritized_sampling = None
 
         self._use_rollout_state = False
@@ -218,11 +218,11 @@ class Algorithm(AlgorithmInterface):
         self._use_rollout_state = flag
         self._set_children_property('use_rollout_state', flag)
 
-    def set_exp_replayer(self,
-                         num_envs,
-                         max_length: int,
-                         prioritized_sampling=False):
-        """Set experience replayer.
+    def set_replay_buffer(self,
+                          num_envs,
+                          max_length: int,
+                          prioritized_sampling=False):
+        """Set the parameters for the replay buffer.
 
         Args:
             num_envs (int): the total number of environments from all batched
@@ -231,26 +231,26 @@ class Algorithm(AlgorithmInterface):
                 buffer store for each environment.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
         """
-        self._exp_replayer_num_envs = num_envs
-        self._exp_replayer_length = max_length
+        self._replay_buffer_num_envs = num_envs
+        self._replay_buffer_max_length = max_length
         self._prioritized_sampling = prioritized_sampling
 
-    def _set_exp_replayer(self, sample_exp):
-        """Initialize the experience replayer for the very first time given a
+    def _set_replay_buffer(self, sample_exp):
+        """Initialize the replay buffer for the very first time given a
         sample experience which is used to infer the specs for the buffer
         initialization.
 
         Args:
             sample_exp (nested Tensor):
         """
-        if (self._exp_replayer_num_envs is None
-                or self._exp_replayer_length is None
+        if (self._replay_buffer_num_envs is None
+                or self._replay_buffer_max_length is None
                 or self._prioritized_sampling is None):
-            # Do not even create the experience replayer if the
-            # required parameters are not set by set_exp_replayer
+            # Do not even create the replay buffer if the required
+            # parameters are not set by set_replay_buffer
             common.warning_once(
                 'Experience replayer must be initialized first by calling '
-                'set_exp_replayer() before observe_for_replay() is called! '
+                'set_replay_buffer() before observe_for_replay() is called! '
                 'Skipping ...')
             return
 
@@ -259,14 +259,15 @@ class Algorithm(AlgorithmInterface):
             alf.nest.extract_fields_from_nest(sample_exp)))
 
         exp_spec = dist_utils.to_distribution_param_spec(self._experience_spec)
-        self._exp_replayer = SyncExperienceReplayer(
-            exp_spec,
-            self._exp_replayer_num_envs,
-            self._exp_replayer_length,
+        self._replay_buffer = ReplayBuffer(
+            data_spec=exp_spec,
+            num_environments=self._replay_buffer_num_envs,
+            max_length=self._replay_buffer_max_length,
             prioritized_sampling=self._prioritized_sampling,
             num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-            name="exp_replayer")
-        self._observers.append(self._exp_replayer.observe)
+            name=f'{self._name}_replay_buffer')
+        self._observers.append(lambda exp: self._replay_buffer.add_batch(
+            exp, exp.env_id))
 
     def observe_for_replay(self, exp):
         r"""Record an experience in a replay buffer.
@@ -284,8 +285,8 @@ class Algorithm(AlgorithmInterface):
                 state=alf.nest.prune_nest_like(
                     exp.state, self.train_state_spec, value_to_match=()))
 
-        if self._exp_replayer is None:
-            self._set_exp_replayer(exp)
+        if self._replay_buffer is None:
+            self._set_replay_buffer(exp)
 
         exp = dist_utils.distributions_to_params(exp)
         for observer in self._observers:
@@ -1132,7 +1133,7 @@ class Algorithm(AlgorithmInterface):
         """
         config: TrainerConfig = self._config
 
-        if self._exp_replayer.total_size < config.initial_collect_steps:
+        if self._replay_buffer.total_size < config.initial_collect_steps:
             # returns 0 if haven't started training yet; throughput will be 0
             return 0
 
@@ -1141,18 +1142,19 @@ class Algorithm(AlgorithmInterface):
         with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:
-                mini_batch_size = self._exp_replayer.batch_size
+                mini_batch_size = self._replay_buffer.num_environments
             if config.whole_replay_buffer_training:
-                experience, batch_info = self._exp_replayer.replay_all()
+                experience, batch_info = self._replay_buffer.gather_all(
+                    ignore_earliest_frames=True)
                 num_updates = config.num_updates_per_train_iter
             else:
                 assert config.mini_batch_length is not None, (
                     "No mini_batch_length is specified for off-policy training"
                 )
-                experience, batch_info = self._exp_replayer.replay(
-                    sample_batch_size=(
+                experience, batch_info = self._replay_buffer.get_batch(
+                    batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
-                    mini_batch_length=config.mini_batch_length)
+                    batch_length=config.mini_batch_length)
                 num_updates = 1
 
         with record_time("time/train"):
@@ -1180,7 +1182,7 @@ class Algorithm(AlgorithmInterface):
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
         experience = alf.data_structures.add_batch_info(
-            experience, batch_info, self._exp_replayer.replay_buffer)
+            experience, batch_info, self._replay_buffer)
         experience = self.transform_experience(experience)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
@@ -1453,8 +1455,8 @@ class Algorithm(AlgorithmInterface):
         if loss_info.priority != ():
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
-            self._exp_replayer.update_priority(batch_info.env_ids,
-                                               batch_info.positions, priority)
+            self._replay_buffer.update_priority(batch_info.env_ids,
+                                                batch_info.positions, priority)
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope("PriorityReplay"):
                     summary_utils.add_mean_hist_summary(

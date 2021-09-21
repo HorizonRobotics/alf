@@ -274,8 +274,8 @@ class RLAlgorithm(Algorithm):
                         'whole_replay_buffer_training is on.')
                     config.initial_collect_steps = minimum_initial_collect_steps
 
-            self.set_exp_replayer(self._env.batch_size, replay_buffer_length,
-                                  config.priority_replay)
+            self.set_replay_buffer(self._env.batch_size, replay_buffer_length,
+                                   config.priority_replay)
 
         env = self._env
         if env is not None:
