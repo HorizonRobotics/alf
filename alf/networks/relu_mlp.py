@@ -190,17 +190,80 @@ class ReluMLP(Network):
 
         return J
 
-    def compute_vjp(self, inputs, vec):
-        """Compute vector-Jacobian product.
+    def compute_vjp(self, inputs, vec, output_partial_idx=None):
+        """Compute vector-Jacobian product, support partial output-input Jacobian.
 
         Args:
             inputs (Tensor): size (self._input_size) or (B, self._input_size)
             vec (Tensor): the vector for which the vector-Jacobian product
                 is computed. Must be of size (self._output_size) or
                 (B, self._output_size).
+            output_partial_idx (list): list of output indices for taking
+                partial output-input Jacobian. Default is ``None``, where
+                standard full output-input Jacobian will be used.
 
         Returns:
-            vjp (Tensor): size (self._input_size) or (B, self._input_size).
+            vjp (Tensor): shape (self._input_size) or (B, self._input_size).
+        """
+
+        ndim = inputs.ndim
+        assert vec.ndim == ndim, ("ndim of inputs and vec must be consistent!")
+        if ndim > 1:
+            assert ndim == 2, ("inputs must be a vector or matrix!")
+            assert inputs.shape[0] == vec.shape[0], (
+                "batch size of inputs and vec must agree!")
+        assert inputs.shape[-1] == self._input_size, (
+            "inputs should has shape {}!".format(self._input_size))
+        if output_partial_idx is None:
+            assert vec.shape[-1] == self._output_size, (
+                "vec should has shape {}!".format(self._output_size))
+        else:
+            assert vec.shape[-1] >= len(output_partial_idx), (
+                "vec should has shape greater than {}!".format(
+                    len(output_partial_idx)))
+
+        outputs, _ = self.forward(inputs)
+        vjp = self._compute_vjp(vec, output_partial_idx=output_partial_idx)
+
+        return vjp, outputs
+
+    def _compute_vjp(self, vec, output_partial_idx=None):
+        """Compute vector-(partial) Jacobian product. """
+
+        ndim = vec.ndim
+        if ndim == 1:
+            vec = vec.unsqueeze(0)
+
+        if output_partial_idx is None:
+            output_partial_idx = torch.arange(self._output_size)
+
+        J = torch.matmul(vec[:, output_partial_idx],
+                         self._fc_layers[-1].weight[output_partial_idx, :])
+        for fc in reversed(self._fc_layers[0:-1]):
+            mask = (fc.hidden_neurons > 0).float()
+            J = torch.matmul(J * mask, fc.weight)
+
+        if ndim == 1:
+            J = J.squeeze(0)
+
+        return J  # [B, n_in] or [n_in]
+
+    def compute_jvp(self, inputs, vec, output_partial_idx=None):
+        """Compute Jacobian-vector product, support partial output-input Jacobian.
+
+        Args:
+            inputs (Tensor): size (self._input_size) or (B, self._input_size)
+            vec (Tensor): the vector for which the Jacobian-vector product
+                is computed. Must be of size (self._input_size) or
+                (B, self._input_size).
+            output_partial_idx (list): list of output indices for taking
+                partial output-input Jacobian. Default is ``None``, where
+                standard full output-input Jacobian will be used.
+
+        Returns:
+            jvp (Tensor): shape (out_size) or (B, out_size), where ``out_size``
+                is self._output_size if ``output_partial_idx`` is None, 
+                ``len(output_partial_idx)`` otherwise.
         """
 
         ndim = inputs.ndim
@@ -213,26 +276,39 @@ class ReluMLP(Network):
                 ("batch size of inputs and vec must agree!")
         assert inputs.shape[-1] == self._input_size, \
             ("inputs should has shape {}!".format(self._input_size))
-        assert vec.shape[-1] == self._output_size, \
-            ("vec should has shape {}!".format(self._output_size))
+        assert vec.shape[-1] == self._input_size, \
+            ("vec should has shape {}!".format(self._input_size))
 
         outputs, _ = self.forward(inputs)
+        jvp = self._compute_jvp(vec, output_partial_idx=output_partial_idx)
 
-        return self._compute_vjp(vec), outputs
+        return jvp, outputs
 
-    def _compute_vjp(self, vec):
-        """Compute vector-Jacobian product. """
+    def _compute_jvp(self, vec, output_partial_idx=None):
+        """Compute (partial) Jacobian-vector product. """
 
         ndim = vec.ndim
         if ndim == 1:
             vec = vec.unsqueeze(0)
 
-        J = torch.matmul(vec, self._fc_layers[-1].weight)
-        for fc in reversed(self._fc_layers[0:-1]):
-            mask = (fc.hidden_neurons > 0).float()
-            J = torch.matmul(J * mask, fc.weight)
+        if output_partial_idx is None:
+            output_partial_idx = torch.arange(self._output_size)
+
+        if len(self._fc_layers) > 1:
+            mask = (self._fc_layers[0].hidden_neurons > 0).float()
+            J = torch.matmul(vec, self._fc_layers[0].weight.t())
+            J = J * mask  # [B, d_hidden]
+            for fc in self._fc_layers[1:-1]:
+                mask = (fc.hidden_neurons > 0).float()
+                J = torch.matmul(J, fc.weight.t())
+                J = J * mask
+            J = torch.matmul(
+                J, self._fc_layers[-1].weight[output_partial_idx, :].t())
+        else:
+            weight = self._fc_layers[0].weight[output_partial_idx, :]
+            J = torch.matmul(vec, weight.t())
 
         if ndim == 1:
             J = J.squeeze(0)
 
-        return J  # [B, n_in] or [n_in]
+        return J  # [B, n_out] or [n_out]
