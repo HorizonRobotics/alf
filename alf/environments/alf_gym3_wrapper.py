@@ -37,7 +37,7 @@ import alf.data_structures as ds
 import alf.nest as nest
 
 
-def _gym3_space_to_tensor_spec(space):
+def _gym3_space_to_tensor_spec(space, force_int64: bool = False):
     """Convert Gym3 tensor specifications (a.k.a. spaces) to TensorSpec
 
     This is a helper function to form obesrvation spec and action specs for the
@@ -52,8 +52,14 @@ def _gym3_space_to_tensor_spec(space):
 
     Args:
 
-        space (nested gym3.types.TensorType): the Gym3 space that describes the
-            tensor specification of observation or action.
+        space: the Gym3 space that describes the tensor specification of
+            observation or action.
+
+        force_int64: If set to True, all the discrete type will be converted to
+            torch.int64. This is useful for action spec where we expect all
+            discrete action to be converted to int64. The main reason for this
+            is that actions are usually generated from action distributions,
+            whose sample always produce int64 tensors.
 
     Returns:
 
@@ -69,7 +75,7 @@ def _gym3_space_to_tensor_spec(space):
             eltype = gym3_space.eltype
             return BoundedTensorSpec(
                 shape=gym3_space.shape,
-                dtype=eltype.dtype_name,
+                dtype=torch.int64 if force_int64 else eltype.dtype_name,
                 minimum=0,
                 maximum=eltype.n - 1)
         elif isinstance(eltype, gym3.types.Real):
@@ -244,7 +250,9 @@ class AlfGym3Wrapper(AlfEnvironment):
             self._observation_spec = nest.map_structure(
                 _image_channel_first_permute_spec, self._observation_spec)
 
-        self._action_spec = _gym3_space_to_tensor_spec(self._gym3_env.ac_space)
+        # For discrete action type, always use int64 during the conversion.
+        self._action_spec = _gym3_space_to_tensor_spec(
+            self._gym3_env.ac_space, force_int64=True)
         self._env_info_spec = _extract_env_info_spec(
             self._gym3_env.get_info()[0], ignored_info_keys=ignored_info_keys)
 
