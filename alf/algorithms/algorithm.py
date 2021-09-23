@@ -246,7 +246,7 @@ class Algorithm(AlgorithmInterface):
                 or self._exp_replayer_length is None
                 or self._prioritized_sampling is None):
             raise RuntimeError(
-                'Experience replayer cannot be initialized before set_exp_replayer() is called'
+                'Experience replayer must be initialized first by calling set_exp_replayer() before observe_for_replay() is called!'
             )
 
         self._experience_spec = dist_utils.extract_spec(sample_exp, from_dim=1)
