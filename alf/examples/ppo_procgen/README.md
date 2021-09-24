@@ -2,13 +2,24 @@
 
 This directory provides configuration to train PPO algorithm on [procgen](https://openai.com/blog/procgen-benchmark/) benchmark environments.
 
-Procgen benchmark provide 16 different games (environments). Alf support all 16 of them and here we have configurations for 3 of them as examples:
+## Run with command line argument (Recommended)
 
-1. bossfight: [bossfight_conf.py](./bossfight_conf.py)
-2. bigfish: [bigfish_conf.py](./bigfish_conf.py)
-3. chaser: [chaser_conf.py](./chaser_conf.py)
+Procgen benchmark provide 16 different games (environments). Alf supports all 16 of them. The main configuration parameters are in [base_conf.py](./base_conf.py). To run PPO Procgen training for a specific game such as `coinrun`, you can invoke a training using [base_conf.py](./base_conf.py) as the configuration while supplying the `env_name` parameter for `create_environment`:
 
-The main configuration parameters are in [base_conf.py](./base_conf.py). To create a configuration for a different game in Procgen, you just need to have 3 lines and fill `env_name` with the game of choice. For example, to create a configuration for `coinrun`, the following configuration will suffice.
+```bash
+python -m alf.bin.train \
+    --conf alf/examples/ppo_procgen/base_conf.py \ # assuming invoked from alf root
+    --conf_param create_environment.env_name='coinrun' \
+    --root_dir <your/root/dir>
+```
+
+## Run with a customized configuration file
+
+Sometimes you may want to create a configuration file for a specific game and run without having to specify the `env_name` every time. Here we have one configurations for `bossfight` as an example:
+
+* bossfight: [bossfight_conf.py](./bossfight_conf.py)
+
+It is merely a thin wrapper over [base_conf.py](./base_conf.py) to provide `env_name`. For example, to create a configuration for `coinrun`, the following 3-line configuration will suffice.
 
 ```python
 
