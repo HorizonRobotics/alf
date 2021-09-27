@@ -524,8 +524,8 @@ class ReplayBufferTest(RingBufferTest):
 
         remaining_batch = replay_buffer.gather_all()
 
-        # Check that after clear(), the last batch of the previous
-        # buffer is kept.
+        # Check that after clear(), the last experience of the
+        # previous buffer is kept.
         self.assertEqual(
             torch.tensor([[0], [1], [2], [3], [4], [5], [6], [7]]),
             remaining_batch.env_id)

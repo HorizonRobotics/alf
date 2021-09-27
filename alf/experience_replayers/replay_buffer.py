@@ -557,7 +557,7 @@ class ReplayBuffer(RingBuffer):
         return first_step_pos
 
     @atomic
-    def gather_all(self, debug=False):
+    def gather_all(self):
         """Returns all the items in the buffer.
 
         Returns:
@@ -568,9 +568,6 @@ class ReplayBuffer(RingBuffer):
         """
         size = self._current_size.min()
         max_size = self._current_size.max()
-        if debug:
-            print(f'size={size}')
-            print(f'current_pos={self._current_pos}')
         assert size == max_size, (
             "Not all environments have the same size. min_size: %s "
             "max_size: %s" % (size, max_size))
@@ -626,17 +623,18 @@ class ReplayBuffer(RingBuffer):
         return convert_device(result)
 
     def clear(self, keep_last_exp: bool = False) -> None:
-        """Clear the replay buffer and remove all the batches.
+        """Clear the replay buffer and remove all the experiences.
 
         One of the exception is that when keep_last_exp is set to True and there
-        are at least 1 batch in the replay buffer, the latest batch will be kept
-        in the buffer after the clear.
+        are at least 1 experience in the replay buffer, the latest experience
+        will be kept in the buffer after the clear.
 
         The reason we might need this is that in rare cases when the episodic
         MDP is deterministic and the episode length is a multiple of unroll
         length, we may find the last step of the episode is always ignored and
-        never partipate in training. Keeping it will make it the first batch of
-        the next iteration which guarantees its participation in training.
+        never partipate in training. Keeping it will make it the first
+        experience of the next iteration which guarantees its participation in
+        training.
 
         Args:
 
@@ -653,15 +651,15 @@ class ReplayBuffer(RingBuffer):
                 "Not all environments have the same ending position. "
                 "min_pos: %s max_pos: %s" % (pos, max_pos))
 
-            # The index of the last batch in the ring buffer will be the modulus
-            # remainder of pos - 1.
-            last_batch_idx = self.circular(pos - 1)
-            last_batch_in_buffer = alf.nest.map_structure(
-                lambda buf: buf[:, last_batch_idx, ...], self._buffer)
+            # The index of the last experience in the ring buffer will be the
+            # modulus remainder of pos - 1.
+            last_exp_idx = self.circular(pos - 1)
+            last_exp_in_buffer = alf.nest.map_structure(
+                lambda buf: buf[:, last_exp_idx, ...], self._buffer)
 
-            # Clear the ring buffer and put the last batch back into it.
+            # Clear the ring buffer and put the last experience back into it.
             super().clear(env_ids=None)
-            self.add_batch(last_batch_in_buffer)
+            self.add_batch(last_exp_in_buffer)
         else:
             super().clear(env_ids=None)
 
