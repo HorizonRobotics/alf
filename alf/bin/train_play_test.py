@@ -45,8 +45,6 @@ def run_cmd(cmd, cwd=None):
             f'OUT: {stdout_str}\n' \
             f'ERR: {stderr_str}'
 
-    logging.info("Running %s", " ".join(cmd))
-
     new_env = os.environ.copy()
 
     process = subprocess.Popen(
@@ -124,6 +122,9 @@ COMMON_TRAIN_CONF = [
     'TrainerConfig.num_checkpoints=1',
     # disable evaluate
     'TrainerConfig.evaluate=False',
+    # Do not get stuck there and asking for confirmation upon crash.
+    # Die and give feedback immediately for unit tests.
+    'confirm_checkpoint_upon_crash=False',
 ]
 COMMON_TRAIN_PARAMS = _to_conf_params(COMMON_TRAIN_CONF)
 
@@ -169,6 +170,19 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.num_updates_per_train_iter=2'
 ]
 PPO_TRAIN_PARAMS = _to_conf_params(PPO_TRAIN_CONF)
+
+PPO_RND_ATARI_TRAIN_CONF = COMMON_TRAIN_CONF + [
+    # Make sure initial_collect_steps <= (num_iterations - 1) *
+    # unroll_length * num_parallel_environments so there are some real
+    # training
+    'TrainerConfig.unroll_length=2',
+    'TrainerConfig.initial_collect_steps=3',
+    'TrainerConfig.num_updates_per_train_iter=1',
+    'TrainerConfig.mini_batch_length=2',
+    'TrainerConfig.mini_batch_size=4',
+    'TrainerConfig.replay_buffer_length=64',
+]
+PPO_RND_ATARI_TRAIN_PARAMS = _to_conf_params(PPO_RND_ATARI_TRAIN_CONF)
 
 MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=4',
@@ -548,7 +562,7 @@ class TrainPlayTest(alf.test.TestCase):
     def test_ppo_rnd_mrevenge(self):
         self._test(
             conf_file='ppo_rnd_mrevenge_conf.py',
-            extra_train_params=PPO_TRAIN_PARAMS)
+            extra_train_params=PPO_RND_ATARI_TRAIN_PARAMS)
 
     def test_taacq_fetch(self):
         self._test(

@@ -27,8 +27,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
-from alf.experience_replayers.experience_replay import (
-    OnetimeExperienceReplayer, SyncExperienceReplayer)
+from alf.experience_replayers.experience_replay import SyncExperienceReplayer
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
@@ -132,7 +131,11 @@ class Algorithm(AlgorithmInterface):
         self._observers = []
         self._metrics = []
         self._exp_replayer = None
-        self._exp_replayer_type = None
+
+        # These 3 parameters are only set when ``set_exp_replayer()`` is called.
+        self._exp_replayer_num_envs = None
+        self._exp_replayer_length = None
+        self._prioritized_sampling = None
 
         self._use_rollout_state = False
         if config:
@@ -215,24 +218,18 @@ class Algorithm(AlgorithmInterface):
         self._set_children_property('use_rollout_state', flag)
 
     def set_exp_replayer(self,
-                         exp_replayer: str,
                          num_envs,
                          max_length: int,
                          prioritized_sampling=False):
         """Set experience replayer.
 
         Args:
-            exp_replayer (str): type of experience replayer. One of ("one_time",
-                "uniform")
             num_envs (int): the total number of environments from all batched
                 environments.
             max_length (int): the maximum number of steps the replay
                 buffer store for each environment.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
         """
-        assert exp_replayer in ("one_time", "uniform"), (
-            "Unsupported exp_replayer: %s" % exp_replayer)
-        self._exp_replayer_type = exp_replayer
         self._exp_replayer_num_envs = num_envs
         self._exp_replayer_length = max_length
         self._prioritized_sampling = prioritized_sampling
@@ -245,24 +242,28 @@ class Algorithm(AlgorithmInterface):
         Args:
             sample_exp (nested Tensor):
         """
+        if (self._exp_replayer_num_envs is None
+                or self._exp_replayer_length is None
+                or self._prioritized_sampling is None):
+            # Do not even create the experience replayer if the
+            # required parameters are not set by set_exp_replayer
+            common.warning_once(
+                'Experience replayer must be initialized first by calling set_exp_replayer() before observe_for_replay() is called! Skipping ...'
+            )
+            return
+
         self._experience_spec = dist_utils.extract_spec(sample_exp, from_dim=1)
         self._exp_contains_step_type = ('step_type' in dict(
             alf.nest.extract_fields_from_nest(sample_exp)))
 
-        if self._exp_replayer_type == "one_time":
-            self._exp_replayer = OnetimeExperienceReplayer()
-        elif self._exp_replayer_type == "uniform":
-            exp_spec = dist_utils.to_distribution_param_spec(
-                self._experience_spec)
-            self._exp_replayer = SyncExperienceReplayer(
-                exp_spec,
-                self._exp_replayer_num_envs,
-                self._exp_replayer_length,
-                prioritized_sampling=self._prioritized_sampling,
-                num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-                name="exp_replayer")
-        else:
-            raise ValueError("invalid experience replayer name")
+        exp_spec = dist_utils.to_distribution_param_spec(self._experience_spec)
+        self._exp_replayer = SyncExperienceReplayer(
+            exp_spec,
+            self._exp_replayer_num_envs,
+            self._exp_replayer_length,
+            prioritized_sampling=self._prioritized_sampling,
+            num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+            name="exp_replayer")
         self._observers.append(self._exp_replayer.observe)
 
     def observe_for_replay(self, exp):
@@ -281,8 +282,13 @@ class Algorithm(AlgorithmInterface):
                 state=alf.nest.prune_nest_like(
                     exp.state, self.train_state_spec, value_to_match=()))
 
-        if self._exp_replayer is None and self._exp_replayer_type:
-            self._set_exp_replayer(exp)
+        if self._exp_replayer is None:
+            # Do not even create the experience replayer if the
+            # required parameters are not set by set_exp_replayer
+            if (self._exp_replayer_num_envs is not None
+                    and self._exp_replayer_length is not None
+                    and self._prioritized_sampling is not None):
+                self._set_exp_replayer(exp)
 
         exp = dist_utils.distributions_to_params(exp)
         for observer in self._observers:
@@ -1140,11 +1146,8 @@ class Algorithm(AlgorithmInterface):
             if mini_batch_size is None:
                 mini_batch_size = self._exp_replayer.batch_size
             if config.whole_replay_buffer_training:
-                experience = self._exp_replayer.replay_all()
-                if config.clear_replay_buffer:
-                    self._exp_replayer.clear()
+                experience, batch_info = self._exp_replayer.replay_all()
                 num_updates = config.num_updates_per_train_iter
-                batch_info = None
             else:
                 assert config.mini_batch_length is not None, (
                     "No mini_batch_length is specified for off-policy training"
@@ -1157,27 +1160,45 @@ class Algorithm(AlgorithmInterface):
 
         with record_time("time/train"):
             return self._train_experience(
-                experience, batch_info, num_updates, mini_batch_size,
+                experience,
+                batch_info,
+                num_updates,
+                mini_batch_size,
                 config.mini_batch_length,
                 (config.update_counter_every_mini_batch
-                 and update_global_counter))
+                 and update_global_counter),
+                whole_replay_buffer_training=config.
+                whole_replay_buffer_training)
 
-    def _train_experience(self, experience, batch_info, num_updates,
-                          mini_batch_size, mini_batch_length,
-                          update_counter_every_mini_batch):
+    def _train_experience(self,
+                          experience,
+                          batch_info,
+                          num_updates,
+                          mini_batch_size,
+                          mini_batch_length,
+                          update_counter_every_mini_batch,
+                          whole_replay_buffer_training: bool = False):
         """Train using experience."""
+        # Apply transformation and enrichment to the experience.
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
-        if self._exp_replayer_type != "one_time":
-            # The experience put in one_time replayer is already transformed
-            # in unroll().
-            experience = alf.data_structures.add_batch_info(
-                experience, batch_info, self._exp_replayer.replay_buffer)
-            experience = self.transform_experience(experience)
-            # allow data_transformers to change batch_info
+        experience = alf.data_structures.add_batch_info(
+            experience, batch_info, self._exp_replayer.replay_buffer)
+        experience = self.transform_experience(experience)
+
+        if whole_replay_buffer_training:
+            # For whole replay buffer training, explicitly set
+            # batch_info to None as an indicator for the following
+            # code to skip certain logics specifically designed for
+            # sampled replay buffer training.
+            batch_info = None
+        else:
+            # using potentially updated batch_info after data_transformers
             if experience.batch_info != ():
                 batch_info = experience.batch_info
-            experience = alf.data_structures.clear_batch_info(experience)
+
+        experience = alf.data_structures.clear_batch_info(experience)
+
         time_step = experience_to_time_step(experience)
         time_step, rollout_info = self.preprocess_experience(
             time_step, experience.rollout_info, batch_info)

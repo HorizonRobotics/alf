@@ -19,6 +19,7 @@ import time
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable
+from absl import logging
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -66,6 +67,59 @@ class _UnrollPerformer(torch.nn.Module):
             unroll_length (int): the number of steps to unroll
         """
         return self.inner_algorithm._unroll(unroll_length)
+
+
+def adjust_replay_buffer_length(config: TrainerConfig,
+                                num_earliest_frames_ignored: int = 0) -> int:
+    """Adjust the replay buffer length for whole replay buffer training.
+
+    Normally we just respect the replay buffer length set in the
+    config. However, for a specific case where the user asks to do
+    "whole replay buffer training", we need to adjust the user
+    provided length to achieve desired behavior.
+
+    Args:
+
+        config: The trainer config of the training session
+        num_earliest_frames_ignored: ignore the earliest so many
+           frames from the buffer when sampling or gathering. This is
+           typically required when FrameStacker is used. See
+           ``ReplayBuffer`` for details.
+
+    Returns:
+
+        An integer representing the adjusted replay buffer length.
+
+    """
+    if not config.whole_replay_buffer_training:
+        return config.replay_buffer_length
+
+    adjusted = config.replay_buffer_length
+
+    if config.clear_replay_buffer:
+        # Here the clear replay buffer (after each training iteration)
+        # is achieved by setting the replay buffer size to the unroll
+        # length, while disregarding config.replay_buffer_length.
+        #
+        # Remember that the replay buffer is under the hood a ring
+        # buffer. The next iteration will push ``unroll_length``
+        # batches of experiences into the replay buffer. It
+        # effectively "clears" the experiences collected from the last
+        # iteration when the replay buffer length is set so.
+        #
+        # The actual replay buffer length should have an extra 1 added
+        # to it. This is to prevent the last batch of experiences in
+        # each iteration from never getting properly trained.
+        adjusted = config.unroll_length + 1
+
+    # The replay buffer length is exteneded by num_earliest_frames_ignored so
+    # that after FrameStacker transformation the number of experiences matches
+    # ``unroll_length``.
+    adjusted += num_earliest_frames_ignored
+
+    logging.info(f'Actual replay buffer length is adjusted to {adjusted}.')
+
+    return adjusted
 
 
 @alf.configurable
@@ -204,12 +258,23 @@ class RLAlgorithm(Algorithm):
         self._current_transform_state = None
 
         if self._env is not None and not self.on_policy:
-            if config.whole_replay_buffer_training and config.clear_replay_buffer:
-                replayer = "one_time"
-            else:
-                replayer = "uniform"
-            self.set_exp_replayer(replayer, self._env.batch_size,
-                                  config.replay_buffer_length,
+            replay_buffer_length = adjust_replay_buffer_length(
+                config, self._num_earliest_frames_ignored)
+
+            if config.whole_replay_buffer_training:
+                # For whole replay buffer training, we would like to be sure
+                # that the replay buffer have enough samples in it to perform
+                # the training, which will most likely happen in the 2nd
+                # iteration. The minimum_initial_collect_steps guarantees that.
+                minimum_initial_collect_steps = replay_buffer_length * self._env.batch_size
+                if config.initial_collect_steps < minimum_initial_collect_steps:
+                    logging.warn(
+                        'Set the initial_collect_steps to minimum required '
+                        f'value {minimum_initial_collect_steps} because '
+                        'whole_replay_buffer_training is on.')
+                    config.initial_collect_steps = minimum_initial_collect_steps
+
+            self.set_exp_replayer(self._env.batch_size, replay_buffer_length,
                                   config.priority_replay)
 
         env = self._env
@@ -495,12 +560,7 @@ class RLAlgorithm(Algorithm):
 
             self.observe_for_metrics(time_step.cpu())
 
-            if self._exp_replayer_type == "one_time":
-                exp = make_experience(transformed_time_step, policy_step,
-                                      policy_state)
-            else:
-                exp = make_experience(time_step.cpu(), policy_step,
-                                      policy_state)
+            exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
             t0 = time.time()
             self.observe_for_replay(exp)
