@@ -204,11 +204,7 @@ class RLAlgorithm(Algorithm):
         self._current_transform_state = None
 
         if self._env is not None and not self.on_policy:
-            if config.whole_replay_buffer_training and config.clear_replay_buffer:
-                replayer = "one_time"
-            else:
-                replayer = "uniform"
-            self.set_exp_replayer(replayer, self._env.batch_size,
+            self.set_exp_replayer(self._env.batch_size,
                                   config.replay_buffer_length,
                                   config.priority_replay)
 
@@ -495,12 +491,7 @@ class RLAlgorithm(Algorithm):
 
             self.observe_for_metrics(time_step.cpu())
 
-            if self._exp_replayer_type == "one_time":
-                exp = make_experience(transformed_time_step, policy_step,
-                                      policy_state)
-            else:
-                exp = make_experience(time_step.cpu(), policy_step,
-                                      policy_state)
+            exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
             t0 = time.time()
             self.observe_for_replay(exp)
