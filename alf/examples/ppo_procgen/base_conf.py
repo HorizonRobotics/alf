@@ -82,7 +82,9 @@ alf.config(
 alf.config(
     'TrainerConfig',
     unroll_length=256,
-    mini_batch_length=256,
+    # Setting mini_batch_length to None so that the algorithm will
+    # implicitly make it equal to the length from the replay buffer.
+    mini_batch_length=None,
     mini_batch_size=16,
     num_updates_per_train_iter=3,
     num_iterations=7500,
