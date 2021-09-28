@@ -630,11 +630,11 @@ class ReplayBuffer(RingBuffer):
         will be kept in the buffer after the clear.
 
         The reason we might need this is that in rare cases when the episodic
-        MDP is deterministic and the episode length is a multiple of unroll
-        length, we may find the last step of the episode is always ignored and
-        never partipate in training. Keeping it will make it the first
-        experience of the next iteration which guarantees its participation in
-        training.
+        MDP has a fixed expisode length and the episode length is a multiple of
+        unroll length, we may find the last step of the episode is always
+        ignored and never partipate in training. Keeping it will make it the
+        first experience of the next iteration which guarantees its
+        participation in training.
 
         Args:
 
