@@ -280,7 +280,12 @@ class Algorithm(AlgorithmInterface):
                     exp.state, self.train_state_spec, value_to_match=()))
 
         if self._exp_replayer is None:
-            self._set_exp_replayer(exp)
+            # Do not even create the experience replayer if the
+            # required parameters are not set by set_exp_replayer
+            if (self._exp_replayer_num_envs is not None
+                    and self._exp_replayer_length is not None
+                    and self._prioritized_sampling is not None):
+                self._set_exp_replayer(exp)
 
         exp = dist_utils.distributions_to_params(exp)
         for observer in self._observers:
