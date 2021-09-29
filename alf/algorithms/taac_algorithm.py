@@ -264,6 +264,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                  debug_summaries=False,
                  randomize_first_state_tau=False,
                  b1_advantage_clipping=None,
+                 max_repeat_steps=None,
                  target_entropy=None,
                  name="TaacAlgorithmBase"):
         r"""
@@ -306,11 +307,15 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             randomize_first_state_tau (bool): whether to randomize ``state.tau``
                 at the beginning of an episode during rollout and training.
-                Potentially this helps exploration.
+                Potentially this helps exploration. This was turned off in
+                Yu et al. 2021.
             b1_advantage_clipping (None|tuple[float]): option for clipping the
                 advantage (defined as :math:`Q(s,\hat{\tau}) - Q(s,\tau^-)`) when
                 computing :math:`\beta_1`. If not ``None``, it should be a pair
                 of numbers ``[min_adv, max_adv]``.
+            max_repeat_steps (None|int): the max number of steps to repeat during
+                rollout and evaluation. This value doesn't impact the switch
+                during training.
             target_entropy (Callable|tuple[Callable]|None): If a
                 callable function, then it will be called on the action spec to
                 calculate a target entropy. If ``None``, a default entropy will
@@ -384,6 +389,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             (self._b_spec, action_spec), target_entropy)
 
         self._b1_advantage_clipping = b1_advantage_clipping
+        self._max_repeat_steps = max_repeat_steps
         self._randomize_first_state_tau = randomize_first_state_tau
 
         # Create as a buffer so that training from a checkpoint will have
@@ -487,10 +493,14 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 repeats=torch.zeros_like(new_state.repeats), tau=b1_tau)
             return new_state
 
+        condition = ap_out.b.to(torch.bool)
+        if self._max_repeat_steps is not None and mode != Mode.train:
+            condition |= (state.repeats >= self._max_repeat_steps)
+
         # selectively update with new actions
         new_state = conditional_update(
             target=new_state,
-            cond=ap_out.b.to(torch.bool),
+            cond=condition,
             func=_b1_action,
             b1_tau=b1_tau,
             new_state=new_state)
@@ -563,9 +573,11 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 beta_dist = _safe_categorical(q_values2, beta_alpha)
             else:
                 clip_min, clip_max = self._b1_advantage_clipping
-                clipped_q_values2 = (q_values2 - q_values2[..., :1]).clamp(
+                # The first dim [..., 0] is always 0
+                q_values2 = q_values2 - q_values2[..., :1]
+                q_values2[..., 1] = q_values2[..., 1].clamp(
                     min=clip_min, max=clip_max)
-                beta_dist = _safe_categorical(clipped_q_values2, beta_alpha)
+                beta_dist = _safe_categorical(q_values2, beta_alpha)
 
         return beta_dist
 
