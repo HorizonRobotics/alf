@@ -151,7 +151,7 @@ class MeanCurveReader(object):
         if not isinstance(event_file, list):
             event_file = [event_file]
         else:
-            assert len(event_file) > 0, "Empty event file list!"
+            assert len(event_file) > 0, "Empty event file list for " + name
 
         ys = []
         scalar_events_list = []
@@ -557,29 +557,55 @@ class CurvesPlotter(object):
             plt.close(self._fig)
 
 
-def _get_curve_path(dir):
-    return os.path.join(os.getenv("HOME"), "tmp", dir)
+def _get_curve_path(dir=""):
+    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/atari", dir)
+    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/fetch", dir)
+    # p = os.path.join(os.getenv("HOME"), "tmp/iclr22/pioneer", dir)
+    return p
 
 
 if __name__ == "__main__":
     """Plotting examples."""
-    method_tag = {"gdist": "lbQ", "her": "HER"}
-    methods = ["gdist", "her"]
+    mstr_map = {
+        "ddpg": "",
+        "her": "",
+        "gdist": "-gdist",
+        "lbtq": "-lbtq",
+        "lbtqgdist": "-lbtq-gdist"
+    }
+    method_tag = {
+        "lbtq": "lb-DR",
+        "ddpg": "ddpg",
+        "her": "her",
+        "gdist": "lb-GD",
+        "lbtqgdist": "lb-DR+GD"
+    }
+    methods = ["lbtqgdist", "gdist", "her"]
+    # methods = ["lbtq", "ddpg"]
+    tasks = ["PioneerPush", "PioneerPushReach"]
+    tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
     tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
+    y_range = (0., 2500)
+    y_range = (-50., 0.)
+    total_steps = 5000000
+    total_steps = 2000000
+    plot_interval = 40 * 50
 
     def _run_name(m, t):
-        return "her%s%s-env_20-rblen_100000-crirep_2-sparserwd-posrwd_0-sd" % (
-            t.lower(), "" if m == "her" else "-gdist")
+        mstr = mstr_map[m]
+        n = "her%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (t.lower(), mstr)
+        # n = "ddpg%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (t.lower(), mstr)
+        return n
 
-    train = "train"  # "train" or "eval"
+    train = "eval"  # "train" or "eval"
 
     curve_readers = [[
         EnvironmentStepsReturnReader(
             event_file=glob.glob(
                 _get_curve_path(
                     "%s*/tboardlog/%s" % (_run_name(m, t), train))),
-            x_steps=np.arange(0, 2000000,
-                              10000 if train == "train" else 100000),
+            x_steps=np.arange(0, total_steps,
+                              10000 if train == "train" else plot_interval),
             name="%s_%s" % (method_tag[m], t),
             smoothing=3) for t in tasks
     ] for m in methods]
@@ -589,30 +615,31 @@ if __name__ == "__main__":
         plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
                                 x_label=curve_readers[0][0].x_label,
                                 y_label=curve_readers[0][0].y_label,
-                                y_range=(-50., 0.),
-                                x_range=(0, 2000000))
+                                y_range=y_range,
+                                x_range=(0, total_steps))
         plotter.plot(
             output_path=os.path.join(
-                os.getenv("HOME"), "tmp", t + "-" + train + ".pdf"))
+                _get_curve_path(), "vs".join(methods) + "-" + t + "-" + train +
+                ".pdf"))
 
     # Now, to compare SAC with DDPG on navigation and kickball at the same time,
     # we use the normalized score.
-    # [kickball, navigation]
-    random_return = [-50., -50.,
-                     -50.]  # obtained by evaluating a random policy
-    sac_trained_return = [-5., -5., -5.]  # obtained by evaluating trained SAC
-    task_performance_ranges = list(zip(random_return, sac_trained_return))
 
-    curve_group_readers = [
-        MeanCurveGroupReader(cr, task_performance_ranges, m)
-        for m, cr in zip(methods, curve_readers)
-    ]
+    # random_return = [-50., -50.,
+    #                  -50.]  # obtained by evaluating a random policy
+    # sac_trained_return = [-5., -5., -5.]  # obtained by evaluating trained SAC
+    # task_performance_ranges = list(zip(random_return, sac_trained_return))
 
-    plotter = CurvesPlotter([cgr() for cgr in curve_group_readers],
-                            x_range=(0, 2000000),
-                            x_label=curve_group_readers[0].x_label,
-                            y_label=curve_group_readers[0].y_label)
-    plotter.plot(
-        output_path=os.path.join(
-            os.getenv("HOME"), "tmp", "lbQvsHER_normalized_score-" + train +
-            ".pdf"))
+    # curve_group_readers = [
+    #     MeanCurveGroupReader(cr, task_performance_ranges, m)
+    #     for m, cr in zip(methods, curve_readers)
+    # ]
+
+    # plotter = CurvesPlotter([cgr() for cgr in curve_group_readers],
+    #                         x_range=(0, 2000000),
+    #                         x_label=curve_group_readers[0].x_label,
+    #                         y_label=curve_group_readers[0].y_label)
+    # plotter.plot(
+    #     output_path=os.path.join(
+    #         _get_curve_path(), "vs".join(methods) + "_normalized_score-" + train +
+    #         ".pdf"))
