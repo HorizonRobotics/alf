@@ -86,7 +86,6 @@ class ReluMLP(Network):
         if self._output_size is None:
             self._output_size = self._input_size
         self._hidden_layers = hidden_layers
-        self._n_hidden_layers = len(hidden_layers)
 
         self._fc_layers = nn.ModuleList()
         input_size = self._input_size
@@ -132,28 +131,51 @@ class ReluMLP(Network):
 
         return z, state
 
-    def compute_jac(self, inputs):
-        """Compute the input-output Jacobian. """
+    def compute_jac(self, inputs, output_partial_idx=None):
+        """Compute the input-output Jacobian, support partial output.
+
+        Args:
+            inputs (Tensor): size (self._input_size) or (B, self._input_size)
+            output_partial_idx (list): list of output indices for taking
+                partial output-input Jacobian. Default is ``None``, where
+                standard full output-input Jacobian will be used.
+
+        Returns:
+            Jacobian (Tensor): shape (out_size, in_size) or (B, out_size, in_size), 
+                where ``out_size`` is self._output_size if ``output_partial_idx`` 
+                is None, ``len(output_partial_idx)`` otherwise.
+        """
 
         assert inputs.ndim <= 2 and inputs.shape[-1] == self._input_size, \
             ("inputs should has shape {}!".format(self._input_size))
 
         self.forward(inputs)
-        J = self._compute_jac()
+        J = self._compute_jac(output_partial_idx=output_partial_idx)
         if inputs.ndim == 1:
             J = J.squeeze(0)
 
         return J
 
-    def _compute_jac(self):
+    def _compute_jac(self, output_partial_idx=None):
         """Compute the input-output Jacobian. """
 
-        mask = (self._fc_layers[-2].hidden_neurons > 0).float()
-        J = torch.einsum('ia,ba,aj->bij', self._fc_layers[-1].weight, mask,
-                         self._fc_layers[-2].weight)
-        for fc in reversed(self._fc_layers[0:-2]):
-            mask = (fc.hidden_neurons > 0).float()
-            J = torch.einsum('bia,ba,aj->bij', J, mask, fc.weight)
+        if output_partial_idx is None:
+            output_partial_idx = torch.arange(self._output_size)
+
+        if len(self._fc_layers) > 1:
+            mask = (self._fc_layers[-2].hidden_neurons > 0).float()
+            J = torch.einsum('ia,ba,aj->bij',
+                             self._fc_layers[-1].weight[output_partial_idx, :],
+                             mask, self._fc_layers[-2].weight)
+            for fc in reversed(self._fc_layers[0:-2]):
+                mask = (fc.hidden_neurons > 0).float()
+                J = torch.einsum('bia,ba,aj->bij', J, mask, fc.weight)
+        else:
+            mask = torch.ones_like(self._fc_layers[-1].hidden_neurons)
+            mask = mask[:, output_partial_idx]
+            J = torch.einsum('ji, bj->bji',
+                             self._fc_layers[-1].weight[output_partial_idx, :],
+                             mask)
 
         return J  # [B, n_out, n_in]
 
@@ -174,7 +196,7 @@ class ReluMLP(Network):
         """Compute diagonals of the input-output Jacobian. """
 
         mask = (self._fc_layers[-2].hidden_neurons > 0).float()
-        if self._n_hidden_layers == 1:
+        if len(self._hidden_layers) == 1:
             J = torch.einsum('ia,ba,ai->bi', self._fc_layers[-1].weight, mask,
                              self._fc_layers[0].weight)  # [B, n]
         else:
@@ -204,6 +226,7 @@ class ReluMLP(Network):
 
         Returns:
             vjp (Tensor): shape (self._input_size) or (B, self._input_size).
+            outputs (Tensor): outputs of the ReluMLP
         """
 
         ndim = inputs.ndim
@@ -218,9 +241,10 @@ class ReluMLP(Network):
             assert vec.shape[-1] == self._output_size, (
                 "vec should has shape {}!".format(self._output_size))
         else:
-            assert vec.shape[-1] >= len(output_partial_idx), (
-                "vec should has shape greater than {}!".format(
-                    len(output_partial_idx)))
+            assert vec.shape[-1] == len(output_partial_idx) or \
+                    vec.shape[-1] == self._output_size, (
+                        "vec should has shape {} or {}!".format(
+                            len(output_partial_idx), self._output_size))
 
         outputs, _ = self.forward(inputs)
         vjp = self._compute_vjp(vec, output_partial_idx=output_partial_idx)
@@ -236,8 +260,10 @@ class ReluMLP(Network):
 
         if output_partial_idx is None:
             output_partial_idx = torch.arange(self._output_size)
+        if vec.shape[-1] == self._output_size:
+            vec = vec[:, output_partial_idx]
 
-        J = torch.matmul(vec[:, output_partial_idx],
+        J = torch.matmul(vec,
                          self._fc_layers[-1].weight[output_partial_idx, :])
         for fc in reversed(self._fc_layers[0:-1]):
             mask = (fc.hidden_neurons > 0).float()
@@ -264,6 +290,7 @@ class ReluMLP(Network):
             jvp (Tensor): shape (out_size) or (B, out_size), where ``out_size``
                 is self._output_size if ``output_partial_idx`` is None, 
                 ``len(output_partial_idx)`` otherwise.
+            outputs (Tensor): outputs of the ReluMLP
         """
 
         ndim = inputs.ndim
