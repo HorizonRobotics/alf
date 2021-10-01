@@ -557,54 +557,104 @@ class CurvesPlotter(object):
             plt.close(self._fig)
 
 
+env = "pioneer"  # one of "pioneer", "atari", "fetch"
+her = True  # if False, baseline is ddpg or sac
+train = "eval"  # "train" or "eval"
+
+
 def _get_curve_path(dir=""):
-    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/atari", dir)
-    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/fetch", dir)
-    # p = os.path.join(os.getenv("HOME"), "tmp/iclr22/pioneer", dir)
+    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + env, dir)
     return p
 
 
 if __name__ == "__main__":
     """Plotting examples."""
     mstr_map = {
-        "ddpg": "",
-        "her": "",
+        "sac": "",  # baseline
+        "ddpg": "",  # baseline
+        "her": "",  # baseline
+        "td3": "",  # baseline
         "gdist": "-gdist",
         "lbtq": "-lbtq",
         "lbtqgdist": "-lbtq-gdist"
     }
     method_tag = {
-        "lbtq": "lb-DR",
         "ddpg": "ddpg",
+        "td3": "td3",
+        "sac": "sac",
         "her": "her",
+        "lbtq": "lb-DR",
         "gdist": "lb-GD",
         "lbtqgdist": "lb-DR+GD"
     }
-    methods = ["lbtqgdist", "gdist", "her"]
-    # methods = ["lbtq", "ddpg"]
-    tasks = ["PioneerPush", "PioneerPushReach"]
-    tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
-    tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
-    y_range = (0., 2500)
-    y_range = (-50., 0.)
-    total_steps = 5000000
-    total_steps = 2000000
+    task_map = {
+        "PioneerPush": "pushst",
+        "PioneerPushReach": "pushst-prch",
+        "PioneerReach": "targetnavst"
+    }
+
+    if her:
+        methods = ["lbtqgdist", "gdist", "her"]
+    else:
+        if env == "atari":
+            methods = ["lbtq", "sac"]
+        elif env == "fetch":
+            methods = ["lbtq", "ddpg"]
+        else:
+            methods = ["lbtq", "td3"]
+
+    if env == "fetch":
+        tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
+        total_steps = 2000000
+        task_y_range = {t: (-50, 0) for t in tasks}
+        cluster_str = "/tboardlog"
+    elif env == "pioneer":
+        tasks = ["PioneerPush", "PioneerPushReach"]
+        total_steps = 0
+        task_total_steps = {
+            "PioneerPush": 5000000,
+            "PioneerPushReach": 14000000
+        }
+        task_y_range = {
+            "PioneerPush": (-100, 0),
+            "PioneerPushReach": (-200, 0)
+        }
+        cluster_str = ""
+    elif env == "atari":
+        tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
+        total_steps = 5000000
+        task_y_range = {
+            "Breakout": (0, 400),
+            "Seaquest": (0, 2500),
+            "SpaceInvaders": (0, 600)
+        }
+        cluster_str = "/tboardlog"
+    else:
+        assert False
     plot_interval = 40 * 50
 
     def _run_name(m, t):
         mstr = mstr_map[m]
-        n = "her%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (t.lower(), mstr)
-        # n = "ddpg%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (t.lower(), mstr)
+        bstr = "her" if her else "ddpg"
+        if env == "fetch":
+            n = "%s%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (bstr, t.lower(),
+                                                               mstr)
+        elif env == "pioneer":
+            n = "%s%s%s-curri_0-randrange_1-lr_0.001-crirep_2-herk_0.5-endsucc-sparserwd-posrwd_0-mdimr_0-hitpenal_0-randagentpp-it_5000" % (
+                bstr, task_map[t], mstr)
+        elif env == "atari":
+            assert not her
+            if mstr == "lbtq":
+                mstr += "_0.5"
+            n = "sacbreakout%s-envn_%sNoFrameskip--v4???-sd_" % (mstr, t)
         return n
-
-    train = "eval"  # "train" or "eval"
 
     curve_readers = [[
         EnvironmentStepsReturnReader(
             event_file=glob.glob(
                 _get_curve_path(
-                    "%s*/tboardlog/%s" % (_run_name(m, t), train))),
-            x_steps=np.arange(0, total_steps,
+                    "%s*%s/%s" % (_run_name(m, t), cluster_str, train))),
+            x_steps=np.arange(0, total_steps or task_total_steps[t],
                               10000 if train == "train" else plot_interval),
             name="%s_%s" % (method_tag[m], t),
             smoothing=3) for t in tasks
@@ -615,8 +665,9 @@ if __name__ == "__main__":
         plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
                                 x_label=curve_readers[0][0].x_label,
                                 y_label=curve_readers[0][0].y_label,
-                                y_range=y_range,
-                                x_range=(0, total_steps))
+                                y_range=task_y_range[t],
+                                x_range=(0, total_steps
+                                         or task_total_steps[t]))
         plotter.plot(
             output_path=os.path.join(
                 _get_curve_path(), "vs".join(methods) + "-" + t + "-" + train +
