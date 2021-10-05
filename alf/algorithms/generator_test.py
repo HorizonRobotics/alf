@@ -118,7 +118,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             inverse_mvp_solve_iters=1,
             inverse_mvp_hidden_layers=3,
             use_kernel_averager=use_kernel_averager,
-            fullrank_diag_weight=1.0,
+            init_lambda=1.0,
             critic_hidden_layers=(hidden_size, hidden_size),
             optimizer=alf.optimizers.AdamTF(lr=2e-3),
             inverse_mvp_optimizer=alf.optimizers.Adam(lr=1e-3),
