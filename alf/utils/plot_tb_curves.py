@@ -557,8 +557,8 @@ class CurvesPlotter(object):
             plt.close(self._fig)
 
 
-env = "pioneer"  # one of "pioneer", "atari", "fetch"
-her = True  # if False, baseline is ddpg or sac
+env = "atari"  # one of "pioneer", "atari", "fetch"
+her = False  # if False, baseline is ddpg or sac
 train = "eval"  # "train" or "eval"
 
 
@@ -621,12 +621,13 @@ if __name__ == "__main__":
         }
         cluster_str = ""
     elif env == "atari":
-        tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
-        total_steps = 5000000
+        tasks = ["Breakout", "Seaquest",
+                 "SpaceInvaders"]  # breakout only if v0
+        total_steps = 12000000
         task_y_range = {
-            "Breakout": (0, 400),
-            "Seaquest": (0, 2500),
-            "SpaceInvaders": (0, 600)
+            "Breakout": (0, 250),
+            "Seaquest": (0, 3500),
+            "SpaceInvaders": (0, 1200)
         }
         cluster_str = "/tboardlog"
     else:
@@ -644,9 +645,11 @@ if __name__ == "__main__":
                 bstr, task_map[t], mstr)
         elif env == "atari":
             assert not her
-            if mstr == "lbtq":
-                mstr += "_0.5"
-            n = "sacbreakout%s-envn_%sNoFrameskip--v4???-sd_" % (mstr, t)
+            if mstr == "-lbtq":
+                mstr += "_0.0002"
+            # v0:
+            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05-upit_8-batsz_250-evit_1000-evepi_20-sd_" % (
+                mstr, t)
         return n
 
     curve_readers = [[
