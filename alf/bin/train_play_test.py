@@ -576,7 +576,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_sac_cart_pole(self):
         self._test(
-            conf_file='sac_cart_pole.gin',
+            conf_file='sac_cart_pole_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_sac_fetchreach(self):
