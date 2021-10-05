@@ -58,7 +58,7 @@ alf.config(
         activation=torch.tanh,
         input_tensor_spec=TensorSpec(shape=(1024, )),
         fc_layer_params=(300, 400, 500, EMBEDDING_DIM)),
-    optimizer=alf.optimizers.Adam(lr=4e-5),
+    optimizer=alf.optimizers.AdamTF(lr=4e-5),
     keep_stacked_frames=KEEP_STACKED_FRAMES)
 
 alf.config(
@@ -67,7 +67,7 @@ alf.config(
     extrinsic_reward_coef=1.0,
     intrinsic_reward_module=RNDAlgorithm(),
     intrinsic_reward_coef=1e-3,
-    optimizer=alf.optimizers.Adam(lr=1e-4))
+    optimizer=alf.optimizers.AdamTF(lr=1e-4))
 
 alf.config('PPOLoss', entropy_regularization=0.01)
 
@@ -100,7 +100,7 @@ alf.config(
     mini_batch_length=1,
     mini_batch_size=1024,
     num_iterations=0,
-    num_env_steps=50000000,
+    num_env_steps=50000000,  # = 200M frames / 4 (frame_skip)
     debug_summaries=True,
     summarize_grads_and_vars=False,
     summary_interval=100,
