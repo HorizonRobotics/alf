@@ -13,9 +13,10 @@
 # limitations under the License.
 """A generic generator."""
 
+import functools
 import numpy as np
 import torch
-import functools
+from torch.autograd.functional import jacobian
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -198,7 +199,7 @@ class InverseMVPAlgorithm(Algorithm):
         """
         z_inputs, vec = inputs
         assert z_inputs.ndim == 2 and z_inputs.shape[-1] >= self._z_dim
-        assert vec.shape[-1] == self._vec_dim
+        assert vec.shape[-1] >= self._vec_dim
         assert z_inputs.shape[0] == vec.shape[0]
 
         if z_inputs.shape[-1] > self._z_dim:
@@ -215,6 +216,9 @@ class InverseMVPAlgorithm(Algorithm):
             raise ValueError(
                 "vec must be dimension 2 or 3, got dimension {}".format(
                     vec.ndim))
+
+        if vec_inputs.shape[-1] > self._vec_dim:
+            vec_inputs = vec_inputs[:, :self._vec_dim]
 
         outputs = (self._net((z_inputs, vec_inputs))[0], z_inputs)
 
@@ -297,7 +301,10 @@ class Generator(Algorithm):
                  par_vi=None,
                  use_kernel_averager=False,
                  functional_gradient=False,
-                 fullrank_diag_weight=1.0,
+                 init_lambda=1.,
+                 lambda_trainable=False,
+                 block_inverse_mvp=False,
+                 direct_jac_inverse=False,
                  inverse_mvp_solve_iters=1,
                  inverse_mvp_hidden_size=100,
                  inverse_mvp_hidden_layers=1,
@@ -311,6 +318,7 @@ class Generator(Algorithm):
                  critic_optimizer=None,
                  inverse_mvp_optimizer=None,
                  optimizer=None,
+                 lambda_optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
 
@@ -361,8 +369,14 @@ class Generator(Algorithm):
                 forwarding the first ``noise_dim`` components. We then add the 
                 full noise vector to the output, multiplied by the 
                 ``fullrank_diag_weight``.  
-            fullrank_diag_weight (float): weight on "extra" dimensions when 
-                forcing full rank Jacobian
+            init_lambda (float): weight on direct input-output link added to
+                the generator output. Only used for GPVI when forcing full rank 
+                Jacobian.
+            block_inverse_mvp(bool): whether to use the more efficient block form
+                for inverse_mvp when ``functional_gradient`` is True. This
+                option is recommended only when ``noise_dim`` < ``output_dim``.
+                as it is equivalent to the default form when ``noise_dim`` is 
+                equal to ``output_dim``.
             inverse_mvp_solve_iters (int): number of iterations of inverse_mvp
                 network training per single iteration of generator training.
             inverse_mvp_hidden_size (int): width of hidden layers in inverse_mvp
@@ -395,6 +409,7 @@ class Generator(Algorithm):
         self._entropy_regularization = entropy_regularization
         self._functional_gradient = functional_gradient
         self._par_vi = par_vi
+        self._direct_jac_inverse = direct_jac_inverse
         if entropy_regularization == 0:
             self._grad_func = self._ml_grad
         else:
@@ -430,23 +445,42 @@ class Generator(Algorithm):
                     )
                 if noise_dim == output_dim:
                     force_fullrank = False
+                    block_inverse_mvp = False
                 else:
                     assert noise_dim < output_dim
                     force_fullrank = True
                 self._grad_func = self._rkhs_func_grad
                 self._force_fullrank = force_fullrank
-                self._fullrank_diag_weight = fullrank_diag_weight
-                self._inverse_mvp_solve_iters = inverse_mvp_solve_iters
-                if inverse_mvp_optimizer is None:
-                    inverse_mvp_optimizer = alf.optimizers.Adam(
-                        lr=1e-4, weight_decay=1e-5)
+                init_lambda = float(init_lambda)
+                assert init_lambda > 0, "init_lambda has to be positive!"
+                if lambda_trainable:
+                    self._log_lambda = torch.nn.Parameter(
+                        torch.tensor(np.log(init_lambda)))
+                    if lambda_optimizer is None:
+                        lambda_optimizer = alf.optimizers.Adam(lr=1e-3)
+                    self.add_optimizer(lambda_optimizer,
+                                       nest.flatten(self._log_lambda))
+                else:
+                    self._fixed_lambda = init_lambda
+                self._lambda_trainable = lambda_trainable
 
-                self._inverse_mvp = InverseMVPAlgorithm(
-                    noise_dim,
-                    output_dim,
-                    hidden_size=inverse_mvp_hidden_size,
-                    num_hidden_layers=inverse_mvp_hidden_layers,
-                    optimizer=inverse_mvp_optimizer)
+                self._block_inverse_mvp = block_inverse_mvp
+                if not direct_jac_inverse:
+                    self._inverse_mvp_solve_iters = inverse_mvp_solve_iters
+                    if inverse_mvp_optimizer is None:
+                        inverse_mvp_optimizer = alf.optimizers.Adam(
+                            lr=1e-4, weight_decay=1e-5)
+
+                    if block_inverse_mvp:
+                        inverse_mvp_output_dim = noise_dim
+                    else:
+                        inverse_mvp_output_dim = output_dim
+                    self._inverse_mvp = InverseMVPAlgorithm(
+                        noise_dim,
+                        inverse_mvp_output_dim,
+                        hidden_size=inverse_mvp_hidden_size,
+                        num_hidden_layers=inverse_mvp_hidden_layers,
+                        optimizer=inverse_mvp_optimizer)
 
             if use_kernel_averager:
                 self._kernel_width_averager = AdaptiveAverager(
@@ -458,15 +492,15 @@ class Generator(Algorithm):
 
         if net is None:
             net_input_spec = noise_spec
-            if input_tensor_spec is not None:
-                net_input_spec = [net_input_spec, input_tensor_spec]
             if functional_gradient:
                 net = ReluMLP(
-                    input_tensor_spec,
+                    net_input_spec,
                     output_size=output_dim,
                     hidden_layers=hidden_layers,
                     name='Generator')
             else:
+                if input_tensor_spec is not None:
+                    net_input_spec = [net_input_spec, input_tensor_spec]
                 net = EncodingNetwork(
                     input_tensor_spec=net_input_spec,
                     fc_layer_params=hidden_layers,
@@ -499,6 +533,15 @@ class Generator(Algorithm):
     def noise_dim(self):
         return self._noise_dim
 
+    def get_lambda(self, training=False):
+        if self._lambda_trainable:
+            cur_lambda = torch.exp(self._log_lambda)
+            if not training:
+                cur_lambda = cur_lambda.detach()
+            return cur_lambda
+        else:
+            return self._fixed_lambda
+
     def _predict(self, inputs=None, noise=None, batch_size=None,
                  training=True):
         if inputs is None:
@@ -521,12 +564,13 @@ class Generator(Algorithm):
         else:
             if self._functional_gradient:
                 if self._force_fullrank:
+                    fullrank_diag_weight = self.get_lambda(training=training)
                     extra_noise = torch.randn(
                         noise.shape[0], self._output_dim - self._noise_dim)
                     outputs = self._net(gen_inputs)[0]  # [B, D]
                     gen_inputs = torch.cat((gen_inputs, extra_noise),
                                            dim=-1)  # [B, D]
-                    outputs = outputs + self._fullrank_diag_weight * gen_inputs
+                    outputs = outputs + fullrank_diag_weight * gen_inputs
                 else:
                     outputs = self._net(gen_inputs)[0]
             else:
@@ -973,37 +1017,84 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
+    def _get_vec_for_jac_inv_vec_prod(self, z, vec):
+        r"""
+        Construct a vecor as input to the helper network for 
+        Jacobian-inverse vector product estimation, used for GPVI and GPVI_Plus.
+
+        Args: 
+            z (Tensor): of size [N2, K], input noise to the self._net 
+            vec (Tensor): of size [N2, N, D], representing 
+                :math:`\nabla_{z'}k(z', z)`. 
+
+        Returns:
+            reshaped vec (Tensor): of shape [N2*N, K]
+            z_repeat (Tensor): of shape [N2*N, K]
+        """
+        vec_1 = vec[:, :, :self._noise_dim]  # [N2, N, K]
+        vec_2 = vec[:, :, self._noise_dim:]  # [N2, N, D-K]
+        z_repeat = torch.repeat_interleave(z, vec.shape[1], dim=0)  # [N2*N, K]
+        vjp, _ = self._net.compute_vjp(
+            z_repeat,
+            vec_2.reshape(-1, vec_2.shape[-1]),
+            output_partial_idx=torch.arange(
+                start=self._noise_dim, end=self._output_dim))  # [N2*N, K]
+        vec = vec_1.reshape(
+            -1, self._noise_dim) - vjp / self.get_lambda()  # [N2*N, K]
+        return vec, z_repeat  # [N2*N, K]
+
     def _inverse_mvp_train_step(self, z, vec):
         r"""Compute the loss for inverse_mvp training. 
         self._inverse_mvp solves an inverse problem for the amortized 
         functional gradient vi method GPVI.  
-        For ``functional_gradient`` being True, it takes :math:`z'` and
-        :math:`\nabla_{z'}k(z', z)` as input and outputs
-        :math:`(\partial f / \partial z')^{-1} * \nabla_{z'}k(z', z)`.
+        For GPVI, it takes :math:`z'^{(1:k)}` and :math:`v=\nabla_{z'}K(z', z)` 
+        as input and outputs :math:`v^T(\partial f / \partial z')^{-1}`. 
+        For GPVI_plus, it takes :math:`z'^{(1:k)}` and :math:`v` as inputs
+        and outputs :math:`v^T(\partial f^{(1:k)} / \partial z'^{(1:k)})^{-1}`,
+        where :math:`v` can be :math:`\nabla_{z'^{(1:k)}}K(z', z)` or
+        :math:`(\nabla_{z'^{(k:d)}}K(z', z))^T(\partial f^{(k:d)} / \partial z')^{-1}`.
         The training loss is given by
-        :math:`\|()\partical f / \partial z')^T y - \nabla_{z'}k(z',z)`,
-        where y denotes the output of self._inverse_mvp.
-        The first term is computed by vector-jacobian product between the
-        generator :math:`f` and output :math`y`.
+        :math:`\|(\partical f / \partial z')^T y - v\|^2`, where :math`y` 
+        denotes the output of self._inverse_mvp, and the first term is 
+        computed by vector-jacobian product (vjp) between the generator 
+        :math:`f` and :math`y`.
     
         Args: 
             z (Tensor): of size [N2, D], representing :math:`z'`
-            vec (Tensor): of size [N2, N, D], representing :math:`\nabla_{z'}k(z', z)`
+            vec (Tensor): of size [N2, N, D], representing 
+                :math:`\nabla_{z'}k(z', z)`. 
+
         Returns:
             inverse_mvp_loss (float)
         """
-        y, z_inputs = self._inverse_mvp.predict_step((z,
-                                                      vec)).output  #[N2*N, D]
-        jac_y, _ = self._net.compute_vjp(z_inputs, y)  # [N2*N, K]
+        if self._force_fullrank and self._block_inverse_mvp:
+            vec, z_repeat = self._get_vec_for_jac_inv_vec_prod(
+                z[:, :self._noise_dim], vec)
+            y, z_inputs = self._inverse_mvp.predict_step((z_repeat,
+                                                          vec)).output
+        else:
+            # [N2*N, D] or [N2*N, K]
+            y, z_inputs = self._inverse_mvp.predict_step((z, vec)).output
+            vec = vec.reshape(-1, self._output_dim)  # [N2*N, D]
+
+        if self._block_inverse_mvp:
+            partial_idx = torch.arange(self._noise_dim)
+        else:
+            partial_idx = None
+        jac_y, _ = self._net.compute_vjp(
+            z_inputs, y,
+            output_partial_idx=partial_idx)  # [N2*N, D] or [N2*N, K]
+
         if self._force_fullrank:
-            jac_y = torch.cat(
-                (jac_y,
-                 torch.zeros(jac_y.shape[0],
-                             self._output_dim - self._noise_dim)),
-                dim=-1)
-            jac_y += self._fullrank_diag_weight * y  # [N2*N, D]
-        jac_y = jac_y.reshape(vec.shape[0], vec.shape[1], -1)  # [N2, N, D]
-        loss = torch.nn.functional.mse_loss(jac_y, vec)
+            if not self._block_inverse_mvp:
+                jac_y = torch.cat([
+                    jac_y,
+                    torch.zeros(jac_y.shape[0],
+                                self._output_dim - self._noise_dim)
+                ],
+                                  dim=-1)
+            jac_y += self.get_lambda() * y  # [N2*N, D]
+        loss = torch.nn.functional.mse_loss(jac_y, vec.detach())
 
         return loss
 
@@ -1017,6 +1108,7 @@ class Generator(Algorithm):
         Compute the amortized functional gradient of generator, functional gradient
         represented in an RKHS. Empirical expectation evaluated by a resampling
         from the z space of the same batch size. 
+
         Args:
             inputs: None
             outputs (tuple of Tensors): (outputs, gen_inputs) of size [N, D] and
@@ -1037,19 +1129,37 @@ class Generator(Algorithm):
 
         # [N2, N], [N2, N, D]
         kernel_weight, kernel_grad = self._rbf_func2(gen_inputs2, gen_inputs)
+        z_inputs = gen_inputs2[:, :self._noise_dim]  # [N2, K]
+        if self._direct_jac_inverse:
+            # direct jac inverse, no inverse_mvp needed.
+            J_inv_kernel_grad = self._direct_jac_inverse_vec_prod(
+                z_inputs.detach(), kernel_grad.detach())
+            inverse_mvp_loss = ()
+        else:
+            # train inverse_mvp
+            for i in range(self._inverse_mvp_solve_iters):
+                inverse_mvp_loss = self._inverse_mvp_train_step(
+                    gen_inputs2.detach(), kernel_grad.detach())
+                self._inverse_mvp.update_with_gradient(
+                    LossInfo(loss=inverse_mvp_loss))
 
-        # train inverse_mvp
-        for i in range(self._inverse_mvp_solve_iters):
-            inverse_mvp_loss = self._inverse_mvp_train_step(
-                gen_inputs2.detach(), kernel_grad.detach())
-            self._inverse_mvp.update_with_gradient(
-                LossInfo(loss=inverse_mvp_loss))
-
-        # construct functional gradient via inverse_mvp
-        J_inv_kernel_grad, _ = self._inverse_mvp.predict_step(
-            (gen_inputs2.detach(), kernel_grad.detach())).output  # [N2*N, D]
-        J_inv_kernel_grad = J_inv_kernel_grad.reshape(
-            num_particles, num_particles, -1)  # [N2, N, D]
+            # construct functional gradient via inverse_mvp
+            if self._block_inverse_mvp:  # [N2*N, K]
+                vec, z_repeat = self._get_vec_for_jac_inv_vec_prod(
+                    z_inputs.detach(), kernel_grad.detach())
+                J_inv_kernel_grad_1, _ = self._inverse_mvp.predict_step(
+                    (z_repeat, vec)).output  # [N2*N, K]
+                J_inv_kernel_grad_1 = J_inv_kernel_grad_1.reshape(
+                    num_particles, num_particles, -1)  # [N2, N, K]
+                J_inv_kernel_grad = torch.cat(
+                    [J_inv_kernel_grad_1, kernel_grad[:, :, self._noise_dim:] \
+                        / self.get_lambda()],
+                    dim=-1)  # [N2, N, D]
+            else:
+                J_inv_kernel_grad, _ = self._inverse_mvp.predict_step(
+                    (gen_inputs2, kernel_grad)).output  # [N2*N, D]
+                J_inv_kernel_grad = J_inv_kernel_grad.reshape(
+                    num_particles, num_particles, -1)  # [N2, N2, D]
 
         loss_inputs = outputs2
         loss = loss_func(loss_inputs)
@@ -1066,6 +1176,64 @@ class Generator(Algorithm):
         grad = kernel_logp - entropy_regularization * J_inv_kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs, dim=1)
         return (loss, inverse_mvp_loss), loss_propagated
+
+    def _direct_jac_inverse_vec_prod(self, z, vec):
+        r"""
+        Compute Jacobian-inverse vector product through direct Jacobian
+        Inversion, used for GPVI and GPVI_Plus.
+
+        Args: 
+            z (Tensor): of size [N2, K], input noise to the self._net 
+            vec (Tensor): of size [N2, N, D], representing 
+                :math:`\nabla_{z'}k(z', z)`. 
+
+        Returns:
+            J_inv_vec (Tensor): of shape [N2, N, D]
+        """
+        fullrank_diag_weight = self.get_lambda()
+        N2, N = vec.shape[:2]
+        if self._block_inverse_mvp:
+            partial_idx = torch.arange(self._noise_dim)
+        else:
+            partial_idx = None
+        jac = self._net.compute_jac(z, output_partial_idx=partial_idx)
+
+        if self._force_fullrank:
+            if self._block_inverse_mvp:
+                eye_dim = self._noise_dim
+            else:
+                eye_dim = self._output_dim
+                jac = torch.cat([
+                    jac,
+                    torch.zeros(*jac.shape[:-1],
+                                self._output_dim - self._noise_dim)
+                ],
+                                dim=-1)
+            jac += fullrank_diag_weight * torch.eye(eye_dim)
+        jac_inv = torch.inverse(jac)  # [N2, D, D] or [N2, K, K]
+
+        if self._force_fullrank and self._block_inverse_mvp:
+            vec_1 = vec[:, :, :self._noise_dim]
+            J_inv_vec_1 = torch.einsum('bij,bai->baj', jac_inv,
+                                       vec_1)  # [N2, N, K]
+            vec_2 = vec[:, :, self._noise_dim:]  # [N2, N, D-K]
+            z_repeat = torch.repeat_interleave(z, N, dim=0)  # [N2*N, K]
+
+            vjp, _ = self._net.compute_vjp(
+                z_repeat,
+                vec_2.reshape(-1, vec_2.shape[-1]),
+                output_partial_idx=torch.arange(
+                    start=self._noise_dim, end=self._output_dim))
+            vjp = vjp.reshape(N2, N, -1)  # [N2, N, K]
+
+            J_inv_vec_1 = J_inv_vec_1 - vjp / fullrank_diag_weight
+            J_inv_vec = torch.cat([J_inv_vec_1, vec_2 / fullrank_diag_weight],
+                                  dim=-1)  # [N2, N, D]
+        else:
+            J_inv_vec = torch.einsum('bij,bai->baj', jac_inv,
+                                     vec)  # [N2, N, D]
+
+        return J_inv_vec
 
     def after_update(self, training_info):
         if self._predict_net:
