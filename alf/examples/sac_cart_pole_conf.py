@@ -40,14 +40,11 @@ alf.config(
 # training config
 alf.config(
     'TrainerConfig',
-    algorithm_ctor=SacAlgorithm,
     initial_collect_steps=1000,
     mini_batch_length=2,
     mini_batch_size=64,
     unroll_length=1,
     num_updates_per_train_iter=1,
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False,
     num_iterations=10000,
     num_checkpoints=5,
     evaluate=False,
