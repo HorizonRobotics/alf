@@ -23,11 +23,11 @@ alf.config(
     'create_environment', env_name="CartPole-v0", num_parallel_environments=8)
 
 # algorithm config
-alf.config('ActorDistributionNetwork', fc_layer_params=(100, ))
 alf.config('QNetwork', fc_layer_params=(100, ))
+# note that for discrete action space we do not need the actor network as a
+# discrete action can be sampled from the Q values.
 alf.config(
     'SacAlgorithm',
-    actor_network_cls=ActorDistributionNetwork,
     q_network_cls=QNetwork,
     actor_optimizer=alf.optimizers.Adam(lr=1e-3, name='actor'),
     critic_optimizer=alf.optimizers.Adam(lr=1e-3, name='critic'),
