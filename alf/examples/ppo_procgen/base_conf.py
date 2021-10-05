@@ -32,8 +32,7 @@ from alf.examples import procgen_conf
 from alf.examples.networks import impala_cnn_encoder
 
 # Environment Configuration
-alf.config(
-    'create_environment', env_name='bossfight', num_parallel_environments=96)
+alf.config('create_environment', num_parallel_environments=96)
 
 # Construct the networks
 
@@ -83,8 +82,10 @@ alf.config(
 alf.config(
     'TrainerConfig',
     unroll_length=256,
-    mini_batch_length=1,
-    mini_batch_size=4096,
+    # Setting mini_batch_length to None so that the algorithm will
+    # implicitly make it equal to the length from the replay buffer.
+    mini_batch_length=None,
+    mini_batch_size=16,
     num_updates_per_train_iter=3,
     num_iterations=7500,
     num_checkpoints=5,
