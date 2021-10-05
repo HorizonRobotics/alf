@@ -622,6 +622,47 @@ class ReplayBuffer(RingBuffer):
         result = alf.nest.map_structure(lambda x: x[indices], field)
         return convert_device(result)
 
+    def clear(self, keep_last_exp: bool = False) -> None:
+        """Clear the replay buffer and remove all the experiences.
+
+        One of the exception is that when keep_last_exp is set to True and there
+        are at least 1 experience in the replay buffer, the latest experience
+        will be kept in the buffer after the clear.
+
+        The reason we might need this is that in rare cases when the episodic
+        MDP has a fixed expisode length and the episode length is a multiple of
+        unroll length, we may find the last step of the episode is always
+        ignored and never partipate in training. Keeping it will make it the
+        first experience of the next iteration which guarantees its
+        participation in training.
+
+        Args:
+
+            keep_last_exp: see above.
+
+        """
+        if keep_last_exp and self.total_size > 0:
+            # Get the pos of the current buffer for all environments. If
+            # everything is as expected, the pos of all the environments should
+            # be the same. Such condition is checked by the assert.
+            pos = self._current_pos.min()
+            max_pos = self._current_pos.max()
+            assert pos == max_pos, (
+                "Not all environments have the same ending position. "
+                "min_pos: %s max_pos: %s" % (pos, max_pos))
+
+            # The index of the last experience in the ring buffer will be the
+            # modulus remainder of pos - 1.
+            last_exp_idx = self.circular(pos - 1)
+            last_exp_in_buffer = alf.nest.map_structure(
+                lambda buf: buf[:, last_exp_idx, ...], self._buffer)
+
+            # Clear the ring buffer and put the last experience back into it.
+            super().clear(env_ids=None)
+            self.add_batch(last_exp_in_buffer)
+        else:
+            super().clear(env_ids=None)
+
     @property
     def total_size(self):
         """Total size from all environments."""

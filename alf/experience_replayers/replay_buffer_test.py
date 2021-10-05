@@ -496,6 +496,41 @@ class ReplayBufferTest(RingBufferTest):
         self.assertTrue(torch.all(w2 == 1.0))
         self.assertTrue(torch.all(w3 == 1.0))
 
+    def test_clear_with_keep_last_exp(self):
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=self.num_envs,
+            max_length=self.max_length)
+
+        batch1 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=0, x=0.1)
+        batch2 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=1, x=0.3)
+        batch3 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=0.5)
+        batch4 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=0.8)
+        batch5 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=1.9)
+        batch6 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=2.9)
+
+        # The buffer max length is 4, therefore after the 6 add_batch() batch 3,
+        # 4, 5 6 will be in the buffer.
+        replay_buffer.add_batch(batch1)
+        replay_buffer.add_batch(batch2)
+        replay_buffer.add_batch(batch3)
+        replay_buffer.add_batch(batch4)
+        replay_buffer.add_batch(batch5)
+        replay_buffer.add_batch(batch6)
+
+        self.assertEqual(8 * 4, replay_buffer.total_size)
+        replay_buffer.clear(keep_last_exp=True)
+        self.assertEqual(8 * 1, replay_buffer.total_size)
+
+        remaining_batch = replay_buffer.gather_all()
+
+        # Check that after clear(), the last experience of the
+        # previous buffer is kept.
+        self.assertEqual(
+            torch.tensor([[0], [1], [2], [3], [4], [5], [6], [7]]),
+            remaining_batch.env_id)
+        self.assertEqual(torch.tensor([[2.9]] * 8), remaining_batch.o['a'])
+
 
 if __name__ == '__main__':
     alf.test.main()
