@@ -247,7 +247,8 @@ class SyncExperienceReplayer(ExperienceReplayer):
         return self._buffer.get_batch(sample_batch_size, mini_batch_length)
 
     def replay_all(self):
-        return self._buffer.gather_all()
+        result, _ = self._buffer.gather_all()
+        return result
 
     def clear(self):
         self._buffer.clear()

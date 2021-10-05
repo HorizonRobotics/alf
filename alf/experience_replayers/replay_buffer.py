@@ -557,14 +557,31 @@ class ReplayBuffer(RingBuffer):
         return first_step_pos
 
     @atomic
-    def gather_all(self):
+    def gather_all(self, ignore_earliest_frames: bool = False):
         """Returns all the items in the buffer.
 
+        Args:
+
+            ignore_earliest_frames: if set to ``True``, gather_all() will
+                respect ``num_earliest_frames_ignored`` and for each environment
+                it will return the trajectory with the first
+                ``num_earliest_frames_ignored`` experiences removed.
+
         Returns:
-            Tensors of shape [B, T, ...], B=num_environments, T=current_size
+            tuple:
+                - nested Tensors of shape [B, T, ...], where
+                  B=num_environments, T=current_size
+                - BatchInfo: Information about the batch. Its shapes are [B], where
+                  B=num_environments
+                    - env_ids: [0, 1, 2, ..., num_envs - 1]
+                    - positions: starting position in the replay buffer for each
+                      of the sequences. For gather_all() all starting positions will
+                      be the same.
+
         Raises:
             AssertionError: if the current_size is not same for all the
             environments.
+
         """
         size = self._current_size.min()
         max_size = self._current_size.max()
@@ -585,13 +602,27 @@ class ReplayBuffer(RingBuffer):
         # buffer whose data can start from the middle, so this is limited
         # to the case where clear() is the only way to remove data from
         # the buffer.
-        if size == self._max_length:
+        if size == self._max_length and not ignore_earliest_frames:
             result = self._buffer
+            info = BatchInfo(
+                env_ids=torch.arange(self._num_envs),
+                positions=torch.tensor([0] * self._num_envs))
         else:
+            if ignore_earliest_frames:
+                actual_start = self._num_earliest_frames_ignored
+            else:
+                actual_start = 0
             # Assumes that non-full buffer always stores data starting from 0
-            result = alf.nest.map_structure(lambda buf: buf[:, :size, ...],
-                                            self._buffer)
-        return convert_device(result)
+            result = alf.nest.map_structure(
+                lambda buf: buf[:, actual_start:size, ...], self._buffer)
+            info = BatchInfo(
+                env_ids=torch.arange(self._num_envs),
+                positions=torch.tensor([actual_start] * self._num_envs))
+            if alf.get_default_device() != self._device:
+                result, info = convert_device((result, info))
+            info = info._replace(replay_buffer=self)
+
+        return result, info
 
     def dequeue(self, env_ids=None):
         raise NotImplementedError(
@@ -622,26 +653,64 @@ class ReplayBuffer(RingBuffer):
         result = alf.nest.map_structure(lambda x: x[indices], field)
         return convert_device(result)
 
-    def clear(self, keep_last_exp: bool = False) -> None:
+    def clear(self,
+              keep_last_exp: bool = False,
+              keep_as_earliest_frames: bool = False) -> None:
         """Clear the replay buffer and remove all the experiences.
 
-        One of the exception is that when keep_last_exp is set to True and there
-        are at least 1 experience in the replay buffer, the latest experience
-        will be kept in the buffer after the clear.
+        There are exceptions that prevents clear() from getting rid of
+        all the experiences.
 
-        The reason we might need this is that in rare cases when the episodic
-        MDP has a fixed expisode length and the episode length is a multiple of
-        unroll length, we may find the last step of the episode is always
-        ignored and never partipate in training. Keeping it will make it the
-        first experience of the next iteration which guarantees its
-        participation in training.
+        1. If ``keep_last_exp`` is set to ``True``, the latest
+           experience in the buffer will be kept after the clear.
+
+           The reason we might need this is that in rare cases when
+           the episodic MDP has a fixed expisode length and the
+           episode length is a multiple of unroll length, we may find
+           the last step of the episode is always ignored and never
+           partipate in training. Keeping it will make it the first
+           experience of the next iteration which guarantees its
+           participation in training.
+
+        2. If ``keep_as_earliest_frames`` is set to ``True``, a number
+           of ``num_earliest_frames_ignored`` experiences from the end
+           of the buffer (w.r.t. pos) will be kept in addition to what
+           has been kept by ``keep_last_exp``. This is specifically
+           designed for ``FrameStacker`` so that after the buffer is
+           populated again the first few experiences can still be
+           stacked using the experiences from last round before the
+           last clear() is called.
 
         Args:
 
             keep_last_exp: see above.
+            keep_as_earliest_frames: see above.
 
         """
-        if keep_last_exp and self.total_size > 0:
+        # First compute the number of experiences to keep after clearing for
+        # each of the environment.
+        num_to_keep = 0
+        # keep_last_exp requires keeping 1 extra experience from the end.
+        if keep_last_exp:
+            num_to_keep += 1
+        # keep_as_earliest_frames requires keeping num_earliest_frames_ignored
+        # extra experiences from the end.
+        if keep_as_earliest_frames:
+            num_to_keep += self._num_earliest_frames_ignored
+
+        # TODO(breakds): At this moment I am not sure whether retaining
+        # experiences after clearning will interfere in a bad way with
+        # keep_episodic_info. Therefore this is prohibited explicitly for now.
+        # Lift this in the future if we find a solution.
+        assert not (num_to_keep > 0 and self._keep_episodic_info), (
+            'Currently it is prohibited to keep episodic info while clear() ' +
+            'is also effectively keeping experience from last round')
+
+        assert self.total_size >= num_to_keep, (
+            f'Replay buffer clear() would like to keep {num_to_keep} steps but '
+            + f'there are only {self.total_size} steps in the buffer.')
+
+        if num_to_keep > 0:
             # Get the pos of the current buffer for all environments. If
             # everything is as expected, the pos of all the environments should
             # be the same. Such condition is checked by the assert.
@@ -651,15 +720,20 @@ class ReplayBuffer(RingBuffer):
                 "Not all environments have the same ending position. "
                 "min_pos: %s max_pos: %s" % (pos, max_pos))
 
-            # The index of the last experience in the ring buffer will be the
-            # modulus remainder of pos - 1.
-            last_exp_idx = self.circular(pos - 1)
-            last_exp_in_buffer = alf.nest.map_structure(
-                lambda buf: buf[:, last_exp_idx, ...], self._buffer)
+            kept = []
+            for i in range(num_to_keep):
+                # The index of last but i-th experience in the ring
+                # buffer will be the modulus remainder of pos - i - 1.
+                exp_idx = self.circular(pos - i - 1)
+                kept.append(
+                    alf.nest.map_structure(lambda buf: buf[:, exp_idx, ...],
+                                           self._buffer))
 
-            # Clear the ring buffer and put the last experience back into it.
+            # Clear the ring buffer and put the last several kept
+            # experiences back into it.
             super().clear(env_ids=None)
-            self.add_batch(last_exp_in_buffer)
+            for exp in reversed(kept):
+                self.add_batch(exp)
         else:
             super().clear(env_ids=None)
 
