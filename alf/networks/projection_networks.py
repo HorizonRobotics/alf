@@ -371,7 +371,8 @@ class ParallelNormalProjectionNetwork(Network):
                 bias_init_value=std_bias_initializer_value)
         else:
             self._std = nn.Parameter(
-                action_spec.constant(std_bias_initializer_value),
+                action_spec.constant(
+                    std_bias_initializer_value, outer_dims=(n, )),
                 requires_grad=True)
             self._std_projection_layer = lambda _: self._std
 
