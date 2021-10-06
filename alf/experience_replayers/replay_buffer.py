@@ -708,8 +708,9 @@ class ReplayBuffer(RingBuffer):
         if keep_as_earliest_frames:
             num_to_keep += self._num_earliest_frames_ignored
 
-        # Do nothing if there is only so many experiences in the buffer.
-        if num_to_keep >= self.total_size:
+        # Do nothing if there is only so many experiences (per environment) in
+        # the buffer.
+        if num_to_keep >= self._current_size.max():
             return
 
         # The feature that requires num_to_keep > 1 is FrameStacker. It rarely
