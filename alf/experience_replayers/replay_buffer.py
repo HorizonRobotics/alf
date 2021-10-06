@@ -606,7 +606,7 @@ class ReplayBuffer(RingBuffer):
             result = self._buffer
             info = BatchInfo(
                 env_ids=torch.arange(self._num_envs),
-                positions=torch.tensor([0] * self._num_envs))
+                positions=torch.zeros(self._num_envs, dtype=torch.int64))
         else:
             if ignore_earliest_frames:
                 actual_start = self._num_earliest_frames_ignored
@@ -617,7 +617,8 @@ class ReplayBuffer(RingBuffer):
                 lambda buf: buf[:, actual_start:size, ...], self._buffer)
             info = BatchInfo(
                 env_ids=torch.arange(self._num_envs),
-                positions=torch.tensor([actual_start] * self._num_envs))
+                positions=(torch.ones(self._num_envs, dtype=torch.int64) *
+                           actual_start))
             if alf.get_default_device() != self._device:
                 result, info = convert_device((result, info))
             info = info._replace(replay_buffer=self)
@@ -687,6 +688,15 @@ class ReplayBuffer(RingBuffer):
             keep_as_earliest_frames: see above.
 
         """
+        # TODO(breakds): Currently ``clear()`` is not handling
+        # ``self._keep_episodic_info`` properly. Therefore we temporaribly
+        # prohibit calling ``clear()`` when ``keep_episodic_info`` is enabled.
+        # This will be handled in a future PR and have _indexed_pos properly
+        # cleared.
+        assert not self._keep_episodic_info, (
+            'Currently it is prohibited to keep episodic info while also '
+            'calling clear().')
+
         # First compute the number of experiences to keep after clearing for
         # each of the environment.
         num_to_keep = 0
@@ -698,17 +708,17 @@ class ReplayBuffer(RingBuffer):
         if keep_as_earliest_frames:
             num_to_keep += self._num_earliest_frames_ignored
 
-        # TODO(breakds): At this moment I am not sure whether retaining
-        # experiences after clearning will interfere in a bad way with
-        # keep_episodic_info. Therefore this is prohibited explicitly for now.
-        # Lift this in the future if we find a solution.
-        assert not (num_to_keep > 0 and self._keep_episodic_info), (
-            'Currently it is prohibited to keep episodic info while clear() ' +
-            'is also effectively keeping experience from last round')
+        # Do nothing if there is only so many experiences in the buffer.
+        if num_to_keep >= self.total_size:
+            return
 
-        assert self.total_size >= num_to_keep, (
-            f'Replay buffer clear() would like to keep {num_to_keep} steps but '
-            + f'there are only {self.total_size} steps in the buffer.')
+        # The feature that requires num_to_keep > 1 is FrameStacker. It rarely
+        # ask for a very big number of frames to be stacked. The following logic
+        # isn't optimized for a big num_to_keep, and therefore we assert that
+        # num_to_keep is small for awareness.
+        assert num_to_keep < 256, (
+            'Replay buffer should not keep a large number of elements '
+            f'during clear(). {num_to_keep} is too large.')
 
         if num_to_keep > 0:
             # Get the pos of the current buffer for all environments. If
