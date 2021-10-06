@@ -11,7 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Configuration to train on Atari Game Montezuma's Revenge with PPO + RND exploration.
 
+NOTE: Currently this configuration only achieves around 3000 (reward) instead of
+around 6000 as it used to be.
+
+TODO: Tune the paramters to make it achieving 6000 or better reward again.
+
+"""
 import alf
 import torch
 
