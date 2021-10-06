@@ -114,4 +114,4 @@ alf.config(
     num_checkpoints=10,
     use_rollout_state=True,
     update_counter_every_mini_batch=True,
-    replay_buffer_length=35)
+    replay_buffer_length=128)
