@@ -547,7 +547,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_ppo_rnd_mrevenge(self):
         self._test(
-            conf_file='ppo_rnd_mrevenge.gin',
+            conf_file='ppo_rnd_mrevenge_conf.py',
             extra_train_params=PPO_TRAIN_PARAMS)
 
     def test_taacq_fetch(self):
