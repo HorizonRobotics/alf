@@ -24,6 +24,8 @@ from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
+from typing import List
+
 
 class ReplayBufferTest(RingBufferTest):
     def tearDown(self):
@@ -242,7 +244,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(replay_buffer._current_pos,
                          torch.tensor([1, 1, 1, 1, 1, 1, 1, 1]))
 
-        batch = replay_buffer.gather_all()
+        batch, _ = replay_buffer.gather_all()
         self.assertEqual(list(batch.t.shape), [8, 1])
         # test that RingBuffer detaches gradients of inputs
         self.assertFalse(batch.x.requires_grad)
@@ -323,7 +325,7 @@ class ReplayBufferTest(RingBufferTest):
         for t in range(2, 10):
             batch4 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             replay_buffer.add_batch(batch4, batch4.env_id)
-        batch = replay_buffer.gather_all()
+        batch, _ = replay_buffer.gather_all()
         self.assertEqual(list(batch.t.shape), [8, 4])
 
         # Test clear()
@@ -505,9 +507,9 @@ class ReplayBufferTest(RingBufferTest):
         batch1 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=0, x=0.1)
         batch2 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=1, x=0.3)
         batch3 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=0.5)
-        batch4 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=0.8)
-        batch5 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=1.9)
-        batch6 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=2.9)
+        batch4 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=3, x=0.8)
+        batch5 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=4, x=1.9)
+        batch6 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=5, x=2.9)
 
         # The buffer max length is 4, therefore after the 6 add_batch() batch 3,
         # 4, 5 6 will be in the buffer.
@@ -522,7 +524,7 @@ class ReplayBufferTest(RingBufferTest):
         replay_buffer.clear(keep_last_exp=True)
         self.assertEqual(8 * 1, replay_buffer.total_size)
 
-        remaining_batch = replay_buffer.gather_all()
+        remaining_batch, _ = replay_buffer.gather_all()
 
         # Check that after clear(), the last experience of the
         # previous buffer is kept.
@@ -530,6 +532,61 @@ class ReplayBufferTest(RingBufferTest):
             torch.tensor([[0], [1], [2], [3], [4], [5], [6], [7]]),
             remaining_batch.env_id)
         self.assertEqual(torch.tensor([[2.9]] * 8), remaining_batch.o['a'])
+
+    def test_clear_and_gather_all_with_num_earliest_frames_ignored(self):
+        num_envs = 4
+        all_env_ids: List[int] = [0, 1, 2, 3]
+        max_length = 24
+
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=num_envs,
+            max_length=max_length,
+            num_earliest_frames_ignored=2,
+            keep_episodic_info=False)
+
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=1, x=0.1))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=2, x=0.3))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=3, x=0.5))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=4, x=0.8))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=5, x=1.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=6, x=2.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=7, x=3.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=8, x=4.9))
+
+        # Normally gather_all will return experience for t = 1 through
+        # t = 8. However, since we have ignore_earliest_frames turned
+        # on, it will drop the first 2 experiences and return
+        # experiences for t = 3 through t = 8.
+        experience, batch_info = replay_buffer.gather_all(
+            ignore_earliest_frames=True)
+
+        self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
+        self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
+        self.assertEqual(torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.t)
+
+        # After the clear, t = 1 through t = 5 will be removed, but t
+        # = 6 through t = 8 will be kept because of the arguments
+        # keep_last_exp and keep_as_earliest_frames.
+        replay_buffer.clear(keep_last_exp=True, keep_as_earliest_frames=True)
+
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=9, x=5.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=10, x=6.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=11, x=7.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=12, x=8.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=13, x=9.9))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=14, x=10.0))
+
+        # Currently the buffer has t = 6 through t = 14. Because will
+        # are ignoring the earliest 2 experiences, the result of
+        # gather_all will be t = 8 through t = 14.
+        experience, batch_info = replay_buffer.gather_all(
+            ignore_earliest_frames=True)
+
+        self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
+        self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
+        self.assertEqual(
+            torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4), experience.t)
 
 
 if __name__ == '__main__':
