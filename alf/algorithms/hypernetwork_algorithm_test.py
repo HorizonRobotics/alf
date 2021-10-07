@@ -194,13 +194,13 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(mean_err, 0.5)
         self.assertLess(cov_err, 0.5)
 
-    @parameterized.parameters((True), (False, False), (False, True),
-                              (False, False, True))
+    @parameterized.parameters((True), (False, False, False, 48), (False, True),
+                              (True, False, True))
     def test_gpvi_bayesian_linear_regression(self,
                                              direct_jac_inverse=False,
                                              block_inverse_mvp=False,
                                              lambda_trainable=False,
-                                             num_particles=128):
+                                             num_particles=32):
         r"""
         Same Bayesian linear regression tests for hypernetwork, but now trained with 
         GPVI and GPVI_plus, in particular, we focus on the case of generators where 
@@ -259,9 +259,9 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             critic_hidden_layers=(hidden_size, hidden_size),
             inverse_mvp_hidden_layers=3,
             function_bs=train_batch_size,
-            optimizer=alf.optimizers.Adam(lr=2e-2),
+            optimizer=alf.optimizers.Adam(lr=5e-2),
             lambda_optimizer=alf.optimizers.Adam(lr=1e-2),
-            inverse_mvp_optimizer=alf.optimizers.Adam(lr=5e-3),
+            inverse_mvp_optimizer=alf.optimizers.Adam(lr=1e-3),
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
@@ -340,7 +340,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 scov_err = scov_err / torch.norm(true_cov)
                 print("train_iter {}: sampled cov err {}".format(i, scov_err))
 
-        train_iter = 4000
+        train_iter = 2000
         for i in range(train_iter):
             _train()
             if i % 1000 == 0:
