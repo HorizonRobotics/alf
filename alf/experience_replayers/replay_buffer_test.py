@@ -498,45 +498,10 @@ class ReplayBufferTest(RingBufferTest):
         self.assertTrue(torch.all(w2 == 1.0))
         self.assertTrue(torch.all(w3 == 1.0))
 
-    def test_clear_with_keep_last_exp(self):
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=self.num_envs,
-            max_length=self.max_length)
-
-        batch1 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=0, x=0.1)
-        batch2 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=1, x=0.3)
-        batch3 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=2, x=0.5)
-        batch4 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=3, x=0.8)
-        batch5 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=4, x=1.9)
-        batch6 = get_batch([0, 1, 2, 3, 4, 5, 6, 7], self.dim, t=5, x=2.9)
-
-        # The buffer max length is 4, therefore after the 6 add_batch() batch 3,
-        # 4, 5 6 will be in the buffer.
-        replay_buffer.add_batch(batch1)
-        replay_buffer.add_batch(batch2)
-        replay_buffer.add_batch(batch3)
-        replay_buffer.add_batch(batch4)
-        replay_buffer.add_batch(batch5)
-        replay_buffer.add_batch(batch6)
-
-        self.assertEqual(8 * 4, replay_buffer.total_size)
-        replay_buffer.clear(keep_last_exp=True)
-        self.assertEqual(8 * 1, replay_buffer.total_size)
-
-        remaining_batch, _ = replay_buffer.gather_all()
-
-        # Check that after clear(), the last experience of the
-        # previous buffer is kept.
-        self.assertEqual(
-            torch.tensor([[0], [1], [2], [3], [4], [5], [6], [7]]),
-            remaining_batch.env_id)
-        self.assertEqual(torch.tensor([[2.9]] * 8), remaining_batch.o['a'])
-
-    def test_clear_and_gather_all_with_num_earliest_frames_ignored(self):
+    def test_gather_all_with_num_earliest_frames_ignored(self):
         num_envs = 4
         all_env_ids: List[int] = [0, 1, 2, 3]
-        max_length = 24
+        max_length = 9
 
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
@@ -565,26 +530,26 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
         self.assertEqual(torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.t)
 
-        # After the clear, t = 1 through t = 5 will be removed, but t
-        # = 6 through t = 8 will be kept because of the arguments
-        # keep_last_exp and keep_as_earliest_frames.
-        replay_buffer.clear(keep_last_exp=True, keep_as_earliest_frames=True)
-
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=9, x=5.9))
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=10, x=6.9))
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=11, x=7.9))
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=12, x=8.9))
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=13, x=9.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=14, x=10.0))
+        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=14, x=9.9))
 
-        # Currently the buffer has t = 6 through t = 14. Because will
-        # are ignoring the earliest 2 experiences, the result of
-        # gather_all will be t = 8 through t = 14.
+        # After the above 6 pushes (remember replay buffer capacity is
+        # 9), t = 1 through t = 5 will be overriden in the replay
+        # buffer , but t = 6 through t = 8 will remain. The replay
+        # buffer now effectively has t = 6 through t = 14.
+
+        # Sicne we are ignoring the earliest 2 experiences, the result
+        # of gather_all will be t = 8 through t = 14.
         experience, batch_info = replay_buffer.gather_all(
             ignore_earliest_frames=True)
 
         self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
-        self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
+        # Note that the position of t = 8 never change and remains as 7.
+        self.assertEqual(torch.tensor([7, 7, 7, 7]), batch_info.positions)
         self.assertEqual(
             torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4), experience.t)
 
