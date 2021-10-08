@@ -651,9 +651,9 @@ class ReplayBuffer(RingBuffer):
 
         info = BatchInfo(
             env_ids=torch.arange(self._num_envs),
-            positions=(torch.full((self._num_envs, ),
-                                  start_pos,
-                                  dtype=torch.int64)))
+            positions=torch.full((self._num_envs, ),
+                                 start_pos,
+                                 dtype=torch.int64))
 
         if alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
