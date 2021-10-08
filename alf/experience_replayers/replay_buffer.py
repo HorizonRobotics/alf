@@ -651,13 +651,10 @@ class ReplayBuffer(RingBuffer):
 
         info = BatchInfo(
             env_ids=torch.arange(self._num_envs),
-            positions=(
-                torch.ones(self._num_envs, dtype=torch.int64) * start_pos))
+            positions=(torch.full((self._num_envs, ),
+                                  start_pos,
+                                  dtype=torch.int64)))
 
-        # TODO(breakds): Maybe remove this in a future PR. It is not desired to
-        # move everything to the GPU memory yet. It will be more flexiable (and
-        # GPU memory friendly) to do this in a later stage where we only need to
-        # store a mini batch in the GPU memory at a atime.
         if alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
 
