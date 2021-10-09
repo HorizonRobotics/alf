@@ -50,7 +50,7 @@ def classification_loss(output, target):
     else:
         output = output.reshape(output.shape[0] * target.shape[1], -1)
         target = target.reshape(-1)
-    loss = F.cross_entropy(output, target)
+    loss = F.cross_entropy(output, target, reduction='sum')
     return LossInfo(loss=loss, extra=avg_acc)
 
 

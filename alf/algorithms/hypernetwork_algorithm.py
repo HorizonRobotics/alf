@@ -128,8 +128,9 @@ class HyperNetwork(Algorithm):
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.
             num_particles (int): number of sampling particles
-            entropy_regularization (float): weight for par_vi repulsive term.
-
+            entropy_regularization (float): weight for par_vi repulsive term. If
+                ``None`` and ``data_creator`` is provided, will be set as the ratio
+                between the batch_size and the total size of the trainset.
             critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
             critic_hidden_layers (tuple): sizes of critic hidden layeres.
             critic_iter_num (int): number of minmax optimization iterations to 
@@ -194,13 +195,18 @@ class HyperNetwork(Algorithm):
             name (str):
         """
         super().__init__(optimizer=optimizer, name=name)
+        self._entropy_regularization = entropy_regularization
         if data_creator is not None:
             trainset, testset = data_creator()
             if data_creator_outlier is not None:
                 outlier_dataloaders = data_creator_outlier()
             else:
                 outlier_dataloaders = None
-            self.set_data_loader(trainset, testset, outlier_dataloaders)
+            self.set_data_loader(
+                trainset,
+                testset,
+                outlier_dataloaders,
+                entropy_regularization=entropy_regularization)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
                 output_dim = len(trainset.dataset.classes)
@@ -298,11 +304,11 @@ class HyperNetwork(Algorithm):
 
         self._param_net = param_net
         self._num_particles = num_particles
-        self._entropy_regularization = entropy_regularization
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
         self._functional_gradient = functional_gradient
+        self._direct_jac_inverse = direct_jac_inverse
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
@@ -335,8 +341,9 @@ class HyperNetwork(Algorithm):
         """
         self._train_loader = train_loader
         self._test_loader = test_loader
-        if entropy_regularization is not None:
-            self._entropy_regularization = entropy_regularization
+        if entropy_regularization is None:
+            self._entropy_regularization = train_loader.batch_size \
+                / train_loader.dataset.data.shape[0]
 
         if outlier_data_loaders is not None:
             assert isinstance(outlier_data_loaders, tuple), "outlier dataset "\
@@ -428,7 +435,7 @@ class HyperNetwork(Algorithm):
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
                 loss += loss_info.extra.generator.loss
-                if self._functional_gradient:
+                if self._functional_gradient and not self._direct_jac_inverse:
                     inverse_mvp_loss += loss_info.extra.inverse_mvp
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)
