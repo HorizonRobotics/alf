@@ -36,8 +36,9 @@ alf.config(
     with_radar_sensor=False,
     sparse_reward=False,
     allow_negative_distance_reward=True,
-    max_collision_penalty=20.,
-    max_red_light_penalty=20.,
+    # uncomment to use collision and red light penalty
+    # max_collision_penalty=20.,
+    # max_red_light_penalty=20.,
     # use PID controller
     controller_ctor=VehicleController)
 
@@ -49,10 +50,12 @@ alf.config('Agent', rl_algorithm_cls=SimpleCarlaAlgorithm)
 alf.config(
     'CarlaEnvironment',
     vehicle_filter='vehicle.*',
-    num_other_vehicles=20,
-    num_walkers=20,
-    day_length=1000,
-    max_weather_length=500,
+    # uncomment to add other vehicles and walkers
+    # num_other_vehicles=20,
+    # num_walkers=20,
+    # uncomment to use day length and dynamic weather
+    # day_length=1000,
+    # max_weather_length=500,
 )
 
 alf.config('suite_carla.load', wrappers=[ActionObservationWrapper])
@@ -75,5 +78,6 @@ alf.config(
     summarize_grads_and_vars=False,
     summary_interval=100,
     num_summaries=1000,
-    replay_buffer_length=10,  # smaller replay buffer
+    # use a small replay buffer as there is no training
+    replay_buffer_length=10,
     summarize_action_distributions=True)
