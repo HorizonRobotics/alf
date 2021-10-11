@@ -331,6 +331,63 @@ class IterationsSuccessReader(MeanCurveReader):
         return "Success Rate"
 
 
+class IterationsLBDRGTReader(MeanCurveReader):
+    """Create a mean curve reader that reads Success rates."""
+
+    def __init__(self, critic_num, *args, **kwargs):
+        self._critic_num = critic_num
+        super().__init__(*args, **kwargs)
+
+    def _get_metric_name(self):
+        return f"critic_loss{self._critic_num}/episodic_return_gt_td"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "lb-DR Return Greater Rate"
+
+
+class IterationsLBGDGTReader(MeanCurveReader):
+    """Create a mean curve reader that reads Success rates."""
+
+    def __init__(self, critic_num, *args, **kwargs):
+        self._critic_num = critic_num
+        super().__init__(*args, **kwargs)
+
+    def _get_metric_name(self):
+        return f"critic_loss{self._critic_num}/goal_return_gt_td"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "lb-GD Return Greater Rate"
+
+
+class IterationsValuesReader(MeanCurveReader):
+    """Create a mean curve reader that reads Success rates."""
+
+    def __init__(self, critic_num, *args, **kwargs):
+        self._critic_num = critic_num
+        super().__init__(*args, **kwargs)
+
+    def _get_metric_name(self):
+        return f"critic_loss{self._critic_num}/values/mean"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "Mean Training Value"
+
+
 class MeanCurveGroupReader(object):
     r"""Group several ``MeanCurveReader`` results. A ``MeanCurveGroupReader`` is
     suitable for one method on multiple tasks, each task with multiple runs.
@@ -557,17 +614,21 @@ class CurvesPlotter(object):
             plt.close(self._fig)
 
 
-env = "atari"  # one of "pioneer", "atari", "fetch"
-her = False  # if False, baseline is ddpg or sac
-train = "eval"  # "train" or "eval"
+def plot(env, her, train, curves):
+    print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
+    def _get_curve_path(dir="", m=None, t=None):
+        _env = env
+        if env == "atari" and not (t == "Breakout" and m == "lbtq"):
+            # Breakout treatment has upit_8-batsz_250 in atari dir, everything else is in atari_0.0005.
+            _env = env + "_0.0005"
+        p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
+        if dir == "":
+            print(f"Writing to {p} for task {t}")
+        else:
+            print(f"Reading from {p} for task {t}, method {m}")
+        return p
 
-def _get_curve_path(dir=""):
-    p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + env, dir)
-    return p
-
-
-if __name__ == "__main__":
     """Plotting examples."""
     mstr_map = {
         "sac": "",  # baseline
@@ -604,35 +665,77 @@ if __name__ == "__main__":
             methods = ["lbtq", "td3"]
 
     if env == "fetch":
+        critic_num = 0
         tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
-        total_steps = 2000000
-        task_y_range = {t: (-50, 0) for t in tasks}
+        if curves == "return":
+            total_steps = 2000000
+            task_y_range = {t: (-50, 0) for t in tasks}
+        else:
+            total_steps = 1100
+            if curves == "value":
+                task_y_range = {t: (-50, 0) for t in tasks}
+            elif curves == "gddt":
+                task_y_range = {t: (0, 0.01) for t in tasks}
+            else:  # drgt
+                task_y_range = {t: (0, 0.04) for t in tasks}
         cluster_str = "/tboardlog"
     elif env == "pioneer":
+        critic_num = 1
         tasks = ["PioneerPush", "PioneerPushReach"]
         total_steps = 0
-        task_total_steps = {
-            "PioneerPush": 5000000,
-            "PioneerPushReach": 14000000
-        }
-        task_y_range = {
-            "PioneerPush": (-100, 0),
-            "PioneerPushReach": (-200, 0)
-        }
+        if curves == "return":
+            task_total_steps = {
+                "PioneerPush": 5000000,
+                "PioneerPushReach": 14000000
+            }
+            task_y_range = {
+                "PioneerPush": (-100, 0),
+                "PioneerPushReach": (-200, 0)
+            }
+        else:
+            task_total_steps = {"PioneerPush": 1800, "PioneerPushReach": 5000}
+            if curves == "value":
+                task_y_range = {
+                    "PioneerPush": (-80, 0),
+                    "PioneerPushReach": (-100, 0)
+                }
+            else:
+                task_y_range = {t: (0, 0.1) for t in tasks}
         cluster_str = ""
     elif env == "atari":
-        tasks = ["Breakout", "Seaquest",
-                 "SpaceInvaders"]  # breakout only if v0
+        critic_num = 1
+        tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
         total_steps = 12000000
-        task_y_range = {
-            "Breakout": (0, 250),
-            "Seaquest": (0, 3500),
-            "SpaceInvaders": (0, 1200)
-        }
+        if curves == "return":
+            task_y_range = {
+                "Breakout": (0, 350),
+                "Seaquest": (0, 5000),
+                "SpaceInvaders": (0, 1200)
+            }
+        else:
+            total_steps = 50000
+            if curves == "value":
+                task_y_range = {
+                    "Breakout": (0, 50),
+                    "Seaquest": (0, 12),
+                    "SpaceInvaders": (0, 8)
+                }
+            else:
+                task_y_range = {t: (0, 0.04) for t in tasks}
+                task_y_range["Breakout"] = (0, 0.4)
         cluster_str = "/tboardlog"
     else:
         assert False
-    plot_interval = 40 * 50
+
+    if curves == "return":
+        plot_interval = 40 * 50
+    else:
+        if env == "fetch":
+            plot_interval = 10
+        elif env == "atari":
+            plot_interval = 200
+        elif env == "pioneer":
+            plot_interval = 50
 
     def _run_name(m, t):
         mstr = mstr_map[m]
@@ -645,23 +748,49 @@ if __name__ == "__main__":
                 bstr, task_map[t], mstr)
         elif env == "atari":
             assert not her
-            if mstr == "-lbtq":
-                mstr += "_0.0002"
+            if mstr == "-lbtq" and t == "Breakout":
+                upit = "-upit_8-batsz_250"
+                evep = "-evepi_20"
+            else:
+                if mstr == "-lbtq":
+                    mstr += "_0.0005"
+                upit = "-upit_4-batsz_500"
+                evep = "-evepi_50"
             # v0:
-            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05-upit_8-batsz_250-evit_1000-evepi_20-sd_" % (
-                mstr, t)
+            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000%s-sd_" % (
+                mstr, t, upit, evep)
         return n
 
+    reader_cls = {
+        "drgt":
+            lambda *args, **kwargs: IterationsLBDRGTReader(
+                critic_num, *args, **kwargs),
+        "gdgt":
+            lambda *args, **kwargs: IterationsLBGDGTReader(
+                critic_num, *args, **kwargs),
+        "value":
+            lambda *args, **kwargs: IterationsValuesReader(
+                critic_num, *args, **kwargs),
+        "return":
+            EnvironmentStepsReturnReader,
+    }[curves]
+
+    def curve_in_method(curves, m):
+        return curves in ["value", "return"] or (curves,
+                                                 m) in [("drgt", "lbtq"),
+                                                        ("gdgt", "gdist")]
+
     curve_readers = [[
-        EnvironmentStepsReturnReader(
-            event_file=glob.glob(
+        reader_cls(
+            glob.glob(
                 _get_curve_path(
-                    "%s*%s/%s" % (_run_name(m, t), cluster_str, train))),
-            x_steps=np.arange(0, total_steps or task_total_steps[t],
-                              10000 if train == "train" else plot_interval),
+                    "%s*%s/%s" % (_run_name(m, t), cluster_str, train),
+                    t=t,
+                    m=m)),
+            np.arange(0, total_steps or task_total_steps[t], plot_interval),
             name="%s_%s" % (method_tag[m], t),
             smoothing=3) for t in tasks
-    ] for m in methods]
+    ] for m in methods if curve_in_method(curves, m)]
 
     for i, t in enumerate(tasks):
         # Scale and align x-axis of methods on task1
@@ -673,8 +802,8 @@ if __name__ == "__main__":
                                          or task_total_steps[t]))
         plotter.plot(
             output_path=os.path.join(
-                _get_curve_path(), "vs".join(methods) + "-" + t + "-" + train +
-                ".pdf"))
+                _get_curve_path(t=t), "vs".join(methods) + "-" + curves + "-" +
+                t + "-" + train + ".pdf"))
 
     # Now, to compare SAC with DDPG on navigation and kickball at the same time,
     # we use the normalized score.
@@ -697,3 +826,20 @@ if __name__ == "__main__":
     #     output_path=os.path.join(
     #         _get_curve_path(), "vs".join(methods) + "_normalized_score-" + train +
     #         ".pdf"))
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) <= 1:
+        env = "pioneer"  # one of "pioneer", "atari", "fetch"
+    else:
+        env = sys.argv[1]
+    env_her = {"atari": [False, ], "fetch": [False, True], "pioneer": [True, ]}
+    train_curves = [("eval", "return", False), ("eval", "return", True),
+                    ("train", "value", False), ("train", "value", True),
+                    ("train", "drgt", False), ("train", "gdgt", True)]
+    for train, curves, her in train_curves:
+        # train is "train" or "eval"
+        # curves is one of "drgt", "gdgt", "return", "value"
+        if her in env_her[env]:
+            plot(env, her, train, curves)
