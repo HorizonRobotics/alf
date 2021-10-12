@@ -170,8 +170,10 @@ alf.config(
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
 
-# Change to `ReprLearner=@encoder/EncodingAlgorithm` to use EncodingAlgorithm
-ReprLearner = EncodingAlgorithm  #   PredictiveRepresentationLearner
+# representation learning options:
+# a) set `ReprLearner=EncodingAlgorithm` to use EncodingAlgorithm
+# b) set `ReprLearner=PredictiveRepresentationLearner` to use PredictiveRepresentationLearner
+ReprLearner = EncodingAlgorithm
 
 alf.config(
     'Agent',
