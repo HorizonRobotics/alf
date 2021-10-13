@@ -663,7 +663,7 @@ def plot(env, her, train, curves):
             if curves == "value":
                 task_y_range = {t: (-50, 0) for t in tasks}
             elif curves == "gdgt":
-                task_y_range = {t: (0, 0.01) for t in tasks}
+                task_y_range = {t: (0, 0.012) for t in tasks}
             elif curves == "drgt":
                 task_y_range = {t: (0, 0.04) for t in tasks}
         cluster_str = "/tboardlog"
