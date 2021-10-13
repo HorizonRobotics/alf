@@ -248,8 +248,9 @@ class Algorithm(AlgorithmInterface):
             # Do not even create the experience replayer if the
             # required parameters are not set by set_exp_replayer
             common.warning_once(
-                'Experience replayer must be initialized first by calling set_exp_replayer() before observe_for_replay() is called! Skipping ...'
-            )
+                'Experience replayer must be initialized first by calling '
+                'set_exp_replayer() before observe_for_replay() is called! '
+                'Skipping ...')
             return
 
         self._experience_spec = dist_utils.extract_spec(sample_exp, from_dim=1)
@@ -283,12 +284,7 @@ class Algorithm(AlgorithmInterface):
                     exp.state, self.train_state_spec, value_to_match=()))
 
         if self._exp_replayer is None:
-            # Do not even create the experience replayer if the
-            # required parameters are not set by set_exp_replayer
-            if (self._exp_replayer_num_envs is not None
-                    and self._exp_replayer_length is not None
-                    and self._prioritized_sampling is not None):
-                self._set_exp_replayer(exp)
+            self._set_exp_replayer(exp)
 
         exp = dist_utils.distributions_to_params(exp)
         for observer in self._observers:
