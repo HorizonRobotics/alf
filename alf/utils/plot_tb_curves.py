@@ -615,21 +615,9 @@ class CurvesPlotter(object):
 
 
 def plot(env, her, train, curves):
+    """Plotting examples."""
     print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
-    def _get_curve_path(dir="", m=None, t=None):
-        _env = env
-        if env == "atari" and not (t == "Breakout" and m == "lbtq"):
-            # Breakout treatment has upit_8-batsz_250 in atari dir, everything else is in atari_0.0005.
-            _env = env + "_0.0005"
-        p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
-        if dir == "":
-            print(f"Writing to {p} for task {t}")
-        else:
-            print(f"Reading from {p} for task {t}, method {m}")
-        return p
-
-    """Plotting examples."""
     mstr_map = {
         "sac": "",  # baseline
         "ddpg": "",  # baseline
@@ -674,9 +662,9 @@ def plot(env, her, train, curves):
             total_steps = 1100
             if curves == "value":
                 task_y_range = {t: (-50, 0) for t in tasks}
-            elif curves == "gddt":
+            elif curves == "gdgt":
                 task_y_range = {t: (0, 0.01) for t in tasks}
-            else:  # drgt
+            elif curves == "drgt":
                 task_y_range = {t: (0, 0.04) for t in tasks}
         cluster_str = "/tboardlog"
     elif env == "pioneer":
@@ -737,6 +725,10 @@ def plot(env, her, train, curves):
         elif env == "pioneer":
             plot_interval = 50
 
+    print(
+        f"total_steps: {total_steps or task_total_steps}, task_y_range: {task_y_range}, plot_interval: {plot_interval}"
+    )
+
     def _run_name(m, t):
         mstr = mstr_map[m]
         bstr = "her" if her else "ddpg"
@@ -749,16 +741,14 @@ def plot(env, her, train, curves):
         elif env == "atari":
             assert not her
             if mstr == "-lbtq" and t == "Breakout":
-                upit = "-upit_8-batsz_250"
-                evep = "-evepi_20"
+                upit = "-upit_8-batsz_250-sactargupdt_20-rblen_33333-rbrecsteps_10000-rbrecratio_0.8"
             else:
                 if mstr == "-lbtq":
                     mstr += "_0.0005"
-                upit = "-upit_4-batsz_500"
-                evep = "-evepi_50"
+                upit = "-upit_4-batsz_500-sactargupdt_20-rblen_33333"
             # v0:
-            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000%s-sd_" % (
-                mstr, t, upit, evep)
+            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000-evepi_100-sd_3" % (
+                mstr, t, upit)
         return n
 
     reader_cls = {
@@ -778,7 +768,20 @@ def plot(env, her, train, curves):
     def curve_in_method(curves, m):
         return curves in ["value", "return"] or (curves,
                                                  m) in [("drgt", "lbtq"),
-                                                        ("gdgt", "gdist")]
+                                                        ("gdgt", "gdist"),
+                                                        ("gdgt", "lbtqgdist")]
+
+    def _get_curve_path(dir="", m=None, t=None):
+        _env = env
+        if env == "atari" and not (t == "Breakout" and m == "lbtq"):
+            # Breakout treatment has upit_8-batsz_250 in atari dir, everything else is in atari_0.0005.
+            _env = env + "_0.0005"
+        p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
+        if dir == "":
+            print(f"Writing to {p} for task {t}")
+        else:
+            print(f"Reading from {p} for task {t}, method {m}")
+        return p
 
     curve_readers = [[
         reader_cls(
