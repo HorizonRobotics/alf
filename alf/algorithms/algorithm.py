@@ -1306,9 +1306,9 @@ class Algorithm(AlgorithmInterface):
             batch_info = BatchInfo(
                 env_ids=batch_info.env_ids.repeat_interleave(
                     num_mini_batches_per_original_traj),
-                positions=(batch_info.positions.repeat_interleave(
+                positions=batch_info.positions.repeat_interleave(
                     num_mini_batches_per_original_traj) + torch.arange(
-                        0, length, mini_batch_length).repeat(num_envs)),
+                        0, length, mini_batch_length).repeat(num_envs),
                 replay_buffer=batch_info.replay_buffer)
 
             # Treatment 2: Adjust the mini_batch_size.
