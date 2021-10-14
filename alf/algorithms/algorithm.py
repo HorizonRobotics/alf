@@ -1322,8 +1322,10 @@ class Algorithm(AlgorithmInterface):
             # In the above example, we will try to squeeze all the experience
             # into 8 mini batches by adjusting the mini_batch_size to 33.
             if batch_size % mini_batch_size > 0:
-                mini_batch_size = np.ceil(
-                    batch_size / (batch_size // mini_batch_size)).astype(int)
+                num_batches_desired = batch_size // mini_batch_size
+                if num_batches_desired > 0:
+                    mini_batch_size = np.ceil(
+                        batch_size / num_batches_desired).astype(int)
 
         def _make_time_major(nest):
             """Put the time dim to axis=0."""
