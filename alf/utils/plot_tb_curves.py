@@ -661,7 +661,9 @@ def plot(env, her, train, curves):
         else:
             total_steps = 1100
             if curves == "value":
-                task_y_range = {t: (-50, 0) for t in tasks}
+                task_y_range = {t: (-30, 0) for t in tasks}
+                if her:
+                    task_y_range = {t: (-15, 0) for t in tasks}
             elif curves == "gdgt":
                 task_y_range = {t: (0, 0.012) for t in tasks}
             elif curves == "drgt":
@@ -696,7 +698,7 @@ def plot(env, her, train, curves):
         total_steps = 12000000
         if curves == "return":
             task_y_range = {
-                "Breakout": (0, 350),
+                "Breakout": (0, 400),
                 "Seaquest": (0, 5000),
                 "SpaceInvaders": (0, 1200)
             }
@@ -709,8 +711,8 @@ def plot(env, her, train, curves):
                     "SpaceInvaders": (0, 8)
                 }
             else:
-                task_y_range = {t: (0, 0.04) for t in tasks}
-                task_y_range["Breakout"] = (0, 0.4)
+                task_y_range = {t: (0, 1.0) for t in tasks}
+                task_y_range["Breakout"] = (0, 0.35)
         cluster_str = "/tboardlog"
     else:
         assert False
@@ -746,6 +748,8 @@ def plot(env, her, train, curves):
                 if mstr == "-lbtq":
                     mstr += "_0.0005"
                 upit = "-upit_4-batsz_500-sactargupdt_20-rblen_33333"
+                if t == "Breakout":
+                    upit += "-rbrecsteps_10000-rbrecratio_0.8"
             # v0:
             n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000-evepi_100-sd_3" % (
                 mstr, t, upit)
@@ -773,9 +777,6 @@ def plot(env, her, train, curves):
 
     def _get_curve_path(dir="", m=None, t=None):
         _env = env
-        if env == "atari" and not (t == "Breakout" and m == "lbtq"):
-            # Breakout treatment has upit_8-batsz_250 in atari dir, everything else is in atari_0.0005.
-            _env = env + "_0.0005"
         p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
         if dir == "":
             print(f"Writing to {p} for task {t}")
