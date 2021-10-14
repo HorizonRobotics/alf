@@ -1300,18 +1300,16 @@ class Algorithm(AlgorithmInterface):
             # result would be
             #
             # env_ids =   [0,  0,  0,  0,  1,  1,  1,  1]
-            # positions = [7, 10, 13, 16,  7, 10, 13, 16] (before circular())
+            # positions = [7, 10, 13, 16,  7, 10, 13, 16]
             num_envs = batch_info.env_ids.shape[0]
-            replay_buffer = batch_info.replay_buffer
             num_mini_batches_per_original_traj = length // mini_batch_length
             batch_info = BatchInfo(
                 env_ids=batch_info.env_ids.repeat_interleave(
                     num_mini_batches_per_original_traj),
-                positions=replay_buffer.circular(
-                    batch_info.positions.repeat_interleave(
-                        num_mini_batches_per_original_traj) + torch.arange(
-                            0, length, mini_batch_length).repeat(num_envs)),
-                replay_buffer=replay_buffer)
+                positions=(batch_info.positions.repeat_interleave(
+                    num_mini_batches_per_original_traj) + torch.arange(
+                        0, length, mini_batch_length).repeat(num_envs)),
+                replay_buffer=batch_info.replay_buffer)
 
             # Treatment 2: Adjust the mini_batch_size.
             #
@@ -1332,11 +1330,6 @@ class Algorithm(AlgorithmInterface):
             return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
 
         for u in range(num_updates):
-            # TODO(breakds): Currently the ``if`` below will also be executed
-            # for the cases when whole_replay_buffer_training = False and
-            # config.num_updates_per_train_iter > 0. This is not necessary and
-            # not desired because in that case the sampled trajectories are
-            # already in random order and num_updates is forced to 1.
             if mini_batch_size < batch_size:
                 # here we use the cpu version of torch.randperm(n) to generate
                 # the permuted indices, as the cuda version of torch.randperm(n)
