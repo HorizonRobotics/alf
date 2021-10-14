@@ -28,6 +28,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
 from alf.experience_replayers.experience_replay import SyncExperienceReplayer
+from alf.experience_replayers.replay_buffer import BatchInfo
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
@@ -1182,16 +1183,21 @@ class Algorithm(AlgorithmInterface):
             experience, batch_info, self._exp_replayer.replay_buffer)
         experience = self.transform_experience(experience)
 
-        if whole_replay_buffer_training:
-            # For whole replay buffer training, explicitly set
-            # batch_info to None as an indicator for the following
-            # code to skip certain logics specifically designed for
-            # sampled replay buffer training.
-            batch_info = None
-        else:
-            # using potentially updated batch_info after data_transformers
-            if experience.batch_info != ():
-                batch_info = experience.batch_info
+        # TODO(breakds): Create a cleaner and more readable function to prepare
+        # experience that better handles the similar and distinct part of
+        # "whole_replay_buffer_training or not", including correctly set
+        #
+        # 1. shape of experience
+        # 2. mini_batch_length
+        # 3. mini_batch_size
+        # 4. batch_info
+        #
+        # So that we do not have to explicitly (and more importantly implicitly)
+        # condition on whole_replay_buffer_training in a lot of isolated places.
+
+        # using potentially updated batch_info after data_transformers
+        if experience.batch_info != ():
+            batch_info = experience.batch_info
 
         experience = alf.data_structures.clear_batch_info(experience)
 
@@ -1213,7 +1219,7 @@ class Algorithm(AlgorithmInterface):
 
         length = alf.nest.get_nest_size(experience, dim=1)
         mini_batch_length = (mini_batch_length or length)
-        if batch_info is not None:
+        if not whole_replay_buffer_training:
             assert mini_batch_length == length, (
                 "mini_batch_length (%s) is "
                 "different from length (%s). Not supported." %
@@ -1275,11 +1281,62 @@ class Algorithm(AlgorithmInterface):
 
         batch_size = alf.nest.get_nest_batch_size(experience)
 
+        if whole_replay_buffer_training:
+            # Special treatment for whole_replay_buffer_training.
+
+            # Treatment 1: Adjust batch_info. This is better explained by
+            # walking through an example.
+            #
+            # Suppose we gather_all() gives us env_ids = [0, 1] and positions =
+            # [7, 7] for batch_info. This means that before the exprience is
+            # chopped by mini_batch_length (reshape), there are two trajectories
+            # for env 0 and env 1. Assuming there are 12 steps in each of the
+            # trajectories, and the mini_batch_length is 3.
+            #
+            # After the choppping (reshape), it is expected to have 8
+            # trajectories in experience (because each original trajectory is
+            # now chopped into 4 new trajectories of length 3), and therefore we
+            # would like to adjust the batch_info to correctly reflect that. The
+            # result would be
+            #
+            # env_ids =   [0,  0,  0,  0,  1,  1,  1,  1]
+            # positions = [7, 10, 13, 16,  7, 10, 13, 16] (before circular())
+            num_envs = batch_info.env_ids.shape[0]
+            replay_buffer = batch_info.replay_buffer
+            num_mini_batches_per_original_traj = length // mini_batch_length
+            batch_info = BatchInfo(
+                env_ids=batch_info.env_ids.repeat_interleave(
+                    num_mini_batches_per_original_traj),
+                positions=replay_buffer.circular(
+                    batch_info.positions.repeat_interleave(
+                        num_mini_batches_per_original_traj) + torch.arange(
+                            0, length, mini_batch_length).repeat(num_envs)),
+                replay_buffer=replay_buffer)
+
+            # Treatment 2: Adjust the mini_batch_size.
+            #
+            # In the case when batch_size is not a multiple of mini_batch_size,
+            # we want to avoid having a tiny mini batch in the end. For example,
+            # when batch_size is 264 and mini_batch_size is 32, if
+            # mini_batch_size is not adjusted, there will be 8 mini batches of
+            # size 32 and 1 mini batch of size 8.
+            #
+            # In the above example, we will try to squeeze all the experience
+            # into 8 mini batches by adjusting the mini_batch_size to 33.
+            if batch_size % mini_batch_size > 0:
+                mini_batch_size = np.ceil(
+                    batch_size / (batch_size // mini_batch_size)).astype(int)
+
         def _make_time_major(nest):
             """Put the time dim to axis=0."""
             return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
 
         for u in range(num_updates):
+            # TODO(breakds): Currently the ``if`` below will also be executed
+            # for the cases when whole_replay_buffer_training = False and
+            # config.num_updates_per_train_iter > 0. This is not necessary and
+            # not desired because in that case the sampled trajectories are
+            # already in random order and num_updates is forced to 1.
             if mini_batch_size < batch_size:
                 # here we use the cpu version of torch.randperm(n) to generate
                 # the permuted indices, as the cuda version of torch.randperm(n)
