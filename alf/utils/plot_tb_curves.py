@@ -809,28 +809,6 @@ def plot(env, her, train, curves):
                 _get_curve_path(t=t), "vs".join(methods) + "-" + curves + "-" +
                 t + "-" + train + ".pdf"))
 
-    # Now, to compare SAC with DDPG on navigation and kickball at the same time,
-    # we use the normalized score.
-
-    # random_return = [-50., -50.,
-    #                  -50.]  # obtained by evaluating a random policy
-    # sac_trained_return = [-5., -5., -5.]  # obtained by evaluating trained SAC
-    # task_performance_ranges = list(zip(random_return, sac_trained_return))
-
-    # curve_group_readers = [
-    #     MeanCurveGroupReader(cr, task_performance_ranges, m)
-    #     for m, cr in zip(methods, curve_readers)
-    # ]
-
-    # plotter = CurvesPlotter([cgr() for cgr in curve_group_readers],
-    #                         x_range=(0, 2000000),
-    #                         x_label=curve_group_readers[0].x_label,
-    #                         y_label=curve_group_readers[0].y_label)
-    # plotter.plot(
-    #     output_path=os.path.join(
-    #         _get_curve_path(), "vs".join(methods) + "_normalized_score-" + train +
-    #         ".pdf"))
-
 
 if __name__ == "__main__":
     import sys
