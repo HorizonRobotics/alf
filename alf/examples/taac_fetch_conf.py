@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-sys.path.append("./benchmarks/fetch")
-
 from functools import partial
 
 import alf
@@ -22,7 +19,7 @@ from alf.algorithms.taac_algorithm import TaacAlgorithm
 from alf.utils import dist_utils
 
 from alf.examples import sac_conf
-import fetch_conf
+from alf.examples.benchmarks.fetch import fetch_conf
 
 alf.config(
     'TaacAlgorithmBase',
