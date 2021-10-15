@@ -172,10 +172,14 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        # If the training worker is running as a process in multiprocessing
-        # environment, this will make sure that the exception raised in this
-        # particular process is captured and shown.
-        logging.exception(f'{mp.current_process().name} - {e}')
+        if world_size == 1:
+            # raise it so the debugger can stop at the original place of exception
+            raise e
+        else:
+            # If the training worker is running as a process in multiprocessing
+            # environment, this will make sure that the exception raised in this
+            # particular process is captured and shown.
+            logging.exception(f'{mp.current_process().name} - {e}')
     finally:
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
