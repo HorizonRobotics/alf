@@ -166,16 +166,27 @@ class Network(nn.Module):
         else:
 
             def _copy(a):
-                if isinstance(a, Network):
-                    return a.copy()
-                elif isinstance(a, torch.nn.Module):
-                    b = copy.deepcopy(a)
-                    alf.layers.reset_parameters(b)
-                    return b
-                else:
-                    return a
+                if not alf.nest.is_nested(a):
+                    if isinstance(a, Network):
+                        return a.copy()
+                    elif isinstance(a, torch.nn.Module):
+                        b = copy.deepcopy(a)
+                        alf.layers.reset_parameters(b)
+                        return b
+                    else:
+                        return a
+                elif isinstance(a, list) or alf.nest.is_unnamedtuple(a):
+                    return type(a)(_copy(value) for value in a)
+                elif isinstance(a, dict):
+                    return type(a)((k, _copy(v)) for k, v in a.items())
+                else:  # namedtuple
+                    return type(a)(
+                        (f, _copy(getattr(a, f))) for f in a._fields)
 
-            copied_kwargs = alf.nest.map_structure(_copy, self._saved_kwargs)
+            # we cannot use map_structure to do the copy because map_structure
+            # will change the order of the keys in dict. Some Network (e.g. _Sequential)
+            # depends on the order of the keys of the argument (element_dict of _Sequential)
+            copied_kwargs = _copy(self._saved_kwargs)
             return type(self)(**dict(copied_kwargs, **kwargs))
 
     @property
