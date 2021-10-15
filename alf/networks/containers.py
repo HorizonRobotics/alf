@@ -140,6 +140,11 @@ class _Sequential(Network):
                 raise ValueError(
                     "Argument %s is not in the form of Callable "
                     "or (nested str, Callable): %s" % (out or str(i), element))
+            if isinstance(module, type):
+                raise ValueError(
+                    "module should not be a type. Did you forget "
+                    "to include '()' after it to contruct the layer? module=%s"
+                    % str(module))
             if isinstance(module, Network):
                 state_spec.append(module.state_spec)
             else:
