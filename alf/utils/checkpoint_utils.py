@@ -152,7 +152,7 @@ class Checkpointer(object):
                     filter(lambda k: k.find('_optimizers.') < 0, missing_keys))
             if not including_replay_buffer:
                 missing_keys = list(
-                    filter(lambda k: not k.startswith('_exp_replayer.'),
+                    filter(lambda k: not k.startswith('_replay_buffer.'),
                            missing_keys))
             if strict:
                 error_msgs = []
@@ -259,7 +259,7 @@ class Checkpointer(object):
             if k.find('_optimizers.') >= 0 and isinstance(
                     v, dict) and 'param_groups' in v:
                 optimizer_state[k] = v
-            elif k.startswith('_exp_replayer.'):
+            elif k.startswith('_replay_buffer.'):
                 replay_buffer_state[k] = v
             else:
                 model_state[k] = v
