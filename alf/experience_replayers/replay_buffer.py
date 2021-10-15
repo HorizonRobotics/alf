@@ -556,8 +556,11 @@ class ReplayBuffer(RingBuffer):
         first_step_pos[is_first] = pos[is_first]
         return first_step_pos
 
+    @alf.configurable
     @atomic
-    def gather_all(self, ignore_earliest_frames: bool = False):
+    def gather_all(self,
+                   ignore_earliest_frames: bool = False,
+                   convert_to_default_device: bool = True):
         """Returns all the items in the buffer.
 
         Args:
@@ -566,6 +569,8 @@ class ReplayBuffer(RingBuffer):
                 respect ``num_earliest_frames_ignored`` and for each environment
                 it will return the trajectory with the first
                 ``num_earliest_frames_ignored`` experiences removed.
+            convert_to_default_device: if set to ``True``, the gathered experiences will be
+                converted to the default alf device before returning.
 
         Returns:
             tuple:
@@ -655,7 +660,8 @@ class ReplayBuffer(RingBuffer):
                                  start_pos,
                                  dtype=torch.int64))
 
-        if alf.get_default_device() != self._device:
+        if (convert_to_default_device
+                and alf.get_default_device() != self._device):
             result, info = convert_device((result, info))
 
         info = info._replace(replay_buffer=self)
