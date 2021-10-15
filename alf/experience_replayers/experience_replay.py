@@ -18,11 +18,13 @@ buffers for off-policy drivers in the future.
 
 import abc
 import six
+from typing import Tuple
 import torch
 from torch import nn
 
 import alf
-from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
+from alf.data_structures import Experience
 
 from alf.utils import common
 
@@ -69,17 +71,20 @@ class ExperienceReplayer(nn.Module):
         """
 
     @abc.abstractmethod
-    def replay_all(self):
+    def replay_all(self) -> Tuple[Experience, BatchInfo]:
         """Replay all experiences
 
         Output:
-            exp (Experience): each item has the shape (`full_batch_size`,
-                `buffer_length`, ...)
+            A pair (tuple) of an Experience and a BatchInfo.
+                - nested Tensors of shape [B, T, ...], where
+                  B=num_environments, T=current_size
+                - BatchInfo: Information about the batch. The shapes are [B], where
+                  B=num_environments
+                    - env_ids: [0, 1, 2, ..., num_envs - 1]
+                    - positions: starting position in the replay buffer for each
+                      of the sequences. For gather_all() all starting positions will
+                      be the same.
         """
-
-    @abc.abstractmethod
-    def clear(self):
-        """Clear all buffers."""
 
     @abc.abstractmethod
     def batch_size(self):
@@ -87,89 +92,6 @@ class ExperienceReplayer(nn.Module):
         Return the buffer's batch_size, assuming all buffers having the same
         batch_size
         """
-
-
-@alf.configurable
-class OnetimeExperienceReplayer(ExperienceReplayer):
-    """
-    A simple one-time experience replayer. For each incoming `exp`,
-    it stores it with a temporary variable which is used for training
-    only once.
-
-    Example algorithms: IMPALA, PPO2
-    """
-
-    def __init__(self, save_last_exp=False):
-        """
-        Args:
-            save_last_exp (bool): If True, then every time after replaying the
-                entire buffer, we will keep the last exp for the next replay. So
-                except for the first replay, the remaining replays will have
-                a buffer length of `unroll_length+1`. The reason for having this
-                option is that for an unrolled trajectory, the last exp won't
-                be trained because its target value cannot be computed. So it
-                can be saved for the next training.
-        """
-        super().__init__()
-        self._save_last_exp = save_last_exp
-        self._experience = None
-        self._exp_sample = None
-        self._batch_size = None
-
-    def observe(self, exp):
-        """This function assumes that every time ``exp`` contains the data from
-        all the environments. It doesn't handle ``env_id`` yet (observe only some of
-        the environments each time).
-        """
-        # exp shape is [num_envs] + exp_spec
-        if self._experience is None:
-            self._experience = alf.nest.map_structure(lambda _: [], exp)
-            self._exp_sample = exp
-            self._batch_size = alf.nest.get_nest_batch_size(exp)
-
-        alf.nest.map_structure_up_to(
-            self._exp_sample, lambda b, e: b.append(e.detach()),
-            self._experience, exp)
-
-    def replay(self, sample_batch_size, mini_batch_length):
-        """Get a random batch.
-
-        Args:
-            sample_batch_size (int): number of sequences
-            mini_batch_length (int): the length of each sequence
-        Returns:
-            Experience: experience batch in batch major (B, T, ...)
-            tf_uniform_replay_buffer.BufferInfo: information about the batch
-        """
-        raise NotImplementedError()  # Only supports replaying all!
-
-    def replay_all(self):
-        assert self._experience is not None, "No experience is observed yet!"
-        # batch major: [B, T] + exp_spec
-        exps = alf.nest.map_structure_up_to(
-            self._exp_sample, lambda e: torch.transpose(
-                torch.stack(e, dim=0), 0, 1), self._experience)
-        return exps
-
-    def clear(self):
-        if self._experience is not None:
-            self._experience = alf.nest.map_structure_up_to(
-                self._exp_sample, lambda e: (e[-1:] if self._save_last_exp else
-                                             []), self._experience)
-
-    @property
-    def batch_size(self):
-        assert self._batch_size is not None, "No experience is observed yet!"
-        return self._batch_size
-
-    @property
-    def total_size(self):
-        if not self._batch_size:
-            return torch.tensor(0, torch.int64)
-        else:
-            time_length = alf.nest.map_structure_up_to(
-                self._exp_sample, lambda e: len(e), self._experience)[0]
-            return self._batch_size * time_length
 
 
 class SyncExperienceReplayer(ExperienceReplayer):
@@ -246,12 +168,8 @@ class SyncExperienceReplayer(ExperienceReplayer):
         """
         return self._buffer.get_batch(sample_batch_size, mini_batch_length)
 
-    def replay_all(self):
-        result, _ = self._buffer.gather_all()
-        return result
-
-    def clear(self):
-        self._buffer.clear()
+    def replay_all(self) -> Tuple[Experience, BatchInfo]:
+        return self._buffer.gather_all(ignore_earliest_frames=True)
 
     def update_priority(self, env_ids, positions, priorities):
         """Update the priorities for the given experiences.
