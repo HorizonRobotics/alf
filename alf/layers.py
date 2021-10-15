@@ -62,7 +62,24 @@ def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
     return x
 
 
-class Identity(nn.Module):
+class ElementwiseLayerBase(nn.Module):
+    """Base class for the layers of parameterless elementwise operations."""
+
+    def make_parallel(self, n: int):
+        """Create a layer with same operation to handle parallel batch.
+
+        It is assumed that a parallel batch has shape [B, n, ...].
+
+        Args:
+            n (int): the number of replicas.
+        Returns:
+            a layer with same operation to handle parallel batch.
+        """
+        assert len(list(self.parameters())) == 0
+        return self
+
+
+class Identity(ElementwiseLayerBase):
     """A layer that simply returns its argument as result."""
 
     def __init__(self):
@@ -72,7 +89,7 @@ class Identity(nn.Module):
         return x
 
 
-class Cast(nn.Module):
+class Cast(ElementwiseLayerBase):
     """A layer that cast the dtype of the elements of the input tensor."""
 
     def __init__(self, dtype=torch.float32):
@@ -85,9 +102,6 @@ class Cast(nn.Module):
 
     def forward(self, x):
         return x.to(self._dtype)
-
-    def make_parallel(self, n: int):
-        return Cast(self._dtype)
 
 
 class Transpose(nn.Module):
@@ -2251,6 +2265,16 @@ class BottleneckBlock(nn.Module):
     * v1.5: Placing the stride for downsampling at 3x3 convolution. This variant
       is also known as ResNet V1.5 and improves accuracy according to
       `<https://ngc.nvidia.com/catalog/model-scripts/nvidia:resnet_50_v1_5_for_pytorch>`_.
+
+    TODO:
+
+    1. ResNet-D in `Bag of Tricks for Image Classification with Convolutional Neural Networks
+       <https://openaccess.thecvf.com/content_CVPR_2019/papers/He_Bag_of_Tricks_for_Image_Classification_with_Convolutional_Neural_Networks_CVPR_2019_paper.pdf>`_
+       Note: v1_5 is the ResNet-B in the above paper.
+    2. Squeeze-and-Excitation (SE) in `Squeeze-and-Excitation Networks
+       <https://openaccess.thecvf.com/content_cvpr_2018/papers/Hu_Squeeze-and-Excitation_Networks_CVPR_2018_paper.pdf>`_
+       SE is also shown to be uesfule in
+       `Revisiting ResNets: Improved Training and Scaling Strategies <https://arxiv.org/abs/2103.07579>`_
     """
 
     def __init__(self,
@@ -2714,7 +2738,7 @@ class GFT(nn.Module):
             l.reset_parameters()
 
 
-class GetFields(nn.Module):
+class GetFields(ElementwiseLayerBase):
     """Get the fields from a nested input."""
 
     def __init__(self, field_nest=None, **fields):
@@ -2736,9 +2760,6 @@ class GetFields(nn.Module):
     def forward(self, input):
         return alf.nest.map_structure(
             lambda path: alf.nest.get_field(input, path), self._fields)
-
-    def make_parallel(self, n: int):
-        return GetFields(self._fields)
 
 
 class Sum(nn.Module):
@@ -2774,7 +2795,7 @@ class Sum(nn.Module):
         return Sum(self._dim)
 
 
-class AddN(nn.Module):
+class AddN(ElementwiseLayerBase):
     """Add several tensors"""
 
     def __init__(self):
@@ -2788,19 +2809,6 @@ class AddN(nn.Module):
             Tensor: the sum of all the tensors
         """
         return sum(input)
-
-    def make_parallel(self, n: int):
-        """Create an AddN layer to handle parallel batch.
-
-        It is assumed that a parallel batch has shape [B, n, ...] and both the
-        batch dimension and replica dimension are not counted for ``dim``
-
-        Args:
-            n (int): the number of replicas.
-        Returns:
-            a ``Sum`` layer to handle parallel batch.
-        """
-        return AddN()
 
 
 def reset_parameters(module):
@@ -2824,7 +2832,7 @@ def reset_parameters(module):
                 "Cannot reset_parameter for layer type %s." % type(module))
 
 
-class Detach(nn.Module):
+class Detach(ElementwiseLayerBase):
     """Detach nested Tensors."""
 
     def __init__(self):
@@ -2833,8 +2841,23 @@ class Detach(nn.Module):
     def forward(self, input):
         return common.detach(input)
 
-    def make_parallel(self, n: int):
-        return Detach()
+
+class Scale(ElementwiseLayerBase):
+    def __init__(self, scale):
+        super().__init__()
+        self._scale = scale
+
+    def forward(self, input):
+        return self._scale * input
+
+
+class ScaleGradient(ElementwiseLayerBase):
+    def __init__(self, scale):
+        super().__init__()
+        self._scale = scale
+
+    def forward(self, input):
+        return (1 - self._scale) * input.detach() + self._scale * input
 
 
 class Branch(nn.Module):
@@ -3131,6 +3154,8 @@ class NaiveParallelLayer(nn.Module):
         if isinstance(module, nn.Module):
             self._networks = nn.ModuleList(
                 [copy.deepcopy(module) for i in range(n)])
+            for net in self._networks:
+                reset_parameters(net)
         else:
             self._networks = [module] * n
         self._n = n
