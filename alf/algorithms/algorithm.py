@@ -412,15 +412,19 @@ class Algorithm(AlgorithmInterface):
         """
         return []
 
-    def _get_children(self):
+    def _get_children(self, include_ignored_attributes=False):
         children = []
+        if include_ignored_attributes:
+            to_ignore = []
+        else:
+            to_ignore = self._trainable_attributes_to_ignore()
         for name, module in self.named_children():
-            if name in self._trainable_attributes_to_ignore():
+            if name in to_ignore:
                 continue
             children.extend(_flatten_module(module))
 
         for name, param in self.named_parameters(recurse=False):
-            if name in self._trainable_attributes_to_ignore():
+            if name in to_ignore:
                 continue
             children.append(param)
 
@@ -539,10 +543,7 @@ class Algorithm(AlgorithmInterface):
         """
         opts = copy.copy(self._optimizers)
         if recurse:
-            if include_ignored_attributes:
-                children = self.children()
-            else:
-                children = self._get_children()
+            children = self._get_children(include_ignored_attributes)
             for module in children:
                 if isinstance(module, Algorithm):
                     opts.extend(
