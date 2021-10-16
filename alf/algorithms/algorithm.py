@@ -1237,11 +1237,20 @@ class Algorithm(AlgorithmInterface):
             common.warning_once(
                 "length=%s not a multiple of mini_batch_length=%s" %
                 (length, mini_batch_length))
-            length = length // mini_batch_length * mini_batch_length
-            experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
-                                                experience)
-            common.warning_once(
-                "Experience length has been cut to %s" % length)
+            if (length - mini_batch_length) / mini_batch_length < 0.1:
+                # In case the length is just slightly (< 10%) greater than
+                # mini_batch_length, just stretch the mini_batch_length to
+                # length so that training can use full experience. This should
+                # only happen during whole_replay_buffer_training.
+                mini_batch_length = length
+                common.warning_once(
+                    "Mini batchlength has been updated to %s" % length)
+            else:
+                length = length // mini_batch_length * mini_batch_length
+                experience = alf.nest.map_structure(
+                    lambda x: x[:, :length, ...], experience)
+                common.warning_once(
+                    "Experience length has been updated to %s" % length)
 
         if len(alf.nest.flatten(self.train_state_spec)) > 0:
             if not self._use_rollout_state:
