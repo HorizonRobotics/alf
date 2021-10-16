@@ -180,8 +180,8 @@ class Network(nn.Module):
                 elif isinstance(a, dict):
                     return type(a)((k, _copy(v)) for k, v in a.items())
                 else:  # namedtuple
-                    return type(a)(
-                        (f, _copy(getattr(a, f))) for f in a._fields)
+                    return type(a)(**dict(
+                        (f, _copy(getattr(a, f))) for f in a._fields))
 
             # we cannot use map_structure to do the copy because map_structure
             # will change the order of the keys in dict. Some Network (e.g. _Sequential)
