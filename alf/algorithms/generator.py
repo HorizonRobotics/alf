@@ -370,8 +370,9 @@ class Generator(Algorithm):
                 full noise vector to the output, multiplied by the 
                 ``fullrank_diag_weight``.  
             init_lambda (float): weight on direct input-output link added to
-                the generator output. Only used for GPVI when forcing full rank 
-                Jacobian.
+                the generator output. Only used for GPVI and GPVI_Plus when 
+                forcing full rank Jacobian.
+            lambda_trainable (bool): whether to train ``lambda``.
             block_inverse_mvp(bool): whether to use the more efficient block form
                 for inverse_mvp when ``functional_gradient`` is True. This
                 option is recommended only when ``noise_dim`` < ``output_dim``.
@@ -401,6 +402,9 @@ class Generator(Algorithm):
             inverse_mvp_optimizer (torch.optim.Optimizer): Optimizer for training
                 the inverse_mvp network, used when ``functional_gradient`` is True.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
+            lambda_optimizer (torch.optim.Optimizer): Optimizer for training the
+                ``lambda``, used for GPVI and GPVI_Plus when ``lambda_trainable``
+                is True.
             name (str): name of this generator
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
@@ -1020,7 +1024,7 @@ class Generator(Algorithm):
     def _get_vec_for_jac_inv_vec_prod(self, z, vec):
         r"""
         Construct a vecor as input to the helper network for 
-        Jacobian-inverse vector product estimation, used for GPVI and GPVI_Plus.
+        Jacobian-inverse vector product estimation, used for GPVI_Plus.
 
         Args: 
             z (Tensor): of size [N2, K], input noise to the self._net 
