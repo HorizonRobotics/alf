@@ -14,11 +14,13 @@
 """MuZero algorithm."""
 
 from functools import partial
+from typing import Optional
 import torch
 
 import alf
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, Experience, LossInfo, namedtuple, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, MCTSInfo
@@ -78,6 +80,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  data_transformer_ctor=None,
                  target_update_tau=1.,
                  target_update_period=1000,
+                 config: Optional[TrainerConfig] = None,
                  debug_summaries=False,
                  name="MuZero"):
         """
@@ -123,8 +126,13 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
                 networks used for reanalyzing.
+            config: The trainer config that will eventually be assigned to
+                ``self._config``. It is NOT NECESSARY to pass it to construct
+                ``MuzeroAlgorithm`` and the agrument is kept here to be
+                compatible to use with Agent.
             debug_summaries (bool):
             name (str):
+
         """
         model = model_ctor(
             observation_spec, action_spec, debug_summaries=debug_summaries)
