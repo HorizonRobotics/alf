@@ -134,6 +134,7 @@ class Agent(RLAlgorithm):
             observation_spec=rl_observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
+            config=config,
             debug_summaries=debug_summaries)
         agent_helper.register_algorithm(rl_algorithm, "rl")
 
