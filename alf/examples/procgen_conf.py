@@ -13,11 +13,13 @@
 # limitations under the License.
 import alf
 from alf.environments import suite_procgen
-from alf.algorithms.data_transformer import ImageScaleTransformer
 
 alf.config('create_environment', env_load_fn=suite_procgen.load)
 
-# Configure the data transformers
-alf.config('ImageScaleTransformer', min=0.0, max=1.0)
-
-alf.config('TrainerConfig', data_transformer_ctor=[ImageScaleTransformer])
+# NOTE: by default there is no ImageScaleTransformer applied to procgen
+# environments. You need to specifically add that if needed. That can be done
+# with:
+#
+#     from alf.algorithms.data_transformer import ImageScaleTransformer
+#     alf.config('ImageScaleTransformer', min=0.0, max=1.0)
+#     alf.config('TrainerConfig', data_transformer_ctor=[ImageScaleTransformer])
