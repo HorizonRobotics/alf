@@ -87,6 +87,29 @@ class DisjointPolicyValueNetwork(Network):
     See https://github.com/HorizonRobotics/alf/issues/965 for a graphical
     illustration of such two different architectures.
 
+    NOTE:
+
+    1. The is_sharing_encoder = True situation corresponds to the 'detached'
+       arch in OpenAI's implementation and the Single-Network PPG in the
+       original paper. However, OpenAI's implementation and paper has an
+       important difference regarding this. In the paper, it reads (quoted):
+
+       During the policy phase, we detach the value function gradient at the
+       last layer shared between the policy and value heads, preventing the
+       value function gradient from influencing shared parameters. During the
+       auxiliary phase, we take the value function gradient with respect to all
+       parameters, including shared parameters.
+
+       In their implementation, the "true" (as opposed to the aux) value head is
+       always detached, in both policy and aux phase.
+
+       Our implementation follows the OpenAI's implementation, which keeps the
+       true value head always detached.
+
+    2. In OpenAI's implementation, the FC and Conv layers are initialized in a
+       non-standard way. Here in our implementation we initialize such layers
+       with standard approaches.
+
     """
 
     # TODO(breakds): Add type hints when nest of tensor type is defined
