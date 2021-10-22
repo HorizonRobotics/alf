@@ -133,8 +133,7 @@ def create(input_tensor_spec,
            cnn_channel_list: List[int] = (16, 32, 32),
            num_blocks_per_stack: int = 2,
            output_size: int = 256,
-           kernel_initializer: Callable[[Tensor], None] = xavier_uniform_,
-           apply_image_scale_transform: bool = False):
+           kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create the Impala CNN Encoder
 
     Here the so called Impala CNN Encoder is essentially a series of CNN
@@ -163,9 +162,6 @@ def create(input_tensor_spec,
             image in the mini batch.
         kernel_initializer: initializer for the Conv2D and FC layers in the
             network.
-        apply_image_scale_transform: when set to ``True``, the input image will
-            first go through a scale transformation so that the pixels are
-            converted from 0 - 255 integer to 0.0 - 1.0 float.
 
     Returns:
 
@@ -173,7 +169,11 @@ def create(input_tensor_spec,
 
     """
     stacks = []
-    if apply_image_scale_transform:
+    # The CNN encoder expects float32 pixels between [0.0, 1.0]. If
+    # the dtype of the input is uint8, we assume that the pixels are
+    # within range [0, 255]. In this case we will apply "image scaling
+    # transformation" logic to covert it to float32 [0.0, 1.0].
+    if input_tensor_spec.dtype is torch.uint8:
         scale_factor = 1.0 / 255.0
         stacks.append(alf.layers.Cast(dtype=torch.float32))
         stacks.append(lambda x: x * scale_factor)
