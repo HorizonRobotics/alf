@@ -30,18 +30,9 @@ import alf
 from alf.examples import ppo_conf
 from alf.examples import procgen_conf
 from alf.examples.networks import impala_cnn_encoder
-from alf.algorithms.data_transformer import ImageScaleTransformer
 
 # Environment Configuration
 alf.config('create_environment', num_parallel_environments=96)
-
-# Explicitly apply data transformer here so that the network does not
-# have to do this. This incurs more GPU memory consumption as we are
-# effectively storing float32 images after the transformation instead
-# of int8 images (4x memory), but this will make the training process
-# noticeably faster (by a factor of 12%).
-alf.config('ImageScaleTransformer', min=0.0, max=1.0)
-alf.config('TrainerConfig', data_transformer_ctor=[ImageScaleTransformer])
 
 # Construct the networks
 
