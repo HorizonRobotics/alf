@@ -97,7 +97,8 @@ class PPGAuxPhaseLoss(Loss):
                 policy
 
         """
-        returns = self._calc_returns_with_advantages(info, info.value).detach()
+        returns = self._calc_returns_with_advantages(
+            info, info.rollout_value).detach()
         td_loss_actual = self._td_error_loss_fn(returns, info.value)
         td_loss_aux = self._td_error_loss_fn(returns, info.aux)
         policy_kl_loss = td.kl_divergence(info.rollout_action_distribution,

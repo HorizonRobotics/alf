@@ -40,7 +40,8 @@ PPGRolloutInfo = namedtuple(
 class PPGTrainInfo(
         namedtuple(
             'PPGTrainInfo',
-            PPGRolloutInfo._fields + ('rollout_action_distribution', ),
+            PPGRolloutInfo._fields + ('rollout_action_distribution',
+                                      'rollout_value'),
             default_value=())):
     """Data structure that stores extra derived information for training
     in addition to the original rollout information.

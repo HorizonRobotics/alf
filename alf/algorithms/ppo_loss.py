@@ -133,4 +133,6 @@ class PPOLoss(ActorCriticLoss):
     def _calc_returns_and_advantages(self, info, value):
         if not self._compute_advantages_internally:
             return info.returns, info.advantages
-        return super()._calc_returns_and_advantages(info, value)
+        value_to_use = info.rollout_value if hasattr(
+            info, 'rollout_value') else info.value
+        return super()._calc_returns_and_advantages(info, value_to_use)
