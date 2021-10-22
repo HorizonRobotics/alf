@@ -24,14 +24,13 @@ alf.config(
     'create_environment', env_name='bossfight', num_parallel_environments=96)
 
 
-def encoding_network_ctor(input_tensor_spec, kernel_initializer):
+def encoding_network_ctor(input_tensor_spec):
     encoder_output_size = 256
     return impala_cnn_encoder.create(
         input_tensor_spec=input_tensor_spec,
         cnn_channel_list=(16, 32, 32),
         num_blocks_per_stack=2,
-        output_size=encoder_output_size,
-        kernel_initializer=kernel_initializer)
+        output_size=encoder_output_size)
 
 
 alf.config('ReplayBuffer.gather_all', convert_to_default_device=False)

@@ -150,22 +150,6 @@ class PPGPhaseContext(object):
     def network(self):
         return self._network
 
-    def on_context_switch_from(self, previous_context: 'PPGPhaseContext'):
-        """Necessary operations when switching from another context
-
-        Currently it is used to handle the special treatment of inheriting the
-        state_dict of the (identical) network from the previous context, so that
-        in this training phase the parameter updates continue on the most
-        update-to-date parameter values.
-
-        Args:
-
-            previous_context (PPGPhaseContext): the context of the phase that it
-                is switching from
-
-        """
-        self._network.load_state_dict(previous_context._network.state_dict())
-
     def network_forward(self,
                         inputs: TimeStep,
                         state,
@@ -215,6 +199,8 @@ class PPGPhaseContext(object):
 class PPGAlgorithm(OffPolicyAlgorithm):
     """PPG Algorithm.
 
+    Implementation of the paper: https://arxiv.org/abs/2009.04416
+
     PPG can be viewed as a variant of PPO, with two differences:
 
     1. It uses a special network structure (DisjointPolicyValueNetwork) that has
@@ -260,9 +246,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            encoding_network_ctor (Callable[..., Network]): Function to
-                construct the encoding network. The constructed network will be
-                called with ``forward(observation, state)``.
+            encoding_network_ctor (Callable[[TensorSpec], Network]): Function to
+                construct the encoding network from an input tensor spec. The
+                constructed network will be called with ``forward(observation,
+                state)``.
             policy_optimizer (torch.optim.Optimizer): The optimizer for training
                 the policy phase of PPG.
             aux_optimizer (torch.optim.Optimizer): The optimizer for training
@@ -311,6 +298,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         # specific to the auxiliary update phase.
         self._aux_phase = PPGPhaseContext(
             ppg_algorithm=self,
+            # We need to prepare another identical network for the auxiliary as
+            # the parameters are handled by a different optimizer. In Alf, one
+            # set of parameters cannot be handled by multiple optimizers. Hence
+            # the ``copy()``.
             network=dual_actor_value_network.copy(),
             optimizer=aux_optimizer,
             loss=PPGAuxPhaseLoss(),
@@ -343,7 +334,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         original_num_updates_per_train_iter = self._config.num_updates_per_train_iter
 
         try:
-            self._aux_phase.on_context_switch_from(self._policy_phase)
+            # Make the aux phase network's parameters identical to the policy
+            # phase's.
+            self._aux_phase._network.load_state_dict(
+                self._policy_phase._network.state_dict())
             self._active_phase = self._aux_phase
             # Special handling to shadow the current _replay_buffer
             previous_replay_buffer = self._replay_buffer
@@ -355,17 +349,16 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             self._config.num_updates_per_train_iter = self._aux_options.num_updates_per_train_iter
             yield
         finally:
-            self._policy_phase.on_context_switch_from(self._aux_phase)
+            # Make the policy phase network's parameters identical to the aux
+            # phase's.
+            self._policy_phase._network.load_state_dict(
+                self._aux_phase._network.state_dict())
             self._active_phase = self._policy_phase
             # Restore the _replay_buffer
             self._replay_buffer = previous_replay_buffer
             self._config.mini_batch_length = original_mini_batch_length
             self._config.mini_batch_size = original_mini_batch_size
             self._config.num_updates_per_train_iter = original_num_updates_per_train_iter
-
-    @property
-    def on_policy(self) -> bool:
-        return False
 
     def _observe_for_aux_replay(self, inputs: TimeStep, state,
                                 policy_step: AlgStep):
@@ -407,7 +400,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 max_length=max_length,
                 prioritized_sampling=False,
                 num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-                name=f'aux_replay_buffer')
+                name='aux_replay_buffer')
 
         self._aux_phase.replay_buffer.add_batch(exp, exp.env_id)
 
@@ -420,8 +413,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         """
         policy_step = self._policy_phase.network_forward(inputs, state)
-        self._observe_for_aux_replay(inputs.untransformed.cpu(), state,
-                                     policy_step)
+        self._observe_for_aux_replay(inputs.cpu(), state, policy_step)
         return policy_step
 
     def train_step(self, inputs: TimeStep, state,

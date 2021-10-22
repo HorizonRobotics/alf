@@ -40,8 +40,7 @@ class PPOLoss(ActorCriticLoss):
                  check_numerics=False,
                  debug_summaries=False,
                  name='PPOLoss'):
-        """
-        Implement the simplified surrogate loss in equation (9) of `Proximal
+        """Implement the simplified surrogate loss in equation (9) of `Proximal
         Policy Optimization Algorithms <https://arxiv.org/abs/1707.06347>`_.
 
         The total loss equals to
@@ -69,6 +68,11 @@ class PPOLoss(ActorCriticLoss):
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient.
+            compute_advantages_internally (bool): Normally PPOLoss does not
+                compute the adavantage and it expects the info to carry the
+                already-computed advantage. If this flag is set to True, PPOLoss
+                will instead compute the advantage internally without depending
+                on the input info.
             advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
@@ -81,6 +85,7 @@ class PPOLoss(ActorCriticLoss):
             check_numerics (bool):  If true, checking for ``NaN/Inf`` values. For
                 debugging only.
             name (str):
+
         """
 
         super(PPOLoss, self).__init__(
@@ -133,6 +138,11 @@ class PPOLoss(ActorCriticLoss):
     def _calc_returns_and_advantages(self, info, value):
         if not self._compute_advantages_internally:
             return info.returns, info.advantages
+        # If rollout_value is present in ``info``, we use it to compute the
+        # advantage. This is mainly for algorithms like PPG where at this time
+        # info.value is the newly computed value which is different from the
+        # rollout time value prediction. The rollout time value prediction is
+        # preserved in info.rollout_value.
         value_to_use = info.rollout_value if hasattr(
             info, 'rollout_value') else info.value
         return super()._calc_returns_and_advantages(info, value_to_use)

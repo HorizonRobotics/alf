@@ -118,7 +118,6 @@ class DisjointPolicyValueNetwork(Network):
                  action_spec,
                  encoding_network_ctor=EncodingNetwork,
                  is_sharing_encoder: bool = False,
-                 kernel_initializer=None,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name='DisjointPolicyValueNetwork'):
@@ -147,9 +146,6 @@ class DisjointPolicyValueNetwork(Network):
                 a "shared" architecture disjoint network. When set to false, the
                 encoding network is not shared, resulting in a "dual"
                 architecture disjoint network.
-            kernel_initializer (Callable[[Tensor], None]): initializer for all
-                the layers excluding the projection net. If none is provided a
-                default xavier_uniform will be used.
             discrete_projection_net_ctor (Callable[[int, BoundedTensorSpec],
                 Network]): constructor that generates a discrete projection
                 network that outputs discrete actions.
@@ -165,12 +161,8 @@ class DisjointPolicyValueNetwork(Network):
         # | Step 1: The policy network encoder |
         # +------------------------------------+
 
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
         self._actor_encoder = encoding_network_ctor(
-            input_tensor_spec=observation_spec,
-            kernel_initializer=kernel_initializer)
+            input_tensor_spec=observation_spec)
 
         encoder_output_size = self._actor_encoder.output_spec.shape[0]
 
@@ -216,8 +208,7 @@ class DisjointPolicyValueNetwork(Network):
             # When not sharing encoder, create a separate encoder for the value
             # component.
             self._value_encoder = encoding_network_ctor(
-                input_tensor_spec=observation_spec,
-                kernel_initializer=kernel_initializer)
+                input_tensor_spec=observation_spec)
 
             self._composition = alf.nn.Sequential(
                 alf.nn.Branch(
