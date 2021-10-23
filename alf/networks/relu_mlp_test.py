@@ -44,6 +44,7 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
 
     @parameterized.parameters(
+        dict(hidden_layers=()),
         dict(hidden_layers=(2, )),
         dict(hidden_layers=(2, 3), batch_size=1),
         dict(hidden_layers=(2, 3, 4)),
@@ -54,6 +55,8 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         Check that the input-output Jacobian computed by the direct(autograd-free)
         approach is consistent with the one computed by calling autograd.
         """
+        partial_idx1 = [0, 2]
+        partial_idx2 = [1, -1]
         spec = TensorSpec((input_size, ))
         mlp = ReluMLP(spec, output_size=4, hidden_layers=hidden_layers)
 
@@ -61,6 +64,8 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         x = torch.randn(batch_size, input_size, requires_grad=True)
         x1 = x.detach().clone()
         jac = mlp.compute_jac(x1)
+        jac_partial1 = mlp.compute_jac(x1, partial_idx1)
+        jac_partial2 = mlp.compute_jac(x1, partial_idx2)
 
         # compute jac using autograd
         y, _ = mlp(x)
@@ -69,8 +74,12 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         for i in range(batch_size):
             jac2.append(jac_ad[i, :, i, :])
         jac2 = torch.stack(jac2, dim=0)
+        jac2_partial1 = jac2[:, partial_idx1, :]
+        jac2_partial2 = jac2[:, partial_idx2, :]
 
         self.assertArrayEqual(jac, jac2, 1e-6)
+        self.assertArrayEqual(jac2_partial1, jac2_partial1, 1e-6)
+        self.assertArrayEqual(jac2_partial2, jac2_partial2, 1e-6)
 
     @parameterized.parameters(
         dict(hidden_layers=(2, )),
@@ -132,6 +141,8 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
             x1, vec, output_partial_idx=partial_idx1)
         vjp_partial2, _ = mlp.compute_vjp(
             x1, vec, output_partial_idx=partial_idx2)
+        vjp_partial2_partial_vec, _ = mlp.compute_vjp(
+            x1, vec[:, partial_idx2], output_partial_idx=partial_idx2)
 
         # # compute vjp using autograd
         y, _ = mlp(x)
@@ -158,6 +169,7 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         self.assertArrayEqual(vjp, vjp2, 1e-6)
         self.assertArrayEqual(vjp_partial1, vjp2_partial1, 1e-6)
         self.assertArrayEqual(vjp_partial2, vjp2_partial2, 1e-6)
+        self.assertArrayEqual(vjp_partial2, vjp_partial2_partial_vec, 1e-6)
 
     @parameterized.parameters(
         dict(hidden_layers=()),
