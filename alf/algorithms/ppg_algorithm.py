@@ -14,184 +14,23 @@
 """Phasic Policy Gradient Algorithm."""
 
 from __future__ import annotations
-from alf.data_structures import namedtuple
 import torch
 
 from typing import Optional, Tuple
 from contextlib import contextmanager
 
 import alf
-from alf.algorithms.ppg import DisjointPolicyValueNetwork, PPGAuxPhaseLoss, PPGAuxPhaseLossInfo, PPGRolloutInfo, PPGTrainInfo
+from alf.algorithms.ppg import DisjointPolicyValueNetwork, PPGAuxPhaseLoss, PPGAuxPhaseLossInfo, PPGRolloutInfo, PPGTrainInfo, PPGAuxAlgorithm, PPGAuxOptions, ppg_network_forward
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
-from alf.experience_replayers.replay_buffer import ReplayBuffer
-from alf.data_structures import TimeStep, AlgStep, LossInfo, make_experience
+from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
 
 from alf.utils import common, dist_utils, value_ops, tensor_utils
 from alf.utils.summary_utils import record_time
-
-# Data structure to store the options for PPG's auxiliary phase
-# training iterations.
-PPGAuxOptions = namedtuple(
-    'PPGAuxOptions',
-    [
-        # Set to False to disable aux phase for good so that the PPG algorithm
-        # degenerate to PPO
-        'enabled',
-
-        # Perform one auxiliary phase update after this number of normal
-        # training iterations
-        'interval',
-
-        # Counterpart to TrainerConfig.mini_batch_length for aux phase. When set
-        # to None, it will automatically overriden by unroll_length.
-        'mini_batch_length',
-
-        # Counterpart to TrainerConfig.mini_batch_size for aux phase
-        'mini_batch_size',
-
-        # Counterpart to TrainerConfig.num_updates_per_train_iter for aux phase
-        'num_updates_per_train_iter',
-    ],
-    default_values={
-        'enabled': True,
-        'interval': 32,
-        'mini_batch_length': None,
-        'mini_batch_size': 8,
-        'num_updates_per_train_iter': 6,
-    })
-
-
-class PPGPhaseContext(object):
-    """The context for each of the two phases of PPG
-
-    The PPG algorithm has two phases. Each phase will
-
-    1. use a DIFFERENT "loss function"
-    2. on a DIFFERENT "replay buffer"
-    3. and use a DIFFERENT "optimizer"
-    4. on a DIFFRENT copy of the "network"
-
-    Therefore, this context class is created to group such (stateful)
-    information for each phase so as to make switching between phases
-    as easy as switching the context to use. See the implementation of
-    the ``PPGAlgorithm`` for the details.
-
-    Note that in the above list No.4 is not needed in theory because
-    the two phases technically operates on the same network. However,
-    two separate networks are used to bypass the current constraint
-    that different optimizers do not share their managed parameters.
-
-    """
-
-    def __init__(self, ppg_algorithm: PPGAlgorithm,
-                 network: DisjointPolicyValueNetwork,
-                 optimizer: torch.optim.Optimizer, loss: Loss,
-                 replay_buffer: Optional[ReplayBuffer]):
-        """Establish the context and construct the context instance
-
-        Note that the constructor also register the optimizer and the replay
-        buffer.
-
-        Args:
-
-            ppg_algorithm (PPGAlgorithm): reference to the PPGAlgorithm which
-                will be used to register the observer and the optimizer
-            network (DisjointPolicyValueNetwork): the network to use during
-                training in the corresponding phase
-            optimizer (torch.optim.Optimizer): the optimizer to use during
-                training in the corresponding phase. Actaully all registered
-                optimizers' ``step()`` will be called during training updates no
-                matter which phase it is in, but because the loss is only
-                computed on the network of the active phase, the other
-                optimizers will effectively do nothing
-            loss (Loss): the loss function that will be used to compute the loss
-                in the corresponding phase
-            replay_buffer: the replay buffer to draw experience for
-                training during the corresponding phase. If set to
-                None, it means that in this phase the main replay
-                buffer in the algorithm will be used.
-
-        """
-        self._ppg_algorithm = ppg_algorithm
-        self._network = network
-        self._ppg_algorithm.add_optimizer(optimizer, [self._network])
-        self._loss = loss
-        self._replay_buffer = replay_buffer
-
-    @property
-    def loss(self):
-        return self._loss
-
-    @property
-    def replay_buffer(self):
-        return self._replay_buffer
-
-    def ensure_replay_buffer(self, sample_exp, max_length, name):
-        if self._replay_buffer is not None:
-            return
-
-        exp_spec = dist_utils.to_distribution_param_spec(
-            dist_utils.extract_spec(sample_exp, from_dim=1))
-        num_environments = sample_exp.env_id.shape[0]
-        self._replay_buffer = ReplayBuffer(
-            data_spec=exp_spec,
-            num_environments=self._replay_buffer_num_envs,
-            max_length=self._replay_buffer_max_length,
-            prioritized_sampling=self._prioritized_sampling,
-            num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-            name=name)
-
-    @property
-    def network(self):
-        return self._network
-
-    def network_forward(self,
-                        inputs: TimeStep,
-                        state,
-                        epsilon_greedy: Optional[float] = None) -> AlgStep:
-        """Evaluates the underlying network for roll out or training
-
-        The signature mimics ``rollout_step()`` of ``Algorithm`` completedly.
-
-        Args:
-
-            inputs (TimeStep): carries the observation that is needed
-                as input to the network
-            state (nested Tesnor): carries the state for RNN-based network
-            epsilon_greedy (Optional[float]): if set to None, the action will be
-                sampled strictly based on the action distribution. If set to a
-                value in [0, 1], epsilon-greedy sampling will be used to sample
-                the action from the action distribution, and the float value
-                determines the chance of action sampling instead of taking
-                argmax.
-
-        """
-        (action_distribution, value, aux), state = self._network(
-            inputs.observation, state=state)
-
-        if epsilon_greedy is not None:
-            action = dist_utils.epsilon_greedy_sample(action_distribution,
-                                                      epsilon_greedy)
-        else:
-            action = dist_utils.sample_action_distribution(action_distribution)
-
-        return AlgStep(
-            output=action,
-            state=state,
-            info=PPGRolloutInfo(
-                action_distribution=action_distribution,
-                action=common.detach(action),
-                value=value,
-                aux=aux,
-                step_type=inputs.step_type,
-                discount=inputs.discount,
-                reward=inputs.reward,
-                reward_weights=()))
 
 
 # TODO(breakds): When needed, implement the support for multi-dimensional reward.
@@ -221,9 +60,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  observation_spec: TensorSpec,
                  action_spec: TensorSpec,
                  reward_spec=TensorSpec(()),
-                 aux_options: PPGAuxOptions = PPGAuxOptions(),
                  env=None,
                  config: Optional[TrainerConfig] = None,
+                 aux_options: PPGAuxOptions = PPGAuxOptions(),
                  encoding_network_ctor: callable = EncodingNetwork,
                  policy_optimizer: Optional[torch.optim.Optimizer] = None,
                  aux_optimizer: Optional[torch.optim.Optimizer] = None,
@@ -236,8 +75,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
-            aux_phase_interval (int): perform auxiliary phase update after every
-                aux_phase_interval iterations
             env (Environment): The environment to interact with. env is a
                 batched environment, which means that it runs multiple
                 simulations simultateously. env only needs to be provided to the
@@ -246,6 +83,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
+            aux_options: Options that controls the auxiliary phase training
             encoding_network_ctor (Callable[[TensorSpec], Network]): Function to
                 construct the encoding network from an input tensor spec. The
                 constructed network will be called with ``forward(observation,
@@ -277,132 +115,34 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             predict_state_spec=dual_actor_value_network.state_spec,
-            train_state_spec=dual_actor_value_network.state_spec)
+            train_state_spec=dual_actor_value_network.state_spec,
+            optimizer=policy_optimizer)
 
-        self._aux_options = aux_options
+        if aux_options.enabled:
+            self._aux_algorithm = PPGAuxAlgorithm(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                reward_spec=reward_spec,
+                config=config,
+                optimizer=aux_optimizer,
+                dual_actor_value_network=dual_actor_value_network,
+                aux_options=aux_options,
+                name='PPGAuxAlgorithm')
+        else:
+            # A None ``_aux_algorithm`` means not performaning aux
+            # phase update at all.
+            self._aux_algorithm = None
+
+        self._network = dual_actor_value_network
+        self._loss = PPOLoss(debug_summaries=debug_summaries)
 
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
                 'TrainerConfig.epsilon_greedy')
         self._predict_step_epsilon_greedy = epsilon_greedy
 
-        # The policy phase uses the main replay buffer with the PPO Loss
-        self._policy_phase = PPGPhaseContext(
-            ppg_algorithm=self,
-            network=dual_actor_value_network,
-            optimizer=policy_optimizer,
-            loss=PPOLoss(debug_summaries=debug_summaries),
-            replay_buffer=None)
-
-        # The auxiliary phase uses an extra replay buffer with the loss
-        # specific to the auxiliary update phase.
-        self._aux_phase = PPGPhaseContext(
-            ppg_algorithm=self,
-            # We need to prepare another identical network for the auxiliary as
-            # the parameters are handled by a different optimizer. In Alf, one
-            # set of parameters cannot be handled by multiple optimizers. Hence
-            # the ``copy()``.
-            network=dual_actor_value_network.copy(),
-            optimizer=aux_optimizer,
-            loss=PPGAuxPhaseLoss(),
-            replay_buffer=None)
-
-        # Register the two networks so that they are picked up as part of the
-        # Algorithm by pytorch.
-        self._registered_networks = torch.nn.ModuleList(
-            [self._policy_phase.network, self._aux_phase.network])
-
-        self._active_phase = self._policy_phase
-
-    @contextmanager
-    def aux_phase_activated(self):
-        """A context switch that activates the auxiliary phase
-
-        ... code-block:: python
-            with self.aux_phase_activated():
-                self.train_from_replay_buffer(...)
-
-        In the above code snippet, the hooks called in the
-        ``train_from_replay_buffer()`` function will be operating with the
-        network, replay buffer and loss in the auxiliary phase contex.
-
-        """
-        previous_replay_buffer = None
-
-        original_mini_batch_length = self._config.mini_batch_length
-        original_mini_batch_size = self._config.mini_batch_size
-        original_num_updates_per_train_iter = self._config.num_updates_per_train_iter
-
-        try:
-            # Make the aux phase network's parameters identical to the policy
-            # phase's.
-            self._aux_phase._network.load_state_dict(
-                self._policy_phase._network.state_dict())
-            self._active_phase = self._aux_phase
-            # Special handling to shadow the current _replay_buffer
-            previous_replay_buffer = self._replay_buffer
-            self._replay_buffer = self._aux_phase.replay_buffer
-            self._config.mini_batch_length = (
-                self._aux_options.mini_batch_length
-                or self._config.unroll_length)
-            self._config.mini_batch_size = self._aux_options.mini_batch_size
-            self._config.num_updates_per_train_iter = self._aux_options.num_updates_per_train_iter
-            yield
-        finally:
-            # Make the policy phase network's parameters identical to the aux
-            # phase's.
-            self._policy_phase._network.load_state_dict(
-                self._aux_phase._network.state_dict())
-            self._active_phase = self._policy_phase
-            # Restore the _replay_buffer
-            self._replay_buffer = previous_replay_buffer
-            self._config.mini_batch_length = original_mini_batch_length
-            self._config.mini_batch_size = original_mini_batch_size
-            self._config.num_updates_per_train_iter = original_num_updates_per_train_iter
-
-    def _observe_for_aux_replay(self, inputs: TimeStep, state,
-                                policy_step: AlgStep):
-        """Construct the experience and save it in the replay buffer for auxiliary
-        phase update.
-
-        Args:
-
-            inputs (nested Tensor): inputs towards network prediction
-            state (nested Tensor): state for RNN-based network
-            policy_step (AlgStep): a data structure wrapping the information
-                fromm the rollout
-
-        """
-        if not self._aux_options.enabled:
-            return
-
-        # Note that we need to release the ``untransformed`` from the time step
-        # (inputs) before constructing the experience.
-        lite_time_step = inputs._replace(untransformed=())
-        exp = make_experience(lite_time_step, policy_step, state)
-        if not self._use_rollout_state:
-            exp = exp._replace(state=())
-        # Set the experience spec explicitly if it is not set, based on this
-        # (sample) experience
-        if not self._experience_spec:
-            self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
-        exp = dist_utils.distributions_to_params(exp)
-
-        if self._aux_phase._replay_buffer is None:
-            exp_spec = dist_utils.to_distribution_param_spec(
-                self._experience_spec)
-            num_envs = exp.env_id.shape[0]
-            max_length = self._config.unroll_length * self._aux_options.interval
-            max_length += 1 + self._num_earliest_frames_ignored
-            self._aux_phase._replay_buffer = ReplayBuffer(
-                data_spec=exp_spec,
-                num_environments=exp.env_id.shape[0],
-                max_length=max_length,
-                prioritized_sampling=False,
-                num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-                name='aux_replay_buffer')
-
-        self._aux_phase.replay_buffer.add_batch(exp, exp.env_id)
+    def _trainable_attributes_to_ignore(self):
+        return ['PPGAuxAlgorithm']
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
@@ -412,15 +152,19 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         by the auxiliary phase updates.
 
         """
-        policy_step = self._policy_phase.network_forward(inputs, state)
-        self._observe_for_aux_replay(inputs.cpu(), state, policy_step)
+        policy_step = ppg_network_forward(self._network, inputs, state)
+
+        if self._aux_algorithm:
+            self._aux_algorithm.observe_for_aux_replay(inputs, state,
+                                                       policy_step)
+
         return policy_step
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
         """Phase context dependent evaluation on experiences for training
         """
-        alg_step = self._active_phase.network_forward(inputs, state)
+        alg_step = ppg_network_forward(self._network, inputs, state)
 
         train_info = PPGTrainInfo(
             action=plain_rollout_info.action,
@@ -433,12 +177,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
         """Phase context dependent loss function evaluation
         """
-        return self._active_phase.loss(info)
+        return self._loss(info)
 
     def predict_step(self, inputs: TimeStep, state):
         """Predict for one step."""
-        return self._active_phase.network_forward(
-            inputs, state, self._predict_step_epsilon_greedy)
+        return ppg_network_forward(self._network, inputs, state,
+                                   self._predict_step_epsilon_greedy)
 
     def after_train_iter(self, experience, info: PPGTrainInfo):
         """Run auxiliary update if conditions are met
@@ -448,14 +192,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         after_train_iter() hook currently.
 
         """
-        if not self._aux_options.enabled:
+        if not self._aux_algorithm:
             return
 
-        if alf.summary.get_global_counter() % self._aux_options.interval == 0:
-            with self.aux_phase_activated():
-                # TODO(breakds): currently auxiliary update steps are not
-                # counted towards the total steps. If needed in the future, we
-                # should return this from after_train_iter() and add some logic
-                # to handle this in the call site of after_train_iter().
-                aux_steps = self.train_from_replay_buffer(
-                    update_global_counter=False)
+        if alf.summary.get_global_counter(
+        ) % self._aux_algorithm.interval == 0:
+            # NOTE(breakds): The auxiliary steps ``aux_steps`` is
+            # currently not used.
+            aux_steps = self._aux_algorithm.train_from_replay_buffer(
+                update_global_counter=False)

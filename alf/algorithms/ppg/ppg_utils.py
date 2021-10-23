@@ -14,7 +14,12 @@
 
 # Import annotations to enable type hints of PPGTrainInfo inside PPGTrainInfo
 from __future__ import annotations
-from alf.data_structures import namedtuple
+from typing import Optional
+
+from alf.data_structures import namedtuple, TimeStep, AlgStep
+from alf.utils import common, dist_utils
+
+from .disjoint_policy_value_network import DisjointPolicyValueNetwork
 
 # Data structure to store the information produced by agent
 # interacting with the environment.
@@ -88,3 +93,47 @@ class PPGTrainInfo(
             value=rollout_info.value,
             aux=rollout_info.aux,
             reward_weights=rollout_info.reward_weights)
+
+
+def ppg_network_forward(network: DisjointPolicyValueNetwork,
+                        inputs: TimeStep,
+                        state,
+                        epsilon_greedy: Optional[float] = None) -> AlgStep:
+    """Evaluates the network forward pass for roll out or training
+
+    The signature mimics ``rollout_step()`` of ``Algorithm`` completedly.
+
+    Args:
+
+        inputs (TimeStep): carries the observation that is needed
+            as input to the network
+        state (nested Tesnor): carries the state for RNN-based network
+        epsilon_greedy (Optional[float]): if set to None, the action will be
+            sampled strictly based on the action distribution. If set to a
+            value in [0, 1], epsilon-greedy sampling will be used to sample
+            the action from the action distribution, and the float value
+            determines the chance of action sampling instead of taking
+            argmax.
+
+    """
+    (action_distribution, value, aux), state = network(
+        inputs.observation, state=state)
+
+    if epsilon_greedy is not None:
+        action = dist_utils.epsilon_greedy_sample(action_distribution,
+                                                  epsilon_greedy)
+    else:
+        action = dist_utils.sample_action_distribution(action_distribution)
+
+    return AlgStep(
+        output=action,
+        state=state,
+        info=PPGRolloutInfo(
+            action_distribution=action_distribution,
+            action=common.detach(action),
+            value=value,
+            aux=aux,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            reward=inputs.reward,
+            reward_weights=()))

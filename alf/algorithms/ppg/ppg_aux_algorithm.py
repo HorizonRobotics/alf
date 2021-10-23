@@ -1,0 +1,156 @@
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing import Optional
+import copy
+import torch
+
+from alf.data_structures import namedtuple
+from alf.algorithms.config import TrainerConfig
+from alf.algorithms.ppg import PPGRolloutInfo, PPGTrainInfo, PPGAuxPhaseLoss, ppg_network_forward
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import TimeStep, AlgStep, LossInfo, make_experience
+from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.utils import common, dist_utils
+from alf.tensor_specs import TensorSpec
+
+# Data structure to store the options for PPG's auxiliary phase
+# training iterations.
+PPGAuxOptions = namedtuple(
+    'PPGAuxOptions',
+    [
+        # Set to False to disable aux phase for good so that the PPG algorithm
+        # degenerate to PPO
+        'enabled',
+
+        # Perform one auxiliary phase update after this number of normal
+        # training iterations
+        'interval',
+
+        # Counterpart to TrainerConfig.mini_batch_length for aux phase. When set
+        # to None, it will automatically overriden by unroll_length.
+        'mini_batch_length',
+
+        # Counterpart to TrainerConfig.mini_batch_size for aux phase
+        'mini_batch_size',
+
+        # Counterpart to TrainerConfig.num_updates_per_train_iter for aux phase
+        'num_updates_per_train_iter',
+    ],
+    default_values={
+        'enabled': True,
+        'interval': 32,
+        'mini_batch_length': None,
+        'mini_batch_size': 8,
+        'num_updates_per_train_iter': 6,
+    })
+
+
+class PPGAuxAlgorithm(OffPolicyAlgorithm):
+    def __init__(self,
+                 observation_spec: TensorSpec,
+                 action_spec: TensorSpec,
+                 reward_spec=TensorSpec(()),
+                 config: Optional[TrainerConfig] = None,
+                 optimizer: torch.optim.Optimizer = None,
+                 dual_actor_value_network=None,
+                 aux_options: PPGAuxOptions = PPGAuxOptions(),
+                 name='PPGAuxAlgorithm'):
+
+        updated_config = copy.deepcopy(config)
+        updated_config.unroll_length = config.unroll_length * aux_options.interval
+        # TODO(breakds): Also conduct an experiment to see whether we can just
+        # do samping from the auxiliary replay buffer to achieve similar
+        # training performance.
+        updated_config.whole_replay_buffer_training = True
+        updated_config.clear_replay_buffer = True
+        updated_config.mini_batch_length = (aux_options.mini_batch_length
+                                            or config.unroll_length)
+        updated_config.mini_batch_size = aux_options.mini_batch_size
+        updated_config.num_updates_per_train_iter = aux_options.num_updates_per_train_iter
+
+        super().__init__(
+            config=updated_config,
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            reward_spec=reward_spec,
+            predict_state_spec=dual_actor_value_network.state_spec,
+            train_state_spec=dual_actor_value_network.state_spec,
+            optimizer=optimizer,
+            name=name)
+
+        self._network = dual_actor_value_network
+        self._loss = PPGAuxPhaseLoss()
+        self._interval = aux_options.interval
+
+    @property
+    def interval(self):
+        return self._interval
+
+    def observe_for_aux_replay(self, inputs: TimeStep, state,
+                               policy_step: AlgStep):
+        """Construct the experience and save it in the replay buffer for auxiliary
+        phase update.
+        Args:
+            inputs (nested Tensor): inputs towards network prediction
+            state (nested Tensor): state for RNN-based network
+            policy_step (AlgStep): a data structure wrapping the information
+                fromm the rollout
+        """
+        # Note that we need to release the ``untransformed`` from the time step
+        # (inputs) before constructing the experience.
+        lite_time_step = inputs._replace(untransformed=())
+        exp = make_experience(lite_time_step, policy_step, state)
+        if not self._use_rollout_state:
+            exp = exp._replace(state=())
+        # Set the experience spec explicitly if it is not set, based on this
+        # (sample) experience
+        if not self._experience_spec:
+            self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
+        exp = dist_utils.distributions_to_params(exp)
+
+        if self._replay_buffer is None:
+            exp_spec = dist_utils.to_distribution_param_spec(
+                self._experience_spec)
+            num_envs = exp.env_id.shape[0]
+            max_length = self._config.unroll_length
+            max_length += 1 + self._num_earliest_frames_ignored
+            self._replay_buffer = ReplayBuffer(
+                data_spec=exp_spec,
+                num_environments=exp.env_id.shape[0],
+                max_length=max_length,
+                prioritized_sampling=False,
+                num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+                name='ppg_aux_replay_buffer')
+
+        self._replay_buffer.add_batch(exp, exp.env_id)
+
+    def train_step(self, inputs: TimeStep, state,
+                   plain_rollout_info: PPGRolloutInfo) -> AlgStep:
+        """Phase context dependent evaluation on experiences for training
+        """
+        alg_step = ppg_network_forward(self._network, inputs, state)
+
+        train_info = PPGTrainInfo(
+            action=plain_rollout_info.action,
+            rollout_value=plain_rollout_info.value,
+            rollout_action_distribution=plain_rollout_info.
+            action_distribution).absorbed(alg_step.info)
+
+        return alg_step._replace(info=train_info)
+
+    def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
+        """Phase context dependent loss function evaluation
+        """
+        return self._loss(info)

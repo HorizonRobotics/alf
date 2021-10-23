@@ -19,7 +19,7 @@ import alf
 from alf.data_structures import namedtuple, LossInfo
 from alf.algorithms.algorithm import Loss
 from alf.utils.losses import element_wise_squared_loss
-from .ppg_info import PPGTrainInfo
+from .ppg_utils import PPGTrainInfo
 from alf.utils import tensor_utils, value_ops
 
 # The auxiliary phase updates the network parameters based a loss that
