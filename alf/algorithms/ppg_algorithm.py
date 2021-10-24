@@ -20,17 +20,13 @@ from typing import Optional, Tuple
 from contextlib import contextmanager
 
 import alf
-from alf.algorithms.ppg import DisjointPolicyValueNetwork, PPGAuxPhaseLoss, PPGAuxPhaseLossInfo, PPGRolloutInfo, PPGTrainInfo, PPGAuxAlgorithm, PPGAuxOptions, ppg_network_forward
+from alf.algorithms.ppg import DisjointPolicyValueNetwork, PPGRolloutInfo, PPGTrainInfo, PPGAuxAlgorithm, PPGAuxOptions, ppg_network_forward
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.algorithms.algorithm import Loss
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.tensor_specs import TensorSpec
-
-from alf.utils import common, dist_utils, value_ops, tensor_utils
-from alf.utils.summary_utils import record_time
 
 
 # TODO(breakds): When needed, implement the support for multi-dimensional reward.
@@ -83,7 +79,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            aux_options: Options that controls the auxiliary phase training
+            aux_options: Options that controls the auxiliary phase training.
             encoding_network_ctor (Callable[[TensorSpec], Network]): Function to
                 construct the encoding network from an input tensor spec. The
                 constructed network will be called with ``forward(observation,
@@ -118,6 +114,12 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             train_state_spec=dual_actor_value_network.state_spec,
             optimizer=policy_optimizer)
 
+        # When aux phase update is enabled, a sub algorithm named
+        # "PPGAuxAlgorithm" will be created. The sub algorithm shares the same
+        # network as the main algorithm, but updates the parameters with a
+        # different loss and optimizer. ``_trainable_attributes_to_ignore()`` is
+        # defined to prevent the network parameters being managed by two
+        # different optimizers.
         if aux_options.enabled:
             self._aux_algorithm = PPGAuxAlgorithm(
                 observation_spec=observation_spec,

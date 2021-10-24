@@ -15,7 +15,6 @@
 from typing import Optional
 import copy
 import torch
-
 from alf.data_structures import namedtuple
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppg import PPGRolloutInfo, PPGTrainInfo, PPGAuxPhaseLoss, ppg_network_forward
@@ -58,6 +57,18 @@ PPGAuxOptions = namedtuple(
 
 
 class PPGAuxAlgorithm(OffPolicyAlgorithm):
+    """An algorithm that performs the auxiliary phase update of PPG.
+
+    The algorithm is used as a sub algorithm of PPGAlgorithm. Auxiliary phase
+    updates does not require new rollouts. Instead it will collect all of the
+    experiences since the last auxiliary phase updates in ITS OWN replay buffer.
+
+    """
+
+    # TODO(breakds): Also conduct an experiment to see whether we can just
+    # do samping from the auxiliary replay buffer to achieve similar
+    # training performance.
+
     def __init__(self,
                  observation_spec: TensorSpec,
                  action_spec: TensorSpec,
@@ -66,13 +77,30 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
                  optimizer: torch.optim.Optimizer = None,
                  dual_actor_value_network=None,
                  aux_options: PPGAuxOptions = PPGAuxOptions(),
-                 name='PPGAuxAlgorithm'):
+                 name: str = 'PPGAuxAlgorithm'):
+        """Construct a PPGAuxAlgorithm instances.
 
+        Args:
+
+            observation_spec (nested TensorSpec): representing the observations.
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs ``train_iter()`` by
+                itself.
+            optimizer: optimizer used for auxiliary phase update.
+            dual_actor_value_network: the underlying network for PPG algorithm.
+                PPGAuxAlgorithm does not own the network. Instead, this should
+                be shared reference from the parent PPGAlgorithm.
+            aux_options: Options that controls the auxiliary phase training.
+            name (str): Name of this algorithm.
+
+        """
+        # Use a config with overriden fields as auxiliary phase updates has a
+        # bunch of its own options.
         updated_config = copy.deepcopy(config)
         updated_config.unroll_length = config.unroll_length * aux_options.interval
-        # TODO(breakds): Also conduct an experiment to see whether we can just
-        # do samping from the auxiliary replay buffer to achieve similar
-        # training performance.
         updated_config.whole_replay_buffer_training = True
         updated_config.clear_replay_buffer = True
         updated_config.mini_batch_length = (aux_options.mini_batch_length

@@ -104,16 +104,17 @@ def ppg_network_forward(network: DisjointPolicyValueNetwork,
     The signature mimics ``rollout_step()`` of ``Algorithm`` completedly.
 
     Args:
-
-        inputs (TimeStep): carries the observation that is needed
-            as input to the network
+    
+        network: the network whose forward pass is to be performed.
+        inputs: carries the observation that is needed as input to the
+            network.
         state (nested Tesnor): carries the state for RNN-based network
-        epsilon_greedy (Optional[float]): if set to None, the action will be
-            sampled strictly based on the action distribution. If set to a
-            value in [0, 1], epsilon-greedy sampling will be used to sample
-            the action from the action distribution, and the float value
-            determines the chance of action sampling instead of taking
-            argmax.
+        epsilon_greedy: if set to None, the action will be sampled
+            strictly based on the action distribution. If set to a
+            value in [0, 1], epsilon-greedy sampling will be used to
+            sample the action from the action distribution, and the
+            float value determines the chance of action sampling
+            instead of taking argmax.
 
     """
     (action_distribution, value, aux), state = network(
