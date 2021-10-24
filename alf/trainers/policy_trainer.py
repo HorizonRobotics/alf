@@ -331,6 +331,8 @@ class RLTrainer(Trainer):
         common.set_global_env(env)
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
+        logging.info("transformed_observation_spec=%s" %
+                     pprint.pformat(observation_spec))
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,
