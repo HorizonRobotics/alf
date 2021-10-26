@@ -14,11 +14,18 @@
 
 import abc
 from absl import logging
+from collections import deque
+import cv2
+from enum import IntEnum, auto, Enum
 import math
 import numpy as np
+
 import weakref
 import threading
 from unittest.mock import Mock
+
+from alf.environments.carla_env.carla_utils import (TrafficLightHandler,
+                                                    MapHandler)
 
 try:
     import carla
@@ -1133,7 +1140,7 @@ class World(object):
         max_num_traffic_light_waypoints = 0
         for actor in actors:
             if 'traffic_light' in actor.type_id:
-                center, waypoints = self._get_traffic_light_waypoints(actor)
+                center, waypoints, _ = self._get_traffic_light_waypoints(actor)
                 self._traffic_light_actors.append(actor)
                 traffic_light_centers.append(_to_numpy_loc(center))
                 waypoints = [_to_numpy_waypoint(wp) for wp in waypoints]
@@ -1168,8 +1175,8 @@ class World(object):
         # https://github.com/carla-simulator/scenario_runner/blob/master/srunner/scenariomanager/scenarioatomics/atomic_criteria.py
         base_transform = traffic_light.get_transform()
         base_rot = base_transform.rotation.yaw
-        area_loc = base_transform.transform(
-            traffic_light.trigger_volume.location)
+        area_loc = carla.Location(
+            base_transform.transform(traffic_light.trigger_volume.location))
 
         # Discretize the trigger box into points
         area_ext = traffic_light.trigger_volume.extent
@@ -1193,6 +1200,8 @@ class World(object):
 
         # Advance them until the intersection
         wps = []
+        stopline_vertices = []
+
         for wpx in ini_wps:
             while not wpx.is_intersection:
                 next_wp = wpx.next(0.5)[0]
@@ -1210,10 +1219,15 @@ class World(object):
                     "waypoint: %s. Need to increase RED_LIGHT_ENFORCE_DISTANCE"
                     % wpx.transform.location.distance(area_loc))
             wps.append(wpx)
+            vec_forward = wpx.transform.get_forward_vector()
+            vec_right = carla.Vector3D(x=-vec_forward.y, y=vec_forward.x, z=0)
 
+            loc_left = wpx.transform.location - 0.4 * wpx.lane_width * vec_right
+            loc_right = wpx.transform.location + 0.4 * wpx.lane_width * vec_right
+            stopline_vertices.append([loc_left, loc_right])
         # self._draw_waypoints(wps, vertical_shift=1.0, persistency=50000.0)
 
-        return area_loc, wps
+        return area_loc, wps, stopline_vertices
 
     def is_running_red_light(self, actor):
         """Whether actor is running red light.
@@ -1321,10 +1335,14 @@ class NavigationSensor(SensorBase):
         """
         start = self._alf_world.get_actor_location(self._parent.id)
         self._route = self._alf_world.trace_route(start, destination)
+
         self._waypoints = np.array([[
             wp.transform.location.x, wp.transform.location.y,
             wp.transform.location.z
         ] for wp, _ in self._route])
+
+        self._route_waypoints = [wp for wp, _ in self._route]
+
         self._road_option = np.array(
             [road_option for _, road_option in self._route])
         self._nearest_index = 0
@@ -1393,3 +1411,396 @@ class NavigationSensor(SensorBase):
             int: index of the next waypoint
         """
         return min(self._nearest_index + 1, self._num_waypoints - 1)
+
+
+# ==============================================================================
+# -- BEV Sensor ----------------------------------------------------------------
+# ==============================================================================
+COLOR_BLACK = (0, 0, 0)
+COLOR_RED = (255, 0, 0)
+COLOR_GREEN = (0, 255, 0)
+COLOR_BLUE = (0, 0, 255)
+COLOR_CYAN = (0, 255, 255)
+COLOR_MAGENTA = (255, 0, 255)
+COLOR_MAGENTA_2 = (255, 140, 255)
+COLOR_YELLOW = (255, 255, 0)
+COLOR_YELLOW_2 = (160, 160, 0)
+COLOR_WHITE = (255, 255, 255)
+COLOR_ALUMINIUM_0 = (238, 238, 236)
+COLOR_ALUMINIUM_3 = (136, 138, 133)
+COLOR_ALUMINIUM_5 = (46, 52, 54)
+
+
+def tint(color, factor):
+    r, g, b = color
+    r = int(r + (255 - r) * factor)
+    g = int(g + (255 - g) * factor)
+    b = int(b + (255 - b) * factor)
+    r = min(r, 255)
+    g = min(g, 255)
+    b = min(b, 255)
+    return (r, g, b)
+
+
+@alf.configurable
+class BEVSensor(SensorBase):
+    """BEVSensor.
+    Adapted from https://github.com/zhejz/carla-roach/blob/main/carla_gym/core/obs_manager/birdview/chauffeurnet.py
+
+    """
+
+    def __init__(self,
+                 parent_actor,
+                 alf_world,
+                 navigation_sensor,
+                 image_size_in_pixels=200,
+                 pixels_per_meter=5,
+                 use_rgb_image=False,
+                 pixels_ev_to_bottom=50,
+                 history_idx=[-16, -11, -6, -1],
+                 max_history_len=20,
+                 vehicle_bbox_factor=1.0,
+                 walker_bbox_factor=2.0):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+            alf_world (World): the world object keeping all relevant data and
+                some utility functions (e.g., `_get_traffic_light_waypoints`)
+            navigation_sensor (str): the navigation sensor associated with the
+                `parent_actor`
+            image_size_in_pixels (int): number of pixels for the rendered
+                BEV image. The BEV image is square shaped.
+            pixels_per_meter (int): how many pixels in the BEV image correspond
+                to one meter in the world coordinate
+            use_rgb_image (bool): whether use encoded rgb image as observation.
+                If True, the sensor will return encoded rgb image as sensor
+                readings. Otherwise, it will return a multi-channel mask image
+                as the sensor reading (TODO: add support to structured info)
+            pixels_ev_to_bottom (int): the number of pixels of the ego
+                vehicle (ev) to the bottom of the BEV image.
+            history_idx (list[int]): a list of numbers representing the indices
+                of the history information to be rendered for non-ego vehicles
+            max_history_len (int): max number of history length preserved
+            vehicle_bbox_factor (float): a factor to scale the vehicle bounding
+                boxes
+            walker_bbox_factor (float): a factor to scale the walker bounding
+                boxes
+        """
+
+        super().__init__(parent_actor)
+        self._width = image_size_in_pixels
+        self._pixels_ev_to_bottom = pixels_ev_to_bottom
+        self._pixels_per_meter = pixels_per_meter
+        self._history_idx = history_idx
+        self._vehicle_bbox_factor = vehicle_bbox_factor
+        self._walker_bbox_factor = walker_bbox_factor
+        self._use_rgb_image = use_rgb_image
+        self._history_queue = deque(maxlen=max_history_len)
+
+        self._image_channels = 3
+        self._masks_channels = 3 + 3 * len(self._history_idx)
+
+        self._alf_world = alf_world
+        self._world = alf_world._world
+        self._navigation_sensor = navigation_sensor
+        self._map_handler = MapHandler(self._world, pixels_per_meter)
+        map_masks = self._map_handler.get_masks()
+        self._road = map_masks["road"]
+        self._lane = map_masks["lane"]
+
+        # register traffic lights
+        TrafficLightHandler.reset(self._alf_world)
+
+        self._distance_threshold = np.ceil(
+            self._width / self._pixels_per_meter)
+
+        if self._use_rgb_image:
+            self._observation_spec = alf.TensorSpec(
+                [3, self._width, self._width], dtype='uint8')
+        else:
+            self._observation_spec = alf.TensorSpec(
+                [self._masks_channels, self._width, self._width], dtype='bool')
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def observation_desc(self):
+        return ("3-D vector of [bev_channels, height, width].")
+
+    def _get_actor_bounding_box(self, actor_filter):
+        bounding_boxes = []
+        for vehicle in self._world.get_actors().filter(actor_filter):
+            bounding_boxes.append(
+                (vehicle.get_location(), vehicle.bounding_box,
+                 vehicle.get_transform()))
+        return bounding_boxes
+
+    def _generate_observation(self, render_rgb_image):
+
+        ev_transform = self._parent.get_transform()
+        ev_loc = ev_transform.location
+        ev_rot = ev_transform.rotation
+        ev_bbox = self._parent.bounding_box
+
+        def is_within_distance(loc):
+            c_distance = abs(ev_loc.x - loc.x) < self._distance_threshold \
+                and abs(ev_loc.y - loc.y) < self._distance_threshold \
+                and abs(ev_loc.z - loc.z) < 8.0
+            c_ev = abs(ev_loc.x - loc.x) < 1.0 and abs(ev_loc.y - loc.y) < 1.0
+
+            return c_distance and (not c_ev)
+
+        vehicle_bbox_list = self._get_actor_bounding_box('vehicle.*')
+
+        walker_bbox_list = self._get_actor_bounding_box('walker.pedestrian.*')
+
+        vehicles = self._get_surrounding_actors(
+            vehicle_bbox_list,
+            is_within_distance,
+            scale=self._vehicle_bbox_factor)
+        walkers = self._get_surrounding_actors(
+            walker_bbox_list,
+            is_within_distance,
+            scale=self._walker_bbox_factor)
+
+        tl_green = TrafficLightHandler.get_stopline_vtx(ev_loc, 0)
+        tl_yellow = TrafficLightHandler.get_stopline_vtx(ev_loc, 1)
+        tl_red = TrafficLightHandler.get_stopline_vtx(ev_loc, 2)
+
+        # TODO: add stop sign
+        stops = []
+
+        self._history_queue.append((vehicles, walkers, tl_green, tl_yellow,
+                                    tl_red, stops))
+
+        M_warp = self._get_warp_transform(ev_loc, ev_rot)
+
+        # objects with history
+        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
+            = self._get_history_masks(M_warp)
+
+        # road_mask, lane_mask
+        road_mask = cv2.warpAffine(self._road, M_warp,
+                                   (self._width, self._width)).astype(np.bool)
+        lane_mask = cv2.warpAffine(self._lane, M_warp,
+                                   (self._width, self._width)).astype(np.bool)
+
+        # route_mask
+        route_mask = np.zeros([self._width, self._width], dtype=np.uint8)
+        route_in_pixel = np.array(
+            [[self._world_to_pixel(wp.transform.location)]
+             for wp in self._navigation_sensor._route_waypoints])
+        route_warped = cv2.transform(route_in_pixel, M_warp)
+        cv2.polylines(
+            route_mask, [np.round(route_warped).astype(np.int32)],
+            False,
+            1,
+            thickness=16)
+        route_mask = route_mask.astype(np.bool)
+
+        # ev_mask
+        ev_mask = self._get_mask_from_actor_list(
+            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp)
+
+        if render_rgb_image:
+            # render
+            image = np.zeros([self._width, self._width, 3], dtype=np.uint8)
+            image[road_mask] = COLOR_ALUMINIUM_5
+            image[route_mask] = COLOR_ALUMINIUM_3
+            image[lane_mask] = COLOR_MAGENTA
+
+            h_len = len(self._history_idx) - 1
+            for i, mask in enumerate(stop_masks):
+                image[mask] = tint(COLOR_YELLOW_2, (h_len - i) * 0.2)
+            for i, mask in enumerate(tl_green_masks):
+                image[mask] = tint(COLOR_GREEN, (h_len - i) * 0.2)
+            for i, mask in enumerate(tl_yellow_masks):
+                image[mask] = tint(COLOR_YELLOW, (h_len - i) * 0.2)
+            for i, mask in enumerate(tl_red_masks):
+                image[mask] = tint(COLOR_RED, (h_len - i) * 0.2)
+
+            for i, mask in enumerate(vehicle_masks):
+                image[mask] = tint(COLOR_BLUE, (h_len - i) * 0.2)
+            for i, mask in enumerate(walker_masks):
+                image[mask] = tint(COLOR_CYAN, (h_len - i) * 0.2)
+
+            image[ev_mask] = COLOR_WHITE
+
+            # [H, W, C] -> [C, H, W]
+            image = np.transpose(image, (2, 0, 1))
+            return image
+
+        else:
+            # use masks
+            c_road = road_mask * 255
+            c_route = route_mask * 255
+            c_lane = lane_mask * 255
+
+            # masks with history
+            c_tl_history = []
+            for i in range(len(self._history_idx)):
+                c_tl = np.zeros([self._width, self._width], dtype=np.uint8)
+                c_tl[tl_green_masks[i]] = 80
+                c_tl[tl_yellow_masks[i]] = 170
+                c_tl[tl_red_masks[i]] = 255
+                c_tl[stop_masks[i]] = 255
+                c_tl_history.append(c_tl)
+
+            c_vehicle_history = [m * 255 for m in vehicle_masks]
+            c_walker_history = [m * 255 for m in walker_masks]
+
+            masks = np.stack((c_road, c_route, c_lane, *c_vehicle_history,
+                              *c_walker_history, *c_tl_history),
+                             axis=2)
+            masks = np.transpose(masks, [2, 0, 1])
+            return masks
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        The observation is an [C, H, W] array with C=3 if self._use_rgb_image
+        is True. Otherwise, it is the a multi-channel mask image including
+        road_mask, route_mask, lane_mask for the first 3 channels, and
+        3 * len(self._history_idx) channles for vehicle_mask, walker_mask and
+        traffic light mask.
+
+        Args:
+            current_frame (int): not used.
+        Returns:
+            BEV image
+        """
+        return self._generate_observation(render_rgb_image=self._use_rgb_image)
+
+    def render(self):
+        """Return the rendered RGB image of the BEV view
+
+        Args:
+            display (pygame.Surface): the display surface to draw the image
+        """
+        image = self._generate_observation(render_rgb_image=True)
+        # [C, H, W] -> [H, W, C]
+        return np.transpose(image, (1, 2, 0))
+
+    @staticmethod
+    def _get_stops(criteria_stop):
+        stop_sign = criteria_stop._target_stop_sign
+        stops = []
+        if (stop_sign is not None) and (not criteria_stop._stop_completed):
+            bb_loc = carla.Location(stop_sign.trigger_volume.location)
+            bb_ext = carla.Vector3D(stop_sign.trigger_volume.extent)
+            bb_ext.x = max(bb_ext.x, bb_ext.y)
+            bb_ext.y = max(bb_ext.x, bb_ext.y)
+            trans = stop_sign.get_transform()
+            stops = [(carla.Transform(trans.location, trans.rotation), bb_loc,
+                      bb_ext)]
+        return stops
+
+    def _get_history_masks(self, M_warp):
+        qsize = len(self._history_queue)
+        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks = [], [], [], [], [], []
+        for idx in self._history_idx:
+            idx = max(idx, -1 * qsize)
+
+            vehicles, walkers, tl_green, tl_yellow, tl_red, stops = self._history_queue[
+                idx]
+
+            vehicle_masks.append(
+                self._get_mask_from_actor_list(vehicles, M_warp))
+            walker_masks.append(
+                self._get_mask_from_actor_list(walkers, M_warp))
+            tl_green_masks.append(
+                self._get_mask_from_stopline_vtx(tl_green, M_warp))
+            tl_yellow_masks.append(
+                self._get_mask_from_stopline_vtx(tl_yellow, M_warp))
+            tl_red_masks.append(
+                self._get_mask_from_stopline_vtx(tl_red, M_warp))
+            stop_masks.append(self._get_mask_from_actor_list(stops, M_warp))
+
+        return vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks
+
+    def _get_mask_from_stopline_vtx(self, stopline_vtx, M_warp):
+        mask = np.zeros([self._width, self._width], dtype=np.uint8)
+        for sp_locs in stopline_vtx:
+            stopline_in_pixel = np.array(
+                [[self._world_to_pixel(x)] for x in sp_locs])
+            stopline_warped = cv2.transform(stopline_in_pixel, M_warp)
+            cv2.line(
+                mask,
+                tuple(stopline_warped[0, 0]),
+                tuple(stopline_warped[1, 0]),
+                color=1,
+                thickness=6)
+        return mask.astype(np.bool)
+
+    def _get_mask_from_actor_list(self, actor_list, M_warp):
+        mask = np.zeros([self._width, self._width], dtype=np.uint8)
+        for actor_transform, bb_loc, bb_ext in actor_list:
+
+            corners = [
+                carla.Location(x=-bb_ext.x, y=-bb_ext.y),
+                carla.Location(x=bb_ext.x, y=-bb_ext.y),
+                carla.Location(x=bb_ext.x, y=0),
+                carla.Location(x=bb_ext.x, y=bb_ext.y),
+                carla.Location(x=-bb_ext.x, y=bb_ext.y)
+            ]
+            corners = [bb_loc + corner for corner in corners]
+
+            corners = [actor_transform.transform(corner) for corner in corners]
+            corners_in_pixel = np.array(
+                [[self._world_to_pixel(corner)] for corner in corners])
+            corners_warped = cv2.transform(corners_in_pixel, M_warp)
+
+            cv2.fillConvexPoly(mask,
+                               np.round(corners_warped).astype(np.int32), 1)
+        return mask.astype(np.bool)
+
+    @staticmethod
+    def _get_surrounding_actors(bbox_list, criterium, scale=None):
+        actors = []
+        for loc, bbox, transform in bbox_list:
+            is_within_distance = criterium(loc)
+            if is_within_distance:
+                bb_loc = carla.Location()
+                bb_ext = carla.Vector3D(bbox.extent)
+                if scale is not None:
+                    bb_ext = bb_ext * scale
+                    bb_ext.x = max(bb_ext.x, 0.8)
+                    bb_ext.y = max(bb_ext.y, 0.8)
+                actors.append((transform, bb_loc, bb_ext))
+        return actors
+
+    def _get_warp_transform(self, ev_loc, ev_rot):
+        ev_loc_in_px = self._world_to_pixel(ev_loc)
+        yaw = np.deg2rad(ev_rot.yaw)
+
+        forward_vec = np.array([np.cos(yaw), np.sin(yaw)])
+        right_vec = np.array(
+            [np.cos(yaw + 0.5 * np.pi),
+             np.sin(yaw + 0.5 * np.pi)])
+
+        bottom_left = ev_loc_in_px - self._pixels_ev_to_bottom * forward_vec - (
+            0.5 * self._width) * right_vec
+        top_left = ev_loc_in_px + (
+            self._width - self._pixels_ev_to_bottom) * forward_vec - (
+                0.5 * self._width) * right_vec
+        top_right = ev_loc_in_px + (
+            self._width - self._pixels_ev_to_bottom) * forward_vec + (
+                0.5 * self._width) * right_vec
+
+        src_pts = np.stack((bottom_left, top_left, top_right),
+                           axis=0).astype(np.float32)
+        dst_pts = np.array(
+            [[0, self._width - 1], [0, 0], [self._width - 1, 0]],
+            dtype=np.float32)
+        return cv2.getAffineTransform(src_pts, dst_pts)
+
+    def _world_to_pixel(self, location: carla.Location, projective=False):
+        """Converts the world coordinates to pixel coordinates.
+        For example: top leftmost location will be a pixel at (0, 0).
+        """
+        return self._map_handler.world_to_pixel(location, projective)
+
+    def clean(self):
+        self._parent_actor = None
+        self._world = None
+        self._history_queue.clear()
