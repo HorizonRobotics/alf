@@ -99,7 +99,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
         """
         # Use a config with overriden fields as auxiliary phase updates has a
         # bunch of its own options.
-        updated_config = copy.deepcopy(config)
+        updated_config = copy.copy(config)
         updated_config.unroll_length = config.unroll_length * aux_options.interval
         updated_config.whole_replay_buffer_training = True
         updated_config.clear_replay_buffer = True
