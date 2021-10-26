@@ -97,8 +97,7 @@ class PPGAuxPhaseLoss(Loss):
                 policy
 
         """
-        returns = self._calc_returns_with_advantages(
-            info, info.rollout_value).detach()
+        returns = self._calc_returns(info, info.rollout_value).detach()
         td_loss_actual = self._td_error_loss_fn(returns, info.value)
         td_loss_aux = self._td_error_loss_fn(returns, info.aux)
         policy_kl_loss = td.kl_divergence(info.rollout_action_distribution,
@@ -114,7 +113,7 @@ class PPGAuxPhaseLoss(Loss):
                 td_loss_aux=td_loss_aux,
                 policy_kl_loss=policy_kl_loss))
 
-    def _calc_returns_with_advantages(self, info, value):
+    def _calc_returns(self, info, value):
 
         if info.reward.ndim == 3:
             # [T, B, D] or [T, B, 1]

@@ -53,8 +53,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     """
 
     def __init__(self,
-                 observation_spec: TensorSpec,
-                 action_spec: TensorSpec,
+                 observation_spec,
+                 action_spec,
                  reward_spec=TensorSpec(()),
                  env=None,
                  config: Optional[TrainerConfig] = None,
@@ -129,7 +129,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 optimizer=aux_optimizer,
                 dual_actor_value_network=dual_actor_value_network,
                 aux_options=aux_options,
-                name='PPGAuxAlgorithm')
+                name='_aux_algorithm')
         else:
             # A None ``_aux_algorithm`` means not performaning aux
             # phase update at all.
@@ -144,7 +144,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._predict_step_epsilon_greedy = epsilon_greedy
 
     def _trainable_attributes_to_ignore(self):
-        return ['PPGAuxAlgorithm']
+        return ['_aux_algorithm']
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
@@ -164,8 +164,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
-        """Phase context dependent evaluation on experiences for training
-        """
         alg_step = ppg_network_forward(self._network, inputs, state)
 
         train_info = PPGTrainInfo(
@@ -177,12 +175,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         return alg_step._replace(info=train_info)
 
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
-        """Phase context dependent loss function evaluation
-        """
         return self._loss(info)
 
     def predict_step(self, inputs: TimeStep, state):
-        """Predict for one step."""
         return ppg_network_forward(self._network, inputs, state,
                                    self._predict_step_epsilon_greedy)
 
@@ -199,7 +194,5 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         if alf.summary.get_global_counter(
         ) % self._aux_algorithm.interval == 0:
-            # NOTE(breakds): The auxiliary steps ``aux_steps`` is
-            # currently not used.
-            aux_steps = self._aux_algorithm.train_from_replay_buffer(
+            self._aux_algorithm.train_from_replay_buffer(
                 update_global_counter=False)

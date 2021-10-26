@@ -70,8 +70,8 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
     # training performance.
 
     def __init__(self,
-                 observation_spec: TensorSpec,
-                 action_spec: TensorSpec,
+                 observation_spec,
+                 action_spec,
                  reward_spec=TensorSpec(()),
                  config: Optional[TrainerConfig] = None,
                  optimizer: torch.optim.Optimizer = None,
@@ -152,6 +152,9 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
             num_envs = exp.env_id.shape[0]
+            # Note that this unroll_length is the updated one for auxiliary
+            # phase update. It is equal to auxiliary phase interval * policy
+            # phase unroll_length (see __init__()).
             max_length = self._config.unroll_length
             max_length += 1 + self._num_earliest_frames_ignored
             self._replay_buffer = ReplayBuffer(
@@ -166,8 +169,6 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
-        """Phase context dependent evaluation on experiences for training
-        """
         alg_step = ppg_network_forward(self._network, inputs, state)
 
         train_info = PPGTrainInfo(
@@ -179,6 +180,4 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
         return alg_step._replace(info=train_info)
 
     def calc_loss(self, info: PPGTrainInfo) -> LossInfo:
-        """Phase context dependent loss function evaluation
-        """
         return self._loss(info)

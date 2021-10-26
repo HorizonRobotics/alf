@@ -51,9 +51,8 @@ class PPGTrainInfo(
     """Data structure that stores extra derived information for training
     in addition to the original rollout information.
 
-    Such extra information is derived during training updates, in
-    ``preprocess_experience()`` and used across calls to
-    ``train_step()``.
+    Such extra information is derived during training updates and used
+    across calls to ``train_step()``.
 
     It is designed as a separate class (as opposite to be merged into
     PPGRolloutInfo) becase we want to make it explicit about what are
