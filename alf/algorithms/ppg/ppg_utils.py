@@ -71,10 +71,6 @@ class PPGTrainInfo(
         PPGRolloutInfo) from evaluation of the updated network. This function
         makes it easy to do that.
 
-        It is also used in ``preprocess_experience()`` where we need to combine
-        the PPGRolloutInfo from the experience and the newly computed derived
-        information.
-
         Args:
 
             rollout_info (PPGRolloutInfo): the result of rollout or evaluation
