@@ -128,9 +128,6 @@ class MapHandler(object):
         self._waypoints = self._map.generate_waypoints(2)
         self._map_boundaries = self._find_map_boundaries()
 
-        # need to construct:
-        # 1)  world offset
-        # 2) lane marking
         self._each_road_waypoints = self._generate_road_waypoints()
         # mask size in pixels
         self._mask_size = self._calculate_mask_size()
@@ -308,7 +305,7 @@ def lateral_shift(transform, shift):
 
 
 def draw_solid_line(canvas, color, closed, points, width):
-    """Draws solid lines in a surface given a set of points, width and color"""
+    """Draws solid lines on a canvas given a set of points, width and color"""
     if len(points) >= 2:
         cv2.polylines(
             img=canvas,
@@ -320,7 +317,7 @@ def draw_solid_line(canvas, color, closed, points, width):
 
 
 def draw_broken_line(canvas, color, closed, points, width):
-    """Draws broken lines in a surface given a set of points, width and color"""
+    """Draws broken lines on a canvas given a set of points, width and color"""
     # Select which lines are going to be rendered from the set of lines
     broken_lines = [
         x for n, x in enumerate(zip(*(iter(points), ) * 20)) if n % 3 == 0
@@ -390,7 +387,8 @@ def get_lane_markings(
 def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
                                   location_to_pixel_func, color):
     """Draws the lane marking given a set of waypoints and decides
-    whether drawing the right or left side of the waypoint based on the sign parameter
+        whether drawing the right or left side of the waypoint based
+        on the sign parameter
     """
     previous_marking_type = carla.LaneMarkingType.NONE
     markings_list = []
@@ -410,7 +408,7 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
             # Get the list of lane markings to draw
             markings = get_lane_markings(
                 previous_marking_type,
-                color,  # lane_marking_color_to_tango(previous_marking_color),
+                color,
                 temp_waypoints,
                 side,
                 location_to_pixel_func,
@@ -427,10 +425,10 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
             temp_waypoints.append((sample))
             previous_marking_type = marking_type
 
-    # Add last marking
+    # add last marking
     last_markings = get_lane_markings(
         previous_marking_type,
-        color,  # lane_marking_color_to_tango(previous_marking_color),
+        color,
         temp_waypoints,
         side,
         location_to_pixel_func,
@@ -439,7 +437,8 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
     for marking in last_markings:
         markings_list.append(marking)
 
-    # Once the lane markings have been simplified to Solid or Broken lines, we draw them
+    # draw the lines once the lane markings have been simplified to Solid or
+    # Broken lines
     for markings in markings_list:
         if markings[0] == carla.LaneMarkingType.Solid:
             draw_solid_line(surface, markings[1], False, markings[2], 1)

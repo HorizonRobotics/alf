@@ -1697,7 +1697,8 @@ class BEVSensor(SensorBase):
 
     def _get_history_masks(self, M_warp):
         qsize = len(self._history_queue)
-        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks = [], [], [], [], [], []
+        vehicle_masks, walker_masks, stop_masks = [], [], []
+        tl_green_masks, tl_yellow_masks, tl_red_masks, = [], [], []
         for idx in self._history_idx:
             idx = max(idx, -1 * qsize)
 
