@@ -128,8 +128,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 config=config,
                 optimizer=aux_optimizer,
                 dual_actor_value_network=dual_actor_value_network,
-                aux_options=aux_options,
-                name='_aux_algorithm')
+                aux_options=aux_options)
         else:
             # A None ``_aux_algorithm`` means not performaning aux
             # phase update at all.
