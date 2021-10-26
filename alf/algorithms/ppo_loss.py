@@ -72,7 +72,9 @@ class PPOLoss(ActorCriticLoss):
                 compute the adavantage and it expects the info to carry the
                 already-computed advantage. If this flag is set to True, PPOLoss
                 will instead compute the advantage internally without depending
-                on the input info. 
+                on the input info, because loading very large amount of
+                experiences into GPU memory to compute advantages may not always
+                be possible.
             advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
