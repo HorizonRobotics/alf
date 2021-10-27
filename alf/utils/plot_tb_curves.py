@@ -286,6 +286,37 @@ class EnvironmentStepsReturnReader(MeanCurveReader):
         return "Average Episodic Return"
 
 
+class EnvironmentStepsEpisodicStartAverageDiscountedReturnReader(
+        MeanCurveReader):
+    """Create a mean curve reader that reads EpisodicStartAverageDiscountedReturn values."""
+
+    def _get_metric_name(self):
+        return "Metrics_vs_EnvironmentSteps/EpisodicStartAverageDiscountedReturn"
+
+    @property
+    def x_label(self):
+        return "Environment Steps"
+
+    @property
+    def y_label(self):
+        return "Episodic Start Discounted Return"
+
+
+class EnvironmentStepsAverageRewardReader(MeanCurveReader):
+    """Create a mean curve reader that reads AverageReward values."""
+
+    def _get_metric_name(self):
+        return "Metrics_vs_EnvironmentSteps/AverageReward"
+
+    @property
+    def x_label(self):
+        return "Environment Steps"
+
+    @property
+    def y_label(self):
+        return "Average Reward"
+
+
 class EnvironmentStepsSuccessReader(MeanCurveReader):
     """Create a mean curve reader that reads Success rates."""
 
@@ -619,6 +650,7 @@ def plot(env, her, train, curves):
     print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
     mstr_map = {
+        "ac": "",
         "sac": "",  # baseline
         "ddpg": "",  # baseline
         "her": "",  # baseline
@@ -628,6 +660,7 @@ def plot(env, her, train, curves):
         "lbtqgdist": "-lbtq-gdist"
     }
     method_tag = {
+        "ac": "a2c",
         "ddpg": "ddpg",
         "td3": "td3",
         "sac": "sac",
@@ -647,6 +680,8 @@ def plot(env, her, train, curves):
     else:
         if env == "atari":
             methods = ["lbtq", "sac"]
+        elif env == "atariac":
+            methods = ["lbtq", "sac", "ac"]
         elif env == "fetch":
             methods = ["lbtq", "ddpg"]
         else:
@@ -714,6 +749,25 @@ def plot(env, her, train, curves):
                 task_y_range = {t: (0, 1.0) for t in tasks}
                 task_y_range["Breakout"] = (0, 0.35)
         cluster_str = "/tboardlog"
+    elif env == "atariac":
+        critic_num = 1
+        tasks = ["Breakout"]
+        total_steps = 12000000
+        if curves == "return":
+            task_y_range = {
+                "Breakout": (0, 400),
+            }
+        elif curves == "discreturn":
+            task_y_range = {
+                "Breakout": (0, 8),
+            }
+        elif curves == "avgreward":
+            task_y_range = {
+                "Breakout": (0, 0.5),
+            }
+        else:
+            assert False, "unknown curves: " + curves
+        cluster_str = "/tboardlog"
     else:
         assert False
 
@@ -722,7 +776,7 @@ def plot(env, her, train, curves):
     else:
         if env == "fetch":
             plot_interval = 10
-        elif env == "atari":
+        elif env in ["atari", "atariac"]:
             plot_interval = 200
         elif env == "pioneer":
             plot_interval = 50
@@ -740,7 +794,7 @@ def plot(env, her, train, curves):
         elif env == "pioneer":
             n = "%s%s%s-curri_0-randrange_1-lr_0.001-crirep_2-herk_0.5-endsucc-sparserwd-posrwd_0-mdimr_0-hitpenal_0-randagentpp-it_5000" % (
                 bstr, task_map[t], mstr)
-        elif env == "atari":
+        elif env in ["atari", "atariac"]:
             assert not her
             if mstr == "-lbtq" and t == "Breakout":
                 upit = "-upit_8-batsz_250-sactargupdt_20-rblen_33333-rbrecsteps_10000-rbrecratio_0.8"
@@ -750,9 +804,10 @@ def plot(env, her, train, curves):
                 upit = "-upit_4-batsz_500-sactargupdt_20-rblen_33333"
                 if t == "Breakout":
                     upit += "-rbrecsteps_10000-rbrecratio_0.8"
-            # v0:
             n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000-evepi_100-sd_3" % (
                 mstr, t, upit)
+            if m == "ac":
+                n = "acbreakout-envstps_12000000-evepi_100-sd_3"
         return n
 
     reader_cls = {
@@ -767,13 +822,17 @@ def plot(env, her, train, curves):
                 critic_num, *args, **kwargs),
         "return":
             EnvironmentStepsReturnReader,
+        "discreturn":
+            EnvironmentStepsEpisodicStartAverageDiscountedReturnReader,
+        "avgreward":
+            EnvironmentStepsAverageRewardReader,
     }[curves]
 
     def curve_in_method(curves, m):
-        return curves in ["value", "return"] or (curves,
-                                                 m) in [("drgt", "lbtq"),
-                                                        ("gdgt", "gdist"),
-                                                        ("gdgt", "lbtqgdist")]
+        return curves in ["value", "return", "discreturn", "avgreward"
+                          ] or (curves, m) in [("drgt", "lbtq"),
+                                               ("gdgt", "gdist"),
+                                               ("gdgt", "lbtqgdist")]
 
     def _get_curve_path(dir="", m=None, t=None):
         _env = env
@@ -796,6 +855,7 @@ def plot(env, her, train, curves):
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
 
+    print(curve_readers)
     for i, t in enumerate(tasks):
         # Scale and align x-axis of methods on task1
         plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
@@ -813,13 +873,25 @@ def plot(env, her, train, curves):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) <= 1:
-        env = "pioneer"  # one of "pioneer", "atari", "fetch"
+        env = "pioneer"  # one of "pioneer", "atari", "atariac", "fetch"
     else:
         env = sys.argv[1]
-    env_her = {"atari": [False, ], "fetch": [False, True], "pioneer": [True, ]}
+    env_her = {
+        "atari": [False, ],
+        "atariac": [False, ],
+        "fetch": [False, True],
+        "pioneer": [True, ]
+    }
     train_curves = [("eval", "return", False), ("eval", "return", True),
                     ("train", "value", False), ("train", "value", True),
                     ("train", "drgt", False), ("train", "gdgt", True)]
+    if env == "atariac":
+        train_curves = [("eval", "return", False), ("eval", "discreturn",
+                                                    False),
+                        ("eval", "avgreward", False),
+                        ("train", "discreturn", False),
+                        ("train", "avgreward", False),
+                        ("train", "return", False)]
     for train, curves, her in train_curves:
         # train is "train" or "eval"
         # curves is one of "drgt", "gdgt", "return", "value"
