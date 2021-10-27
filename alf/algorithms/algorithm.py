@@ -1382,7 +1382,13 @@ class Algorithm(AlgorithmInterface):
                         if isinstance(x, torch.Tensor) else x, batch_info)
                 else:
                     binfo = None
+
                 batch = _make_time_major(batch)
+                # Ensure the batch is in Alf's default device. Note that
+                # ``convert_device()`` will do nothing if the tensors in the
+                # batch is already in the desired device.
+                batch = alf.nest.utils.convert_device(batch)
+
                 exp, train_info, loss_info, params = self._update(
                     batch,
                     binfo,

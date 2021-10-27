@@ -11,8 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""This file constains basic configurations for PPO. An entropy target is
+automatically enforced for PPO's policy.
+"""
 
-from .disjoint_policy_value_network import DisjointPolicyValueNetwork
-from .ppg_aux_phase_loss import PPGAuxPhaseLoss, PPGAuxPhaseLossInfo
-from .ppg_utils import PPGRolloutInfo, PPGTrainInfo, ppg_network_forward
-from .ppg_aux_algorithm import PPGAuxOptions, PPGAuxAlgorithm
+import alf
+from alf.algorithms.agent import Agent
+from alf.algorithms.ppg_algorithm import PPGAlgorithm
+from alf.algorithms.ppo_algorithm import PPOLoss
+
+alf.config(
+    'Agent', rl_algorithm_cls=PPGAlgorithm, enforce_entropy_target=False)
+
+alf.config('PPOLoss', entropy_regularization=None, normalize_advantages=True)
+
+alf.config(
+    'TrainerConfig',
+    algorithm_ctor=Agent,
+    whole_replay_buffer_training=True,
+    clear_replay_buffer=True)

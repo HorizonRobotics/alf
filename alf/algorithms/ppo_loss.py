@@ -31,6 +31,7 @@ class PPOLoss(ActorCriticLoss):
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  normalize_advantages=True,
+                 compute_advantages_internally=False,
                  advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,
@@ -39,8 +40,7 @@ class PPOLoss(ActorCriticLoss):
                  check_numerics=False,
                  debug_summaries=False,
                  name='PPOLoss'):
-        """
-        Implement the simplified surrogate loss in equation (9) of `Proximal
+        """Implement the simplified surrogate loss in equation (9) of `Proximal
         Policy Optimization Algorithms <https://arxiv.org/abs/1707.06347>`_.
 
         The total loss equals to
@@ -68,6 +68,13 @@ class PPOLoss(ActorCriticLoss):
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient.
+            compute_advantages_internally (bool): Normally PPOLoss does not
+                compute the adavantage and it expects the info to carry the
+                already-computed advantage. If this flag is set to True, PPOLoss
+                will instead compute the advantage internally without depending
+                on the input info, because loading very large amount of
+                experiences into GPU memory to compute advantages may not always
+                be possible.
             advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
@@ -80,6 +87,7 @@ class PPOLoss(ActorCriticLoss):
             check_numerics (bool):  If true, checking for ``NaN/Inf`` values. For
                 debugging only.
             name (str):
+
         """
 
         super(PPOLoss, self).__init__(
@@ -98,6 +106,7 @@ class PPOLoss(ActorCriticLoss):
         self._importance_ratio_clipping = importance_ratio_clipping
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
+        self._compute_advantages_internally = compute_advantages_internally
 
     def _pg_loss(self, info, advantages):
         scope = alf.summary.scope(self._name)
@@ -129,4 +138,14 @@ class PPOLoss(ActorCriticLoss):
         return policy_gradient_loss
 
     def _calc_returns_and_advantages(self, info, value):
-        return info.returns, info.advantages
+        if not self._compute_advantages_internally:
+            return info.returns, info.advantages
+        # If rollout_value is present in ``info``, we use it to compute the
+        # advantage. This is mainly for algorithms like PPG where at this time
+        # info.value is the newly computed value which is different from the
+        # rollout time value prediction. The rollout time value prediction is
+        # preserved in info.rollout_value.
+        assert hasattr(info, 'rollout_value'), (
+            'Expect info.rollout_value to exist for computing returns '
+            'and advatages inside PPOLoss.')
+        return super()._calc_returns_and_advantages(info, info.rollout_value)

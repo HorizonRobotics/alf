@@ -87,6 +87,29 @@ class DisjointPolicyValueNetwork(Network):
     See https://github.com/HorizonRobotics/alf/issues/965 for a graphical
     illustration of such two different architectures.
 
+    NOTE:
+
+    1. The is_sharing_encoder = True situation corresponds to the 'detached'
+       arch in OpenAI's implementation and the Single-Network PPG in the
+       original paper. However, OpenAI's implementation and paper has an
+       important difference regarding this. In the paper, it reads (quoted):
+
+       During the policy phase, we detach the value function gradient at the
+       last layer shared between the policy and value heads, preventing the
+       value function gradient from influencing shared parameters. During the
+       auxiliary phase, we take the value function gradient with respect to all
+       parameters, including shared parameters.
+
+       In their implementation, the "true" (as opposed to the aux) value head is
+       always detached, in both policy and aux phase.
+
+       Our implementation follows the OpenAI's implementation, which keeps the
+       true value head always detached.
+
+    2. In OpenAI's implementation, the FC and Conv layers are initialized in a
+       non-standard way. Here in our implementation we initialize such layers
+       with standard approaches.
+
     """
 
     # TODO(breakds): Add type hints when nest of tensor type is defined
@@ -95,7 +118,6 @@ class DisjointPolicyValueNetwork(Network):
                  action_spec,
                  encoding_network_ctor=EncodingNetwork,
                  is_sharing_encoder: bool = False,
-                 kernel_initializer=None,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name='DisjointPolicyValueNetwork'):
@@ -124,9 +146,6 @@ class DisjointPolicyValueNetwork(Network):
                 a "shared" architecture disjoint network. When set to false, the
                 encoding network is not shared, resulting in a "dual"
                 architecture disjoint network.
-            kernel_initializer (Callable[[Tensor], None]): initializer for all
-                the layers excluding the projection net. If none is provided a
-                default xavier_uniform will be used.
             discrete_projection_net_ctor (Callable[[int, BoundedTensorSpec],
                 Network]): constructor that generates a discrete projection
                 network that outputs discrete actions.
@@ -142,12 +161,8 @@ class DisjointPolicyValueNetwork(Network):
         # | Step 1: The policy network encoder |
         # +------------------------------------+
 
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
         self._actor_encoder = encoding_network_ctor(
-            input_tensor_spec=observation_spec,
-            kernel_initializer=kernel_initializer)
+            input_tensor_spec=observation_spec)
 
         encoder_output_size = self._actor_encoder.output_spec.shape[0]
 
@@ -193,8 +208,7 @@ class DisjointPolicyValueNetwork(Network):
             # When not sharing encoder, create a separate encoder for the value
             # component.
             self._value_encoder = encoding_network_ctor(
-                input_tensor_spec=observation_spec,
-                kernel_initializer=kernel_initializer)
+                input_tensor_spec=observation_spec)
 
             self._composition = alf.nn.Sequential(
                 alf.nn.Branch(
