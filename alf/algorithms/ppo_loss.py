@@ -145,5 +145,7 @@ class PPOLoss(ActorCriticLoss):
         # info.value is the newly computed value which is different from the
         # rollout time value prediction. The rollout time value prediction is
         # preserved in info.rollout_value.
-        value_to_use = getattr(info, 'rollout_value', info.value)
-        return super()._calc_returns_and_advantages(info, value_to_use)
+        assert hasattr(info, 'rollout_value'), (
+            'Expect info.rollout_value to exist for computing returns '
+            'and advatages inside PPOLoss.')
+        return super()._calc_returns_and_advantages(info, info.rollout_value)
