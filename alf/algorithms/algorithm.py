@@ -491,11 +491,11 @@ class Algorithm(AlgorithmInterface):
 
         def _add_params_to_optimizer(params, opt):
             existing_params = set(_get_optimizer_params(opt))
-            added_param_names = list(
+            added_param_list = list(
                 filter(lambda p: p not in existing_params, params))
-            if added_param_names:
-                opt.add_param_group({'params': added_param_names})
-            return added_param_names
+            if added_param_list:
+                opt.add_param_group({'params': added_param_list})
+            return added_param_list
 
         # Iterate over all the child modules and add their parameters
         # into either
@@ -507,7 +507,7 @@ class Algorithm(AlgorithmInterface):
         #    assigned optimizer in this algorithm (yet).
         #
         # For case 2, after the loop the ``new_params`` will be assigned to the
-        # default optimizer is there is one. Otherwise, they will be left as
+        # default optimizer if there is one. Otherwise, they will be left as
         # "unhandled".
         for child in self._get_children():
             if child in handled:
@@ -539,12 +539,12 @@ class Algorithm(AlgorithmInterface):
             if p in new_params:
                 del new_params[p]
         if default_optimizer is not None:
-            added_param_names = _add_params_to_optimizer(
+            added_param_list = _add_params_to_optimizer(
                 new_params.keys(), default_optimizer)
             # In this case, all parameters are handled (specifically, the
             # new_params which are not handled before are assigned to the default
             # optimizer). Therefore, return [] as "unhandled parameters".
-            return [], list(handled.keys()) + added_param_names
+            return [], list(handled.keys()) + added_param_list
         else:
             return list(new_params.keys()), list(handled.keys())
 
