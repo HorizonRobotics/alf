@@ -1563,9 +1563,8 @@ class BEVSensor(SensorBase):
             is_within_distance,
             scale=self._walker_bbox_factor)
 
-        tl_green = TrafficLightHandler.get_stopline_vtx(ev_loc, 0)
-        tl_yellow = TrafficLightHandler.get_stopline_vtx(ev_loc, 1)
-        tl_red = TrafficLightHandler.get_stopline_vtx(ev_loc, 2)
+        tl_green, tl_yellow, tl_red = TrafficLightHandler.get_stopline_vtx(
+            ev_loc)
 
         # TODO: add stop sign
         stops = []

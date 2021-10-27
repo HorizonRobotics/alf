@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import NamedTuple
 from unittest.mock import Mock
 
+from alf.environments.carla_sensors import World
+
 try:
     import carla
 except ImportError:
@@ -34,14 +36,13 @@ class TrafficLightHandler(object):
     # Adapted from https://github.com/zhejz/carla-roach/blob/5654984748b64d79f0dafbe0e02a01bff4337eb4/carla_gym/utils/traffic_light.py
 
     num_tl = 0
-    list_tl_actor = []
-    list_tv_loc = []
-    list_stopline_wps = []
-    list_stopline_vtx = []
-    list_junction_paths = []
+    list_tl_actor = []  # traffic light actor
+    list_tv_loc = []  # traffic light trigger volume location
+    list_stopline_wps = []  # stop line waypoint
+    list_stopline_vtx = []  # stop line vertex
 
     @staticmethod
-    def reset(alf_world):
+    def reset(alf_world: World):
         TrafficLightHandler.num_tl = 0
         TrafficLightHandler.list_tl_actor = []
         TrafficLightHandler.list_tv_loc = []
@@ -52,8 +53,8 @@ class TrafficLightHandler(object):
         all_actors = alf_world._world.get_actors()
         for _actor in all_actors:
             if 'traffic_light' in _actor.type_id:
-                tv_loc, stopline_wps, stopline_vtx = alf_world._get_traffic_light_waypoints(
-                    _actor)
+                tv_loc, stopline_wps, stopline_vtx = \
+                    alf_world._get_traffic_light_waypoints(_actor)
 
                 TrafficLightHandler.list_tl_actor.append(_actor)
                 TrafficLightHandler.list_tv_loc.append(tv_loc)
@@ -63,25 +64,34 @@ class TrafficLightHandler(object):
                 TrafficLightHandler.num_tl += 1
 
     @staticmethod
-    def get_stopline_vtx(veh_loc, color, dist_threshold=50.0):
-        if color == 0:
-            tl_state = carla.TrafficLightState.Green
-        elif color == 1:
-            tl_state = carla.TrafficLightState.Yellow
-        elif color == 2:
-            tl_state = carla.TrafficLightState.Red
+    def get_stopline_vtx(query_location: carla.Location, dist_threshold=50.0):
+        """Get the list of stop line vertices satisfying both the color and
+        distance conditions for a given query location.
+        Arg:
+            query_location (carla.Location): the location we want to query with
+            dist_threshold (float): unit: meter. Only the traffic lights with a
+                distance to query_location smaller than `dist_threshold` will
+                be considered as valid.
+        Return:
+            return the list of stop line vertices for green, yellow and red
+            lights respectively.
+        """
+        TRAFFIC_LIGHT_STATES = [
+            carla.TrafficLightState.Green, carla.TrafficLightState.Yellow,
+            carla.TrafficLightState.Red
+        ]
 
-        stopline_vtx = []
+        stopline_vtx = [[]] * 3
         for i in range(TrafficLightHandler.num_tl):
             traffic_light = TrafficLightHandler.list_tl_actor[i]
             tv_loc = TrafficLightHandler.list_tv_loc[i]
-            if tv_loc.distance(veh_loc) > dist_threshold:
+            if tv_loc.distance(query_location) > dist_threshold:
                 continue
-            if traffic_light.state != tl_state:
-                continue
-            stopline_vtx += TrafficLightHandler.list_stopline_vtx[i]
+            stopline_vtx[TRAFFIC_LIGHT_STATES.index(
+                traffic_light.state)].append(
+                    TrafficLightHandler.list_stopline_vtx[i])
 
-        return stopline_vtx
+        return stopline_vtx[0], stopline_vtx[1], stopline_vtx[2]
 
 
 # ==============================================================================
@@ -110,6 +120,8 @@ class MapHandler(object):
     """This class provides a number of utility functions related to the map,
     including the structured representation generation and mask generation
     for map related elements, e.g. lane, road etc.
+    See the Carla documentation about details on map related concepts at
+    `<https://carla.readthedocs.io/en/latest/core_map/>`_.
     Current implementation will generate masks for road, lane, broken lane
     Adapted from https://github.com/deepsense-ai/carla-birdeye-view/blob/master/carla_birdeye_view/mask.py
     """
@@ -124,11 +136,14 @@ class MapHandler(object):
 
         # map and road
         self._map = self._world.get_map()
+        # topology contains a list of road segments. Each road segment is a
+        # simplified representation of a road using a start and an end waypoint
         self._topology = self._map.get_topology()
+        # generate waypoints that are about 2 meters apart
         self._waypoints = self._map.generate_waypoints(2)
         self._map_boundaries = self._find_map_boundaries()
 
-        self._each_road_waypoints = self._generate_road_waypoints()
+        self._waypoints_by_road = self._generate_road_waypoints()
         # mask size in pixels
         self._mask_size = self._calculate_mask_size()
 
@@ -241,9 +256,16 @@ class MapHandler(object):
             location - np.array([[min_x, min_y]], dtype=np.float32))
         return loc
 
-    def get_road_mask(self):
+    def get_road_mask(self, fill_mask=False):
+        """Get the road mask.
+        Arg:
+            fill_mask (bool): fill the road polygon if True. Otherwise, only
+                the polylines are used to represent the road.
+        Return:
+            the road mask
+        """
         mask = self.make_empty_mask()
-        for road_waypoints in self._each_road_waypoints:
+        for road_waypoints in self._waypoints_by_road:
             road_left_side = [
                 lateral_shift(w.transform, -w.lane_width * 0.5)
                 for w in road_waypoints
@@ -253,21 +275,21 @@ class MapHandler(object):
                 for w in road_waypoints
             ]
 
-            polygon_in_world = road_left_side + [
-                x for x in reversed(road_right_side)
-            ]
+            polygon_in_world = [*road_left_side, *reversed(road_right_side)]
+
             polygon = [self.world_to_pixel(x) for x in polygon_in_world]
             if len(polygon) > 2:
                 polygon = np.array([polygon], dtype=np.int32)
                 cv2.polylines(
                     img=mask, pts=polygon, isClosed=True, color=1, thickness=5)
-                cv2.fillPoly(img=mask, pts=polygon, color=1)
+                if fill_mask:
+                    cv2.fillPoly(img=mask, pts=polygon, color=1)
 
         return mask
 
     def get_lanes_mask(self):
         mask = self.make_empty_mask()
-        for road_waypoints in self._each_road_waypoints:
+        for road_waypoints in self._waypoints_by_road:
             if self._render_lanes_on_junctions or not road_waypoints[
                     0].is_junction:
                 # Left Side
@@ -298,8 +320,18 @@ class LaneSide(IntEnum):
     RIGHT = 1
 
 
-def lateral_shift(transform, shift):
-    """Makes a lateral shift of the forward vector of a transform"""
+def lateral_shift(transform: carla.Transform, shift):
+    """Makes a lateral shift of the forward vector of a transform.
+    Arg:
+        transform (carla.Transform): an input transform to apply the lateral
+            shift to.
+        shift (float): the amout of lateral shift to apply. It has the same unit
+            as the transform.location.
+            A positive value for lateral shift to the right and a negative value
+            for lateral shift to the left.
+    Return:
+        shifted_location (carla.Location): the shifted location
+    """
     transform.rotation.yaw += 90
     return transform.location + shift * transform.get_forward_vector()
 
@@ -348,8 +380,8 @@ def get_lane_markings(
     sign = side.value
     marking_1 = [
         location_to_pixel_func(
-            lateral_shift(w.transform, sign * w.lane_width * 0.5))
-        for w in waypoints
+            lateral_shift(wp.transform, sign * wp.lane_width * 0.5))
+        for wp in waypoints
     ]
     if lane_marking_type == carla.LaneMarkingType.Broken or (
             lane_marking_type == carla.LaneMarkingType.Solid):
@@ -357,9 +389,9 @@ def get_lane_markings(
     else:
         marking_2 = [
             location_to_pixel_func(
-                lateral_shift(w.transform,
-                              sign * (w.lane_width * 0.5 + margin * 2)))
-            for w in waypoints
+                lateral_shift(wp.transform,
+                              sign * (wp.lane_width * 0.5 + margin * 2)))
+            for wp in waypoints
         ]
         if lane_marking_type == carla.LaneMarkingType.SolidBroken:
             return [
