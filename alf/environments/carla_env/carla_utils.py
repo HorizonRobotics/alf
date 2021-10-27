@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import NamedTuple
 from unittest.mock import Mock
 
+import alf
 from alf.environments.carla_sensors import World
 
 try:
@@ -116,6 +117,7 @@ class MapBoundaries(NamedTuple):
     max_y: float
 
 
+@alf.configurable
 class MapHandler(object):
     """This class provides a number of utility functions related to the map,
     including the structured representation generation and mask generation
@@ -126,13 +128,17 @@ class MapHandler(object):
     Adapted from https://github.com/deepsense-ai/carla-birdeye-view/blob/master/carla_birdeye_view/mask.py
     """
 
-    def __init__(self,
-                 world,
-                 pixels_per_meter,
-                 render_lanes_on_junctions=False):
+    def __init__(
+            self,
+            world,
+            pixels_per_meter,
+            render_lanes_on_junctions=False,
+            fill_road_mask=False,
+    ):
         self._pixels_per_meter = pixels_per_meter
         self._world = world
         self._render_lanes_on_junctions = render_lanes_on_junctions
+        self._fill_road_mask = fill_road_mask
 
         # map and road
         self._map = self._world.get_map()
@@ -151,7 +157,7 @@ class MapHandler(object):
         """Return the masks for all map elements.
         """
         mask_dict = {
-            "road": self.get_road_mask(),
+            "road": self.get_road_mask(self._fill_road_mask),
             "lane": self.get_lanes_mask()
         }
         return mask_dict
@@ -256,11 +262,11 @@ class MapHandler(object):
             location - np.array([[min_x, min_y]], dtype=np.float32))
         return loc
 
-    def get_road_mask(self, fill_mask=False):
+    def get_road_mask(self, fill_road_mask=False):
         """Get the road mask.
         Arg:
-            fill_mask (bool): fill the road polygon if True. Otherwise, only
-                the polylines are used to represent the road.
+            fill_road_mask (bool): fill the road polygon if True. Otherwise,
+                only the polylines are used to represent the road.
         Return:
             the road mask
         """
@@ -282,7 +288,7 @@ class MapHandler(object):
                 polygon = np.array([polygon], dtype=np.int32)
                 cv2.polylines(
                     img=mask, pts=polygon, isClosed=True, color=1, thickness=5)
-                if fill_mask:
+                if fill_road_mask:
                     cv2.fillPoly(img=mask, pts=polygon, color=1)
 
         return mask
