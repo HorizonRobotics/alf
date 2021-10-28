@@ -70,7 +70,6 @@ alf.config(
 
 alf.config(
     'Agent',
-    enforce_entropy_target=False,
     extrinsic_reward_coef=1.0,
     intrinsic_reward_module=RNDAlgorithm(),
     intrinsic_reward_coef=1e-3,

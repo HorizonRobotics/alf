@@ -36,10 +36,6 @@ alf.config(
     value_network_ctor=ValueNetwork,
     optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
-# Turn off enforce_entropy_target. It is turned on by default in
-# ppo_conf. Turning this on may have negative impact
-alf.config('Agent', enforce_entropy_target=False)
-
 alf.config(
     'PPOLoss',
     entropy_regularization=1e-4,
