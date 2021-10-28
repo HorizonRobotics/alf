@@ -232,15 +232,24 @@ def summarize_action(actions, action_specs, name="action"):
 
 
 @_summary_wrapper
-def summarize_action_dist(action_distributions, name="action_dist"):
-    """Generate summary for action distributions.
+def summarize_distribution(name, distributions):
+    """Generate summary for distributions.
+
+    Currently the following types of distributions are supported:
+
+    * Normal, StableCauchy, Beta: mean and std of each dimension will be summarized
+    * Above distribution wrapped by Independent and TransformedDistribution:
+      the base distribution is summarized
+    * Tensor: each dimenstion dist[..., a] will be summarized
+
+    Note that unsupported distributions will be ignored (no error reported).
 
     Args:
-        action_distributions (nested td.distribuation.Distribution):
-            distributions to be summarized
         name (str): name of the summary
+        distributions (nested td.distribuation.Distribution): distributions to
+            be summarized.
     """
-    actions = alf.nest.flatten(action_distributions)
+    actions = alf.nest.flatten(distributions)
 
     for i, dist in enumerate(actions):
         if isinstance(dist, torch.Tensor):
