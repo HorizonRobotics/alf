@@ -74,6 +74,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  calculate_priority=False,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 reanalyze_mcts_algorithm_ctor=None,
                  reanalyze_ratio=0.,
                  reanalyze_td_steps=5,
                  reanalyze_batch_size=None,
@@ -92,7 +93,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 to construct the model. The model should follow the interface
                 ``alf.algorithms.mcts_models.MCTSModel``.
             mcts_algorithm_ctor (Callable): will be called as
-                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?)``
+                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
                 to construct an ``MCTSAlgorithm`` instance.
             num_unroll_steps (int): steps for unrolling the model during training.
             td_steps (int): bootstrap so many steps into the future for calculating
@@ -112,6 +113,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
+            reanalyze_mcts_algorithm_ctor (Callable): will be called as
+                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
+                to construct an ``MCTSAlgorithm`` instance. If not provided,
+                ``mcts_algorithm_ctor`` will be used.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
@@ -139,7 +144,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         mcts = mcts_algorithm_ctor(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            debug_summaries=debug_summaries)
+            debug_summaries=debug_summaries,
+            name="mcts")
         mcts.set_model(model)
         self._calculate_priority = calculate_priority
         self._device = alf.get_default_device()
@@ -168,9 +174,16 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reanalyze_batch_size = reanalyze_batch_size
         self._data_transformer = None
         self._data_transformer_ctor = data_transformer_ctor
-
+        self._mcts.set_model(model)
         self._update_target = None
+        self._reanalyze_mcts = None
         if reanalyze_ratio > 0:
+            reanalyze_mcts_algorithm_ctor = reanalyze_mcts_algorithm_ctor or mcts_algorithm_ctor
+            self._reanalyze_mcts = reanalyze_mcts_algorithm_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries,
+                name="mcts_reanalyze")
             self._target_model = model_ctor(
                 observation_spec, action_spec, debug_summaries=debug_summaries)
             self._update_target = common.get_target_updater(
@@ -178,9 +191,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 target_models=[self._target_model],
                 tau=target_update_tau,
                 period=target_update_period)
+            self._reanalyze_mcts.set_model(self._target_model)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_model']
+        return ['_target_model', '_reanalyze_mcts']
 
     def predict_step(self, time_step: TimeStep, state):
         if self._reward_normalizer is not None:
@@ -534,10 +548,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             game_overs = convert_device(game_overs)
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
-            self._mcts.set_model(self._target_model)
-            mcts_step = self._mcts.predict_step(
+            mcts_step = self._reanalyze_mcts.predict_step(
                 exp1, alf.nest.get_field(exp1, mcts_state_field))
-            self._mcts.set_model(self._model)
             candidate_actions = ()
             if mcts_step.info.candidate_actions != ():
                 candidate_actions = mcts_step.info.candidate_actions
