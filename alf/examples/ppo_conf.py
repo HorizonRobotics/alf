@@ -19,7 +19,8 @@ import alf
 from alf.algorithms.agent import Agent
 from alf.algorithms.ppo_algorithm import PPOAlgorithm, PPOLoss
 
-alf.config('Agent', rl_algorithm_cls=PPOAlgorithm, enforce_entropy_target=True)
+alf.config(
+    'Agent', rl_algorithm_cls=PPOAlgorithm, enforce_entropy_target=False)
 
 alf.config('EntropyTargetAlgorithm', initial_alpha=1.)
 
