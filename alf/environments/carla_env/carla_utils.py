@@ -21,7 +21,6 @@ from typing import NamedTuple
 from unittest.mock import Mock
 
 import alf
-from alf.environments.carla_sensors import World
 
 try:
     import carla
@@ -43,7 +42,12 @@ class TrafficLightHandler(object):
     list_stopline_vtx = []  # stop line vertex
 
     @staticmethod
-    def reset(alf_world: World):
+    def reset(alf_world):
+        """
+        Arg:
+            alf_world (World): an instance of the World class defined in
+                alf.environments.carla_sensors.
+        """
         TrafficLightHandler.num_tl = 0
         TrafficLightHandler.list_tl_actor = []
         TrafficLightHandler.list_tv_loc = []
