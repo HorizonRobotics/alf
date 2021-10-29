@@ -13,6 +13,7 @@
 # limitations under the License.
 """Utility functions for Carla.
 """
+
 import cv2
 from enum import IntEnum
 import numpy as np
@@ -33,7 +34,15 @@ except ImportError:
 # -- Traffic Light Utilities ---------------------------------------------------
 # ==============================================================================
 class TrafficLightHandler(object):
-    # Adapted from https://github.com/zhejz/carla-roach/blob/5654984748b64d79f0dafbe0e02a01bff4337eb4/carla_gym/utils/traffic_light.py
+    """
+    This class provides utility functions related to traffic lights.
+    Currently the main functionality is to retrieve the stoplines
+    for all the traffic lights, organized according to their current color
+    states, i.e., the stopline of a traffic light is recorded into the list
+    for the current color state of the traffic light.
+
+    Adapted from https://github.com/zhejz/carla-roach/blob/5654984748b64d79f0dafbe0e02a01bff4337eb4/carla_gym/utils/traffic_light.py
+    """
 
     num_tl = 0
     list_tl_actor = []  # traffic light actor
@@ -44,7 +53,7 @@ class TrafficLightHandler(object):
     @staticmethod
     def reset(alf_world):
         """
-        Arg:
+        Args:
             alf_world (World): an instance of the World class defined in
                 alf.environments.carla_sensors.
         """
@@ -72,7 +81,7 @@ class TrafficLightHandler(object):
     def get_stopline_vtx(query_location: carla.Location, dist_threshold=50.0):
         """Get the list of stop line vertices satisfying both the color and
         distance conditions for a given query location.
-        Arg:
+        Args:
             query_location (carla.Location): the location we want to query with
             dist_threshold (float): unit: meter. Only the traffic lights with a
                 distance to query_location smaller than `dist_threshold` will
@@ -94,7 +103,7 @@ class TrafficLightHandler(object):
                 continue
             stopline_vtx[TRAFFIC_LIGHT_STATES.index(
                 traffic_light.state)].append(
-                    TrafficLightHandler.list_stopline_vtx[i])
+                    *TrafficLightHandler.list_stopline_vtx[i])
 
         return stopline_vtx[0], stopline_vtx[1], stopline_vtx[2]
 
@@ -102,12 +111,6 @@ class TrafficLightHandler(object):
 # ==============================================================================
 # -- Map utilities -------------------------------------------------------------
 # ==============================================================================
-
-
-class PixelDimensions(NamedTuple):
-    width: int
-    height: int
-
 
 # unit: meter
 MAP_BOUNDARY_MARGIN = 100
@@ -132,13 +135,21 @@ class MapHandler(object):
     Adapted from https://github.com/deepsense-ai/carla-birdeye-view/blob/master/carla_birdeye_view/mask.py
     """
 
-    def __init__(
-            self,
-            world,
-            pixels_per_meter,
-            render_lanes_on_junctions=False,
-            fill_road_mask=False,
-    ):
+    def __init__(self,
+                 world,
+                 pixels_per_meter,
+                 render_lanes_on_junctions=False,
+                 fill_road_mask=True):
+        """
+        Args:
+            world (carla.World): an instance of carla.World which provides interface
+                to access to map related information.
+            pixels_per_meter (float): how many pixels are used to represent one meter
+            render_lanes_on_junctions (bool): whether to render the lanes on
+                junctions
+            fill_road_mas (bool): fill the road polygon if True. Otherwise,
+                only the polylines are used to represent the road.
+        """
         self._pixels_per_meter = pixels_per_meter
         self._world = world
         self._render_lanes_on_junctions = render_lanes_on_junctions
@@ -155,7 +166,8 @@ class MapHandler(object):
 
         self._waypoints_by_road = self._generate_road_waypoints()
         # mask size in pixels
-        self._mask_size = self._calculate_mask_size()
+        self._mask_height_in_pixels, self._mask_width_in_pixels = \
+                self._calculate_mask_size()
 
     def get_masks(self):
         """Return the masks for all map elements.
@@ -166,14 +178,19 @@ class MapHandler(object):
         }
         return mask_dict
 
-    def _generate_road_waypoints(self):
+    def _generate_road_waypoints(self, precision=0.5):
         """Return all, precisely located waypoints from the map.
         Topology contains simplified representation (a start and an end
         waypoint for each road segment). By expanding each until another
         road segment is found, we explore all possible waypoints on the map.
         Returns a list of waypoints for each road segment.
+
+        Args:
+            precision (float): unit: meter, the precision in representing the
+                road with waypoint, i.e., the distance between two adjacent
+                road waypoints.
         """
-        precision = 0.05  # unit: meter
+
         road_segments_starts: carla.Waypoint = [
             road_start for road_start, road_end in self._topology
         ]
@@ -218,15 +235,15 @@ class MapHandler(object):
         )
 
     def _calculate_mask_size(self):
-        """Convert map boundaries to pixel resolution."""
+        """Convert map boundaries to size in term of number of pixel."""
         width_in_meters = self._map_boundaries.max_x - self._map_boundaries.min_x
         height_in_meters = self._map_boundaries.max_y - self._map_boundaries.min_y
         width_in_pixels = int(width_in_meters * self._pixels_per_meter)
         height_in_pixels = int(height_in_meters * self._pixels_per_meter)
-        return PixelDimensions(width=width_in_pixels, height=height_in_pixels)
+        return height_in_pixels, width_in_pixels
 
     def make_empty_mask(self):
-        shape = (self._mask_size.height, self._mask_size.width)
+        shape = (self._mask_height_in_pixels, self._mask_width_in_pixels)
         return np.zeros(shape, np.uint8)
 
     def world_to_pixel(self, location: carla.Location, projective=False):
@@ -268,7 +285,7 @@ class MapHandler(object):
 
     def get_road_mask(self, fill_road_mask=False):
         """Get the road mask.
-        Arg:
+        Args:
             fill_road_mask (bool): fill the road polygon if True. Otherwise,
                 only the polylines are used to represent the road.
         Return:
@@ -332,7 +349,7 @@ class LaneSide(IntEnum):
 
 def lateral_shift(transform: carla.Transform, shift):
     """Makes a lateral shift of the forward vector of a transform.
-    Arg:
+    Args:
         transform (carla.Transform): an input transform to apply the lateral
             shift to.
         shift (float): the amout of lateral shift to apply. It has the same unit

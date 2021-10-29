@@ -30,7 +30,7 @@ setup(
         'h5py==3.5.0',
         'matplotlib==3.4.1',
         'numpy',
-        'opencv-python==4.5.1.48',
+        'opencv-python',
         'pathos==0.2.4',
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
         # which breaks some pyglet based rendering in gym

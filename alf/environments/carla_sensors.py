@@ -853,7 +853,7 @@ def _to_numpy_waypoint(wp: carla.Waypoint):
         road_id=np.int(wp.road_id),
         section_id=np.int(wp.section_id),
         lane_id=np.int(wp.lane_id),
-        is_junction=np.bool(wp.is_junction),
+        is_junction=bool(wp.is_junction),
         lane_width=np.float(wp.lane_width),
         lane_change=np.int(wp.lane_change),
         lane_type=np.int(wp.lane_type),
@@ -982,7 +982,7 @@ dummy_waypoint = NumpyWaypoint(
     road_id=np.int(-1),
     section_id=np.int(-1),
     lane_id=np.int(-1),
-    is_junction=np.bool(False),
+    is_junction=False,
     lane_width=np.float(0),
     lane_change=np.int(0),
     lane_type=np.int(0),
@@ -1222,8 +1222,10 @@ class World(object):
             vec_forward = wpx.transform.get_forward_vector()
             vec_right = carla.Vector3D(x=-vec_forward.y, y=vec_forward.x, z=0)
 
-            loc_left = wpx.transform.location - 0.4 * wpx.lane_width * vec_right
-            loc_right = wpx.transform.location + 0.4 * wpx.lane_width * vec_right
+            loc_left = carla.Location(wpx.transform.location -
+                                      0.4 * wpx.lane_width * vec_right)
+            loc_right = carla.Location(wpx.transform.location +
+                                       0.4 * wpx.lane_width * vec_right)
             stopline_vertices.append([loc_left, loc_right])
         # self._draw_waypoints(wps, vertical_shift=1.0, persistency=50000.0)
 
@@ -1431,7 +1433,14 @@ COLOR_ALUMINIUM_3 = (136, 138, 133)
 COLOR_ALUMINIUM_5 = (46, 52, 54)
 
 
-def tint(color, factor):
+def interp_color(color, factor):
+    """
+    Args:
+        color (tuple): tuple of rgb values representing a color.
+        factor (float): a value for linearly interpolating between the input
+            `color` (when factor=0) and the white color (when factor=1).
+    """
+    assert factor >= 0, "factor should be non-negative"
     r, g, b = color
     r = int(r + (255 - r) * factor)
     g = int(g + (255 - g) * factor)
@@ -1519,7 +1528,8 @@ class BEVSensor(SensorBase):
                 [3, self._width, self._width], dtype='uint8')
         else:
             self._observation_spec = alf.TensorSpec(
-                [self._masks_channels, self._width, self._width], dtype='bool')
+                [self._masks_channels, self._width, self._width],
+                dtype='uint8')
 
     def observation_spec(self):
         return self._observation_spec
@@ -1580,9 +1590,9 @@ class BEVSensor(SensorBase):
 
         # road_mask, lane_mask
         road_mask = cv2.warpAffine(self._road, M_warp,
-                                   (self._width, self._width)).astype(np.bool)
+                                   (self._width, self._width)).astype(bool)
         lane_mask = cv2.warpAffine(self._lane, M_warp,
-                                   (self._width, self._width)).astype(np.bool)
+                                   (self._width, self._width)).astype(bool)
 
         # route_mask
         route_mask = np.zeros([self._width, self._width], dtype=np.uint8)
@@ -1595,7 +1605,7 @@ class BEVSensor(SensorBase):
             False,
             1,
             thickness=16)
-        route_mask = route_mask.astype(np.bool)
+        route_mask = route_mask.astype(bool)
 
         # ev_mask
         ev_mask = self._get_mask_from_actor_list(
@@ -1610,24 +1620,24 @@ class BEVSensor(SensorBase):
 
             h_len = len(self._history_idx) - 1
             for i, mask in enumerate(stop_masks):
-                image[mask] = tint(COLOR_YELLOW_2, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_YELLOW_2, (h_len - i) * 0.2)
             for i, mask in enumerate(tl_green_masks):
-                image[mask] = tint(COLOR_GREEN, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_GREEN, (h_len - i) * 0.2)
             for i, mask in enumerate(tl_yellow_masks):
-                image[mask] = tint(COLOR_YELLOW, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_YELLOW, (h_len - i) * 0.2)
             for i, mask in enumerate(tl_red_masks):
-                image[mask] = tint(COLOR_RED, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_RED, (h_len - i) * 0.2)
 
             for i, mask in enumerate(vehicle_masks):
-                image[mask] = tint(COLOR_BLUE, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_BLUE, (h_len - i) * 0.2)
             for i, mask in enumerate(walker_masks):
-                image[mask] = tint(COLOR_CYAN, (h_len - i) * 0.2)
+                image[mask] = interp_color(COLOR_CYAN, (h_len - i) * 0.2)
 
             image[ev_mask] = COLOR_WHITE
 
             # [H, W, C] -> [C, H, W]
             image = np.transpose(image, (2, 0, 1))
-            return image
+            return image.astype(np.uint8)
 
         else:
             # use masks
@@ -1726,11 +1736,11 @@ class BEVSensor(SensorBase):
             stopline_warped = cv2.transform(stopline_in_pixel, M_warp)
             cv2.line(
                 mask,
-                tuple(stopline_warped[0, 0]),
-                tuple(stopline_warped[1, 0]),
+                tuple(np.round(stopline_warped[0, 0]).astype(np.int32)),
+                tuple(np.round(stopline_warped[1, 0]).astype(np.int32)),
                 color=1,
                 thickness=6)
-        return mask.astype(np.bool)
+        return mask.astype(bool)
 
     def _get_mask_from_actor_list(self, actor_list, M_warp):
         mask = np.zeros([self._width, self._width], dtype=np.uint8)
@@ -1752,7 +1762,7 @@ class BEVSensor(SensorBase):
 
             cv2.fillConvexPoly(mask,
                                np.round(corners_warped).astype(np.int32), 1)
-        return mask.astype(np.bool)
+        return mask.astype(bool)
 
     @staticmethod
     def _get_surrounding_actors(bbox_list, criterium, scale=None):
@@ -1799,8 +1809,3 @@ class BEVSensor(SensorBase):
         For example: top leftmost location will be a pixel at (0, 0).
         """
         return self._map_handler.world_to_pixel(location, projective)
-
-    def clean(self):
-        self._parent_actor = None
-        self._world = None
-        self._history_queue.clear()

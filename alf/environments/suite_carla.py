@@ -958,7 +958,12 @@ class Player(object):
             if self._bev_sensor is not None:
                 bev_img = self._bev_sensor.render()
                 if rgb_img is not None:
-                    rgb_img = np.concatenate((rgb_img, bev_img), axis=1)
+                    concat_img = np.zeros(
+                        (max(rgb_img.shape[0], bev_img.shape[0]),
+                         rgb_img.shape[1] + bev_img.shape[1], 3), np.uint8)
+                    concat_img[:rgb_img.shape[0], :rgb_img.shape[1]] = rgb_img
+                    concat_img[:bev_img.shape[0], -bev_img.shape[1]:] = bev_img
+                    rgb_img = concat_img
                 else:
                     rgb_img = bev_img
 
