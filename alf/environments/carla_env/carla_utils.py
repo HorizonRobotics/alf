@@ -95,15 +95,15 @@ class TrafficLightHandler(object):
             carla.TrafficLightState.Red
         ]
 
-        stopline_vtx = [[]] * 3
+        stopline_vtx = [[] for _ in range(3)]
         for i in range(TrafficLightHandler.num_tl):
             traffic_light = TrafficLightHandler.list_tl_actor[i]
             tv_loc = TrafficLightHandler.list_tv_loc[i]
             if tv_loc.distance(query_location) > dist_threshold:
                 continue
             stopline_vtx[TRAFFIC_LIGHT_STATES.index(
-                traffic_light.state)].append(
-                    *TrafficLightHandler.list_stopline_vtx[i])
+                traffic_light.state)].extend(
+                    TrafficLightHandler.list_stopline_vtx[i])
 
         return stopline_vtx[0], stopline_vtx[1], stopline_vtx[2]
 
@@ -147,7 +147,7 @@ class MapHandler(object):
             pixels_per_meter (float): how many pixels are used to represent one meter
             render_lanes_on_junctions (bool): whether to render the lanes on
                 junctions
-            fill_road_mas (bool): fill the road polygon if True. Otherwise,
+            fill_road_mask (bool): fill the road polygon if True. Otherwise,
                 only the polylines are used to represent the road.
         """
         self._pixels_per_meter = pixels_per_meter
@@ -247,7 +247,7 @@ class MapHandler(object):
         return np.zeros(shape, np.uint8)
 
     def world_to_pixel(self, location: carla.Location, projective=False):
-        """Converts the world coordinates to pixel coordinates.
+        """Convert the world coordinates to pixel coordinates.
         For example: top leftmost location will be a pixel at (0, 0).
         """
         min_x = self._map_boundaries.min_x
@@ -262,7 +262,7 @@ class MapHandler(object):
         return p
 
     def location_to_array(self, locations):
-        """Converts the format of input positions from carla.Location to
+        """Convert the format of input positions from carla.Location to
             np.array of the shape [L, 2], with L the number of elements
             in `locations`.
         """
@@ -274,7 +274,7 @@ class MapHandler(object):
         return loc_np
 
     def world_to_pixel_np(self, location: np.array):
-        """Converts the world coordinates to pixel coordinates.
+        """Convert the world coordinates to pixel coordinates.
         `location` is of the shape [L, 2]
         """
         min_x = self._map_boundaries.min_x
@@ -325,7 +325,7 @@ class MapHandler(object):
                     road_waypoints,
                     side=LaneSide.LEFT,
                     location_to_pixel_func=self.world_to_pixel,
-                    color=1,
+                    lane_marking_color=1,
                 )
 
                 # Right Side
@@ -334,7 +334,7 @@ class MapHandler(object):
                     road_waypoints,
                     side=LaneSide.RIGHT,
                     location_to_pixel_func=self.world_to_pixel,
-                    color=1,
+                    lane_marking_color=1,
                 )
         return mask
 
@@ -348,7 +348,7 @@ class LaneSide(IntEnum):
 
 
 def lateral_shift(transform: carla.Transform, shift):
-    """Makes a lateral shift of the forward vector of a transform.
+    """Make a lateral shift of the forward vector of a transform.
     Args:
         transform (carla.Transform): an input transform to apply the lateral
             shift to.
@@ -363,20 +363,41 @@ def lateral_shift(transform: carla.Transform, shift):
     return transform.location + shift * transform.get_forward_vector()
 
 
-def draw_solid_line(canvas, color, closed, points, width):
-    """Draws solid lines on a canvas given a set of points, width and color"""
+def draw_solid_line(canvas, color, closed, points, thickness):
+    """Draw solid lines on a canvas given a set of points, width and color.
+    Args:
+        canvas (np.ndarray): the canvas on which to draw the lines.
+        color (float|tuple): a scalar value or a tuple representing the color
+            for the line.
+        closed (bool): whether the polylines to be drawn are closed or not.
+            If True, the function draws a line from the last vertex to its first
+            vertex to make it closed.
+        points (list): list of points representing the line to be drawn
+        thickness (float): the thickness of the line
+    """
     if len(points) >= 2:
         cv2.polylines(
             img=canvas,
             pts=np.int32([points]),
             isClosed=closed,
             color=color,
-            thickness=width,
+            thickness=thickness,
         )
 
 
-def draw_broken_line(canvas, color, closed, points, width):
-    """Draws broken lines on a canvas given a set of points, width and color"""
+def draw_broken_line(canvas, color, closed, points, thickness):
+    """Draw solid lines on a canvas given a set of points, width and color.
+    Args:
+        canvas (np.ndarray): the canvas on which to draw the lines.
+        color (float|tuple): a scalar value or a tuple representing the color
+            for the line.
+        closed (bool): whether the polylines to be drawn are closed or not.
+            If True, the function draws a line from the last vertex to its first
+            vertex to make it closed.
+        points (list): list of points representing the line to be drawn
+        thickness (float): the thickness of the line
+    """
+
     # Select which lines are going to be rendered from the set of lines
     broken_lines = [
         x for n, x in enumerate(zip(*(iter(points), ) * 20)) if n % 3 == 0
@@ -389,7 +410,7 @@ def draw_broken_line(canvas, color, closed, points, width):
             pts=np.int32([line]),
             isClosed=closed,
             color=color,
-            thickness=width,
+            thickness=thickness,
         )
 
 
@@ -400,8 +421,21 @@ def get_lane_markings(
         side: LaneSide,
         location_to_pixel_func,
 ):
-    """For multiple lane marking types (SolidSolid, BrokenSolid, SolidBroken and BrokenBroken),
-    it converts them as a combination of Broken and Solid lines.
+    """There are several lane marking types in Carla (SolidSolid, BrokenSolid,
+        SolidBroken and BrokenBroken). This function converts them to the
+        combination of two basic types: Broken and Solid lines. This makes it
+        easier to render different lane marking types by implementing only the
+        rendering function of the two basic line types.
+        For more information on Carla lane types, please refer to
+        `<https://carla.readthedocs.io/en/latest/python_api/#carlalanemarkingtype>`_.
+    Args:
+        lane_marking_type (carla.LaneMarkingType): the input lane marking type
+        lane_marking_color (float|tuple): the color for representing the lane.
+        waypoints (list[carla.Waypoint]): the list of waypoints representing
+            the lane
+        side (LaneSide): the side of the lane to draw the lane marking
+        location_to_pixel_func (Callable): the function to convert location
+            from world coordinate representation to pixel space representation
     """
     margin = 0.25
     sign = side.value
@@ -443,11 +477,19 @@ def get_lane_markings(
     return [(carla.LaneMarkingType.NONE, carla.LaneMarkingColor.Other, [])]
 
 
-def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
-                                  location_to_pixel_func, color):
-    """Draws the lane marking given a set of waypoints and decides
+def draw_lane_marking_single_side(canvas, waypoints, side: LaneSide,
+                                  location_to_pixel_func, lane_marking_color):
+    """Draw the lane marking given a set of waypoints and decides
         whether drawing the right or left side of the waypoint based
         on the sign parameter
+    Args:
+        canvas (np.ndarray): the canvas to draw the lane marking
+        waypoints (list[carla.Waypoint]): the list of waypoints representing
+            the lane
+        side (LaneSide): the side of the lane to draw the lane marking
+        location_to_pixel_func (Callable): the function to convert location
+            from world coordinate representation to pixel space representation
+        lane_marking_color (float|tuple): the color for representing the lane.
     """
     previous_marking_type = carla.LaneMarkingType.NONE
     markings_list = []
@@ -461,13 +503,12 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
             continue
 
         marking_type = lane_marking.type
-        marking_color = lane_marking.color
 
         if current_lane_marking != marking_type:
             # Get the list of lane markings to draw
             markings = get_lane_markings(
                 previous_marking_type,
-                color,
+                lane_marking_color,
                 temp_waypoints,
                 side,
                 location_to_pixel_func,
@@ -487,7 +528,7 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
     # add last marking
     last_markings = get_lane_markings(
         previous_marking_type,
-        color,
+        lane_marking_color,
         temp_waypoints,
         side,
         location_to_pixel_func,
@@ -500,6 +541,6 @@ def draw_lane_marking_single_side(surface, waypoints, side: LaneSide,
     # Broken lines
     for markings in markings_list:
         if markings[0] == carla.LaneMarkingType.Solid:
-            draw_solid_line(surface, markings[1], False, markings[2], 1)
+            draw_solid_line(canvas, markings[1], False, markings[2], 1)
         elif markings[0] == carla.LaneMarkingType.Broken:
-            draw_broken_line(surface, markings[1], False, markings[2], 1)
+            draw_broken_line(canvas, markings[1], False, markings[2], 1)
