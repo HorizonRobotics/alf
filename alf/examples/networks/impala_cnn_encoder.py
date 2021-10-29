@@ -133,6 +133,7 @@ def create(input_tensor_spec,
            cnn_channel_list: List[int] = (16, 32, 32),
            num_blocks_per_stack: int = 2,
            output_size: int = 256,
+           output_activation: Callable[[Tensor], Tensor] = torch.relu_,
            kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create the Impala CNN Encoder
 
@@ -160,6 +161,7 @@ def create(input_tensor_spec,
             all the CNN downsampling stacks.
         output_size (int): the size of the output vector for each of the input
             image in the mini batch.
+        output_activation: the activation applied to the output vector
         kernel_initializer: initializer for the Conv2D and FC layers in the
             network.
 
@@ -203,6 +205,6 @@ def create(input_tensor_spec,
         alf.layers.FC(
             input_size=stack_output_spec.numel,
             output_size=output_size,
-            activation=torch.relu_,
+            activation=output_activation,
             kernel_initializer=kernel_initializer),
         input_tensor_spec=input_tensor_spec)
