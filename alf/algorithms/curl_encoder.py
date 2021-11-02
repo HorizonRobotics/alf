@@ -23,6 +23,7 @@ from alf.data_structures import AlgStep, LossInfo, TimeStep
 from alf.utils import common
 from skimage.util.shape import view_as_windows
 from skimage.io import imsave
+import torchvision
 
 
 def creat_encoder(input_spec, feature_dim, num_layers=2, num_filters=32):
@@ -60,41 +61,6 @@ def creat_encoder(input_spec, feature_dim, num_layers=2, num_filters=32):
             use_ln=True))
 
 
-def random_crop(obs, output_size, save_image=False):
-    """
-    Random crop the input images. On each image, the crop position is
-    identical across the channels.
-
-    Args:
-        obs (Tensor): Batch images with shape (B,C,H,W).
-        output_size (int): The hight and width of output image.
-        save_image (boolean): Save the origin image and cropped image if True.
-
-    Return:
-        (Tensor): Cropped images.
-    """
-    obs_cpu = obs.cpu()
-    imgs = obs_cpu.numpy()
-    n = imgs.shape[0]
-    img_size = imgs.shape[-1]
-    crop_max = img_size - output_size
-    imgs = np.transpose(imgs, (0, 2, 3, 1))
-    w1 = np.random.randint(0, crop_max, n)
-    h1 = np.random.randint(0, crop_max, n)
-    windows = view_as_windows(
-        imgs, (1, output_size, output_size, 1))[..., 0, :, :, 0]
-    cropped_imgs = windows[np.arange(n), w1, h1]
-    if save_image:
-        for i in range(n):
-            breakpoint()
-            imsave("~/image_test/origin" + str(i) + ".PNG", imgs[i, :, :, 0])
-            imsave("~/image_test/cropped" + str(i) + ".PNG",
-                   cropped_imgs[i, 0, :, :])
-
-    return_torch = torch.from_numpy(cropped_imgs)
-    return return_torch.to(torch.device("cuda:0"))
-
-
 @alf.configurable
 class curl_encoder(Algorithm):
     """
@@ -108,11 +74,13 @@ class curl_encoder(Algorithm):
                  feature_dim,
                  crop_size=84,
                  action_spec=None,
-                 encoder_tau=0.005,
+                 encoder_tau=0.05,
                  debug_summaries=False,
                  optimizer=None,
                  output_tanh=False,
                  save_image=False,
+                 use_pytorch_randcrop=False,
+                 detach_encoder=False,
                  name='curl_encoder'):
         """
         Args:
@@ -149,14 +117,57 @@ class curl_encoder(Algorithm):
         self.W = nn.Parameter(torch.rand(feature_dim, feature_dim))
         self.output_tanh = output_tanh
         self.save_image = save_image
+        self.use_pytorch_randcrop = use_pytorch_randcrop
+        self.detach_encoder = detach_encoder
         self._update_target = common.get_target_updater(
             models=[self._encoding_net],
             target_models=[self._target_encoding_net],
             tau=encoder_tau)
+        if use_pytorch_randcrop:
+            self.pytorch_randcrop = torchvision.transforms.RandomCrop(
+                self.crop_size)
+
+    def random_crop(self, obs, output_size, save_image=False):
+        """
+        Random crop the input images. On each image, the crop position is
+        identical across the channels.
+
+        Args:
+            obs (Tensor): Batch images with shape (B,C,H,W).
+            output_size (int): The hight and width of output image.
+            save_image (boolean): Save the origin image and cropped image if True.
+
+        Return:
+            (Tensor): Cropped images.
+        """
+        if self.use_pytorch_randcrop:
+            return self.pytorch_randcrop(obs)
+        else:
+            obs_cpu = obs.cpu()
+            imgs = obs_cpu.numpy()
+            n = imgs.shape[0]
+            img_size = imgs.shape[-1]
+            crop_max = img_size - output_size
+            imgs = np.transpose(imgs, (0, 2, 3, 1))
+            w1 = np.random.randint(0, crop_max, n)
+            h1 = np.random.randint(0, crop_max, n)
+            windows = view_as_windows(
+                imgs, (1, output_size, output_size, 1))[..., 0, :, :, 0]
+            cropped_imgs = windows[np.arange(n), w1, h1]
+            if save_image:
+                for i in range(n):
+                    breakpoint()
+                    imsave("~/image_test/origin" + str(i) + ".PNG",
+                           imgs[i, :, :, 0])
+                    imsave("~/image_test/cropped" + str(i) + ".PNG",
+                           cropped_imgs[i, 0, :, :])
+
+            return_torch = torch.from_numpy(cropped_imgs)
+            return return_torch.to(torch.device("cuda:0"))
 
     def predict_step(self, inputs: TimeStep, state):
         #random crop
-        crop_obs = random_crop(
+        crop_obs = self.random_crop(
             inputs.observation, self.crop_size, save_image=self.save_image)
         latent = self._encoding_net(crop_obs)[0]
         if self.output_tanh:
@@ -168,7 +179,7 @@ class curl_encoder(Algorithm):
 
     def rollout_step(self, inputs: TimeStep, state):
         #random crop
-        crop_obs = random_crop(
+        crop_obs = self.random_crop(
             inputs.observation, self.crop_size, save_image=self.save_image)
         latent = self._encoding_net(crop_obs)[0]
         if self.output_tanh:
@@ -180,20 +191,22 @@ class curl_encoder(Algorithm):
 
     def train_step(self, inputs: TimeStep, state, rollout_info=None):
         #random crop obs
-        rc_obs_1 = random_crop(
+        rc_obs_1 = self.random_crop(
             inputs.observation, self.crop_size, save_image=self.save_image)
-        rc_obs_2 = random_crop(
+        rc_obs_2 = self.random_crop(
             inputs.observation, self.crop_size, save_image=self.save_image)
 
         #generate encoded observation
         latent_q = self._encoding_net(rc_obs_1)[0]
-        latent_k = self._target_encoding_net(rc_obs_2)[0]
+        latent_k = self._target_encoding_net(rc_obs_2)[0].detach()
 
         W_z = torch.matmul(self.W, latent_k.T)
         logits = torch.matmul(latent_q, W_z)
         logits = logits - torch.max(logits, 1)[0][:, None]
         labels = torch.arange(logits.shape[0]).long()
         loss = self.CrossEntropyLoss(logits, labels)
+        if self.detach_encoder:
+            latent_q = latent_q.detach()
         return AlgStep(output=latent_q, state=state, info=LossInfo(loss=loss))
 
     def after_update(self, root_inputs=None, train_info=None):
