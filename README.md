@@ -11,6 +11,10 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 A draft tutorial can be accessed on [RTD](https://alf.readthedocs.io/en/latest/tutorial.html). This tutorial is still under
 construction and some chapters are unfinished yet.
 
+## Documentation
+
+Read the ALF documentation [here](https://alf.readthedocs.io/).
+
 ## Algorithms
 
 |Algorithm|Type|Reference|
@@ -59,10 +63,6 @@ $ nix develop
 ```
 
 in the root of your local repository.
-
-## Documentation
-
-Read the ALF documentation [here](https://alf.readthedocs.io/).
 
 ## Examples
 
