@@ -11,6 +11,10 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 A draft tutorial can be accessed on [RTD](https://alf.readthedocs.io/en/latest/tutorial.html). This tutorial is still under
 construction and some chapters are unfinished yet.
 
+## Documentation
+
+Read the ALF documentation [here](https://alf.readthedocs.io/).
+
 ## Algorithms
 
 |Algorithm|Type|Reference|
@@ -60,46 +64,44 @@ $ nix develop
 
 in the root of your local repository.
 
-## Documentation
-
-You can read the [ALF documentation here](https://alf.readthedocs.io/).
-
 ## Examples
 
-All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960X CPU @ 2.80GHz with 32 CPUs and one RTX 2080Ti GPU.
+You can train any `_conf.py` file under `alf/examples` as follows:
+```bash
+python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
+```
+* CONF_FILE is the path to your conf file which follows ALF configuration file format (basically python).
+* LOG_DIR is the directory when you want to store the training results. Note that if you want to train from scratch, LOG_DIR must point to a location that doesn't exist. Othewise, it is assumed to resume the training from a previous checkpoint (if any).
+
+During training, we use tensorboard to show the progress of training:
+```bash
+tensorboard --logdir=LOG_DIR
+```
+
+After training, you can evaluate the trained model and visualize environment
+frames using the following command:
+```bash
+python -m alf.bin.play --root_dir=LOG_DIR
+```
+
+#### **Deprecated**
+
+An older version of ALF used [gin](https://github.com/google/gin-config)
+for job configuration. Its syntax is not as flexible as ALF conf (e.g., you can't easily
+do math computation in a gin file). There are still some examples with `.gin`
+under `alf/examples`. We are in the process of converting all `.gin` examples to `_conf.py`
+examples.
 
 You can train any `.gin` file under `alf/examples` using the following command:
 ```bash
 cd alf/examples; python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
-* GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
-You can find sample gin configuration files for different tasks under directory
-[alf/examples](alf/examples) (note that some of the examples have not been converted to use
-the latest pytorch version of ALF).
-* LOG_DIR is the directory when you want to store
-the training results. Note that if you want to train from scratch, a new value
-for LOG_DIR need to be used. Othewise, it is assumed to resume the
-training from a previous checkpoint (if any).
+* GIN_FILE is the path to the gin conf (some `.gin` files under `alf/examples` might be invalid; they have not been converted to use the latest pytorch version of ALF).
+* LOG_DIR has the same meaning as in the ALF conf example above.
 
-Or alternatively, train any `_conf.py` file under `alf/examples` as follows:
-```bash
-cd alf/examples; python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
-```
-* CONF_FILE follows ALF configuration file format (basically python).
-Note that we are in the process of converting all `.gin` examples to `_conf.py`
-examples, because of the flexibility of ALF configuration.
+*Warning*: When using **gin**, ALF has to be launched in the same directory with the gin file(s). If an error says that no configuration file is found, then probably you've launched ALF in a wrong place.
 
-During training, you can use tensorboard to show the progress of training:
-```bash
-tensorboard --logdir=LOG_DIR
-```
-
-After training, you can visualize the trained model using the following command:
-```bash
-python -m alf.bin.play --root_dir=LOG_DIR
-```
-
-**Troubleshooting**: if an error says that no configuration file is found, then probably you are not under `alf/examples`.
+All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960X CPU @ 2.80GHz with 32 CPUs and one RTX 2080Ti GPU.
 
 ### A2C
 * [Cart pole](alf/examples/ac_cart_pole.gin). The training score took only 30 seconds to reach 200, using 8 environments.
@@ -183,4 +185,4 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 
 ## Contribute to ALF
 
-You can follow the [guideline here](https://alf.readthedocs.io/en/latest/contributing.html).
+You are welcome to contribute to ALF. Please follow the guideline [here](https://alf.readthedocs.io/en/latest/contributing.html).
