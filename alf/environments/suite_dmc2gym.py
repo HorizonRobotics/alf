@@ -116,7 +116,33 @@ def dmc2gym_loader(environment_name,
     For installation of dmc2gym, see https://github.com/denisyarats/dmc2gym.
     For installation of DMControl, see https://github.com/deepmind/mujoco.
     For installation of MuJoCo200, see https://roboti.us.
-    
+    Args:
+        environment_name (str): Do not use this arg, this arg is here to
+            metch up with create_environment.
+        domain_name (str): The name of MuJoCo domain that is used.
+        task_name (str): The name of task we want the agent to do in the
+            current MuJoCo domain.
+        seed (int): Random seed for the environment.
+        pre_transform_inage_size (int): The height and width of the output 
+            image from the environment.
+        action_repeat (int): Action repeat of gym environment.
+        env_id (str): The environment id generated form domain_name, task_name
+            and seed.
+        discount (float): Discount to use for the environment.
+        max_episode_steps (int): If None the max_episode_steps will be set to the
+            default step limit defined in the environment's spec. No limit is applied
+            if set to 0 or if there is no max_episode_steps set in the environment's
+            spec.
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
+            classes to use directly on the gym environment.
+        alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
+            classes to use on the ALF environment.
+        image_channel_first (bool): whether transpose image channels to first dimension.
+
+            
+
+    Returns:
+        A wrapped AlfEnvironment
     """
 
     gym_env = dmc2gym.make(
