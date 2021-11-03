@@ -102,7 +102,6 @@ class _MCTSTree(object):
         Only valid values are used to update the stats.
         We maintain separate stats for each tree.
         The shapes of ``nodes`` and ``valid`` are [T, B].
-        The invalid entries in ``values`` will be modified.
         """
         if self.fixed_bounds:
             return
@@ -110,7 +109,8 @@ class _MCTSTree(object):
         if valid is not None:
             invalid = ~valid
             values[invalid] = -MAXIMUM_FLOAT_VALUE
-            self.maximum = torch.max(self.maximum, values.max(dim=0)[0])
+        self.maximum = torch.max(self.maximum, values.max(dim=0)[0])
+        if valid is not None:
             values[invalid] = MAXIMUM_FLOAT_VALUE
         self.minimum = torch.min(self.minimum, values.min(dim=0)[0])
 
