@@ -316,7 +316,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         if self._config.summarize_action_distributions:
             field = alf.nest.find_field(train_info, 'action_distribution')
             if len(field) == 1:
-                summary_utils.summarize_action_dist(field[0])
+                summary_utils.summarize_distribution("action_dist", field[0])
 
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         """Normalize training rewards if a reward normalizer is provided. Shape
