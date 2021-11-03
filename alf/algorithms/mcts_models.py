@@ -450,9 +450,9 @@ class SimpleMCTSModel(MCTSModel):
             # log_probs = action_distribution.log_prob(actions).transpose(0, 1)
             # action_probs = F.softmax(log_probs, dim=1)
             actions = actions.transpose(0, 1)
-            # Accordint to the following paper, we should use 1/K as action_probs
+            # According to the following paper, we should use 1/K as action_probs
             # for sampled actions.
-            # Huber et. al. Learning and Planning in Complex Action Spaces, 2021
+            # Hubert et. al. Learning and Planning in Complex Action Spaces, 2021
             action_probs = torch.ones(
                 actions.shape[:2]) / self._num_sampled_actions
         else:

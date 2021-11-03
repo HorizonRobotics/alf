@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Monte-Carlo Tree Search."""
+from absl import logging
 
 import torch
 import torch.distributions as td
@@ -244,16 +245,17 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             expand_all_children (bool): If True, when a new leaf is selected, immediately
-                expand all its children.
+                expand all its children. With this option, the visit
+                count does not truly refect the quality of a node. Hence it
+                should be used with (act/learn)_with_exploration_policy=True
             expand_all_root_children (bool): whether to expand all root children
                 before search. This is described in Appendix A of "Learning and
                 Planning in Complex Action Spaces". However, our implementation is
                 different from the paper's. The paper initializes Q(s, a) for
                 root s for all the action being sampled. We expand all sampled
-                action for root s. Our implementation depends on setting
-                (act/learn)_with_exploration_policy=True as the visit counts
-                for all the children of the root become 1 after the initial
-                expansion.
+                action for root s. With this option, the visit
+                count does not truly refect the quality of a node. Hence it
+                should be used with (act/learn)_with_exploration_policy=True.
             known_value_bounds (tuple|None): known bound of the values.
             unexpanded_value_score (float|str): The value score for an unexpanded
                 child. If 'max'/'min'/'mean', will use the maximum/minimum/mean
@@ -283,6 +285,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._visit_softmax_temperature_fn = visit_softmax_temperature_fn
         self._expand_all_children = expand_all_children
         self._expand_all_root_children = expand_all_root_children
+
+        if expand_all_children or expand_all_root_children and not (
+                learn_with_exploration_policy and act_with_exploration_policy):
+            logging.warning(
+                "Consider using (act/learn)_with_exploration_policy"
+                "=True for expand_all_children or expand_all_root_children.")
 
         if isinstance(unexpanded_value_score, str):
             assert unexpanded_value_score in ('max', 'min', 'mean', 'none'), (
@@ -683,7 +691,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             # discounted_return[t] = discount^t * reward[t]
             discounted_return = reward * discounts
             # discounted_return[t] = \sum_{s=t}^T discount^s * reward[s]
-            discounted_return = reward.flip(0).cumsum(dim=0).flip(0)
+            discounted_return = discounted_return.flip(0).cumsum(dim=0).flip(0)
 
             # discounted_return[t] = \sum_{s=t}^T discount^(s-t) * reward[s]
             discounted_return = discounted_return / discounts
@@ -800,11 +808,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.prior[:, n] = prior
 
 
-def calculate_exploration_policy(value,
-                                 prior,
-                                 c,
-                                 tol=1e-6,
-                                 handle_zero_prior=False):
+def calculate_exploration_policy(value, prior, c, tol=1e-6):
     r"""Calculate exploration policy.
 
     The policy is based on
