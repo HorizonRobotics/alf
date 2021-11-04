@@ -1,0 +1,44 @@
+include 'muzero_tic_tac_toe.gin'
+
+import alf.environments.suite_simple
+
+create_environment.env_name="StochasticWithRiskyBranch"
+create_environment.env_load_fn=@suite_simple.load
+create_environment.num_parallel_environments=32
+
+MCTSAlgorithm.num_simulations=200
+MCTSAlgorithm.discount=1.0
+MCTSAlgorithm.root_dirichlet_alpha=0.25
+MCTSAlgorithm.root_exploration_fraction=0.25
+MCTSAlgorithm.pb_c_init=1.25
+MCTSAlgorithm.pb_c_base=19652
+MCTSAlgorithm.is_two_player_game=False
+VisitSoftmaxTemperatureByMoves.move_temperature_pairs=[(0, 1.0), (10, 0.0001)]
+MCTSAlgorithm.visit_softmax_temperature_fn=@VisitSoftmaxTemperatureByMoves()
+MuzeroAlgorithm.mcts_algorithm_ctor=@MCTSAlgorithm
+MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
+MuzeroAlgorithm.num_unroll_steps=2
+MuzeroAlgorithm.td_steps=-1
+
+encoder/EncodingNetwork.fc_layer_params=(10,)
+encoder/EncodingNetwork.input_preprocessors=@alf.layers.Reshape([-1])
+encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
+
+Agent.representation_learner_cls=@encoder/EncodingAlgorithm
+Agent.optimizer=@Adam()
+#Adam.lr=0.01
+TrainerConfig.data_transformer_ctor=None
+
+# training config
+TrainerConfig.unroll_length=10
+TrainerConfig.mini_batch_size=512
+TrainerConfig.num_updates_per_train_iter=10
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=400
+TrainerConfig.num_checkpoints=1
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.summary_interval=10
+TrainerConfig.replay_buffer_length=200

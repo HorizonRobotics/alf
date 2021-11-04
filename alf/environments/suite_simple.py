@@ -19,11 +19,13 @@ import numpy as np
 import alf
 from alf.environments import suite_gym
 from alf.environments.simple.noisy_array import NoisyArray
+from alf.environments.simple.stochastic_with_risky_branch import StochasticWithRiskyBranch
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
 
 
 @alf.configurable
 def load(game,
+         env_id=None,
          env_args=dict(),
          discount=1.0,
          frame_skip=None,
@@ -48,8 +50,10 @@ def load(game,
         An AlfEnvironment instance.
     """
 
-    if game == "NoisyArray":
+    if game == "":
         env = NoisyArray(**env_args)
+    if game == "StochasticWithRiskyBranch":
+        env = StochasticWithRiskyBranch(**env_args)
     else:
         assert False, "No such simple environment!"
     if frame_skip:
@@ -58,6 +62,7 @@ def load(game,
         env = FrameStack(env, stack_size=frame_stack)
     return suite_gym.wrap_env(
         env,
+        env_id=env_id,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
