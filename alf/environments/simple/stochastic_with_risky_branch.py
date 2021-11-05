@@ -26,6 +26,10 @@ A0 = 0
 A1 = 1
 
 
+def _k(s, a):
+    return s * 10 + a
+
+
 class StochasticWithRiskyBranch(gym.Env):
     """
     A simple stochastic MDP
@@ -59,10 +63,10 @@ class StochasticWithRiskyBranch(gym.Env):
             low=0, high=4, shape=(1, ), dtype=np.float32)
         self.action_space = spaces.Discrete(2)
         self._deterministic_transitions = {
-            (S0, A1): (S2, 0.),
-            (S1, A0): (T, 2.),
-            (S3, A1): (T, 1),
-            (S2, A0): (T, 1.8)
+            _k(S0, A1): (S2, 0.),
+            _k(S1, A0): (T, 2.),
+            _k(S3, A1): (T, 1),
+            _k(S2, A0): (T, 1.8)
         }
         if seed is not None:
             np.random.seed(seed)
@@ -78,10 +82,10 @@ class StochasticWithRiskyBranch(gym.Env):
 
     def step(self, action):
         self._action = action
-        key = (self._obs, action)
+        key = _k(self._obs, action)
         if key in self._deterministic_transitions:
             self._obs, r = self._deterministic_transitions[key]
-        elif key == (S0, A0):
+        elif key == _k(S0, A0):
             # Stochastic transition:
             self._obs, r = (S1 if np.random.rand() > 0.5 else S3, 0)
         else:
