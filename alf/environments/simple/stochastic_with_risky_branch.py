@@ -42,21 +42,16 @@ class StochasticWithRiskyBranch(gym.Env):
 
     However, if it so happens that Q learning is conditioned on the action sequence, then
     q(s0, a0, a0) will contain mostly experience of <s0, a0, s1, a0, s0> and very few <s0, a0, s3, a0, s0>,
-    leading to an average of about 100.
-    q(s0, a0, a1) will be around 10.
-    q(s0, a1, a0) will be around 80.
+    leading to an average of about 2.
+    q(s0, a0, a1) will be around 1.
+    q(s0, a1, a0) will be around 1.8.
     The agent could end up choosing a0 at s0.
     """
 
     def __init__(self, seed=None):
         """
         Args:
-            K (int): K-1 will be the minimum steps that take the agent from left
-                to right and get a reward of 1
-            M (int): the length of the noisy vector. The total observation length
-                would be K+M
-            auto_noise (bool): if True, the noise vector will change automatically
-                at every step, and FIRE becomes "no-operation".
+            seed (int): random seed for the environment.
         """
         super().__init__()
         self.observation_space = spaces.Box(
