@@ -1,0 +1,49 @@
+include 'ac_breakout.gin'
+include 'sac.gin'
+
+create_environment.num_parallel_environments=30
+
+import alf.utils.dist_utils
+
+# override algorithm and training config
+AdamTF.lr=5e-4
+
+critic/QNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+critic/QNetwork.action_spec=@get_action_spec()
+
+SacAlgorithm.action_spec=@get_action_spec()
+SacAlgorithm.actor_network_cls=None
+SacAlgorithm.critic_network_cls=None
+SacAlgorithm.q_network_cls=@critic/QNetwork
+
+TDLoss.td_lambda=0.95
+#SacAlgorithm.critic_loss_ctor=@TDLoss
+
+SacAlgorithm.actor_optimizer=@AdamTF()
+SacAlgorithm.critic_optimizer=@AdamTF()
+SacAlgorithm.alpha_optimizer=@AdamTF()
+sac/calc_default_target_entropy.min_prob=0.1
+SacAlgorithm.target_entropy=@sac/calc_default_target_entropy
+SacAlgorithm.target_update_tau=0.05
+SacAlgorithm.target_update_period=20
+
+gamma=0.99
+OneStepTDLoss.gamma=%gamma
+ReplayBuffer.gamma=%gamma
+
+Agent.rl_algorithm_cls=@SacAlgorithm
+
+# training config
+suite_gym.load.max_episode_steps=10000
+TrainerConfig.epsilon_greedy=0.05
+TrainerConfig.initial_collect_steps=500
+TrainerConfig.mini_batch_length=2
+TrainerConfig.num_updates_per_train_iter=8  # 8GB GPU memory: 40 updates, 250x2 timesteps, 84x84, 3 convs, 4 frames stacked
+TrainerConfig.mini_batch_size=250
+TrainerConfig.unroll_length=8
+TrainerConfig.num_env_steps=12000000
+TrainerConfig.eval_interval=500
+TrainerConfig.num_checkpoints=5
+TrainerConfig.debug_summaries=True
+TrainerConfig.use_rollout_state=True
+TrainerConfig.replay_buffer_length=33333  # 20GB CPU memory: 30 envs, 84x84
