@@ -61,9 +61,6 @@ class ReplayBuffer(RingBuffer):
                  device="cpu",
                  allow_multiprocess=False,
                  keep_episodic_info=None,
-                 record_episodic_return=False,
-                 default_return=-100000.,
-                 gamma=.99,
                  step_type_field="step_type",
                  enable_checkpoint=False,
                  name="ReplayBuffer"):
