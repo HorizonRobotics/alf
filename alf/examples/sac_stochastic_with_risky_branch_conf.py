@@ -37,7 +37,7 @@ alf.config(
     target_entropy=calc_default_target_entropy,
     target_update_tau=0.05,
     target_update_period=10)
-alf.config('calc_default_target_entropy', min_prob=0.1)
+alf.config('calc_default_target_entropy', min_prob=0.001)
 
 gamma = 0.99
 alf.config('OneStepTDLoss', gamma=gamma)

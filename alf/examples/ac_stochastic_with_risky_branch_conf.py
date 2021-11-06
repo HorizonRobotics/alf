@@ -19,8 +19,6 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.agent import Agent
 from alf.networks import ActorDistributionNetwork, CategoricalProjectionNetwork, ValueNetwork
 
-from alf.examples import ac_breakout_conf
-
 alf.config(
     'create_environment',
     env_name='StochasticWithRiskyBranch',
@@ -30,15 +28,10 @@ alf.config(
 hidden_layers = (10, )
 
 # Neural Network Configuration
-CONV_LAYER_PARAMS = None
 actor_network_cls = functools.partial(
-    ActorDistributionNetwork,
-    fc_layer_params=hidden_layers,
-    conv_layer_params=CONV_LAYER_PARAMS)
+    ActorDistributionNetwork, fc_layer_params=hidden_layers)
 value_network_cls = functools.partial(
-    ValueNetwork,
-    fc_layer_params=hidden_layers,
-    conv_layer_params=CONV_LAYER_PARAMS)
+    ValueNetwork, fc_layer_params=hidden_layers)
 
 alf.config('CategoricalProjectionNetwork', logits_init_output_factor=1e-10)
 

@@ -50,7 +50,7 @@ def load(game,
         An AlfEnvironment instance.
     """
 
-    if game == "":
+    if game == "NoisyArray":
         env = NoisyArray(**env_args)
     if game == "StochasticWithRiskyBranch":
         env = StochasticWithRiskyBranch(**env_args)
