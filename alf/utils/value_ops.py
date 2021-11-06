@@ -66,7 +66,14 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
 
     action_log_prob = dist_utils.compute_log_probability(
         current_policy_distribution, action)
+
     if log_prob_clipping > 0.0:
+        # here we need to clamp the sample_action_log_probs as it is computed
+        # using actions that not sampled from the collect_action_distribution
+        # itself but from another distribution and is more prone to have
+        # numerical issues
+        sample_action_log_probs = sample_action_log_probs.clamp(
+            -log_prob_clipping, log_prob_clipping)
         action_log_prob = action_log_prob.clamp(-log_prob_clipping,
                                                 log_prob_clipping)
     if check_numerics:

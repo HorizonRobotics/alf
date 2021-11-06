@@ -24,7 +24,14 @@ alf.config(
 
 alf.config('EntropyTargetAlgorithm', initial_alpha=1.)
 
-alf.config('PPOLoss', entropy_regularization=None, normalize_advantages=True)
+# use proper positive value for stablization, especially for continuous control
+log_prob_clipping = 100
+
+alf.config(
+    'PPOLoss',
+    entropy_regularization=None,
+    normalize_advantages=True,
+    log_prob_clipping=log_prob_clipping)
 
 alf.config('PPOAlgorithm', loss_class=PPOLoss)
 
