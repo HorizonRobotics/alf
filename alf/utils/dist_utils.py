@@ -25,6 +25,7 @@ import torch.nn as nn
 import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from .distributions import TruncatedDistribution, TruncatedNormal, TruncatedCauchy, TruncatedT2
 
 
 def get_invertable(cls):
@@ -624,6 +625,30 @@ _get_builder_map = {
             'concentration1': obj.base_dist.concentration1,
             'concentration0': obj.base_dist.concentration0
         }),
+    TruncatedNormal:
+        lambda obj: (functools.partial(
+            TruncatedNormal,
+            lower_bound=obj.lower_bound,
+            upper_bound=obj.upper_bound), {
+                'loc': obj.loc,
+                'scale': obj.scale
+            }),
+    TruncatedCauchy:
+        lambda obj: (functools.partial(
+            TruncatedCauchy,
+            lower_bound=obj.lower_bound,
+            upper_bound=obj.upper_bound), {
+                'loc': obj.loc,
+                'scale': obj.scale
+            }),
+    TruncatedT2:
+        lambda obj: (functools.partial(
+            TruncatedT2,
+            lower_bound=obj.lower_bound,
+            upper_bound=obj.upper_bound), {
+                'loc': obj.loc,
+                'scale': obj.scale
+            }),
 }
 
 
@@ -920,6 +945,8 @@ def get_mode(dist):
                            (alpha - 1) / (alpha + beta - 2),
                            torch.where(alpha < beta, torch.zeros(()),
                                        torch.ones(())))
+    elif isinstance(dist, TruncatedDistribution):
+        return dist.mode
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))
@@ -939,8 +966,8 @@ def get_base_dist(dist):
         NotImplementedError: if ``dist`` or its based distribution is not
             ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if (isinstance(dist, td.Normal) or isinstance(dist, td.Categorical)
-            or isinstance(dist, StableCauchy)):
+    if isinstance(dist, (td.Normal, td.Categorical, StableCauchy, Beta,
+                         TruncatedDistribution)):
         return dist
     elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
         return get_base_dist(dist.base_dist)
@@ -1043,7 +1070,8 @@ def entropy_with_fallback(distributions, return_sum=True):
             entropy, entropy_for_gradient = _compute_entropy(dist.base_dist)
             entropy = entropy + dist._log_abs_scale
             entropy_for_gradient = entropy_for_gradient + dist._log_abs_scale
-        elif isinstance(dist, td.TransformedDistribution):
+        elif isinstance(dist,
+                        (td.TransformedDistribution, TruncatedDistribution)):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)
