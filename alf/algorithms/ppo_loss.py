@@ -112,8 +112,9 @@ class PPOLoss(ActorCriticLoss):
         scope = alf.summary.scope(self._name)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
             action_distribution=info.action_distribution,
-            collect_action_distribution=info.rollout_action_distribution,
+            rollout_action_distribution=info.rollout_action_distribution,
             action=info.action,
+            rollout_log_prob=info.rollout_log_prob,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,

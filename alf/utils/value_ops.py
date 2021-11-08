@@ -19,18 +19,24 @@ from alf.data_structures import StepType
 from alf.utils import common, dist_utils
 
 
-def action_importance_ratio(action_distribution, collect_action_distribution,
-                            action, clipping_mode, scope,
-                            importance_ratio_clipping, log_prob_clipping,
-                            check_numerics, debug_summaries):
+def action_importance_ratio(action_distribution,
+                            rollout_action_distribution,
+                            action,
+                            clipping_mode,
+                            scope,
+                            importance_ratio_clipping,
+                            log_prob_clipping,
+                            check_numerics,
+                            debug_summaries,
+                            rollout_log_prob=None):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
 
         Caller has to save tf.name_scope() and pass scope to this function.
 
         Args:
-            action_distribution (nested tf.distribution): Distribution over
+            action_distribution (nested td.distribution): Distribution over
                 actions under target policy.
-            collect_action_distribution (nested tf.distribution): distribution
+            rollout_action_distribution (nested td.distribution): distribution
                 over actions from behavior policy, used to sample actions for
                 the rollout.
             action (nested tf.distribution): possibly batched action tuple
@@ -45,7 +51,7 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                   which is used by VTraceLoss, where c_bar or rho_bar =
                   1+importance_ratio_clipping.
 
-            scope (name scope manager): returned by tf.name_scope(), set
+            scope (name scope manager): returned by alf.summary.scope(), set
                 outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
@@ -55,25 +61,24 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
             check_numerics (bool):  If true, adds tf.debugging.check_numerics to
                 help find NaN / Inf values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tf.
+            rollout_log_prob (nested tensor): the log probability of the action
+
 
         Returns:
             importance_ratio (Tensor), importance_ratio_clipped (Tensor).
     """
     current_policy_distribution = action_distribution
 
-    sample_action_log_probs = dist_utils.compute_log_probability(
-        collect_action_distribution, action).detach()
+    if rollout_log_prob is not None:
+        sample_action_log_probs = rollout_log_prob.detach()
+    else:
+        sample_action_log_probs = dist_utils.compute_log_probability(
+            rollout_action_distribution, action).detach()
 
     action_log_prob = dist_utils.compute_log_probability(
         current_policy_distribution, action)
 
     if log_prob_clipping > 0.0:
-        # here we need to clamp the sample_action_log_probs as it is computed
-        # using actions that not sampled from the collect_action_distribution
-        # itself but from another distribution and is more prone to have
-        # numerical issues
-        sample_action_log_probs = sample_action_log_probs.clamp(
-            -log_prob_clipping, log_prob_clipping)
         action_log_prob = action_log_prob.clamp(-log_prob_clipping,
                                                 log_prob_clipping)
     if check_numerics:

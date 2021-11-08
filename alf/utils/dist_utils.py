@@ -828,13 +828,16 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
-def rsample_action_distribution(nested_distributions):
+def rsample_action_distribution(nested_distributions, return_log_prob=False):
     """Sample actions from distributions with reparameterization-based sampling.
 
     It uses ``Distribution.rsample()`` to do the sampling to enable backpropagation.
 
     Args:
         nested_distributions (nested Distribution): action distributions.
+        return_log_prob (bool): whether to compute and return the log
+            probability of the sampled actions, in addition to the rsampled
+            actions.
     Returns:
         rsampled actions
     """
@@ -842,18 +845,35 @@ def rsample_action_distribution(nested_distributions):
                 nested_distributions))), \
             ("all the distributions need to support rsample in order to enable "
             "backpropagation")
-    return nest.map_structure(lambda d: d.rsample(), nested_distributions)
+    sample = nest.map_structure(lambda d: d.rsample(), nested_distributions)
+    if return_log_prob:
+        log_prob = nest.map_structure(
+            lambda d, s: compute_log_probability(d, s), nested_distributions,
+            sample)
+        return sample, log_prob
+    else:
+        return sample
 
 
-def sample_action_distribution(nested_distributions):
+def sample_action_distribution(nested_distributions, return_log_prob=False):
     """Sample actions from distributions with conventional sampling without
         enabling backpropagation.
     Args:
         nested_distributions (nested Distribution): action distributions.
+        return_log_prob (bool): whether to compute and return the log
+            probability of the sampled actions, in addition to the sampled
+            actions.
     Returns:
         sampled actions
     """
-    return nest.map_structure(lambda d: d.sample(), nested_distributions)
+    sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
+    if return_log_prob:
+        log_prob = nest.map_structure(
+            lambda d, s: compute_log_probability(d, s), nested_distributions,
+            sample)
+        return sample, log_prob
+    else:
+        return sample
 
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):
