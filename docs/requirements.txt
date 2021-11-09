@@ -10,6 +10,7 @@ opencv-python>=3.4.1.15
 pathos==0.2.4
 psutil
 sphinx==3.0
+docutils==0.16
 sphinx-autobuild
 git+git://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typehints
 sphinxcontrib-napoleon==0.7

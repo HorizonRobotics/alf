@@ -69,8 +69,6 @@ alf.config(
     value_network_ctor=value_network_ctor,
     optimizer=alf.optimizers.AdamTF(lr=5e-4))
 
-alf.config('Agent', enforce_entropy_target=False)
-
 alf.config(
     'PPOLoss',
     entropy_regularization=0.01,
