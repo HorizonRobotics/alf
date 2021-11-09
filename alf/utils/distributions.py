@@ -139,15 +139,16 @@ class TruncatedDistribution(td.Distribution):
 
     .. math::
 
-        q(x) = \frac{1}{s (P(u) - P(l))}p(\frac{x-\mu}{s})
+        q(x) = \frac{1}{s (P(u) - P(l))}p(\frac{x-\mu}{s}) if l \le x le u
+        q(x) = 0 otherwise
 
     where :math:`P` is the cdf of :math:`p`.
 
     Args:
-        loc: the location parameter
-        scale: the scale parameter
-        lower_bound: the lower bound
-        upper_bound: the upper bound
+        loc: the location parameter. Its shape is batch_shape + event_shape.
+        scale: the scale parameter. Its shape is batch_shape + event_shape.
+        lower_bound: the lower bound. Its shape is event_shape.
+        upper_bound: the upper bound. Its shape is event_shape.
         its: the standard distribution to be used.
     """
 

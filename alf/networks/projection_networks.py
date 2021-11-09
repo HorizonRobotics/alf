@@ -689,8 +689,8 @@ class TruncatedProjectionNetwork(Network):
             std_bias_initializer_value (float): Initial value for the bias of the
                 ``std_projection_layer``.
             state_dependent_scale (bool): If True, std will be generated depending
-                on the current state; otherwise a global std will be generated
-                regardless of the current state.
+                on the current state (i.e. inputs); otherwise a global scale will
+                be generated regardless of the current state.
             scale_transform (Callable): Transform to apply to the std, on top of
                 `activation`.
             dist_ctor(Callable): constructor for the distribution called as:
@@ -735,7 +735,7 @@ class TruncatedProjectionNetwork(Network):
         action_means = (self._action_high + self._action_low) / 2
         action_magnitudes = (self._action_high - self._action_low) / 2
 
-        # Although the TruncatedDistribution will ensure the actions are wihtin
+        # Although the TruncatedDistribution will ensure the actions are within
         # the bound, we still make sure the loc parameter to be within the bound
         # for better numerical stability
         self._loc_transform = (
