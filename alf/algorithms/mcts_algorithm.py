@@ -32,7 +32,7 @@ from .mcts_models import MCTSModel, ModelOutput
 MAXIMUM_FLOAT_VALUE = float('inf')
 
 
-class _MCTSTree(object):
+class _MCTSTrees(object):
     def __init__(self, num_expansions, model_output, known_value_bounds):
         batch_size, branch_factor = model_output.action_probs.shape
         action_spec = dist_utils.extract_spec(model_output.actions, from_dim=2)
@@ -184,6 +184,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
        See `Grill et al. Monte-Carlo tree search as regularized policy optimization
        <https://arxiv.org/abs/2007.12509>`_ for reference.
 
+    In addition to the original MuZero paper, we also implemented the method
+    described in the following two paper:
+
+    1. `Grill et al. Monte-Carlo tree search as regularized policy optimization
+    <https://arxiv.org/abs/2007.12509>`_
+      It can be enabled by setting (act/learn/search)_with_exploration_policy
+
+    2. `Hubert et. al. Learning and Planning in Complex Action Spaces
+    <https://arxiv.org/abs/2104.06303>`_
+      It is enabled when SimpleMCTSModel.num_sampled_actions is set.
     """
 
     def __init__(
@@ -246,7 +256,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 the reward(s).
             expand_all_children (bool): If True, when a new leaf is selected, immediately
                 expand all its children. With this option, the visit
-                count does not truly refect the quality of a node. Hence it
+                count does not truly reflect the quality of a node. Hence it
                 should be used with (act/learn)_with_exploration_policy=True
             expand_all_root_children (bool): whether to expand all root children
                 before search. This is described in Appendix A of "Learning and
@@ -286,7 +296,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._expand_all_children = expand_all_children
         self._expand_all_root_children = expand_all_root_children
 
-        if expand_all_children or expand_all_root_children and not (
+        if (expand_all_children or expand_all_root_children) and not (
                 learn_with_exploration_policy and act_with_exploration_policy):
             logging.warning(
                 "Consider using (act/learn)_with_exploration_policy"
@@ -359,7 +369,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             tree_size = self._num_simulations + 1
 
-        trees = _MCTSTree(tree_size, model_output, self._known_value_bounds)
+        trees = _MCTSTrees(tree_size, model_output, self._known_value_bounds)
         if self._is_two_player_game and to_plays is None:
             # We may need the environment to pass to_play and pass to_play to
             # model because players may not always alternate in some game.
@@ -395,13 +405,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         if self._expand_all_root_children:
             v = self._expand_children(trees, roots, 1, to_plays)
             branch_factor = trees.branch_factor
+            # Backup the result from the children
             trees.visit_count[roots] += branch_factor
             trees.value_sum[roots] += branch_factor * v
             children = trees.get_children(roots)
-            nodes = torch.broadcast_tensors(*roots)
             children = torch.broadcast_tensors(*children)
-            b = torch.cat([nodes[0], children[0].reshape(-1)])
-            i = torch.cat([nodes[1], children[1].reshape(-1)])
+            b = torch.cat([roots[0], children[0].reshape(-1)])
+            i = torch.cat([roots[1], children[1].reshape(-1)])
             self._update_best_child(trees, (b, i))
             sim0 += trees.branch_factor
         else:
@@ -435,6 +445,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _build_tree2(self, trees, to_plays):
         """Build the tree by evaluating all the children of one node a time"""
+        # expand the root node and backup the values of the children to root.
         branch_factor = trees.branch_factor
         roots = (trees.B, trees.root_indices)
         v = self._expand_children(trees, roots, 1, to_plays)
@@ -468,7 +479,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 values=values,
                 count=branch_factor)
 
-    def _print_tree(self, trees: _MCTSTree, b):
+    def _print_tree(self, trees: _MCTSTrees, b):
         """Helper function to visualize the b-th search tree."""
         nodes = [(b, 0)]
         while len(nodes) > 0:
@@ -561,13 +572,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         )
         return action, info
 
-    def _update_best_child(self, trees: _MCTSTree, parents):
+    def _update_best_child(self, trees: _MCTSTrees, parents):
         if self._search_with_exploration_policy:
             self._sample_child(trees, parents)
         else:
             self._ucb_child(trees, parents)
 
-    def _ucb_child(self, trees: _MCTSTree, parents):
+    def _ucb_child(self, trees: _MCTSTrees, parents):
         """Get child using UCB score."""
         ucb_scores = self._ucb_score(trees, parents)
         trees.ucb_score[parents] = ucb_scores
@@ -587,7 +598,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         prior_score = pb_c * prior
         return prior_score + value_score
 
-    def _value_score(self, trees: _MCTSTree, parents):
+    def _value_score(self, trees: _MCTSTrees, parents):
         children = trees.get_children(parents)
         child_visit_count = trees.visit_count[children]
         unexpanded = children[1] == 0
@@ -627,7 +638,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         return value_score, child_visit_count
 
-    def _calculate_policy(self, trees: _MCTSTree, parents):
+    def _calculate_policy(self, trees: _MCTSTrees, parents):
         parent_visit_count = trees.visit_count[parents].unsqueeze(-1)
         c = torch.log((parent_visit_count + self._pb_c_base + 1.) /
                       self._pb_c_base) + self._pb_c_init
@@ -647,14 +658,14 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                                                   c)[0]
             return torch.where(expanded, policy * sum_expanded, prior)
 
-    def _sample_child(self, trees: _MCTSTree, parents):
+    def _sample_child(self, trees: _MCTSTrees, parents):
         """Get child by sampling from exploration policy."""
         policy = self._calculate_policy(trees, parents)
         action = torch.multinomial(policy, 1).squeeze(1)
         trees.best_child_index[parents] = action
 
     def _backup(self,
-                trees: _MCTSTree,
+                trees: _MCTSTrees,
                 search_paths,
                 path_lengths,
                 values,
@@ -712,13 +723,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
 
-    def _expand_children(self, trees: _MCTSTree, nodes, n, to_plays):
+    def _expand_children(self, trees: _MCTSTrees, nodes, n, to_plays):
         """Expand all children of nodes.
 
         Args:
             nodes: tuple(trees.B, node_index). Nodes to be expanded.
             n (int): n-th expansion, zero-based
             to_plays: bool[batch_size], to_plays for nodes
+        Returns:
+
         """
         batch_size = nodes[0].shape[0]
         branch_factor = trees.branch_factor
@@ -765,15 +778,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         if trees.action is not None:
             trees.action[children] = model_output.actions
         trees.prior[children] = model_output.action_probs
-        value_sum = self._discount * model_output.value
+        value = self._discount * model_output.value
         if trees.reward is not None:
-            value_sum += model_output.reward
-        value_sum = (value_sum * trees.prior[nodes]).sum(dim=-1)
-        return value_sum
+            value += model_output.reward
+        value = (value * trees.prior[nodes]).sum(dim=-1)
+        return value
 
     def _expand_node(
             self,
-            trees: _MCTSTree,
+            trees: _MCTSTrees,
             n,  # n-th expansion, zero-based
             to_plays,
             model_output: ModelOutput,

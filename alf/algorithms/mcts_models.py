@@ -36,8 +36,10 @@ ModelOutput = namedtuple(
         # [B, K, ...], candidate actions, () all available discrete actions
         'actions',
 
-        # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action
-        # action_probs[i, :] should sum to 1
+        # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action.
+        # In the case when the candidate actions are sampled from the original action space,
+        # action_probs should bee normalized over the sampled candidate action set.
+        # i.e. action_probs[i, :] should sum to 1
         'action_probs',
 
         # [B, ...], latent state
@@ -446,9 +448,7 @@ class SimpleMCTSModel(MCTSModel):
             # [num_sampled_actions, B, ...]
             actions = action_distribution.rsample(
                 (self._num_sampled_actions, ))
-            # [B, num_sampled_actions]
-            # log_probs = action_distribution.log_prob(actions).transpose(0, 1)
-            # action_probs = F.softmax(log_probs, dim=1)
+            # [B, num_sampled_actions, ...]
             actions = actions.transpose(0, 1)
             # According to the following paper, we should use 1/K as action_probs
             # for sampled actions.
