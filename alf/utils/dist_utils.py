@@ -859,9 +859,7 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
             "backpropagation")
     sample = nest.map_structure(lambda d: d.rsample(), nested_distributions)
     if return_log_prob:
-        log_prob = nest.map_structure(
-            lambda d, s: compute_log_probability(d, s), nested_distributions,
-            sample)
+        log_prob = compute_log_probability(nested_distributions, sample)
         return sample, log_prob
     else:
         return sample
@@ -892,9 +890,7 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
     """
     sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
     if return_log_prob:
-        log_prob = nest.map_structure(
-            lambda d, s: compute_log_probability(d, s), nested_distributions,
-            sample)
+        log_prob = compute_log_probability(nested_distributions, sample)
         return sample, log_prob
     else:
         return sample
