@@ -836,10 +836,22 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
     Args:
         nested_distributions (nested Distribution): action distributions.
         return_log_prob (bool): whether to compute and return the log
-            probability of the sampled actions, in addition to the rsampled
-            actions.
+            probability of the sampled actions, in addition to the sampled
+            actions. In some cases, it is useful to compute the log probability
+            immediately after the actions are sampled, as some subsequent
+            operations might makes the cache mechanism (if turned on) invalid.
+            Some example scenarios include 1) additional sampling operation
+            applied on ``nested_distributions``, 2) some operations applied to
+            the actions sampled from ``nested_distributions`` (e.g., cloning).
+            This which could cause numerical issues if we want to compute the
+            log probability for actions sampled at an early stage,
+            especially for actions that are close to action bounds.
+            For more details on PyTorch Transform, its cache mechanism, and its
+            impacts on RL algorithms, please check
+            `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
     Returns:
-        rsampled actions
+        - sampled actions if return_log_prob is False
+        - sampled actions and log_prob if return_log_prob is True
     """
     assert all(nest.flatten(nest.map_structure(lambda d: d.has_rsample,
                 nested_distributions))), \
@@ -862,9 +874,21 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
         nested_distributions (nested Distribution): action distributions.
         return_log_prob (bool): whether to compute and return the log
             probability of the sampled actions, in addition to the sampled
-            actions.
+            actions. In some cases, it is useful to compute the log probability
+            immediately after the actions are sampled, as some subsequent
+            operations might makes the cache mechanism (if turned on) invalid.
+            Some example scenarios include 1) additional sampling operation
+            applied on ``nested_distributions``, 2) some operations applied to
+            the actions sampled from ``nested_distributions`` (e.g., cloning).
+            This which could cause numerical issues if we want to compute the
+            log probability for actions sampled at an early stage,
+            especially for actions that are close to action bounds.
+            For more details on PyTorch Transform, its cache mechanism, and its
+            impacts on RL algorithms, please check
+            `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
     Returns:
-        sampled actions
+        - sampled actions if return_log_prob is False
+        - sampled actions and log_prob if return_log_prob is True
     """
     sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
     if return_log_prob:
