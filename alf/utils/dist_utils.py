@@ -853,32 +853,72 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
-def rsample_action_distribution(nested_distributions):
+def rsample_action_distribution(nested_distributions, return_log_prob=False):
     """Sample actions from distributions with reparameterization-based sampling.
 
     It uses ``Distribution.rsample()`` to do the sampling to enable backpropagation.
 
     Args:
         nested_distributions (nested Distribution): action distributions.
+        return_log_prob (bool): whether to compute and return the log
+            probability of the sampled actions, in addition to the sampled
+            actions. In some cases, it is useful to compute the log probability
+            immediately after the actions are sampled, as some subsequent
+            operations might makes the cache mechanism (if turned on) invalid.
+            Some example scenarios include 1) additional sampling operation
+            applied on ``nested_distributions``, 2) some operations applied to
+            the actions sampled from ``nested_distributions`` (e.g., cloning).
+            This which could cause numerical issues if we want to compute the
+            log probability for actions sampled at an early stage,
+            especially for actions that are close to action bounds.
+            For more details on PyTorch Transform, its cache mechanism, and its
+            impacts on RL algorithms, please check
+            `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
     Returns:
-        rsampled actions
+        - rsampled actions if return_log_prob is False
+        - rsampled actions and log_prob if return_log_prob is True
     """
     assert all(nest.flatten(nest.map_structure(lambda d: d.has_rsample,
                 nested_distributions))), \
             ("all the distributions need to support rsample in order to enable "
             "backpropagation")
-    return nest.map_structure(lambda d: d.rsample(), nested_distributions)
+    sample = nest.map_structure(lambda d: d.rsample(), nested_distributions)
+    if return_log_prob:
+        log_prob = compute_log_probability(nested_distributions, sample)
+        return sample, log_prob
+    else:
+        return sample
 
 
-def sample_action_distribution(nested_distributions):
+def sample_action_distribution(nested_distributions, return_log_prob=False):
     """Sample actions from distributions with conventional sampling without
         enabling backpropagation.
     Args:
         nested_distributions (nested Distribution): action distributions.
+        return_log_prob (bool): whether to compute and return the log
+            probability of the sampled actions, in addition to the sampled
+            actions. In some cases, it is useful to compute the log probability
+            immediately after the actions are sampled, as some subsequent
+            operations might makes the cache mechanism (if turned on) invalid.
+            Some example scenarios include 1) additional sampling operation
+            applied on ``nested_distributions``, 2) some operations applied to
+            the actions sampled from ``nested_distributions`` (e.g., cloning).
+            This which could cause numerical issues if we want to compute the
+            log probability for actions sampled at an early stage,
+            especially for actions that are close to action bounds.
+            For more details on PyTorch Transform, its cache mechanism, and its
+            impacts on RL algorithms, please check
+            `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
     Returns:
-        sampled actions
+        - sampled actions if return_log_prob is False
+        - sampled actions and log_prob if return_log_prob is True
     """
-    return nest.map_structure(lambda d: d.sample(), nested_distributions)
+    sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
+    if return_log_prob:
+        log_prob = compute_log_probability(nested_distributions, sample)
+        return sample, log_prob
+    else:
+        return sample
 
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):

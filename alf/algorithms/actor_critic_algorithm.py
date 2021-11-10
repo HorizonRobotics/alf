@@ -29,8 +29,8 @@ ActorCriticState = namedtuple(
 
 ActorCriticInfo = namedtuple(
     "ActorCriticInfo", [
-        "step_type", "discount", "reward", "action", "action_distribution",
-        "value", "reward_weights"
+        "step_type", "discount", "reward", "action", "log_prob",
+        "action_distribution", "value", "reward_weights"
     ],
     default_value=())
 
@@ -151,7 +151,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         action_distribution, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
 
-        action = dist_utils.sample_action_distribution(action_distribution)
+        action, log_prob = dist_utils.sample_action_distribution(
+            action_distribution, return_log_prob=True)
 
         if self.has_multidim_reward():
             reward_weights = tensor_utils.tensor_extend_new_dim(
@@ -163,6 +164,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
                 action=common.detach(action),
+                log_prob=common.detach(log_prob),
                 value=value,
                 step_type=inputs.step_type,
                 reward=inputs.reward,

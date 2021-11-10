@@ -109,6 +109,9 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertRaises(RuntimeError, spec.build_distribution,
                           {'loc': torch.tensor([1., 2.])})
 
+
+class TransformationAndInversionTest(parameterized.TestCase,
+                                     alf.test.TestCase):
     def test_transformed(self):
         normal_dist = dist_utils.DiagMultivariateNormal(
             torch.tensor([[1., 2.], [2., 2.]]),
@@ -132,27 +135,41 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
         self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
 
-    def test_inversion(self):
+    @parameterized.parameters(math_ops.identity, torch.detach, torch.clone)
+    def test_inversion(self, func):
         x = torch.tensor([-10.0, -8.6, -2.0, 0, 2, 8.6, 10.0])
         loc = torch.tensor([0.5])
         scale = torch.tensor([1.5])
-        transforms = [
+
+        # transformation cache is on by using transformations from dist_utils
+        forward_transforms = [
             dist_utils.StableTanh(),
             dist_utils.AffineTransform(loc=loc, scale=scale)
         ]
 
         y = x
         # forward
-        for transform in transforms:
+        for transform in forward_transforms:
             y = transform(y)
 
-        # inverse
-        x_recovered = y
-        for transform in reversed(transforms):
-            x_recovered = transform.inv(x_recovered)
+        def _get_inverse(y, forward_transforms):
+            x_recovered = y
+            for transform in reversed(forward_transforms):
+                x_recovered = transform.inv(x_recovered)
+            return x_recovered
 
-        self.assertTensorEqual(x, x_recovered)
-        self.assertTrue(x is x_recovered)
+        # inverse
+        x_recovered = _get_inverse(func(y), forward_transforms)
+
+        if func is math_ops.identity:
+            # there is no additional operations that invalidate the cache
+            self.assertTensorEqual(x, x_recovered)
+            self.assertTrue(x is x_recovered)
+        else:
+            # some additional operations on action could invalidate the cache,
+            # e.g. clone, detach etc.
+            self.assertTrue(x is not x_recovered)
+            self.assertTensorNotClose(x, x_recovered)
 
     def test_affine_transformed(self):
         normal_dist = dist_utils.DiagMultivariateNormal(

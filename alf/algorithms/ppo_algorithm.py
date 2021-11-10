@@ -23,7 +23,7 @@ from alf.utils import value_ops, tensor_utils
 
 PPOInfo = namedtuple(
     "PPOInfo", [
-        "step_type", "discount", "reward", "action",
+        "step_type", "discount", "reward", "action", "rollout_log_prob",
         "rollout_action_distribution", "returns", "advantages",
         "action_distribution", "value", "reward_weights"
     ],
@@ -52,6 +52,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                 reward=alg_step.info.reward,
                 discount=alg_step.info.discount,
                 action_distribution=alg_step.info.action_distribution,
+                rollout_log_prob=alg_step.info.log_prob,
                 value=alg_step.info.value,
                 reward_weights=alg_step.info.reward_weights))
 
@@ -78,6 +79,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         returns = rollout_info.value + advantages
         return root_inputs, PPOInfo(
             rollout_action_distribution=rollout_info.action_distribution,
+            rollout_log_prob=rollout_info.log_prob,
             returns=returns,
             action=rollout_info.action,
             advantages=advantages)
