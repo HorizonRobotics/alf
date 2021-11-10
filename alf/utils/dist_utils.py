@@ -850,8 +850,8 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
             impacts on RL algorithms, please check
             `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
     Returns:
-        - sampled actions if return_log_prob is False
-        - sampled actions and log_prob if return_log_prob is True
+        - rsampled actions if return_log_prob is False
+        - rsampled actions and log_prob if return_log_prob is True
     """
     assert all(nest.flatten(nest.map_structure(lambda d: d.has_rsample,
                 nested_distributions))), \

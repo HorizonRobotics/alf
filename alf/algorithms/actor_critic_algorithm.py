@@ -164,7 +164,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
                 action=common.detach(action),
-                log_prob=log_prob,
+                log_prob=common.detach(log_prob),
                 value=value,
                 step_type=inputs.step_type,
                 reward=inputs.reward,
