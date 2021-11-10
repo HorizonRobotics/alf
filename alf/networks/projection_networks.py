@@ -519,7 +519,9 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
                  scale_bias_initializer_value=0.0,
                  state_dependent_scale=False,
                  scale_transform=nn.functional.softplus,
-                 **kwargs):
+                 scale_distribution=False,
+                 dist_squashing_transform=dist_utils.StableTanh(),
+                 name='CauchyProjectionNetwork'):
         """Similar to ``NormalProjectionNetwork`` except that the output
         distribution is a ``DiagMultivariateCauchy``. Also since Cauchy doesn't
         have mean or std, we provide parameters for its median and scale instead.
@@ -540,6 +542,13 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
                 regardless of the current state.
             scale_transform (Callable): Transform to apply to the scale, on top of
                 `activation`.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                `action_spec`. Note that this is different from `mean_transform`
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+            name (str): name of this network.
         """
         super(CauchyProjectionNetwork, self).__init__(
             input_size=input_size,
@@ -548,7 +557,9 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
             std_bias_initializer_value=scale_bias_initializer_value,
             state_dependent_std=state_dependent_scale,
             std_transform=scale_transform,
-            **kwargs)
+            scale_distribution=scale_distribution,
+            dist_squashing_transform=dist_squashing_transform,
+            name=name)
 
     def forward(self, inputs, state=()):
         median = self._mean_transform(self._means_projection_layer(inputs))
@@ -648,3 +659,95 @@ class BetaProjectionNetwork(Network):
             concentration.shape[-1] // 2, dim=-1)
         return self._transformer(
             dist_utils.DiagMultivariateBeta(*concentration10)), state
+
+
+@alf.configurable
+class TruncatedProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=0.3,
+                 scale_bias_initializer_value=0.0,
+                 state_dependent_scale=False,
+                 scale_transform=nn.functional.softplus,
+                 dist_ctor=dist_utils.TruncatedNormal,
+                 name="TruncatedProjectionNetwork"):
+        """Creates an instance of TruncatedProjectionNetwork.
+
+        Its output is a TruncatedDistribution with bounds given by the action
+        bounds specified in ``action_spec``.
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            activation (Callable): activation function to use in
+                dense layers.
+            projection_output_init_gain (float): Output gain for initializing
+                action means and std weights.
+            std_bias_initializer_value (float): Initial value for the bias of the
+                ``std_projection_layer``.
+            state_dependent_scale (bool): If True, std will be generated depending
+                on the current state (i.e. inputs); otherwise a global scale will
+                be generated regardless of the current state.
+            scale_transform (Callable): Transform to apply to the std, on top of
+                `activation`.
+            dist_ctor(Callable): constructor for the distribution called as:
+                `dist_ctor(loc=loc, scale=scale, lower_bound=lower_bound, upper_bound=upper_bound)`.
+            name (str): name of this network.
+        """
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        assert isinstance(action_spec, TensorSpec)
+        assert len(action_spec.shape) == 1, "Only support 1D action spec!"
+
+        self._scale_transform = math_ops.identity
+        if scale_transform is not None:
+            self._scale_transform = scale_transform
+
+        self._loc_projection_layer = layers.FC(
+            input_size,
+            action_spec.shape[0],
+            activation=activation,
+            kernel_init_gain=projection_output_init_gain)
+
+        if state_dependent_scale:
+            self._scale_projection_layer = layers.FC(
+                input_size,
+                action_spec.shape[0],
+                activation=activation,
+                kernel_init_gain=projection_output_init_gain,
+                bias_init_value=scale_bias_initializer_value)
+        else:
+            self._scale = nn.Parameter(
+                action_spec.constant(scale_bias_initializer_value),
+                requires_grad=True)
+            self._scale_projection_layer = lambda _: self._scale
+
+        self._action_high = torch.as_tensor(action_spec.maximum).broadcast_to(
+            action_spec.shape)
+        self._action_low = torch.as_tensor(action_spec.minimum).broadcast_to(
+            action_spec.shape)
+        self._dist_ctor = dist_ctor
+
+        action_means = (self._action_high + self._action_low) / 2
+        action_magnitudes = (self._action_high - self._action_low) / 2
+
+        # Although the TruncatedDistribution will ensure the actions are within
+        # the bound, we still make sure the loc parameter to be within the bound
+        # for better numerical stability
+        self._loc_transform = (
+            lambda inputs: action_means + action_magnitudes * inputs.tanh())
+
+    def forward(self, inputs, state=()):
+        loc = self._loc_transform(self._loc_projection_layer(inputs))
+        scale = self._scale_transform(self._scale_projection_layer(inputs))
+        dist = self._dist_ctor(
+            loc=loc,
+            scale=scale,
+            lower_bound=self._action_low,
+            upper_bound=self._action_high)
+
+        return dist, state

@@ -260,7 +260,8 @@ def summarize_distribution(name, distributions):
                                       dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
-            if isinstance(dist, (td.Normal, dist_utils.StableCauchy)):
+            if isinstance(dist, (td.Normal, dist_utils.StableCauchy,
+                                 dist_utils.TruncatedDistribution)):
                 loc = dist.loc
                 log_scale = dist.scale.log()
             elif isinstance(dist, td.Beta):

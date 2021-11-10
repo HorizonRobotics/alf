@@ -22,6 +22,7 @@ from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
 from alf.networks import BetaProjectionNetwork
+from alf.networks import TruncatedProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.dist_utils import DistributionSpec
 import alf.utils.math_ops as math_ops
@@ -202,6 +203,26 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         dtype=torch.float32)
 
         net = BetaProjectionNetwork(
+            input_spec.shape[0], action_spec, projection_output_init_gain=.0)
+
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        samples = dist.sample()
+        self.assertTrue(torch.all(samples >= -1))
+        self.assertTrue(torch.all(samples <= 1))
+        self.assertTrue(torch.any(samples <= 0))
+        self.assertTrue(torch.any(samples >= 0))
+
+    def test_truncated_projection_net(self):
+        """Test max and min stds for BetaProjectionNetwork."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        action_spec = BoundedTensorSpec((8, ),
+                                        minimum=-1.,
+                                        maximum=1.,
+                                        dtype=torch.float32)
+
+        net = TruncatedProjectionNetwork(
             input_spec.shape[0], action_spec, projection_output_init_gain=.0)
 
         dist, _ = net(embedding)
