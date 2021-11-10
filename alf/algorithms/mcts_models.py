@@ -36,7 +36,10 @@ ModelOutput = namedtuple(
         # [B, K, ...], candidate actions, () all available discrete actions
         'actions',
 
-        # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action
+        # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action.
+        # In the case when the candidate actions are sampled from the original action space,
+        # action_probs should bee normalized over the sampled candidate action set.
+        # i.e. action_probs[i, :] should sum to 1
         'action_probs',
 
         # [B, ...], latent state
@@ -79,13 +82,22 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     def __init__(self,
                  train_reward_function,
                  train_game_over_function,
+                 entropy_regularization=0.0,
                  debug_summaries=False,
                  name="MCTSModel"):
+        """
+        Args:
+            entropy_regularization (float): Coefficient for entropy regularization
+                loss term for policy.
+            train_reward_function (bool): whether to predict reward
+            train_game_over_function (bool): whether to predict game over
+        """
         super().__init__()
         self._debug_summaries = debug_summaries
         self._name = name
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
+        self._entropy_regularization = entropy_regularization
 
     @abc.abstractmethod
     def initial_inference(self, observation) -> ModelOutput:
@@ -160,6 +172,11 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         policy_loss = (loss_scale * policy_loss).sum(dim=1)
         loss = loss + policy_loss
+        entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
+            model_output.action_distribution)
+        if self._entropy_regularization != 0:
+            loss = loss - self._entropy_regularization * entropy_for_gradient.sum(
+                dim=1)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -211,6 +228,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                                                     model_output.value)
                 summary_utils.add_mean_hist_summary(
                     "td_error", target.value - model_output.value)
+                summary_utils.add_mean_hist_summary("entropy0", entropy[:, 0])
+                summary_utils.add_mean_hist_summary("entropy1", entropy[:, 1:])
+                summary_utils.summarize_distribution(
+                    "action_dist", model_output.action_distribution)
 
         return LossInfo(
             loss=loss,
@@ -256,6 +277,8 @@ class SimplePredictionNet(alf.networks.Network):
                  observation_spec,
                  action_spec,
                  trunk_net_ctor,
+                 discrete_projection_net_ctor=CategoricalProjectionNetwork,
+                 continuous_projection_net_ctor=StableNormalProjectionNetwork,
                  initial_game_over_bias=0.0):
         """
         Args:
@@ -278,17 +301,11 @@ class SimplePredictionNet(alf.networks.Network):
             dim, 1, kernel_initializer=torch.nn.init.zeros_)
 
         if action_spec.is_continuous:
-            self._action_net = StableNormalProjectionNetwork(
-                input_size=dim,
-                action_spec=action_spec,
-                state_dependent_std=True,
-                scale_distribution=True,
-                dist_squashing_transform=dist_utils.Softsign())
+            self._action_net = continuous_projection_net_ctor(
+                input_size=dim, action_spec=action_spec)
         else:
-            self._action_net = CategoricalProjectionNetwork(
-                input_size=dim,
-                action_spec=action_spec,
-                logits_init_output_factor=1e-10)
+            self._action_net = discrete_projection_net_ctor(
+                input_size=dim, action_spec=action_spec)
 
         self._game_over_logit_thresh = 1.0
         self._game_over_layer = alf.layers.FC(
@@ -339,6 +356,7 @@ class SimpleMCTSModel(MCTSModel):
                  dynamics_net_ctor=create_simple_dynamics_net,
                  prediction_net_ctor=create_simple_prediction_net,
                  game_over_logit_thresh=1.0,
+                 entropy_regularization=0.0,
                  train_reward_function=True,
                  train_game_over_function=True,
                  debug_summaries=False,
@@ -361,10 +379,15 @@ class SimpleMCTSModel(MCTSModel):
                 as input and output the prediction for (value, reward, action_distribution, game_over_logit).
             game_over_logit_thresh (float): the threshold of treating the
                 state as game over if the logit for game is greater than this.
+            entropy_regularization (float): Coefficient for entropy regularization
+                loss term for policy.
+            train_reward_function (bool): whether to predict reward
+            train_game_over_function (bool): whether to predict game over
         """
         super().__init__(
             train_reward_function=train_reward_function,
             train_game_over_function=train_game_over_function,
+            entropy_regularization=entropy_regularization,
             debug_summaries=debug_summaries,
             name=name)
         self._num_sampled_actions = num_sampled_actions
@@ -425,10 +448,13 @@ class SimpleMCTSModel(MCTSModel):
             # [num_sampled_actions, B, ...]
             actions = action_distribution.rsample(
                 (self._num_sampled_actions, ))
-            # [B, num_sampled_actions]
-            log_probs = action_distribution.log_prob(actions).transpose(0, 1)
-            action_probs = F.softmax(log_probs, dim=1)
+            # [B, num_sampled_actions, ...]
             actions = actions.transpose(0, 1)
+            # According to the following paper, we should use 1/K as action_probs
+            # for sampled actions.
+            # Hubert et. al. Learning and Planning in Complex Action Spaces, 2021
+            action_probs = torch.ones(
+                actions.shape[:2]) / self._num_sampled_actions
         else:
             action_probs = action_distribution.probs
             if self._num_sampled_actions is None:
@@ -436,6 +462,8 @@ class SimpleMCTSModel(MCTSModel):
             else:
                 action_probs, actions = action_probs.topk(
                     self._num_sampled_actions, sorted=False)
+                action_probs = action_probs / action_probs.sum(
+                    dim=-1, keepdim=True)
 
         if not self._train_reward_function:
             reward = ()

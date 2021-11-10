@@ -508,6 +508,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='muzero_tic_tac_toe.gin',
             extra_train_params=MUZERO_TRAIN_PARAMS)
 
+    def test_muzero_pendulum(self):
+        self._test(
+            conf_file='muzero_pendulum_conf.py',
+            extra_train_params=MUZERO_TRAIN_PARAMS)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_breakout(self):
         self._test(

@@ -75,6 +75,14 @@ class _TrainerProgress(nn.Module):
         # If either criterion is met, the training ends
         self._progress = max(iter_progress, env_steps_progress)
 
+    def set_progress(self, value: float):
+        """Manually set the current progress.
+
+        Args:
+            value: a float number in [0, 1]
+        """
+        self._progress = value
+
     @property
     def progress(self):
         assert self._progress is not None, "Must call update() first!"
@@ -691,6 +699,13 @@ def play(root_dir,
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
     env.reset()
+
+    # The behavior of some algorithms is based by scheduler using training
+    # progress (e.g. VisitSoftmaxTemperatureByProgress for MCTSAlgorithm). So we
+    # need to set a valid value for progress.
+    # TODO: we may want to use a different progress value based on the actual
+    # progress of the checkpoint or user provided progress value.
+    Trainer._trainer_progress.set_progress(1.0)
 
     time_step = common.get_initial_time_step(env)
     algorithm.eval()

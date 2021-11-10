@@ -23,6 +23,13 @@ alf.config(
     'TrainerConfig',
     algorithm_ctor=Agent,
     mini_batch_length=1,
-    use_rollout_state=True)
+    whole_replay_buffer_training=False,
+    clear_replay_buffer=False,
+    use_rollout_state=True,
+    debug_summaries=True,
+    summarize_grads_and_vars=True)
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
+
+alf.config("summarize_variables", with_histogram=False)
+alf.config("summarize_gradients", with_histogram=False)

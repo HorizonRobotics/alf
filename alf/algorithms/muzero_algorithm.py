@@ -225,7 +225,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             model_outputs, model_output_spec)
         return AlgStep(
             info=info._replace(
-                loss=self._model.calc_loss(model_outputs, info.target).loss))
+                loss=self._model.calc_loss(model_outputs, info.target)))
 
     @torch.no_grad()
     def preprocess_experience(self, root_inputs: TimeStep,
@@ -414,7 +414,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         reward = replay_buffer.get_field('reward', env_ids, positions)
         if self._reward_normalizer is not None:
             reward = self._reward_normalizer.normalize(
-                reward.cuda(), self._reward_clip_value).cpu()
+                convert_device(reward, self._device),
+                self._reward_clip_value).cpu()
         return reward
 
     def _reanalyze(self, replay_buffer: ReplayBuffer, env_ids, positions,
@@ -601,7 +602,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         else:
             priority = ()
 
-        return LossInfo(scalar_loss=info.loss.mean(), priority=priority)
+        return LossInfo(
+            scalar_loss=info.loss.loss.mean(),
+            extra=alf.nest.map_structure(torch.mean, info.loss.extra),
+            priority=priority)
 
     def after_update(self, root_inputs, info):
         if self._update_target is not None:

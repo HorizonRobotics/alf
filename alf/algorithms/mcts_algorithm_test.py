@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from absl.testing import parameterized
 import time
 import torch
 import torch.distributions as td
@@ -31,6 +32,9 @@ class TicTacToeModel(MCTSModel):
     For two players, X and O, who take turns marking the spaces in a 3×3 grid.
     The player who succeeds in placing three of their marks in a horizontal,
     vertical, or diagonal row is the winner.
+
+    In the board state, 0 represents empty location, -1 represents the first player,
+    and 1 represent the second player.
     """
 
     def __init__(self):
@@ -52,6 +56,7 @@ class TicTacToeModel(MCTSModel):
         reward = torch.where(won, -player.to(torch.float32), torch.tensor(0.))
         game_over = self._check_game_over(board)
         prob = self._get_action_probs(board)
+        prob[game_over] = 1. / 9
         value = torch.zeros((batch_size, ))
 
         return ModelOutput(
@@ -79,6 +84,7 @@ class TicTacToeModel(MCTSModel):
         game_over = self._check_game_over(board)
         game_over = torch.max(game_over, ~valid)
         prob = self._get_action_probs(board)
+        prob[game_over] = 1. / 9
         value = torch.zeros((batch_size, ))
         return ModelOutput(
             value=value,
@@ -157,8 +163,18 @@ class TicTacToeModelTest(alf.test.TestCase):
         self.assertEqual(model_output.game_over, torch.tensor([[False]]))
 
 
-class MCTSAlgorithmTest(alf.test.TestCase):
-    def test_mcts_algorithm(self):
+class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters(dict(), dict(with_exploration_policy=True),
+                              dict(
+                                  expand_all_children=True,
+                                  with_exploration_policy=True),
+                              dict(
+                                  expand_all_root_children=True,
+                                  with_exploration_policy=True))
+    def test_mcts_algorithm(self,
+                            expand_all_children=False,
+                            expand_all_root_children=False,
+                            with_exploration_policy=False):
         observation_spec = alf.TensorSpec((3, 3))
         action_spec = alf.BoundedTensorSpec((),
                                             dtype=torch.int64,
@@ -202,7 +218,12 @@ class MCTSAlgorithmTest(alf.test.TestCase):
                 root_dirichlet_alpha=100.,
                 root_exploration_fraction=0.25,
                 num_simulations=num_simulations,
-                pb_c_init=1.25,
+                expand_all_children=expand_all_children,
+                expand_all_root_children=expand_all_root_children,
+                search_with_exploration_policy=with_exploration_policy,
+                act_with_exploration_policy=with_exploration_policy,
+                learn_with_exploration_policy=with_exploration_policy,
+                pb_c_init=0.25,
                 pb_c_base=19652,
                 visit_softmax_temperature_fn=VisitSoftmaxTemperatureByMoves(
                     [(0, 1.0), (10, 0.0001)]),
