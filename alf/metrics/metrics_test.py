@@ -123,6 +123,79 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
             self.assertEqual([0.0] * 2 if vector_reward else 0.0,
                              metric.result())
 
+    def test_average_per_step(self):
+        metric = AverageEnvInfoMetric(
+            batch_size=2,
+            example_env_info={
+                'kinetics': {
+                    'velocity@step': 1.2,
+                    'acceleration@step': -0.5,
+                },
+                'success': 1.0
+            })
+        trajectories = []
+        trajectories.append(
+            timestep_first(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity@step': to_tensor([4.0, 0.0]),
+                        'acceleration@step': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_mid(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity@step': to_tensor([4.0, 0.0]),
+                        'acceleration@step': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_mid(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity@step': to_tensor([5.0, 0.0]),
+                        'acceleration@step': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_last(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity@step': to_tensor([6.0, 0.0]),
+                        'acceleration@step': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([1.0, 0.0])
+                }))
+        for traj in trajectories:
+            metric(traj)
+
+        self.assertEqual(
+            {
+                'kinetics': {
+                    # Sum is 15.0, divided by 3 (episode length) and 2
+                    # (batch size) = 2.5
+                    'velocity@step': torch.as_tensor(2.5000),
+                    # Sum is 3.0, divided by 3 (episode length) and 2
+                    # (batch size) = 0.5
+                    'acceleration@step': torch.as_tensor(0.5000)
+                },
+                # Sum is 1.0, divided by 2 (batch size) = 0.5
+                'success': torch.as_tensor(0.5000)
+            },
+            metric.result())
+
 
 if __name__ == "__main__":
     unittest.main()
