@@ -853,7 +853,9 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
-def rsample_action_distribution(nested_distributions, return_log_prob=False):
+def rsample_action_distribution(nested_distributions,
+                                return_log_prob=False,
+                                disable_cache=True):
     """Sample actions from distributions with reparameterization-based sampling.
 
     It uses ``Distribution.rsample()`` to do the sampling to enable backpropagation.
@@ -874,6 +876,8 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
             For more details on PyTorch Transform, its cache mechanism, and its
             impacts on RL algorithms, please check
             `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
+        disable_cache (bool): a flag for explicitly disabling cache of the
+            nested_distributions (if applicable).
     Returns:
         - rsampled actions if return_log_prob is False
         - rsampled actions and log_prob if return_log_prob is True
@@ -884,13 +888,17 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
             "backpropagation")
     sample = nest.map_structure(lambda d: d.rsample(), nested_distributions)
     if return_log_prob:
+        if disable_cache:
+            sample = sample.clone()
         log_prob = compute_log_probability(nested_distributions, sample)
         return sample, log_prob
     else:
         return sample
 
 
-def sample_action_distribution(nested_distributions, return_log_prob=False):
+def sample_action_distribution(nested_distributions,
+                               return_log_prob=False,
+                               disable_cache=True):
     """Sample actions from distributions with conventional sampling without
         enabling backpropagation.
     Args:
@@ -909,12 +917,16 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
             For more details on PyTorch Transform, its cache mechanism, and its
             impacts on RL algorithms, please check
             `<https://alf.readthedocs.io/en/latest/notes/pytorch_notes.html#transform-bijector>`_.
+        disable_cache (bool): a flag for explicitly disabling cache of the
+            nested_distributions (if applicable).
     Returns:
         - sampled actions if return_log_prob is False
         - sampled actions and log_prob if return_log_prob is True
     """
     sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
     if return_log_prob:
+        if disable_cache:
+            sample = sample.detach()
         log_prob = compute_log_probability(nested_distributions, sample)
         return sample, log_prob
     else:
