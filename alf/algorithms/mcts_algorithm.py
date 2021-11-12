@@ -81,7 +81,8 @@ class _MCTSTrees(object):
         # reward for player 0
         self.reward = None
         if isinstance(model_output.reward, torch.Tensor):
-            self.reward = torch.zeros(parent_shape)
+            self.reward = torch.zeros(
+                parent_shape, dtype=model_output.reward.dtype)
 
         self.action = None
         if isinstance(model_output.actions, torch.Tensor):
@@ -457,7 +458,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         # we start the root visit_count from 1 so that the first update_best_child
         # will be based on none-zero ucb_scores
         trees.visit_count[roots] = 1
-        trees.value_sum[roots] = model_output.value
+        trees.value_sum[roots] = model_output.value.to(trees.value_sum.dtype)
         if not self._expand_all_children:
             self._build_tree1(trees, to_plays)
         else:
@@ -791,8 +792,18 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 log_ratio = (prior / policy).log()
                 rkld = (prior * log_ratio).sum(-1)
                 kld = -(policy * log_ratio).sum(-1)
+                policy_entropy = -(policy * policy.log()).sum(-1)
+                prior_entropy = -(prior * prior.log()).sum(-1)
                 summary_utils.add_mean_hist_summary("rkld", rkld)
                 summary_utils.add_mean_hist_summary("kld", kld)
+                summary_utils.add_mean_hist_summary("policy_entropy",
+                                                    policy_entropy)
+                summary_utils.add_mean_hist_summary("prior_entropy",
+                                                    prior_entropy)
+                summary_utils.add_mean_hist_summary("value", info.value)
+                for i in range(policy.shape[1]):
+                    summary_utils.add_mean_hist_summary(
+                        'policy%s' % i, policy[:, i])
 
         return action, info
 
@@ -1050,7 +1061,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                                      children_index0)
         trees.children_index[nodes] = children_index
         children = (nodes[0].unsqueeze(-1), children_index)
-        trees.value_sum[children] = model_output.value
+        trees.value_sum[children] = model_output.value.to(
+            trees.value_sum.dtype)
         trees.visit_count[children] += 1
         trees.update_value_stats((children[0].t(), children[1].t()))
         if self._is_two_player_game:
@@ -1193,17 +1205,25 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
 
     beta = (prior + u).max(dim=1, keepdim=True)[0]
 
+    converged = False
     i = 0
-    while True:
+    while i < 100:
         i += 1
         beta_u = beta - u
         p = prior / beta_u
         sum_p = p.sum(dim=1, keepdim=True)
         diff = sum_p - 1
         if (diff < tol).all():
+            converged = True
             break
         d = (p / beta_u).sum(dim=1, keepdim=True)
         beta = beta + diff / d
+
+    if not converged:
+        bad = ~(diff < tol).squeeze(1)
+        raise RuntimeError(
+            "calculate_exploration_policy() cannot converge. "
+            "value=%s prior=%s c=%s" % (value[bad], prior[bad], c[bad]))
 
     return p, i
 
