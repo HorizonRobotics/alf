@@ -409,6 +409,14 @@ class RingBuffer(nn.Module):
         """
         return self._current_pos[env_ids] - self._current_size[env_ids]
 
+    def get_current_position(self):
+        """Get the current posistion for each evnironment.
+
+        Returns:
+            Tensor: with shape [num_environments].
+        """
+        return self._current_pos
+
 
 class DataBuffer(RingBuffer):
     """A simple circular buffer supporting random sampling. This buffer doesn't
