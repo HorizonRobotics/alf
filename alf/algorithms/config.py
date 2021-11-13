@@ -43,6 +43,7 @@ class TrainerConfig(object):
                  num_eval_episodes=10,
                  num_summaries=None,
                  summary_interval=50,
+                 summarize_first_interval=True,
                  update_counter_every_mini_batch=False,
                  summaries_flush_secs=1,
                  summary_max_queue=10,
@@ -142,8 +143,15 @@ class TrainerConfig(object):
             num_eval_episodes (int) : number of episodes for one evaluation
             num_summaries (int): how many summary calls are needed throughout the
                 training. If not None, an automatically calculated ``summary_interval``
-                will replace ``config.summary_interval``.
+                will replace ``config.summary_interval``. Note that this number
+                doesn't include the summary steps of the first interval if
+                ``summarize_first_interval=True``. In this case, the actual number
+                of summaries will be roughly this number plus the calculated
+                summary interval.
             summary_interval (int): write summary every so many training steps
+            summarize_first_interval (bool): whether to summarize every step of
+                the first interval (default True). It might be better to turn
+                this off for an easier post-processing of the curve.
             update_counter_every_mini_batch (bool): whether to update counter
                 for every mini batch. The ``summary_interval`` is based on this
                 counter. Typically, this should be False. Set to True if you
@@ -222,6 +230,7 @@ class TrainerConfig(object):
         self.num_eval_episodes = num_eval_episodes
         self.num_summaries = num_summaries
         self.summary_interval = summary_interval
+        self.summarize_first_interval = summarize_first_interval
         self.update_counter_every_mini_batch = update_counter_every_mini_batch
         self.summaries_flush_secs = summaries_flush_secs
         self.summary_max_queue = summary_max_queue

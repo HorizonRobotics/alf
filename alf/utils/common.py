@@ -246,6 +246,7 @@ def run_under_record_context(func,
                              summary_dir,
                              summary_interval,
                              flush_secs,
+                             summarize_first_interval=True,
                              summary_max_queue=10):
     """Run ``func`` under summary record context.
 
@@ -256,6 +257,9 @@ def run_under_record_context(func,
         summary_interval (int): how often to generate summary based on the
             global counter
         flush_secs (int): flush summary to disk every so many seconds
+        summarize_first_interval (bool): whether to summarize every step of
+            the first interval (default True). It might be better to turn
+            this off for an easier post-processing of the curve.
         summary_max_queue (int): the largest number of summaries to keep in a queue;
             will flush once the queue gets bigger than this. Defaults to 10.
     """
@@ -273,9 +277,9 @@ def run_under_record_context(func,
     def _cond():
         # We always write summary in the initial `summary_interval` steps
         # because there might be important changes at the beginning.
-        return (alf.summary.is_summary_enabled()
-                and (global_step < summary_interval
-                     or global_step % summary_interval == 0))
+        return (alf.summary.is_summary_enabled() and
+                ((global_step < summary_interval and summarize_first_interval)
+                 or global_step % summary_interval == 0))
 
     with alf.summary.push_summary_writer(summary_writer):
         with alf.summary.record_if(_cond):
