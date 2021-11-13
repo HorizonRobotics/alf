@@ -74,6 +74,8 @@ def action_importance_ratio(action_distribution,
     else:
         sample_action_log_probs = dist_utils.compute_log_probability(
             rollout_action_distribution, action).detach()
+        print("====sample_action_log_probs")
+        print(sample_action_log_probs)
 
     action_log_prob = dist_utils.compute_log_probability(
         current_policy_distribution, action)
