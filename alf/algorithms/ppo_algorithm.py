@@ -52,7 +52,6 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                 reward=alg_step.info.reward,
                 discount=alg_step.info.discount,
                 action_distribution=alg_step.info.action_distribution,
-                rollout_log_prob=alg_step.info.log_prob,
                 value=alg_step.info.value,
                 reward_weights=alg_step.info.reward_weights))
 

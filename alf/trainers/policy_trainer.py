@@ -171,6 +171,7 @@ class Trainer(object):
                 self._train,
                 summary_dir=self._train_dir,
                 summary_interval=self._summary_interval,
+                summarize_first_interval=self._config.summarize_first_interval,
                 flush_secs=self._summaries_flush_secs,
                 summary_max_queue=self._summary_max_queue)
 
