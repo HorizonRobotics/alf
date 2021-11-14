@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import alf
+from alf.utils.schedulers import as_scheduler
 
 
 @alf.configurable
@@ -190,21 +191,23 @@ class TrainerConfig(object):
                 buffer store for each environment. Only used by
                 ``OffPolicyAlgorithm``.
             priority_replay (bool): Use prioritized sampling if this is True.
-            priority_replay_alpha (float): The priority from LossInfo is powered
+            priority_replay_alpha (float|Scheduler): The priority from LossInfo is powered
                 to this as an argument for ``ReplayBuffer.update_priority()``.
                 Note that the effect of ``ReplayBuffer.initial_priority``
                 may change with different values of ``priority_replay_alpha``.
                 Hence you may need to adjust ``ReplayBuffer.initial_priority``
                 accordingly.
-            priority_replay_beta (float): weight the loss of each sample by
+            priority_replay_beta (float|Scheduler): weight the loss of each sample by
                 ``importance_weight**(-priority_replay_beta)``, where ``importance_weight``
                 is from the BatchInfo returned by ``ReplayBuffer.get_batch()``.
                 This is only useful if ``prioritized_sampling`` is enabled for
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
         """
-        assert priority_replay_beta >= 0.0, ("importance_weight_beta should "
-                                             "be non-negative be")
+        if isinstance(priority_replay_beta, float):
+            assert priority_replay_beta >= 0.0, (
+                "importance_weight_beta should "
+                "be non-negative be")
         assert ml_type in ('rl', 'sl')
         self.root_dir = root_dir
         self.ml_type = ml_type
@@ -249,6 +252,6 @@ class TrainerConfig(object):
         self.clear_replay_buffer = clear_replay_buffer
         self.replay_buffer_length = replay_buffer_length
         self.priority_replay = priority_replay
-        self.priority_replay_alpha = priority_replay_alpha
-        self.priority_replay_beta = priority_replay_beta
+        self.priority_replay_alpha = as_scheduler(priority_replay_alpha)
+        self.priority_replay_beta = as_scheduler(priority_replay_beta)
         self.priority_replay_eps = priority_replay_eps
