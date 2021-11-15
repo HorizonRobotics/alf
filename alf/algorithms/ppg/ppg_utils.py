@@ -30,6 +30,8 @@ PPGRolloutInfo = namedtuple(
         'action_distribution',
         # Sampled from the action distribution produced by the policy head
         'action',
+        # Log probability of the action at the rollout time
+        'log_prob',
         # estimated value function by the value head
         'value',
         # estimated value function by the auxiliary value head
@@ -46,7 +48,7 @@ class PPGTrainInfo(
         namedtuple(
             'PPGTrainInfo',
             PPGRolloutInfo._fields + ('rollout_action_distribution',
-                                      'rollout_value'),
+                                      'rollout_value', 'rollout_log_prob'),
             default_value=())):
     """Data structure that stores extra derived information for training
     in addition to the original rollout information.
@@ -118,8 +120,10 @@ def ppg_network_forward(network: DisjointPolicyValueNetwork,
     if epsilon_greedy is not None:
         action = dist_utils.epsilon_greedy_sample(action_distribution,
                                                   epsilon_greedy)
+        log_prob = ()
     else:
-        action = dist_utils.sample_action_distribution(action_distribution)
+        action, log_prob = dist_utils.sample_action_distribution(
+            action_distribution, return_log_prob=True)
 
     return AlgStep(
         output=action,
@@ -127,6 +131,7 @@ def ppg_network_forward(network: DisjointPolicyValueNetwork,
         info=PPGRolloutInfo(
             action_distribution=action_distribution,
             action=common.detach(action),
+            log_prob=common.detach(log_prob),
             value=value,
             aux=aux,
             step_type=inputs.step_type,
