@@ -449,7 +449,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                         observation,
                         state: SacActionState,
                         epsilon_greedy=None,
-                        eps_greedy_sampling=False):
+                        eps_greedy_sampling=False,
+                        rollout=False):
         """The reason why we want to do action sampling inside this function
         instead of outside is that for the mixed case, once a continuous action
         is sampled here, we should pair it with the discrete action sampled from
@@ -513,8 +514,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_dist = continuous_action_dist
             action = continuous_action
 
-        if (self._reproduce_locomotion and not common.is_eval()
+        if (self._reproduce_locomotion and rollout
                 and not self._training_started):
+            # This uniform sampling seems important because for a squashed Gaussian,
+            # even with a large scale, a random policy is not nearly uniform.
             action = alf.nest.map_structure(
                 lambda spec: spec.sample(outer_dims=observation.shape[:1]),
                 self._action_spec)
@@ -542,7 +545,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             inputs.observation,
             state=state.action,
             epsilon_greedy=1.0,
-            eps_greedy_sampling=True)
+            eps_greedy_sampling=True,
+            rollout=True)
 
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(

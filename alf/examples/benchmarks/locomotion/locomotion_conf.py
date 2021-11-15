@@ -22,7 +22,8 @@ import alf
 from alf.utils.math_ops import clipped_exp
 from alf.optimizers import AdamTF
 
-alf.config("create_environment", num_parallel_environments=1)
+alf.config(
+    "create_environment", num_parallel_environments=1, env_name="Ant-v3")
 
 hidden_layers = (256, ) * 2
 
