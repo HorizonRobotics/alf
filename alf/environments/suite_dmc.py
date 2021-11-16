@@ -13,9 +13,19 @@
 # limitations under the License.
 
 import alf
-import dmc2gym
 from alf.environments.alf_environment import AlfEnvironment
 from alf.environments.suite_gym import wrap_env
+from unittest.mock import Mock
+
+try:
+    import dmc2gym
+except ImportError:
+    # create 'carla' as a mock to not break python argument type hints
+    dmc2gym = Mock()
+
+
+def is_available():
+    return not isinstance(dmc2gym, Mock)
 
 
 class AlfEnvironmentDMC2GYMWrapper(AlfEnvironment):

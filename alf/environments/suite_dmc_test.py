@@ -28,6 +28,11 @@ class SuiteDmcTest(alf.test.TestCase):
     to function properly.
     """
 
+    def setUp(self):
+        super().setUp()
+        if not suite_dmc.is_available():
+            self.skipTest('suite_dmc is not available.')
+
     def tearDown(self):
         super(SuiteDmcTest, self).tearDown()
 
