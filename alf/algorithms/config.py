@@ -206,8 +206,7 @@ class TrainerConfig(object):
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
-                "importance_weight_beta should "
-                "be non-negative be")
+                "importance_weight_beta should be non-negative")
         assert ml_type in ('rl', 'sl')
         self.root_dir = root_dir
         self.ml_type = ml_type
