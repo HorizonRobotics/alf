@@ -178,13 +178,6 @@ class ConfigTest(alf.test.TestCase):
             alf.config1('test_func3.c', 16)
             warning_message = ctx.records[0]
             self.assertTrue("ignored" in str(warning_message))
-        self.assertRaisesRegex(
-            ValueError,
-            "cannot change it",
-            alf.config,
-            'test_func3',
-            mutable=False,
-            c=17)
         self.assertEqual(test_func3(1), (1, 100, 15))
 
         # Test the right constructor is used for subclass
@@ -197,7 +190,8 @@ class ConfigTest(alf.test.TestCase):
 
         # test pre_config for config not defined yet
         alf.pre_config({'test_func8.c': 10})
-        self.assertRaisesRegex(ValueError, "Cannot find config name",
+        self.assertRaisesRegex(ValueError,
+                               "A pre-config 'test_func8.c' was not handled",
                                alf.validate_pre_configs)
         func11 = alf.configurable(test_func11)
         # test pre_config for config already defined
