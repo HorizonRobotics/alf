@@ -406,7 +406,7 @@ class SimpleMCTSModel(MCTSModel):
                 as input and output the prediction for (value, reward, action_distribution, game_over_logit).
             game_over_logit_thresh (float): the threshold of treating the
                 state as game over if the logit for game is greater than this.
-            initial_alpha (float): initial value for the weight of entropy regulariation
+            initial_alpha (float): initial value for the weight of entropy regularization
             target_entropy (float): if provided, will adjust alpha automatically
                 so that the entropy is not smaller than this.
             alpha_adjust_rate (float): the speed to adjust alpha
