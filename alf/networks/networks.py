@@ -21,7 +21,9 @@ import alf
 from alf.utils.common import expand_dims_as
 from .network import Network, wrap_as_network
 
-__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay']
+__all__ = [
+    'LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay', 'Identity'
+]
 
 
 class LSTMCell(Network):
@@ -284,3 +286,11 @@ class Delay(Network):
 
     def forward(self, input, state):
         return self._forward(input, state)
+
+
+class Identity(Network):
+    def __init__(self, input_tensor_spec):
+        super().__init__(input_tensor_spec=input_tensor_spec, name="Identity")
+
+    def forward(self, input, state):
+        return input, state

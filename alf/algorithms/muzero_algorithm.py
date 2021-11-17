@@ -16,6 +16,7 @@
 from functools import partial
 from typing import Optional
 import torch
+import typing
 
 import alf
 from alf.algorithms.data_transformer import create_data_transformer
@@ -74,6 +75,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  calculate_priority=None,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 train_repr_prediction=False,
                  reanalyze_mcts_algorithm_ctor=None,
                  reanalyze_ratio=0.,
                  reanalyze_td_steps=5,
@@ -115,6 +117,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 will be same as ``TrainerConfig.priority_replay``. This is only
                 useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
+            train_repr_prediction (bool):
             reanalyze_mcts_algorithm_ctor (Callable): will be called as
                 ``reanalyze_mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
                 to construct an ``MCTSAlgorithm`` instance. If not provided,
@@ -181,11 +184,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reward_transformer = reward_transformer
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
+        self._train_repr_prediction = train_repr_prediction
         self._reanalyze_ratio = reanalyze_ratio
         self._reanalyze_td_steps_func = reanalyze_td_steps_func
         self._reanalyze_td_steps = reanalyze_td_steps
         self._reanalyze_batch_size = reanalyze_batch_size
         self._data_transformer = None
+        if data_transformer_ctor is not None:
+            if isinstance(data_transformer_ctor, typing.Iterable):
+                for ctor in data_transformer_ctor:
+                    assert not ctor.__qualname__.startswith('Reward'), (
+                        "DataTranformer for reward (%s) is not supported" %
+                        ctor)
         self._data_transformer_ctor = data_transformer_ctor
         self._mcts.set_model(model)
         self._update_target = None
@@ -343,6 +353,24 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action = replay_buffer.get_field('prev_action', env_ids,
                                              positions[:, 1:])
 
+            observation = ()
+            if self._train_repr_prediction:
+                if self._data_transformer is None:
+                    observation = replay_buffer.get_field(
+                        'observation', env_ids, positions)
+                else:
+                    observation, step_type = replay_buffer.get_field(
+                        ('observation', 'step_type'), env_ids, positions)
+                    exp = alf.data_structures.make_experience(
+                        root_inputs, AlgStep(), state=())
+                    exp = exp._replace(
+                        step_type=step_type,
+                        observation=observation,
+                        batch_info=batch_info,
+                        replay_buffer=replay_buffer)
+                    exp = self._data_transformer.transform_experience(exp)
+                    observation = exp.observation
+
             rollout_info = MuzeroInfo(
                 action=action,
                 value=(),
@@ -351,12 +379,13 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     action=candidate_actions,
                     action_policy=candidate_action_policy,
                     value=values,
-                    game_over=game_overs))
+                    game_over=game_overs,
+                    observation=observation))
 
         # make the shape to [B, T, ...], where T=1
         rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(1),
                                               rollout_info)
-        rollout_info = convert_device(rollout_info)
+        #rollout_info = convert_device(rollout_info)
         rollout_info = rollout_info._replace(value=rollout_value)
 
         if self._reward_transformer:
@@ -448,6 +477,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reanalyze_batch_size is not None:
             mini_batch_size = self._reanalyze_batch_size
 
+        self._reanalyze_mcts.eval()
         result = []
         for i in range(0, batch_size, mini_batch_size):
             # Divide into several batches so that memory is enough.
@@ -455,6 +485,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 self._reanalyze1(replay_buffer, env_ids[i:i + mini_batch_size],
                                  positions[i:i + mini_batch_size],
                                  mcts_state_field))
+        self._reanalyze_mcts.train()
 
         if len(result) == 1:
             result = result[0]

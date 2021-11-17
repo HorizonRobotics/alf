@@ -363,3 +363,21 @@ class Softsign(torch.autograd.Function):
 
 
 softsign = Softsign.apply
+
+
+def normalize_min_max(x: torch.Tensor):
+    """Normalize the min and max of each sample x[i] to 0 and 1.
+
+    normalize x to [0, 1] as suggested in Appendix G. of MuZero paper.
+
+    Args:
+        x: a batch of samples
+    Returns:
+        Tensor: same shape as x
+    """
+    batch_size = x.shape[0]
+    shape = [1] * x.ndim
+    shape[0] = batch_size
+    min = x.reshape(batch_size, -1).min(dim=1)[0].reshape(shape)
+    max = x.reshape(batch_size, -1).max(dim=1)[0].reshape(shape)
+    return (x - min) / (max - min + 1e-10)

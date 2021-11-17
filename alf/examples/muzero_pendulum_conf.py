@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+import math
 
 import alf
 import alf.examples.muzero_conf
@@ -21,7 +21,16 @@ from alf.algorithms.data_transformer import RewardNormalizer
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, VisitSoftmaxTemperatureByProgress
 from alf.optimizers import AdamTF
-from alf.networks import StableNormalProjectionNetwork
+from alf.networks import StableNormalProjectionNetwork, TruncatedProjectionNetwork
+
+
+def define_config(name, default_value):
+    alf.define_config(name, default_value)
+    return alf.get_config_value('_CONFIG._USER.' + name)
+
+
+train_repr_prediction = define_config('train_repr_prediction', False)
+initial_scale = define_config('initial_scale', 1.0)
 
 alf.config(
     "create_environment", env_name="Pendulum-v0", num_parallel_environments=1)
@@ -34,10 +43,23 @@ alf.config(
     dist_squashing_transform=dist_utils.Softsign())
 
 alf.config(
-    "SimplePredictionNet",
-    continuous_projection_net_ctor=StableNormalProjectionNetwork)
+    "TruncatedProjectionNetwork",
+    state_dependent_scale=True,
+    scale_bias_initializer_value=math.log(math.exp(initial_scale) - 1),
+    min_scale=0.05,
+    max_scale=10.0,
+    #loc_transform=alf.math.softsign,
+    dist_ctor=dist_utils.TruncatedNormal)
 
-alf.config("SimpleMCTSModel", initial_alpha=0.005, num_sampled_actions=20)
+alf.config(
+    "SimplePredictionNet",
+    continuous_projection_net_ctor=TruncatedProjectionNetwork)
+
+alf.config(
+    "SimpleMCTSModel",
+    train_repr_prediction=train_repr_prediction,
+    initial_alpha=0.005,
+    num_sampled_actions=20)
 
 alf.config(
     "MCTSAlgorithm",
@@ -63,6 +85,7 @@ alf.config(
     num_unroll_steps=5,
     td_steps=10,
     reward_transformer=RewardNormalizer(update_mode="rollout"),
+    train_repr_prediction=train_repr_prediction,
     reanalyze_ratio=1.0,
     target_update_period=1,
     target_update_tau=0.01)
