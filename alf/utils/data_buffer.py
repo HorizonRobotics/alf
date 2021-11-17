@@ -410,7 +410,7 @@ class RingBuffer(nn.Module):
         return self._current_pos[env_ids] - self._current_size[env_ids]
 
     def get_current_position(self):
-        """Get the current posistion for each evnironment.
+        """Get the current position for each environment.
 
         Returns:
             Tensor: with shape [num_environments].

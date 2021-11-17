@@ -117,7 +117,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
             reanalyze_mcts_algorithm_ctor (Callable): will be called as
-                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
+                ``reanalyze_mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
                 to construct an ``MCTSAlgorithm`` instance. If not provided,
                 ``mcts_algorithm_ctor`` will be used.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
