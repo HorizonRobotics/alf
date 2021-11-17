@@ -18,6 +18,7 @@ import torch
 
 import alf
 from alf.examples import sac_conf
+from alf.algorithms.data_transformer import RewardNormalizer
 
 alf.config(
     "create_environment",
@@ -37,7 +38,8 @@ actor_distribution_network_cls = partial(
 critic_network_cls = partial(
     alf.networks.CriticNetwork, joint_fc_layer_params=hidden_layers)
 
-alf.config("Agent", optimizer=alf.optimizers.AdamTF(lr=5e-4))
+optimizer = alf.optimizers.AdamTF(lr=5e-4)
+alf.config("Agent", optimizer=optimizer)
 
 alf.config(
     'SacAlgorithm',
@@ -47,10 +49,13 @@ alf.config(
 
 alf.config('calc_default_target_entropy', min_prob=0.1)
 
+reward_normalizer = partial(RewardNormalizer, clip_value=5.)
+
 # training config
 alf.config(
     "TrainerConfig",
     initial_collect_steps=3000,
+    data_transformer_ctor=[reward_normalizer],
     mini_batch_length=2,
     unroll_length=4,
     mini_batch_size=4096,

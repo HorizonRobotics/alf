@@ -442,7 +442,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_dyna_actrepeat_sac_bipedal_walker(self):
         self._test(
-            conf_file='dyna_actrepeat_sac_bipedalwalker.gin',
+            conf_file='dyna_actrepeat_sac_bipedalwalker_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_dyna_actrepeat_sac_pickplace(self):
