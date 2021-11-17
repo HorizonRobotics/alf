@@ -37,8 +37,7 @@ alf.config(
     "SimplePredictionNet",
     continuous_projection_net_ctor=StableNormalProjectionNetwork)
 
-alf.config(
-    "SimpleMCTSModel", entropy_regularization=0.005, num_sampled_actions=20)
+alf.config("SimpleMCTSModel", initial_alpha=0.005, num_sampled_actions=20)
 
 alf.config(
     "MCTSAlgorithm",
