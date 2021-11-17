@@ -217,10 +217,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     * search_with_exploration_policy=False. The best child is same the case k=1.
       The second best child is found by assuming the visit count of the best
       child and the parent are increased by 1 and applying the UCB criterion
-      again. This is repeated k times to get k best children. During the process
-      of traversing from the root to contruct k search paths, if the current end
-      node of several (let's say k') paths are the same, we will use best k'
-      children of that node to extend the paths.
+      again. This is repeated k times to get k best children. Note that this is
+      different from directly selecting the best k childrens based on the original
+      UCB scores. The reason of not doing that is that if the highest score is
+      much bigger than the second highest score, we want to both paths to select
+      the same child. During the process of traversing from the root to contruct
+      k search paths, if several (let's say k') paths are exactly same so far,
+      we will use best k' children of the last node of these k' paths to extend
+      the paths so that The k' children (may contains duplicates) being selected to
+      extend these k' paths are most promising according to the UCB scores.
     """
 
     def __init__(
@@ -285,7 +290,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 shape as ``steps``.
             learn_policy_temperature (float): transform the policy p found by
                 MCTS by :math:`p^{1/learn_policy_temperature} / Z` as policy
-                target for model learning.
+                target for model learning, where Z is a normalization factor so
+                that the resulting probabilities sum to one.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             expand_all_children (bool): If True, when a new leaf is selected, immediately
@@ -314,9 +320,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             learn_with_exploration_policy (bool): If True, a policy calculated
                 using reverse KL divergence will be used for learning.
             max_unroll_length (int): maximal allowed unroll steps when building
-                the search tree.
+                the search tree. If ``expand_all_children`` is False, the maximal
+                allowed tree depth will be ``max_unroll_length``. Otherwise, the
+                maximal allowed tree depth will be ``max_unroll_length-1``
             num_parallel_sims (int): expanding so many leaves at a time for one
-                tree.
+                tree. ``num_simulations`` must be divisable by ``num_parallel_sims``.
             name (str): the name of the algorithm.
         """
         assert not nest.is_nested(
@@ -338,9 +346,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._num_parallel_sims = num_parallel_sims
         self._parallel = num_parallel_sims > 1
         if expand_all_children:
-            self._max_depth = max_unroll_length - 1
+            self._max_allowed_depth = max_unroll_length - 1
         else:
-            self._max_depth = max_unroll_length
+            self._max_allowed_depth = max_unroll_length
 
         assert not expand_all_children or num_parallel_sims == 1, (
             "num_parallel_sim > 1 is not supported when expand_all_children=True"
@@ -457,7 +465,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             output=action, state=MCTSState(steps=state.steps + 1), info=info)
 
     def _build_tree1(self, trees, to_plays):
-        """Build the tree by evaluating one node a time"""
+        """Build the tree by evaluating one node a time."""
         roots = (trees.B, trees.root_indices)
         sim0 = 1
         if self._expand_all_root_children:
@@ -577,7 +585,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         return model_output
 
     def _build_tree2(self, trees, to_plays):
-        """Build the tree by evaluating all the children of one node a time"""
+        """Build the tree by evaluating all the children of one node a time."""
         # expand the root node and backup the values of the children to root.
         branch_factor = trees.branch_factor
         roots = (trees.B, trees.root_indices)
@@ -647,14 +655,17 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         best_child_index = trees.best_child_index
         game_over = trees.game_over
         psims = self._num_parallel_sims
-        parallel = self._parallel
         search_paths = []
         B = trees.B
         nodes = trees.root_indices
-        calc_i = False
-        if parallel:
+        calc_i = False  # see comment below
+        if self._parallel:
             B = B.unsqueeze(-1)
             nodes = trees.root_indices.unsqueeze(-1).expand(-1, psims)
+            # If the p-th search path of the b-th tree is at node n, it will be
+            # extended by the child indicated by best_child_index[b, n, i[p]].
+            # We only need to caculate i if not search_with_exploration_policy.
+            # See the doc string of MCTSAlgorithm for more detail.
             if self._search_with_exploration_policy:
                 i = (torch.arange(psims), )
             else:
@@ -671,7 +682,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             done = torch.zeros_like(nodes, dtype=torch.bool)
         depth = 0
-        while not torch.all(done) and depth < self._max_depth:
+        while not torch.all(done) and depth < self._max_allowed_depth:
             depth += 1
             if calc_i:
                 # If several nodes are same, we should select actions from different
@@ -682,19 +693,20 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 # for i-th node. But for UCB based selection, we want to use
                 # the top entries in best_child_index when ever they are not used.
                 #
-                # For x>y, i[b, x, y] indicates where nodes[b, x] and nodes[b, y] are same
-                # For x<=y, i[b, x, y] is 0.
-                # For example, suppose nodes[0] = [2,3,2,3,3], i[0] will be
+                # For x>y, same_node[b, x, y] indicates where nodes[b, x] and nodes[b, y] are same
+                # For x<=y, same_node[b, x, y] is 0.
+                # For example, suppose nodes[0] = [2,3,2,3,3], same[0] will be
                 # [[0, 0, 0, 0, 0],
                 #  [0, 0, 0, 0, 0],
                 #  [1, 0, 0, 0, 0],
                 #  [0, 1, 0, 0, 0],
                 #  [0, 1, 0, 1, 0]]
                 # [B, psims, psims]. `None` stands for unsqueezing at that dim.
-                i = (nodes[:, :, None] == nodes[:, None, :]).tril(diagonal=-1)
+                same_node = (nodes[:, :, None] == nodes[:, None, :]).tril(
+                    diagonal=-1)
                 # With the above example, i[0] is [0, 0, 1, 1, 2]
                 # [B, psims]
-                i = (i.sum(-1), )
+                i = (same_node.sum(-1), )
             # [B] or [B, psims]
             nodes = torch.where(
                 done, nodes,
