@@ -156,7 +156,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name="mcts")
         mcts.set_model(model)
-        calculate_priority = calculate_priority or config.priority_replay
+        if calculate_priority is None:
+            if config is not None:
+                calculate_priority = config.priority_replay
+            else:
+                calculate_priority = False
         self._calculate_priority = calculate_priority
         self._device = alf.get_default_device()
         super().__init__(
