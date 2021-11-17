@@ -1041,12 +1041,6 @@ class Algorithm(AlgorithmInterface):
 
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
-            # Due to pytorch's async execution, there might be unfinished GPU
-            # operations from previous stage before backward is called and
-            # unfinished operations of backward after backward() returns.
-            #
-            # By default, record_time() will call torch.cuda.synchronize() to
-            # make sure we only measure the computation time for backward.
             with record_time("time/backward"):
                 loss.backward()
 
