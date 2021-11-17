@@ -29,6 +29,7 @@ from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
 from alf.utils.tensor_utils import scale_gradient
 from alf.tensor_specs import TensorSpec
+from alf.trainers.policy_trainer import Trainer
 
 MuzeroInfo = namedtuple(
     'MuzeroInfo',
@@ -71,11 +72,13 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  recurrent_gradient_scaling_factor=0.5,
                  reward_normalizer=None,
                  reward_clip_value=-1.,
-                 calculate_priority=False,
+                 calculate_priority=None,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 reanalyze_mcts_algorithm_ctor=None,
                  reanalyze_ratio=0.,
                  reanalyze_td_steps=5,
+                 reanalyze_td_steps_func=None,
                  reanalyze_batch_size=None,
                  data_transformer_ctor=None,
                  target_update_tau=1.,
@@ -92,7 +95,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 to construct the model. The model should follow the interface
                 ``alf.algorithms.mcts_models.MCTSModel``.
             mcts_algorithm_ctor (Callable): will be called as
-                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?)``
+                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
                 to construct an ``MCTSAlgorithm`` instance.
             num_unroll_steps (int): steps for unrolling the model during training.
             td_steps (int): bootstrap so many steps into the future for calculating
@@ -109,13 +112,24 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 normalize reward.
             train_reward_function (bool): whether train reward function. If
                 False, reward should only be given at the last step of an episode.
-            calculate_priority (bool): whether to calculate priority. This is
-                only useful if priority replay is enabled.
+            calculate_priority (bool): whether to calculate priority. If not provided,
+                will be same as ``TrainerConfig.priority_replay``. This is only
+                useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
+            reanalyze_mcts_algorithm_ctor (Callable): will be called as
+                ``reanalyze_mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
+                to construct an ``MCTSAlgorithm`` instance. If not provided,
+                ``mcts_algorithm_ctor`` will be used.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
             reanalyze_td_steps (int): the n for the n-step return for reanalyzing.
+            reanalyze_td_steps_func (Callable): If provided, will be called as
+                reanalyze_td_steps_func(sample_age, reanalyze_td_steps, current_max_age)
+                to calculate the td_steps in reanalyze. sample_age is a Tensor
+                whose elements are between 0 and 1 indicating the age of each sample.
+                The age of the latest sample is 0. The age of the sample collected
+                at the beginning of the training is current_max_age.
             reanalyze_batch_size (int|None): the memory usage may be too much for
                 reanalyzing all the data for one training iteration. If so, provide
                 a number for this so that it will analyzing the data in several
@@ -139,8 +153,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         mcts = mcts_algorithm_ctor(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            debug_summaries=debug_summaries)
+            debug_summaries=debug_summaries,
+            name="mcts")
         mcts.set_model(model)
+        if calculate_priority is None:
+            if config is not None:
+                calculate_priority = config.priority_replay
+            else:
+                calculate_priority = False
         self._calculate_priority = calculate_priority
         self._device = alf.get_default_device()
         super().__init__(
@@ -164,13 +184,21 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
         self._reanalyze_ratio = reanalyze_ratio
+        self._reanalyze_td_steps_func = reanalyze_td_steps_func
         self._reanalyze_td_steps = reanalyze_td_steps
         self._reanalyze_batch_size = reanalyze_batch_size
         self._data_transformer = None
         self._data_transformer_ctor = data_transformer_ctor
-
+        self._mcts.set_model(model)
         self._update_target = None
+        self._reanalyze_mcts = None
         if reanalyze_ratio > 0:
+            reanalyze_mcts_algorithm_ctor = reanalyze_mcts_algorithm_ctor or mcts_algorithm_ctor
+            self._reanalyze_mcts = reanalyze_mcts_algorithm_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries,
+                name="mcts_reanalyze")
             self._target_model = model_ctor(
                 observation_spec, action_spec, debug_summaries=debug_summaries)
             self._update_target = common.get_target_updater(
@@ -178,9 +206,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 target_models=[self._target_model],
                 tau=target_update_tau,
                 period=target_update_period)
+            self._reanalyze_mcts.set_model(self._target_model)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_model']
+        return ['_target_model', '_reanalyze_mcts']
 
     def predict_step(self, time_step: TimeStep, state):
         if self._reward_normalizer is not None:
@@ -512,7 +541,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         steps_to_episode_end = replay_buffer.steps_to_episode_end(
             positions1, env_ids)
-        bootstrap_n = steps_to_episode_end.clamp(max=n2)
+        if self._reanalyze_td_steps_func is None:
+            bootstrap_n = steps_to_episode_end.clamp(max=n2)
+        else:
+            progress = Trainer.progress()
+            current_pos = replay_buffer.get_current_position().max()
+            age = progress * (1 - positions1 / current_pos)
+            bootstrap_n = self._reanalyze_td_steps_func(age, n2, progress)
+            bootstrap_n = torch.minimum(bootstrap_n, steps_to_episode_end)
 
         exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
                                                   positions, n1, n2)
@@ -534,10 +570,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             game_overs = convert_device(game_overs)
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
-            self._mcts.set_model(self._target_model)
-            mcts_step = self._mcts.predict_step(
+            mcts_step = self._reanalyze_mcts.predict_step(
                 exp1, alf.nest.get_field(exp1, mcts_state_field))
-            self._mcts.set_model(self._model)
             candidate_actions = ()
             if mcts_step.info.candidate_actions != ():
                 candidate_actions = mcts_step.info.candidate_actions
@@ -610,3 +644,23 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
     def after_update(self, root_inputs, info):
         if self._update_target is not None:
             self._update_target()
+
+
+@alf.configurable
+class LinearTdStepFunc(object):
+    """Linearly decrease td steps from ``max_td_steps`` to ``min_td_steps``
+    based on the age of a sample.
+
+    If the age of a sample is more than ``max_bootstrap_age``, its td steps will
+    be ``min_td_steps``. This is the "dynamic horizon" trick described in paper
+    `Mastering Atari Games with Limited Data <https://arxiv.org/abs/2111.00210v1>`_
+    """
+
+    def __init__(self, max_bootstrap_age, min_td_steps=1):
+        self._max_bootstrap_age = max_bootstrap_age
+        self._min_td_steps = min_td_steps
+
+    def __call__(self, age, max_td_steps, current_max_age):
+        td_steps = self._min_td_steps + (max_td_steps - self._min_td_steps) * (
+            1 - age / self._max_bootstrap_age).relu()
+        return td_steps.ceil().to(torch.int64)

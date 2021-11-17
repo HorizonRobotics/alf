@@ -217,6 +217,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             search_with_exploration_policy=False,
             learn_with_exploration_policy=False,
             debug_summaries=False,
+            name="MCTSAlgorithm",
     ):
         r"""
         Args:
@@ -279,6 +280,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 using reverse KL divergence will be used for tree search.
             learn_with_exploration_policy (bool): If True, a policy calculated
                 using reverse KL divergence will be used for learning.
+            name (str): name of this algorithm
         """
         assert not nest.is_nested(
             action_spec), "nested action_spec is not supported"
@@ -317,7 +319,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=MCTSState(
                 steps=alf.TensorSpec((), dtype=torch.int64)),
-            debug_summaries=debug_summaries)
+            debug_summaries=debug_summaries,
+            name=name)
 
     def set_model(self, model: MCTSModel):
         """Set the model used by the algorithm."""
