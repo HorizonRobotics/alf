@@ -695,7 +695,18 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 #
                 # For x>y, same_node[b, x, y] indicates where nodes[b, x] and nodes[b, y] are same
                 # For x<=y, same_node[b, x, y] is 0.
-                # For example, suppose nodes[0] = [2,3,2,3,3], same[0] will be
+                #
+                #  For example, suppose nodes[0] = [2,3,2,3,3], it means that the
+                # current 5 parallel searches on tree 0 are at tree 0's node 2,
+                # node 3, node 2, node 3 and node 3 respectively. According to
+                # our algorithm, under UCB-based selection strategy, we want the
+                # 3 searches at node 3 to go to different "next nodes" (i.e. the
+                # top 3 best children of node 3) respectively. The same goes for the 2
+                # searches at node 2 (they should go to the top 2 best children
+                # of node 2 respectively). Therefore we want to use i to map nodes
+                # index [2, 3, 2, 3, 3] to children index [0, 0, 1, 1, 2].
+                #
+                # With this example, same_node[0] will be:
                 # [[0, 0, 0, 0, 0],
                 #  [0, 0, 0, 0, 0],
                 #  [1, 0, 0, 0, 0],
