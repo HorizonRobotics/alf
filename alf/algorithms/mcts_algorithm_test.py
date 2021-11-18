@@ -164,17 +164,20 @@ class TicTacToeModelTest(alf.test.TestCase):
 
 
 class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters(dict(), dict(with_exploration_policy=True),
-                              dict(
-                                  expand_all_children=True,
-                                  with_exploration_policy=True),
-                              dict(
-                                  expand_all_root_children=True,
-                                  with_exploration_policy=True))
+    @parameterized.parameters(
+        dict(), dict(num_parallel_sims=4), dict(with_exploration_policy=True),
+        dict(with_exploration_policy=True, num_parallel_sims=4),
+        dict(expand_all_children=True, with_exploration_policy=True),
+        dict(expand_all_root_children=True, with_exploration_policy=True),
+        dict(
+            expand_all_root_children=True,
+            with_exploration_policy=True,
+            num_parallel_sims=4))
     def test_mcts_algorithm(self,
                             expand_all_children=False,
                             expand_all_root_children=False,
-                            with_exploration_policy=False):
+                            with_exploration_policy=False,
+                            num_parallel_sims=1):
         observation_spec = alf.TensorSpec((3, 3))
         action_spec = alf.BoundedTensorSpec((),
                                             dtype=torch.int64,
@@ -214,7 +217,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             return MCTSAlgorithm(
                 observation_spec,
                 action_spec,
-                discount=1.0,
+                discount=0.9,
                 root_dirichlet_alpha=100.,
                 root_exploration_fraction=0.25,
                 num_simulations=num_simulations,
@@ -228,6 +231,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 visit_softmax_temperature_fn=VisitSoftmaxTemperatureByMoves(
                     [(0, 1.0), (10, 0.0001)]),
                 known_value_bounds=(-1, 1),
+                num_parallel_sims=num_parallel_sims,
                 is_two_player_game=True)
 
         # test case serially
@@ -253,7 +257,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                                    dtype=torch.float32)
         state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
         mcts = _create_mcts(
-            observation_spec, action_spec, num_simulations=2000)
+            observation_spec, action_spec, num_simulations=2500)
         mcts.set_model(model)
         alg_step = mcts.predict_step(
             time_step._replace(
