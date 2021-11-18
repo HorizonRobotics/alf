@@ -572,6 +572,9 @@ class Algorithm(AlgorithmInterface):
 
         TODO: for a subalgorithm that's an ignored attribute, its optimizer info
         won't be obtained.
+
+        Returns:
+            str: the json string of the information about all the optimizers.
         """
         unhandled = self._setup_optimizers()
 
@@ -1009,9 +1012,9 @@ class Algorithm(AlgorithmInterface):
         """
         masks = None
         if (batch_info is not None and batch_info.importance_weights != ()
-                and self._config.priority_replay_beta != 0):
+                and self._config.priority_replay):
             masks = batch_info.importance_weights.pow(
-                -self._config.priority_replay_beta).unsqueeze(0)
+                -self._config.priority_replay_beta()).unsqueeze(0)
 
         if valid_masks is not None:
             if masks is not None:
@@ -1041,13 +1044,6 @@ class Algorithm(AlgorithmInterface):
 
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
-            # In theory, there might be unfinished GPU operations from previous
-            # stage before backward is called and unfinished operations of backward
-            # after backward() returns so that torch.cuda.synchronize() should
-            # be called to make sure we only measure the computation time for backward.
-            # In practice, we found that the measured time is almost same with
-            # or without cuda.synchronize().
-            # See https://pytorch.org/docs/stable/notes/cuda.html#asynchronous-execution
             with record_time("time/backward"):
                 loss.backward()
 
@@ -1476,8 +1472,9 @@ class Algorithm(AlgorithmInterface):
 
         loss_info = self.calc_loss(train_info)
         if loss_info.priority != ():
-            priority = (loss_info.priority**self._config.priority_replay_alpha
-                        + self._config.priority_replay_eps)
+            priority = (
+                loss_info.priority**self._config.priority_replay_alpha() +
+                self._config.priority_replay_eps)
             self._replay_buffer.update_priority(batch_info.env_ids,
                                                 batch_info.positions, priority)
             if self._debug_summaries and alf.summary.should_record_summaries():

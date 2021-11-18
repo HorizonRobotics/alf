@@ -167,6 +167,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
         train_info = PPGTrainInfo(
             action=plain_rollout_info.action,
+            rollout_log_prob=plain_rollout_info.log_prob,
             rollout_value=plain_rollout_info.value,
             rollout_action_distribution=plain_rollout_info.
             action_distribution).absorbed(alg_step.info)

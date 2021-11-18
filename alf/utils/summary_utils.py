@@ -15,6 +15,7 @@
 from absl import logging
 import functools
 import numpy as np
+import os
 from tensorboard.plugins.histogram import metadata
 import time
 import torch
@@ -355,10 +356,18 @@ class record_time(object):
     def __init__(self, tag):
         """Create a context object for recording time.
 
+        By default, record_time will do cuda.synchronize() before entering and
+        after leaving the context to measure the time accurately. This behavior
+        can be disabled by setting environment variable ALF_RECORD_TIME_SYNC to 0
+        if you suspect synchronization slow down your code. See
+        https://pytorch.org/docs/stable/notes/cuda.html#asynchronous-execution.
+
         Args:
             tag (str): the summary tag for the the time.
         """
+        sync = os.environ.get("ALF_RECORD_TIME_SYNC", "1") != "0"
         self._tag = tag
+        self._sync = sync
         caller = logging.get_absl_logger().findCaller()
         # token is a string of filename:lineno:tag
         token = caller[0] + ':' + str(caller[1]) + ':' + tag
@@ -367,9 +376,13 @@ class record_time(object):
         self._counter = _contexts[token]
 
     def __enter__(self):
+        if self._sync and torch.cuda.is_available():
+            torch.cuda.synchronize()
         self._t0 = time.time()
 
     def __exit__(self, type, value, traceback):
+        if self._sync and torch.cuda.is_available():
+            torch.cuda.synchronize()
         self._counter['time'] += time.time() - self._t0
         self._counter['n'] += 1
         if should_record_summaries():

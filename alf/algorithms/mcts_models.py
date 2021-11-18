@@ -19,12 +19,14 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import torch.distributions as td
+from typing import Callable
 
 import alf
 from alf.data_structures import LossInfo, namedtuple
 from alf.networks import EncodingNetwork, StableNormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.utils import dist_utils, tensor_utils, summary_utils
 from alf.utils.losses import element_wise_squared_loss
+from alf.utils.schedulers import ConstantScheduler
 
 ModelOutput = namedtuple(
     'ModelOutput',
@@ -82,7 +84,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     def __init__(self,
                  train_reward_function,
                  train_game_over_function,
-                 entropy_regularization=0.0,
+                 initial_alpha=0.0,
+                 target_entropy=None,
+                 alpha_adjust_rate=0.001,
                  debug_summaries=False,
                  name="MCTSModel"):
         """
@@ -91,13 +95,26 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 loss term for policy.
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
+            initial_alpha (float): initial value for the weight of entropy regulariation
+            target_entropy (float): if provided, will adjust alpha automatically
+                so that the entropy is not smaller than this.
+            alpha_adjust_rate (float): the speed to adjust alpha
         """
         super().__init__()
         self._debug_summaries = debug_summaries
         self._name = name
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
-        self._entropy_regularization = entropy_regularization
+        if initial_alpha > 0:
+            self.register_buffer("_log_alpha",
+                                 torch.tensor(np.log(initial_alpha)))
+        else:
+            self._log_alpha = None
+        if target_entropy is not None:
+            if not isinstance(target_entropy, Callable):
+                target_entropy = ConstantScheduler(target_entropy)
+        self._target_entropy = target_entropy
+        self._alpha_adjust_rate = alpha_adjust_rate
 
     @abc.abstractmethod
     def initial_inference(self, observation) -> ModelOutput:
@@ -143,14 +160,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             reward_loss = (loss_scale * reward_loss).sum(dim=1)
             loss = loss + reward_loss
 
-        # target_action.shape is [B, unroll_steps+1, num_candidate]
-        # log_prob needs sample shape in the beginning
         if target.action is ():
             # This condition is only possible for Categorical distribution
             assert isinstance(model_output.action_distribution, td.Categorical)
             policy_loss = -(target.action_policy *
                             model_output.action_distribution.logits).sum(dim=2)
         else:
+            # target_action.shape is [B, unroll_steps+1, num_candidate]
+            # log_prob() needs sample shape in the beginning
             action = target.action.permute(2, 0, 1,
                                            *list(range(3, target.action.ndim)))
             action_log_probs = model_output.action_distribution.log_prob(
@@ -174,9 +191,15 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         loss = loss + policy_loss
         entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
             model_output.action_distribution)
-        if self._entropy_regularization != 0:
-            loss = loss - self._entropy_regularization * entropy_for_gradient.sum(
+        if self._log_alpha is not None:
+            alpha = self._log_alpha.exp().detach()
+            loss = loss - alpha * (loss_scale * entropy_for_gradient).sum(
                 dim=1)
+            if self._target_entropy is not None:
+                # For some unknown reason, there are memory leaks for not using
+                # detach()
+                self._log_alpha -= self._alpha_adjust_rate * (
+                    entropy.mean() - self._target_entropy()).sign().detach()
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -232,6 +255,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 summary_utils.add_mean_hist_summary("entropy1", entropy[:, 1:])
                 summary_utils.summarize_distribution(
                     "action_dist", model_output.action_distribution)
+                if self._target_entropy is not None:
+                    alf.summary.scalar("alpha", alpha)
 
         return LossInfo(
             loss=loss,
@@ -356,7 +381,9 @@ class SimpleMCTSModel(MCTSModel):
                  dynamics_net_ctor=create_simple_dynamics_net,
                  prediction_net_ctor=create_simple_prediction_net,
                  game_over_logit_thresh=1.0,
-                 entropy_regularization=0.0,
+                 initial_alpha=0.0,
+                 target_entropy=None,
+                 alpha_adjust_rate=0.001,
                  train_reward_function=True,
                  train_game_over_function=True,
                  debug_summaries=False,
@@ -379,15 +406,19 @@ class SimpleMCTSModel(MCTSModel):
                 as input and output the prediction for (value, reward, action_distribution, game_over_logit).
             game_over_logit_thresh (float): the threshold of treating the
                 state as game over if the logit for game is greater than this.
-            entropy_regularization (float): Coefficient for entropy regularization
-                loss term for policy.
+            initial_alpha (float): initial value for the weight of entropy regularization
+            target_entropy (float): if provided, will adjust alpha automatically
+                so that the entropy is not smaller than this.
+            alpha_adjust_rate (float): the speed to adjust alpha
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
         """
         super().__init__(
             train_reward_function=train_reward_function,
             train_game_over_function=train_game_over_function,
-            entropy_regularization=entropy_regularization,
+            initial_alpha=initial_alpha,
+            target_entropy=target_entropy,
+            alpha_adjust_rate=alpha_adjust_rate,
             debug_summaries=debug_summaries,
             name=name)
         self._num_sampled_actions = num_sampled_actions
