@@ -20,7 +20,7 @@ from unittest.mock import Mock
 try:
     import dmc2gym
 except ImportError:
-    # create 'carla' as a mock to not break python argument type hints
+    # create 'dmc2gym' as a mock to not break python argument type hints
     dmc2gym = Mock()
 
 
@@ -119,13 +119,15 @@ def dmc_loader(environment_name,
                discount=1.0,
                max_episode_steps=1000,
                gym_env_wrappers=(),
-               alf_env_wrappers=[AlfEnvironmentDMC2GYMWrapper]):
+               alf_env_wrappers=()):
     """ Load the MuJoCo environment through dmc2gym
 
     This loader will not take environment_name, instead please use domain_name and tesk_name.
     For installation of dmc2gym, see https://github.com/denisyarats/dmc2gym.
     For installation of DMControl, see https://github.com/deepmind/mujoco.
     For installation of MuJoCo200, see https://roboti.us.
+    If there are any bug regarding env_info, please include AlfEnvironmentDMC2GYMWrapper
+    in the alf_env_wrappers.
 
     Args:
         environment_name (str): Do not use this arg, this arg is here to
@@ -146,7 +148,7 @@ def dmc_loader(environment_name,
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
-            classes to use on the ALF environment.
+            classes to use on the ALF environment. 
         image_channel_first (bool): whether transpose image channels to first dimension.
 
     Returns:
