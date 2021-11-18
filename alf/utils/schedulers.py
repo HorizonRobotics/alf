@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Schedulers."""
+from typing import Callable
 
 import alf
-from alf.trainers.policy_trainer import Trainer
 
 
 class Scheduler(object):
@@ -39,6 +39,10 @@ class Scheduler(object):
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
         """
+        # Do not import from the top to prevent cyclic importing from
+        # algorithms/config.py: config -> shedulers -> policy_trainer -> config
+        from alf.trainers.policy_trainer import Trainer
+
         if progress_type == "percent":
             self._progress_func = Trainer.progress
         elif progress_type == "iterations":
@@ -64,7 +68,7 @@ class ConstantScheduler(object):
         return self._value
 
     def __repr__(self):
-        return 'ConstantScheduler(%s)' % self._value
+        return str(self._value)
 
 
 @alf.configurable
@@ -169,3 +173,10 @@ class ExponentialScheduler(Scheduler):
         return "ExponentialScheduler('%s', initial_value=%s, decay_rate=%s, decay_time=%s)" % (
             self._progress_type, self._initial_value, self._decay_rate,
             self._decay_time)
+
+
+def as_scheduler(value_or_scheduler):
+    if isinstance(value_or_scheduler, Callable):
+        return value_or_scheduler
+    else:
+        return ConstantScheduler(value_or_scheduler)

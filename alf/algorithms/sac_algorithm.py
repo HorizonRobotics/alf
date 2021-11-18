@@ -169,6 +169,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  debug_summaries=False,
+                 reproduce_locomotion=False,
                  name="SacAlgorithm"):
         """
         Args:
@@ -243,6 +244,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
             debug_summaries (bool): True if debug summaries should be created.
+            reproduce_locomotion (bool): if True, some slight tweaks are added
+                to the original SAC to roughly reproducing its reported results
+                on MuJoCo locomotion tasks. These include uniform action sampling
+                in the beginning and different masks for actor and critic losses.
             name (str): The name of this algorithm.
         """
         self._num_critic_replicas = num_critic_replicas
@@ -357,6 +362,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._dqda_clipping = dqda_clipping
 
+        self._training_started = False
+        self._reproduce_locomotion = reproduce_locomotion
+
         self._update_target = common.get_target_updater(
             models=[self._critic_networks],
             target_models=[self._target_critic_networks],
@@ -441,7 +449,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                         observation,
                         state: SacActionState,
                         epsilon_greedy=None,
-                        eps_greedy_sampling=False):
+                        eps_greedy_sampling=False,
+                        rollout=False):
         """The reason why we want to do action sampling inside this function
         instead of outside is that for the mixed case, once a continuous action
         is sampled here, we should pair it with the discrete action sampled from
@@ -505,6 +514,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_dist = continuous_action_dist
             action = continuous_action
 
+        if (self._reproduce_locomotion and rollout
+                and not self._training_started):
+            # This uniform sampling seems important because for a squashed Gaussian,
+            # even with a large scale, a random policy is not nearly uniform.
+            action = alf.nest.map_structure(
+                lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                self._action_spec)
+
         return action_dist, action, q_values, new_state
 
     def predict_step(self, inputs: TimeStep, state: SacState):
@@ -528,7 +545,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             inputs.observation,
             state=state.action,
             epsilon_greedy=1.0,
-            eps_greedy_sampling=True)
+            eps_greedy_sampling=True,
+            rollout=True)
 
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(
@@ -718,6 +736,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: SacInfo):
+        self._training_started = True
+
         (action_distribution, action, critics,
          action_state) = self._predict_action(
              inputs.observation, state=state.action)
@@ -780,9 +800,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 else:
                     alf.summary.scalar("alpha", self._log_alpha.exp())
 
+        if self._reproduce_locomotion:
+            policy_l = math_ops.add_ignore_empty(actor_loss.loss, alpha_loss)
+            policy_mask = torch.ones_like(policy_l)
+            policy_mask[0, :] = 0.
+            critic_l = critic_loss.loss
+            critic_mask = torch.ones_like(critic_l)
+            critic_mask[-1, :] = 0.
+            loss = critic_l * critic_mask + policy_l * policy_mask
+        else:
+            loss = math_ops.add_ignore_empty(actor_loss.loss,
+                                             critic_loss.loss + alpha_loss)
+
         return LossInfo(
-            loss=math_ops.add_ignore_empty(actor_loss.loss,
-                                           critic_loss.loss + alpha_loss),
+            loss=loss,
             priority=critic_loss.priority,
             extra=SacLossInfo(
                 actor=actor_loss.extra,
