@@ -30,8 +30,13 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo",
-    ["env_ids", "positions", "importance_weights", "replay_buffer"],
+    "BatchInfo", [
+        "env_ids",
+        "positions",
+        "importance_weights",
+        "replay_buffer",
+        "discounted_return",
+    ],
     default_value=())
 
 
@@ -61,6 +66,10 @@ class ReplayBuffer(RingBuffer):
                  device="cpu",
                  allow_multiprocess=False,
                  keep_episodic_info=None,
+                 record_episodic_return=False,
+                 default_return=-1000.,
+                 gamma=.99,
+                 reward_clip=None,
                  enable_checkpoint=False,
                  name="ReplayBuffer"):
         """
@@ -90,6 +99,16 @@ class ReplayBuffer(RingBuffer):
             allow_multiprocess (bool): whether multiprocessing is supported.
             keep_episodic_info (bool): index episode start and ending positions.
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
+            record_episodic_return (bool): If True, computes and stores episodic return for
+                every step in the episode upon episode completion.  The field
+                ``discounted_return'' stores the information.  When episodes are
+                incomplete, all steps get the ``default_return''.  Assumes
+                ``keep_episodic_info'' to be True.
+            default_return (float): The default values of ``discounted_return''
+                when the episode has not ended.  It should be a very small value for
+                value target lower bounding.
+            gamma (float): The value of discount used to compute ``discounted_return''.
+            reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
         """
@@ -115,6 +134,12 @@ class ReplayBuffer(RingBuffer):
             self._initial_priority = torch.tensor(
                 initial_priority, dtype=torch.float32, device=device)
         self._keep_episodic_info = keep_episodic_info
+        self._record_episodic_return = record_episodic_return
+        if record_episodic_return:
+            assert keep_episodic_info
+        self._default_return = default_return
+        self._gamma = gamma
+        self._reward_clip = reward_clip
         self._recent_data_steps = recent_data_steps
         self._recent_data_ratio = recent_data_ratio
         self._with_replacement = with_replacement
@@ -138,6 +163,12 @@ class ReplayBuffer(RingBuffer):
             self.register_buffer(
                 "_headless_indexed_pos",
                 torch.zeros(self._num_envs, dtype=torch.int64, device=device))
+            if self._record_episodic_return:
+                self.register_buffer(
+                    "_episodic_discounted_return",
+                    torch.ones((self._num_envs, self._max_length),
+                               dtype=torch.float32,
+                               device=device) * self._default_return)
         checkpoint_utils.enable_checkpoint(self, enable_checkpoint)
 
     @property
@@ -291,6 +322,11 @@ class ReplayBuffer(RingBuffer):
                 self._indexed_pos[(env_ids[epi_first],
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
+                epi_last, = torch.where(step_types == ds.StepType.LAST)
+                # Backfill episodic returns for episodes which ended
+                self._compute_store_episodic_return(env_ids[epi_last])
+                # Populate default values for steps which did not end, and also LAST steps
+                self._set_default_return(env_ids)
 
     @atomic
     @torch.no_grad()
@@ -465,6 +501,49 @@ class ReplayBuffer(RingBuffer):
         # type promtion and will generate float indices if `/` is used.
         return ((self._current_pos[env_ids] - x - 1) //
                 self._max_length) * self._max_length + x
+
+    def _set_default_return(self, env_ids):
+        mask = torch.ones_like(env_ids, dtype=torch.bool)
+        if torch.any(mask):
+            current_pos = self._current_pos[env_ids]
+            current_pos -= 1
+            ind = (env_ids[mask], self.circular(current_pos[mask]))
+            self._episodic_discounted_return[ind] = self._default_return
+
+    def _compute_store_episodic_return(self, env_ids, discount):
+        # Always pass in env_ids whose step_type is LAST, to save computation.
+        # overall mask
+        mask = torch.ones_like(env_ids, dtype=torch.bool)
+        # mask that shrinks as we are done with some env_ids
+        discounted_return = torch.zeros_like(env_ids, dtype=torch.float32)
+        if torch.any(mask):
+            mask &= discount == 0
+            env_ids = env_ids[mask]
+            current_pos = self._current_pos[env_ids]
+            current_pos -= 1
+            # Only store episodic return when game ends, not ending with timelimit.
+        while torch.any(mask):
+            # accumulate return
+            r = self._buffer.reward[(env_ids, self.circular(current_pos))]
+            if self._reward_clip:
+                r = torch.clamp(r, *self._reward_clip)
+            discounted_return[mask] = r + self._gamma * discounted_return[mask]
+            # point to previous step
+            current_pos -= 1
+            # make sure it's not underflowing
+            valid = current_pos >= self._current_size[
+                env_ids] - self._max_length
+            ind = (env_ids[valid], self.circular(current_pos[valid]))
+            # save to buffer
+            if torch.any(valid):
+                self._episodic_discounted_return[ind] = discounted_return[
+                    mask][valid]
+            # remove env_ids that are already done
+            step_type = self._buffer.step_type[(env_ids,
+                                                self.circular(current_pos))]
+            valid &= step_type != ds.StepType.FIRST
+            env_ids, current_pos = env_ids[valid], current_pos[valid]
+            mask[mask.clone()] &= valid
 
     def _store_episode_end_pos(self, non_first, pos, env_ids):
         """Update _indexed_pos and _headless_indexed_pos for episode end pos.
