@@ -270,6 +270,54 @@ class TruncatedNormal(TruncatedDistribution):
         super().__init__(loc, scale, lower_bound, upper_bound, NormalITS())
 
 
+@td.kl.register_kl(TruncatedNormal, TruncatedNormal)
+def _kl_truncated_normal_trucated_normal(p, q):
+    """Registered KL Divergence computation specialized for TruncatedNormal
+
+    It is closed form w.r.t. torch.erf.
+
+    """
+    assert torch.all(
+        torch.logical_and(
+            torch.isclose(p.lower_bound, q.lower_bound),
+            torch.isclose(p.upper_bound, q.upper_bound)))
+
+    delta = (p.loc - q.loc)
+    delta2 = delta * delta
+
+    sigma_p2 = p.scale * p.scale
+    # Pad sigma_q2 as it is positive will only be served as denominator
+    sigma_q2 = q.scale * q.scale + 1e-30
+
+    c1 = 0.5 * (torch.log(q.scale) - torch.log(p.scale)) + 0.25 * (
+        delta2 + sigma_p2) / sigma_q2 - 0.25
+
+    # 1 / sqrt(2 pi) = 0.3989422804014327
+    c2 = -0.3989422804014327 * p.scale * delta / sigma_q2
+
+    # 0.5 / sqrt(pi) = 0.28209479177387814
+    c3 = (1.0 - sigma_p2 / sigma_q2) * 0.28209479177387814
+
+    # sqrt(0.5) = 0.7071067811865475
+    t_u = (p.upper_bound - p.loc) * 0.7071067811865475 / (p.scale + 1e-30)
+    t_l = (p.lower_bound - p.loc) * 0.7071067811865475 / (p.scale + 1e-30)
+
+    upper = c1 * torch.erf(t_u) + (c3 * t_u + c2) * torch.exp(-t_u * t_u)
+    lower = c1 * torch.erf(t_l) + (c3 * t_l + c2) * torch.exp(-t_l * t_l)
+
+    # At this moment, before_normalization holds the integral part of
+    # original gaussian (but both p and q are not normalized by area_p
+    # and area_q respectively). This will be handled below.
+    before_normalization = upper - lower
+
+    # Pad area_p as it is positive will only be served as denominator
+    area_p = p._cdf_ub - p._cdf_lb + 1e-30
+    area_q = q._cdf_ub - q._cdf_lb
+
+    return (torch.log(area_q / area_p) + before_normalization / area_p).sum(
+        dim=-1)
+
+
 class TruncatedCauchy(TruncatedDistribution):
     r"""Truncated Cauchy distribution.
 
