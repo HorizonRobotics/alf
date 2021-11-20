@@ -2155,6 +2155,65 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
+@alf.configurable(whitelist=['with_batch_normalization', 'bn_ctor'])
+class ResidueBlock(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 channels,
+                 kernel_size,
+                 stride,
+                 transpose=False,
+                 with_batch_normalization=True,
+                 bn_ctor=nn.BatchNorm2d):
+        super().__init__()
+
+        conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
+        bias = not with_batch_normalization
+        relu = nn.ReLU(inplace=True)
+        padding = (kernel_size - 1) // 2
+
+        conv1 = conv_fn(
+            in_channels,
+            channels,
+            kernel_size,
+            stride,
+            padding=padding,
+            bias=bias)
+        conv2 = conv_fn(
+            channels, channels, kernel_size, padding=padding, bias=bias)
+        nn.init.kaiming_normal_(conv1.weight.data)
+        nn.init.kaiming_normal_(conv2.weight.data)
+
+        if stride != 1 or in_channels != channels:
+            s = conv_fn(in_channels, channels, 1, stride, bias=bias)
+            nn.init.kaiming_normal_(s.weight.data)
+            if bias:
+                nn.init.zeros_(s.bias.data)
+            if with_batch_normalization:
+                shortcut_layers = nn.Sequential(s, bn_ctor(channels))
+            else:
+                shortcut_layers = s
+        else:
+            shortcut_layers = None
+
+        if with_batch_normalization:
+            core_layers = nn.Sequential(conv1, bn_ctor(channels), relu, conv2,
+                                        bn_ctor(channels))
+        else:
+            core_layers = nn.Sequential(conv1, relu, conv2)
+        self._core_layers = core_layers
+        self._shortcut_layers = shortcut_layers
+
+    def forward(self, inputs):
+        core = self._core_layers(inputs)
+        if self._shortcut_layers:
+            shortcut = self._shortcut_layers(inputs)
+        else:
+            shortcut = inputs
+
+        return torch.relu_(core + shortcut)
+
+
 @alf.configurable(whitelist=['v1_5', 'with_batch_normalization', 'bn_ctor'])
 class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
@@ -2201,7 +2260,7 @@ class BottleneckBlock(nn.Module):
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
 
-        bias = not with_batch_normalization or keep_conv_bias
+        bias = not with_batch_normalization
 
         padding = (kernel_size - 1) // 2
         if v1_5:
