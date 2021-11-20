@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import math
 
 import torch
@@ -19,6 +20,15 @@ import torch.nn as nn
 
 import alf
 import alf.utils.math_ops as math_ops
+
+
+def _is_elementwise_op(op):
+    """Check whether ``op`` is an elementwise operation."""
+    x = torch.randn(10, 20)
+    x1 = x.clone()
+    y = op(x)
+    y1 = op(x1.reshape(-1)).reshape(10, 20)
+    return (y == y1).all()
 
 
 @alf.configurable
@@ -41,6 +51,13 @@ def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
     Returns:
         float: a gain factor that will be applied to the init weights.
     """
+    if not _is_elementwise_op(nonlinearity):
+        logging.warning(
+            "It seems that nonlinearity (%s) is not an elementwise operation."
+            "Calculating the gain of non-elementwise op is not supported. "
+            "Will use 1 as its gain" % str(nonlinearity))
+        return 1.
+
     dist = torch.distributions.normal.Normal(0, 1)
     z = torch.arange(-r, r, dz)
     # `nonlinearity` might be an inplace op, need to use `z` before applying
