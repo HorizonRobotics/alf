@@ -132,10 +132,12 @@ class AverageEpisodicSumMetric(metric.StepMetric):
     """A base metric to sum up quantities over an episode. It supports accumulating
     a nest of scalar values.
 
-    NOTE: normally this class report metrics by summing values over the whole
-    episode. However, if a metric is named with a postfix of "@step", the value
-    will be modified by averaging it over the whole episode length, so that a
-    per-step average value is reported.
+    NOTE: normally this class and its sub-classes report metrics by summing values
+    over the whole episode. However, there is a special treatment: if
+    ``_extract_metric_values()`` returns a nested structure in which a dictionary or
+    namedtuple has a field with postfix "@step", the corresponding value will be
+    averaged instead of summed over the whole episode length, so that a per-step
+    average value is reported.
 
     """
 

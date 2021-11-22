@@ -17,7 +17,8 @@ import torch
 import alf
 from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
                          AverageReturnMetric, AverageDiscountedReturnMetric,
-                         AverageEpisodeLengthMetric, AverageEnvInfoMetric)
+                         AverageEpisodeLengthMetric, AverageEnvInfoMetric,
+                         AverageEpisodicSumMetric)
 from alf.utils.tensor_utils import to_tensor
 from alf.data_structures import TimeStep, StepType
 
@@ -43,6 +44,44 @@ def timestep_mid(reward, env_id, env_info):
 
 def timestep_last(reward, env_id, env_info):
     return _create_timestep(reward, env_id, [StepType.LAST] * 2, env_info)
+
+
+class AverageDrivingMetric(AverageEpisodicSumMetric):
+    """Metrics for computing the average velocity and accelration.
+
+    This is purely for the purpose of unit testing the "@step" feature. It
+    assumes the time step has velocity, acceleration and "success or not"logged
+    in its ``env_info`` field.
+
+    """
+
+    def __init__(self,
+                 name='AverageDrivingMetric',
+                 prefix='Metrics',
+                 dtype=torch.float32,
+                 batch_size=1,
+                 buffer_size=10):
+        super().__init__(
+            name=name,
+            dtype=dtype,
+            prefix=prefix,
+            batch_size=batch_size,
+            buffer_size=buffer_size,
+            example_metric_value={
+                'velocity@step': 1.0,
+                'acceleration@step': 0.1,
+                'success': 0.0
+            })
+
+    def _extract_metric_values(self, time_step):
+        return {
+            'velocity@step':
+                time_step.env_info['kinetics']['velocity'],
+            'acceleration@step':
+                time_step.env_info['kinetics']['acceleration'],
+            'success':
+                time_step.env_info['success']
+        }
 
 
 class THMetricsTest(parameterized.TestCase, unittest.TestCase):
@@ -124,15 +163,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                              metric.result())
 
     def test_average_per_step(self):
-        metric = AverageEnvInfoMetric(
-            batch_size=2,
-            example_env_info={
-                'kinetics': {
-                    'velocity@step': 1.2,
-                    'acceleration@step': -0.5,
-                },
-                'success': 1.0
-            })
+        metric = AverageDrivingMetric(batch_size=2)
+
         trajectories = []
         trajectories.append(
             timestep_first(
@@ -140,8 +172,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'kinetics': {
-                        'velocity@step': to_tensor([4.0, 0.0]),
-                        'acceleration@step': to_tensor([1.0, 0.0]),
+                        'velocity': to_tensor([4.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
                     },
                     'success': to_tensor([0.0, 0.0])
                 }))
@@ -151,8 +183,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'kinetics': {
-                        'velocity@step': to_tensor([4.0, 0.0]),
-                        'acceleration@step': to_tensor([1.0, 0.0]),
+                        'velocity': to_tensor([4.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
                     },
                     'success': to_tensor([0.0, 0.0])
                 }))
@@ -162,8 +194,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'kinetics': {
-                        'velocity@step': to_tensor([5.0, 0.0]),
-                        'acceleration@step': to_tensor([1.0, 0.0]),
+                        'velocity': to_tensor([5.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
                     },
                     'success': to_tensor([0.0, 0.0])
                 }))
@@ -173,8 +205,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'kinetics': {
-                        'velocity@step': to_tensor([6.0, 0.0]),
-                        'acceleration@step': to_tensor([1.0, 0.0]),
+                        'velocity': to_tensor([6.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
                     },
                     'success': to_tensor([1.0, 0.0])
                 }))
@@ -183,14 +215,12 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
 
         self.assertEqual(
             {
-                'kinetics': {
-                    # Sum is 15.0, divided by 3 (episode length) and 2
-                    # (batch size) = 2.5
-                    'velocity@step': torch.as_tensor(2.5000),
-                    # Sum is 3.0, divided by 3 (episode length) and 2
-                    # (batch size) = 0.5
-                    'acceleration@step': torch.as_tensor(0.5000)
-                },
+                # Sum is 15.0, divided by 3 (episode length) and 2 (batch size)
+                # = 2.5
+                'velocity@step': torch.as_tensor(2.5000),
+                # Sum is 3.0, divided by 3 (episode length) and 2
+                # (batch size) = 0.5
+                'acceleration@step': torch.as_tensor(0.5000),
                 # Sum is 1.0, divided by 2 (batch size) = 0.5
                 'success': torch.as_tensor(0.5000)
             },
