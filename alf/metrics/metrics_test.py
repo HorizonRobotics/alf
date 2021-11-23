@@ -18,7 +18,7 @@ import alf
 from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
                          AverageReturnMetric, AverageDiscountedReturnMetric,
                          AverageEpisodeLengthMetric, AverageEnvInfoMetric,
-                         AverageEpisodicSumMetric)
+                         AverageEpisodicAggregationMetric)
 from alf.utils.tensor_utils import to_tensor
 from alf.data_structures import TimeStep, StepType
 
@@ -46,7 +46,7 @@ def timestep_last(reward, env_id, env_info):
     return _create_timestep(reward, env_id, [StepType.LAST] * 2, env_info)
 
 
-class AverageDrivingMetric(AverageEpisodicSumMetric):
+class AverageDrivingMetric(AverageEpisodicAggregationMetric):
     """Metrics for computing the average velocity and accelration.
 
     This is purely for the purpose of unit testing the "@step" feature. It

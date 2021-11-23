@@ -128,8 +128,8 @@ class NumberOfEpisodes(metric.StepMetric):
         self._number_episodes.fill_(0)
 
 
-class AverageEpisodicSumMetric(metric.StepMetric):
-    """A base metric to sum up quantities over an episode. It supports accumulating
+class AverageEpisodicAggregationMetric(metric.StepMetric):
+    """A base metric to aggregate quantities over an episode. It supports accumulating
     a nest of scalar values.
 
     NOTE: normally this class and its sub-classes report metrics by summing values
@@ -142,7 +142,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
     """
 
     def __init__(self,
-                 name="AverageEpisodicSumMetric",
+                 name="AverageEpisodicAggregationMetric",
                  prefix='Metrics',
                  dtype=torch.float32,
                  batch_size=1,
@@ -160,7 +160,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
             example_metric_value (nest): an example of metric value to be summarized;
                 if ``None``, a zero scalar is used.
         """
-        super(AverageEpisodicSumMetric, self).__init__(
+        super(AverageEpisodicAggregationMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
         if example_metric_value is None:
             example_metric_value = torch.zeros((), device='cpu')
@@ -267,7 +267,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         alf.nest.map_structure(lambda acc: acc.fill_(0), self._accumulator)
 
 
-class AverageReturnMetric(AverageEpisodicSumMetric):
+class AverageReturnMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average return."""
 
     def __init__(self,
@@ -303,7 +303,7 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
 
 
 @alf.configurable
-class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
+class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average discounted episodic return.
     It is calculated according to the following formula:
 
@@ -402,7 +402,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
             last_episode_indices]
 
 
-class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):
+class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average episode length."""
 
     def __init__(self,
@@ -428,7 +428,7 @@ class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):
                            torch.ones_like(time_step.step_type))
 
 
-class AverageEnvInfoMetric(AverageEpisodicSumMetric):
+class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
     """Metric for computing average quantities contained in the environment info.
     An example of env info (which can be a nest) has to be provided when constructing
     an instance in order to initialize the accumulator and buffer with the same
