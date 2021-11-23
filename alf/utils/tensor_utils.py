@@ -115,7 +115,7 @@ def tensor_prepend_zero(x):
     return torch.cat((torch.zeros(1, *x.shape[1:], dtype=x.dtype), x))
 
 
-def explained_variance(ypred, y, valid_mask=None):
+def explained_variance(ypred, y, valid_mask=None, dim=None):
     """Computes fraction of variance that ypred explains about y.
 
     Adapted from baselines.ppo2 explained_variance()
@@ -130,23 +130,32 @@ def explained_variance(ypred, y, valid_mask=None):
         ypred (Tensor): prediction for y
         y (Tensor): target
         valid_mask (Tensor): an optional
+        dim (None|int): the dimension to reduce. If not provided, the explained
+            variance is calculated for dimensitions.
     Returns:
         1 - Var[y-ypred] / Var[y]
     """
+    if dim is None:
+        if valid_mask is not None:
+            valid_mask = valid_mask.reshape(-1)
+        return explained_variance(
+            ypred.reshape(-1), y.reshape(-1), valid_mask, dim=0)
+
     if valid_mask is not None:
-        n = torch.max(valid_mask.sum().to(y.dtype),
-                      torch.tensor(1, dtype=y.dtype))
+        n = torch.max(
+            valid_mask.sum(dim=dim).to(y.dtype), torch.tensor(
+                1, dtype=y.dtype))
     else:
-        n = np.prod(y.shape)
+        n = y.shape[dim]
 
     def _var(x):
         if valid_mask is not None:
             x = x * valid_mask
-        mean = x.sum() / n
+        mean = x.sum(dim=dim, keepdims=True) / n
         x2 = (x - mean)**2
         if valid_mask is not None:
             x2 = x2 * valid_mask
-        var = x2.sum() / n
+        var = x2.sum(dim=dim) / n
         return var
 
     vary = _var(y)
@@ -253,7 +262,7 @@ def clip_by_global_norm(tensors, clip_norm, use_norm=None, in_place=False):
     assert clip_norm.ndim == 0, "clip_norm must be a scalar!"
     assert clip_norm > 0, "clip_norm must be positive!"
 
-    scale = clip_norm / torch.max(clip_norm, use_norm)
+    scale = clip_norm / use_norm
 
     def _clip(tensor):
         if tensor is not None:
@@ -344,6 +353,8 @@ def scale_gradient(tensor, scale, clone_input=True):
     Returns:
         The (cloned) tensor with gradient scaling hook registered.
     """
+    if not tensor.requires_grad:
+        return tensor
     if clone_input:
         output = tensor.clone()
     else:
