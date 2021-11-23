@@ -655,6 +655,8 @@ def plot(env, her, train, curves):
         "ddpg": "",  # baseline
         "her": "",  # baseline
         "td3": "",  # baseline
+        "tdl": "-loss_at_TDLoss-tdlambda_0.95-batlen_3",
+        "retrace": "-loss_at_TDLoss-tdlambda_0.95-retrace-batlen_3",
         "gdist": "-gdist",
         "lbtq": "-lbtq",
         "lbtqgdist": "-lbtq-gdist"
@@ -665,9 +667,11 @@ def plot(env, her, train, curves):
         "td3": "td3",
         "sac": "sac",
         "her": "her",
-        "lbtq": "lb-DR",
-        "gdist": "lb-GD",
-        "lbtqgdist": "lb-DR+GD"
+        "tdl": "td-lambda",
+        "retrace": "retrace",
+        "lbtq": "lb-DR (ours)",
+        "gdist": "lb-GD (ours)",
+        "lbtqgdist": "lb-DR+GD (ours)"
     }
     task_map = {
         "PioneerPush": "pushst",
@@ -679,17 +683,17 @@ def plot(env, her, train, curves):
         methods = ["lbtqgdist", "gdist", "her"]
     else:
         if env == "atari":
-            methods = ["lbtq", "sac"]
+            methods = ["lbtq", "sac"]  # , "tdl", "retrace"
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
         elif env == "fetch":
-            methods = ["lbtq", "ddpg"]
+            methods = ["lbtq", "ddpg"]  # , "tdl"
         else:
             methods = ["lbtq", "td3"]
 
     if env == "fetch":
         critic_num = 0
-        tasks = ["FetchPush", "FetchSlide", "FetchPickPlace"]
+        tasks = ["FetchPush", "FetchPickPlace", "FetchSlide"]
         if curves == "return":
             total_steps = 2000000
             task_y_range = {t: (-50, 0) for t in tasks}
@@ -724,30 +728,54 @@ def plot(env, her, train, curves):
                     "PioneerPush": (-80, 0),
                     "PioneerPushReach": (-100, 0)
                 }
-            else:
+            else:  # drgt
                 task_y_range = {t: (0, 0.1) for t in tasks}
         cluster_str = ""
     elif env == "atari":
         critic_num = 1
-        tasks = ["Breakout", "Seaquest", "SpaceInvaders"]
-        total_steps = 12000000
+        tasks = [
+            "Atlantis", "Frostbite", "Qbert", "Breakout", "Seaquest",
+            "SpaceInvaders"
+        ]
+        total_steps = 0
+        task_total_steps = {
+            "Breakout": 12000000,
+            "Seaquest": 12000000,
+            "SpaceInvaders": 12000000,
+            "Atlantis": 6000000,
+            "Frostbite": 12000000,
+            "Qbert": 12000000
+        }
         if curves == "return":
             task_y_range = {
                 "Breakout": (0, 400),
                 "Seaquest": (0, 5000),
-                "SpaceInvaders": (0, 1200)
+                "SpaceInvaders": (0, 1200),
+                "Atlantis": (0, 180000),
+                "Frostbite": (0, 3500),
+                "Qbert": (0, 16000),
             }
         else:
-            total_steps = 50000
+            total_steps = 0
+            task_total_steps = {
+                "Breakout": 50000,
+                "Seaquest": 50000,
+                "SpaceInvaders": 50000,
+                "Atlantis": 25000,
+                "Frostbite": 50000,
+                "Qbert": 50000
+            }
             if curves == "value":
                 task_y_range = {
                     "Breakout": (0, 50),
-                    "Seaquest": (0, 12),
-                    "SpaceInvaders": (0, 8)
+                    "Seaquest": (0, 250),  # 12
+                    "SpaceInvaders": (0, 100),  # 8
+                    "Atlantis": (0, 6),  # 3000 for rawreward
+                    "Frostbite": (0, 28),  # 350
+                    "Qbert": (0, 24),  # 250
                 }
-            else:
-                task_y_range = {t: (0, 1.0) for t in tasks}
-                task_y_range["Breakout"] = (0, 0.35)
+            else:  # drgt
+                task_y_range = {t: (0, .3) for t in tasks}
         cluster_str = "/tboardlog"
     elif env == "atariac":
         critic_num = 1
@@ -789,23 +817,27 @@ def plot(env, her, train, curves):
         mstr = mstr_map[m]
         bstr = "her" if her else "ddpg"
         if env == "fetch":
-            n = "%s%s%s-sparserwd-posrwd_0-succsince_0-sd_" % (bstr, t.lower(),
-                                                               mstr)
+            rblen = ""
+            if m in ["tdl", "retrace"]:
+                rblen = "-rblen_10000"
+            n = "%s%s%s-sparserwd-posrwd_0-succsince_0%s-sd_" % (
+                bstr, t.lower(), mstr, rblen)
         elif env == "pioneer":
             n = "%s%s%s-curri_0-randrange_1-lr_0.001-crirep_2-herk_0.5-endsucc-sparserwd-posrwd_0-mdimr_0-hitpenal_0-randagentpp-it_5000" % (
                 bstr, task_map[t], mstr)
         elif env in ["atari", "atariac"]:
             assert not her
-            if mstr == "-lbtq" and t == "Breakout":
-                upit = "-upit_8-batsz_250-sactargupdt_20-rblen_33333-rbrecsteps_10000-rbrecratio_0.8"
+            if mstr == "-lbtq":
+                if t in ["Breakout", "Seaquest", "SpaceInvaders"]:
+                    mstr = "r-lbtq"
+                upit = "-upit_8-batsz_250"
             else:
-                if mstr == "-lbtq":
-                    mstr += "_0.0005"
-                upit = "-upit_4-batsz_500-sactargupdt_20-rblen_33333"
-                if t == "Breakout":
-                    upit += "-rbrecsteps_10000-rbrecratio_0.8"
-            n = "sacbreakout%s-envn_%sNoFrameskip--v4*-lr_0.0005-epsgrdy_0.05%s-evit_1000-evepi_100-sd_3" % (
+                upit = "-upit_4-batsz_500"
+            n = "sacbreakout%s-envn_%sNoFrameskip--v4%s-evit_1000-evepi_100-sd_3" % (
                 mstr, t, upit)
+            if m in ["tdl", "retrace"]:
+                assert t == "Breakout"
+                n = "sacbreakout%s%s-evit_1000-evepi_100-sd_3" % (mstr, upit)
             if m == "ac":
                 n = "acbreakout-envstps_12000000-evepi_100-sd_3"
         return n
@@ -851,7 +883,7 @@ def plot(env, her, train, curves):
                     t=t,
                     m=m)),
             np.arange(0, total_steps or task_total_steps[t], plot_interval),
-            name="%s_%s" % (method_tag[m], t),
+            name="%s" % (method_tag[m]),
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
 
