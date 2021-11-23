@@ -96,8 +96,7 @@ def create_environment(env_name='CartPole-v0',
                 env_name, batch_size=num_parallel_environments)
     elif nonparallel:
         # Each time we can only create one unwrapped env at most
-
-        if hasattr(env_load_fn, 'no_thread_env') and env_load_fn.no_thread_env:
+        if getattr(env_load_fn, 'no_thread_env', False):
             # In this case the environment is marked as "not compatible with
             # thread environment", and we will create it in the main thread.
             # BatchedTensorWrapper is applied to make sure the I/O is batched
