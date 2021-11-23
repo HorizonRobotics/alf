@@ -23,7 +23,7 @@ import alf
 from alf import TensorSpec
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.utils import dist_utils
+from alf.utils import dist_utils, summary_utils
 from alf import nest
 from alf.trainers.policy_trainer import Trainer
 from alf.utils import common, tensor_utils
@@ -33,7 +33,8 @@ MAXIMUM_FLOAT_VALUE = float('inf')
 
 
 class _MCTSTrees(object):
-    def __init__(self, num_expansions, model_output, known_value_bounds):
+    def __init__(self, num_expansions, model_output, known_value_bounds,
+                 num_best_children):
         batch_size, branch_factor = model_output.action_probs.shape
         action_spec = dist_utils.extract_spec(model_output.actions, from_dim=2)
         state_spec = dist_utils.extract_spec(model_output.state, from_dim=1)
@@ -92,8 +93,12 @@ class _MCTSTrees(object):
         if isinstance(model_output.game_over, torch.Tensor):
             self.game_over = torch.zeros(parent_shape, dtype=torch.bool)
 
+        shape = ()
+        if num_best_children > 1:
+            shape = (num_best_children, )
         # value in range [0, branch_factor)
-        self.best_child_index = torch.zeros(parent_shape, dtype=torch.int64)
+        self.best_child_index = torch.zeros(
+            parent_shape + shape, dtype=torch.int64)
         self.ucb_score = torch.zeros(children_shape)
 
     def update_value_stats(self, nodes, valid=None):
@@ -101,7 +106,7 @@ class _MCTSTrees(object):
 
         Only valid values are used to update the stats.
         We maintain separate stats for each tree.
-        The shapes of ``nodes`` and ``valid`` are [T, B].
+        The shapes of ``nodes`` and ``valid`` are [T, B] or [T, B, psims].
         """
         if self.fixed_bounds:
             return
@@ -109,10 +114,15 @@ class _MCTSTrees(object):
         if valid is not None:
             invalid = ~valid
             values[invalid] = -MAXIMUM_FLOAT_VALUE
-        self.maximum = torch.max(self.maximum, values.max(dim=0)[0])
+        max = values.max(dim=0)[0]
         if valid is not None:
             values[invalid] = MAXIMUM_FLOAT_VALUE
-        self.minimum = torch.min(self.minimum, values.min(dim=0)[0])
+        min = values.min(dim=0)[0]
+        if values.ndim == 3:
+            max = max.max(dim=1)[0]
+            min = min.min(dim=1)[0]
+        self.maximum = torch.max(self.maximum, max)
+        self.minimum = torch.min(self.minimum, min)
 
         # We normalize only when we have set the maximum and minimum values.
         normalize = self.maximum > self.minimum
@@ -136,10 +146,6 @@ class _MCTSTrees(object):
         """
         children = self.children_index[parents]
         return (parents[0].unsqueeze(1), children)
-
-
-def _nest_slice(nested, i):
-    return nest.map_structure(lambda x: x[i], nested)
 
 
 MCTSState = namedtuple("MCTSState", ["steps"])
@@ -194,6 +200,32 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     2. `Hubert et. al. Learning and Planning in Complex Action Spaces
     <https://arxiv.org/abs/2104.06303>`_
       It is enabled when SimpleMCTSModel.num_sampled_actions is set.
+
+    The time spent on tree search is directly related to how many times the tree
+    is expanded. To make it faster, we also support expanding multiple
+    leaves simulaneously. In order to do this, we maintain num_parallel_sims best
+    children for each node in the tree and use them to contruct k=num_paralilel_sims
+    paths. Note the k best children may have duplicates, which is desired because
+    we want to expand the most promising path more often. Depending the value of
+    ``search_with_exploration_policy``, this process is slightly different:
+
+    * search_with_exploration_policy=True. The k best_children of each node are
+      simply chosen by independently sampling the exploration policy k times.
+      When contructing the search paths, the i-th search path is based on the
+      i-th best child of each node.
+
+    * search_with_exploration_policy=False. The best child is same the case k=1.
+      The second best child is found by assuming the visit count of the best
+      child and the parent are increased by 1 and applying the UCB criterion
+      again. This is repeated k times to get k best children. Note that this is
+      different from directly selecting the best k childrens based on the original
+      UCB scores. The reason of not doing that is that if the highest score is
+      much bigger than the second highest score, we want to both paths to select
+      the same child. During the process of traversing from the root to contruct
+      k search paths, if several (let's say k') paths are exactly same so far,
+      we will use best k' children of the last node of these k' paths to extend
+      the paths so that The k' children (may contains duplicates) being selected to
+      extend these k' paths are most promising according to the UCB scores.
     """
 
     def __init__(
@@ -208,6 +240,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discount: float,
             is_two_player_game: bool,
             visit_softmax_temperature_fn: Callable,
+            learn_policy_temperature=1.0,
             reward_spec=TensorSpec(()),
             expand_all_children: bool = False,
             expand_all_root_children: bool = False,
@@ -216,6 +249,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             act_with_exploration_policy=False,
             search_with_exploration_policy=False,
             learn_with_exploration_policy=False,
+            max_unroll_length=1000000,
+            num_parallel_sims=1,
             debug_summaries=False,
             name="MCTSAlgorithm",
     ):
@@ -253,6 +288,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 where ``steps`` is a vector representing the number of steps in
                 the games. And it is expected to return a float vector of the same
                 shape as ``steps``.
+            learn_policy_temperature (float): transform the policy p found by
+                MCTS by :math:`p^{1/learn_policy_temperature} / Z` as policy
+                target for model learning, where Z is a normalization factor so
+                that the resulting probabilities sum to one.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             expand_all_children (bool): If True, when a new leaf is selected, immediately
@@ -280,7 +319,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 using reverse KL divergence will be used for tree search.
             learn_with_exploration_policy (bool): If True, a policy calculated
                 using reverse KL divergence will be used for learning.
-            name (str): name of this algorithm
+            max_unroll_length (int): maximal allowed unroll steps when building
+                the search tree. If ``expand_all_children`` is False, the maximal
+                allowed tree depth will be ``max_unroll_length``. Otherwise, the
+                maximal allowed tree depth will be ``max_unroll_length-1``
+            num_parallel_sims (int): expanding so many leaves at a time for one
+                tree. ``num_simulations`` must be divisable by ``num_parallel_sims``.
+            name (str): the name of the algorithm.
         """
         assert not nest.is_nested(
             action_spec), "nested action_spec is not supported"
@@ -295,8 +340,24 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._root_dirichlet_alpha = root_dirichlet_alpha
         self._root_exploration_fraction = root_exploration_fraction
         self._visit_softmax_temperature_fn = visit_softmax_temperature_fn
+        self._learn_policy_temperature = learn_policy_temperature
         self._expand_all_children = expand_all_children
         self._expand_all_root_children = expand_all_root_children
+        self._num_parallel_sims = num_parallel_sims
+        self._parallel = num_parallel_sims > 1
+        if expand_all_children:
+            self._max_allowed_depth = max_unroll_length - 1
+        else:
+            self._max_allowed_depth = max_unroll_length
+
+        assert not expand_all_children or num_parallel_sims == 1, (
+            "num_parallel_sim > 1 is not supported when expand_all_children=True"
+        )
+
+        assert num_simulations % num_parallel_sims == 0, (
+            "num_simulations must "
+            "be divided by num_parallel_sims. Got %s and %s" %
+            (self._num_simulations, num_parallel_sims))
 
         if (expand_all_children or expand_all_root_children) and not (
                 learn_with_exploration_policy and act_with_exploration_policy):
@@ -372,13 +433,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             tree_size = self._num_simulations + 1
 
-        trees = _MCTSTrees(tree_size, model_output, self._known_value_bounds)
+        trees = _MCTSTrees(tree_size, model_output, self._known_value_bounds,
+                           self._num_parallel_sims)
         if self._is_two_player_game and to_plays is None:
             # We may need the environment to pass to_play and pass to_play to
             # model because players may not always alternate in some game.
             # And for many games, it is not always obvious to determine which
             # player is in the current turn by looking at the board.
             to_plays = steps % 2
+        self._max_policy_iterations = 0
         roots = (trees.B, trees.root_indices)
         self._expand_node(
             trees,
@@ -402,7 +465,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             output=action, state=MCTSState(steps=state.steps + 1), info=info)
 
     def _build_tree1(self, trees, to_plays):
-        """Build the tree by evaluating one node a time"""
+        """Build the tree by evaluating one node a time."""
         roots = (trees.B, trees.root_indices)
         sim0 = 1
         if self._expand_all_root_children:
@@ -420,34 +483,109 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             self._update_best_child(trees, roots)
 
-        for sim in range(sim0, self._num_simulations + sim0):
+        psims = self._num_parallel_sims
+        parallel = self._parallel
+        B = trees.B
+        if parallel:
+            B = B.unsqueeze(-1)
+            i = (torch.arange(psims), )
+        else:
+            i = ()
+        max_depth = torch.zeros(B.shape[0], dtype=torch.int64)
+        avg_depth = 0.
+        new_nodes = []
+        for sim in range(sim0, self._num_simulations + sim0, psims):
             search_paths, path_lengths, last_to_plays = self._search(
                 trees, to_plays)
-            prev_nodes = search_paths[path_lengths - 2, trees.B]
-            model_state = trees.model_state[trees.B, prev_nodes]
-            best_child_index = trees.best_child_index[trees.B, prev_nodes]
+            depth = path_lengths
+            if parallel:
+                depth = path_lengths.max(dim=1)[0]
+            max_depth = torch.maximum(max_depth, depth)
+            avg_depth = avg_depth + path_lengths.to(
+                torch.float32).mean() * psims
+            # [B] or [B, psims]
+            prev_nodes = search_paths[(path_lengths - 2, B) + i]
+            model_state = trees.model_state[B, prev_nodes]
+            # [B] or [B, psims]
+            best_child_index = trees.best_child_index[(B, prev_nodes) + i]
             if trees.action is None:
                 action = best_child_index
             else:
-                action = trees.action[trees.B, prev_nodes, best_child_index]
-            model_output = self._model.recurrent_inference(model_state, action)
+                action = trees.action[B, prev_nodes, best_child_index]
+            model_output = self._recurrent_inference(model_state, action)
+            if parallel:
+                sim = torch.arange(sim, sim + psims)
             self._expand_node(
                 trees, sim, to_plays=last_to_plays, model_output=model_output)
             # If a child is expanded before, use its existing node
-            child_index = trees.children_index[trees.
-                                               B, prev_nodes, best_child_index]
-            child_index[(child_index == 0) & (path_lengths > 1)] = sim
-            trees.children_index[trees.
-                                 B, prev_nodes, best_child_index] = child_index
-            search_paths[path_lengths - 1, trees.B] = child_index
+            # [B] or [B, psims]
+            child_index = trees.children_index[B, prev_nodes, best_child_index]
+            child_index = torch.where((child_index == 0) & (path_lengths > 1),
+                                      sim, child_index)
+            trees.children_index[B, prev_nodes, best_child_index] = child_index
+            # The reason of not using child_index at the rhs of the following
+            # assignment is that different search_paths may expand the same node
+            # with same action. We want those duplicated expansions point to the
+            # same node id.
+            child_index = trees.children_index[B, prev_nodes, best_child_index]
+            search_paths[(path_lengths - 1, B) + i] = child_index
+
+            new_nodes.append(child_index)
+
             self._backup(
                 trees,
                 search_paths=search_paths,
                 path_lengths=path_lengths,
                 values=model_output.value)
 
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            if not self._parallel:
+                new_nodes = [x.unsqueeze(-1) for x in new_nodes]
+                B = B.unsqueeze(-1)
+            new_nodes = torch.cat(new_nodes, dim=1)
+            node_i = B * trees.visit_count.shape[1] + new_nodes
+            unique_node_i = torch.unique(node_i[:])
+            with alf.summary.scope(self._name):
+                alf.summary.scalar("avg_tree_size",
+                                   unique_node_i.numel() / B.shape[0])
+
+        avg_depth = avg_depth / self._num_simulations
+        self._summarize(max_depth - 1, avg_depth - 1)
+
+    def _summarize(self, max_unroll_length, avg_unroll_length):
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                alf.summary.scalar("max_policy_iterations",
+                                   self._max_policy_iterations)
+                alf.summary.scalar("max_unroll_length",
+                                   max_unroll_length.max())
+                alf.summary.scalar("avg_max_unroll_length",
+                                   max_unroll_length.to(torch.float32).mean())
+                alf.summary.scalar("avg_unroll_length", avg_unroll_length)
+
+    def _recurrent_inference(self, model_state, action):
+        if not self._parallel:
+            return self._model.recurrent_inference(model_state, action)
+
+        batch_size, psims = action.shape[:2]
+
+        def _flatten(x):
+            return x.reshape(-1, *x.shape[2:])
+
+        def _reshape(x):
+            return x.reshape(batch_size, psims, *x.shape[1:])
+
+        model_state = nest.map_structure(_flatten, model_state)
+        action = _flatten(action)
+        model_output = self._model.recurrent_inference(model_state, action)
+        # reshape to [batch_size, self._num_parallel_sims, ...]
+        model_output = model_output._replace(
+            action_distribution=(), game_over_logit=())
+        model_output = nest.map_structure(_reshape, model_output)
+        return model_output
+
     def _build_tree2(self, trees, to_plays):
-        """Build the tree by evaluating all the children of one node a time"""
+        """Build the tree by evaluating all the children of one node a time."""
         # expand the root node and backup the values of the children to root.
         branch_factor = trees.branch_factor
         roots = (trees.B, trees.root_indices)
@@ -456,9 +594,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.value_sum[roots] += branch_factor * v
         self._update_best_child(trees, roots)
 
+        max_depth = torch.zeros(trees.B.shape[0], dtype=torch.int64)
+        avg_depth = 0.
         for sim in range(1, self._num_simulations + 1):
             search_paths, path_lengths, last_to_plays = self._search(
                 trees, to_plays)
+            max_depth = torch.maximum(max_depth, path_lengths)
+            avg_depth = avg_depth + path_lengths.to(torch.float32).mean()
             prev_nodes = search_paths[path_lengths - 1, trees.B]
             if trees.game_over is None:
                 values = self._expand_children(trees, (trees.B, prev_nodes),
@@ -482,12 +624,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 values=values,
                 count=branch_factor)
 
+        avg_depth = avg_depth / self._num_simulations
+        self._summarize(max_depth, avg_depth)
+
     def _print_tree(self, trees: _MCTSTrees, b):
         """Helper function to visualize the b-th search tree."""
         nodes = [(b, 0)]
         while len(nodes) > 0:
             node = nodes.pop(0)
-            print(trees.model_state[node], trees.calc_value(node),
+            print(trees.model_state[node],
+                  trees.calc_value(node) + trees.reward[node],
                   trees.prior[node], trees.ucb_score[node],
                   trees.visit_count[node].item(), node[1])
             children = list(trees.children_index[node])
@@ -508,19 +654,74 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         children_index = trees.children_index
         best_child_index = trees.best_child_index
         game_over = trees.game_over
+        psims = self._num_parallel_sims
         search_paths = []
         B = trees.B
         nodes = trees.root_indices
-        path_lengths = torch.ones_like(B)
+        calc_i = False  # see comment below
+        if self._parallel:
+            B = B.unsqueeze(-1)
+            nodes = trees.root_indices.unsqueeze(-1).expand(-1, psims)
+            # If the p-th search path of the b-th tree is at node n, it will be
+            # extended by the child indicated by best_child_index[b, n, i[p]].
+            # We only need to caculate i if not search_with_exploration_policy.
+            # See the doc string of MCTSAlgorithm for more detail.
+            if self._search_with_exploration_policy:
+                i = (torch.arange(psims), )
+            else:
+                calc_i = True
+            if self._is_two_player_game:
+                to_plays = to_plays.unsqueeze(-1).expand_as(nodes)
+        else:
+            i = ()
+        # [B] or [B, psims]
+        path_lengths = torch.ones_like(nodes)
         search_paths = [nodes]
         if game_over is not None:
             done = game_over[B, nodes]
         else:
-            done = torch.zeros_like(B, dtype=torch.bool)
-        while not torch.all(done):
+            done = torch.zeros_like(nodes, dtype=torch.bool)
+        depth = 0
+        while not torch.all(done) and depth < self._max_allowed_depth:
+            depth += 1
+            if calc_i:
+                # If several nodes are same, we should select actions from different
+                # entries in best_child_index. So we need to find out which entry
+                # of best_child_index a node should use. For search_with_exploration_policy,
+                # the entries in best_child_index are sampled independently from
+                # the calculated policy, so it is ok to use i'th best_child_index
+                # for i-th node. But for UCB based selection, we want to use
+                # the top entries in best_child_index when ever they are not used.
+                #
+                # For x>y, same_node[b, x, y] indicates where nodes[b, x] and nodes[b, y] are same
+                # For x<=y, same_node[b, x, y] is 0.
+                #
+                #  For example, suppose nodes[0] = [2,3,2,3,3], it means that the
+                # current 5 parallel searches on tree 0 are at tree 0's node 2,
+                # node 3, node 2, node 3 and node 3 respectively. According to
+                # our algorithm, under UCB-based selection strategy, we want the
+                # 3 searches at node 3 to go to different "next nodes" (i.e. the
+                # top 3 best children of node 3) respectively. The same goes for the 2
+                # searches at node 2 (they should go to the top 2 best children
+                # of node 2 respectively). Therefore we want to use i to map nodes
+                # index [2, 3, 2, 3, 3] to children index [0, 0, 1, 1, 2].
+                #
+                # With this example, same_node[0] will be:
+                # [[0, 0, 0, 0, 0],
+                #  [0, 0, 0, 0, 0],
+                #  [1, 0, 0, 0, 0],
+                #  [0, 1, 0, 0, 0],
+                #  [0, 1, 0, 1, 0]]
+                # [B, psims, psims]. `None` stands for unsqueezing at that dim.
+                same_node = (nodes[:, :, None] == nodes[:, None, :]).tril(
+                    diagonal=-1)
+                # With the above example, i[0] is [0, 0, 1, 1, 2]
+                # [B, psims]
+                i = (same_node.sum(-1), )
+            # [B] or [B, psims]
             nodes = torch.where(
                 done, nodes,
-                children_index[B, nodes, best_child_index[B, nodes]])
+                children_index[B, nodes, best_child_index[(B, nodes) + i]])
             path_lengths[~done] += 1
             if self._is_two_player_game:
                 to_plays = torch.where(done, to_plays,
@@ -568,18 +769,37 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         if not self._learn_with_exploration_policy:
             parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
             policy = visit_counts / parent_visit_count
+
+        if self._learn_policy_temperature != 1.0:
+            policy = F.softmax(
+                (policy + 1e-30).log() / self._learn_policy_temperature, dim=1)
+
         info = MCTSInfo(
             candidate_actions=candidate_actions,
             value=trees.calc_value(roots),
             candidate_action_policy=policy,
         )
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                prior = trees.prior[roots]
+                prior = prior + 1e-30
+                policy = policy + 1e-30
+                log_ratio = (prior / policy).log()
+                rkld = (prior * log_ratio).sum(-1)
+                kld = -(policy * log_ratio).sum(-1)
+                summary_utils.add_mean_hist_summary("rkld", rkld)
+                summary_utils.add_mean_hist_summary("kld", kld)
+
         return action, info
 
     def _update_best_child(self, trees: _MCTSTrees, parents):
         if self._search_with_exploration_policy:
             self._sample_child(trees, parents)
-        else:
+        elif not self._parallel:
             self._ucb_child(trees, parents)
+        else:
+            self._ucb_child_parallel(trees, parents)
 
     def _ucb_child(self, trees: _MCTSTrees, parents):
         """Get child using UCB score."""
@@ -589,11 +809,37 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         best_child_index = ucb_scores.argmax(dim=1)
         trees.best_child_index[parents] = best_child_index
 
+    def _ucb_child_parallel(self, trees: _MCTSTrees, parents):
+        """Get child using UCB score."""
+        prior = trees.prior[parents]
+        value_score, child_visit_count = self._value_score(trees, parents)
+        value_score[prior == 0] = -MAXIMUM_FLOAT_VALUE
+        parent_visit_count = trees.visit_count[parents].unsqueeze(-1)
+        ucb_scores = self._ucb_score1(parent_visit_count, child_visit_count,
+                                      prior, value_score)
+        trees.ucb_score[parents] = ucb_scores
+        best_child_index = ucb_scores.argmax(dim=1)
+        trees.best_child_index[parents + (0, )] = best_child_index
+
+        n = torch.arange(child_visit_count.shape[0])
+        for i in range(1, self._num_parallel_sims):
+            child_visit_count[n, best_child_index] += 1
+            parent_visit_count += 1
+            ucb_scores = self._ucb_score1(
+                parent_visit_count, child_visit_count, prior, value_score)
+            best_child_index = ucb_scores.argmax(dim=1)
+            trees.best_child_index[parents + (i, )] = best_child_index
+
     def _ucb_score(self, trees, parents):
         prior = trees.prior[parents]
         value_score, child_visit_count = self._value_score(trees, parents)
         value_score[prior == 0] = -MAXIMUM_FLOAT_VALUE
         parent_visit_count = trees.visit_count[parents].unsqueeze(-1)
+        return self._ucb_score1(parent_visit_count, child_visit_count, prior,
+                                value_score)
+
+    def _ucb_score1(self, parent_visit_count, child_visit_count, prior,
+                    value_score):
         pb_c = torch.log((parent_visit_count + self._pb_c_base + 1.) /
                          self._pb_c_base) + self._pb_c_init
         pb_c = pb_c * torch.sqrt(parent_visit_count.to(
@@ -649,7 +895,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         prior = trees.prior[parents]
         value_score, child_visit_count = self._value_score(trees, parents)
         if self._unexpanded_value_score != 'none':
-            return calculate_exploration_policy(value_score, prior, c)[0]
+            policy, iterations = calculate_exploration_policy(
+                value_score, prior, c)
         else:
             # For 'none', we keep the policy for the unexpanded children same
             # as prior.
@@ -657,14 +904,22 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             expanded_prior = prior * (expanded.to(torch.float32) + 1e-30)
             sum_expanded = expanded_prior.sum(dim=1, keepdim=True)
             expanded_prior = expanded_prior / sum_expanded
-            policy = calculate_exploration_policy(value_score, expanded_prior,
-                                                  c)[0]
-            return torch.where(expanded, policy * sum_expanded, prior)
+            policy, iterations = calculate_exploration_policy(
+                value_score, expanded_prior, c)
+            policy = torch.where(expanded, policy * sum_expanded, prior)
+        self._max_policy_iterations = max(self._max_policy_iterations,
+                                          iterations)
+        return policy
 
     def _sample_child(self, trees: _MCTSTrees, parents):
         """Get child by sampling from exploration policy."""
         policy = self._calculate_policy(trees, parents)
-        action = torch.multinomial(policy, 1).squeeze(1)
+        # We need replacement so that the promising children are searched more
+        # often and value estimation is unbiased.
+        action = torch.multinomial(
+            policy, num_samples=self._num_parallel_sims, replacement=True)
+        if not self._parallel:
+            action = action.squeeze(1)
         trees.best_child_index[parents] = action
 
     def _backup(self,
@@ -689,18 +944,30 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             vsum_t += c G_t
             vc_t += c
         """
+        psims = self._num_parallel_sims
         B = trees.B.unsqueeze(0)
         T = search_paths.shape[0]
         depth = torch.arange(T).unsqueeze(-1)
+        parallel = self._parallel
+        if parallel:
+            B = B.unsqueeze(-1)
+            depth = depth.unsqueeze(-1)
+            i = (torch.arange(psims), )
+        else:
+            i = ()
 
         if trees.reward is not None:
             reward = trees.reward[B, search_paths]
             reward[depth > path_lengths] = 0.
-            # [T+1, batch_size]
+            # [T+1, B] or [T+1, B, psims]
             reward = tensor_utils.tensor_extend_zero(reward)
-            reward[path_lengths, B] = values
+            reward[(path_lengths, B[0]) + i] = values
+            # [T+1, 1]
             discounts = (self._discount**torch.arange(
                 T + 1, dtype=torch.float32)).unsqueeze(-1)
+            if parallel:
+                # [T+1, 1, 1]
+                discounts = discounts.unsqueeze(-1)
 
             # discounted_return[t] = discount^t * reward[t]
             discounted_return = reward * discounts
@@ -713,16 +980,29 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             # [T, 1]
             steps = torch.arange(1, T + 1, dtype=torch.float32).unsqueeze(-1)
-            # [T, B]
+            if parallel:
+                # [T, 1, psims]
+                steps = steps.unsqueeze(-1)
+            # [T, B] or [T, B, psims]
             discounts = self._discount**(path_lengths.unsqueeze(0) - steps)
             discounted_return = values.unsqueeze(0) * discounts
 
-        value_sum = trees.value_sum[B, search_paths] + count * discounted_return
-
         valid = depth < path_lengths
-        nodes = (B.expand(T, -1)[valid], search_paths[valid])
-        trees.visit_count[nodes] += count
-        trees.value_sum[nodes] = value_sum[valid]
+        value_sum_delta = count * discounted_return[valid]
+        if not parallel:
+            nodes = (B.expand(T, -1)[valid], search_paths[valid])
+            trees.visit_count[nodes] += count
+            trees.value_sum[nodes] += value_sum_delta
+        else:
+            nodes = (B.expand(T, -1, psims)[valid], search_paths[valid])
+            nodes_i = nodes[0] * trees.visit_count.shape[1] + nodes[1]
+            # using scatter_add_ to handle possible duplicated nodes correctly
+            trees.visit_count.view(-1).scatter_add_(
+                0, nodes_i,
+                torch.tensor([count],
+                             dtype=trees.visit_count.dtype).expand_as(nodes_i))
+            trees.value_sum.view(-1).scatter_add_(0, nodes_i, value_sum_delta)
+
         trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
 
@@ -734,7 +1014,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             n (int): n-th expansion, zero-based
             to_plays: bool[batch_size], to_plays for nodes
         Returns:
-
+            Tensor with shape of nodes. The weighted (prior as weight) average
+            of the bootstrapped return from the children.
         """
         batch_size = nodes[0].shape[0]
         branch_factor = trees.branch_factor
@@ -744,7 +1025,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             return x.repeat_interleave(trees.branch_factor, dim=0)
 
         model_state = nest.map_structure(_repeat, model_state)
-        action = trees.action[nodes]
+        if trees.action is None:
+            action = torch.arange(branch_factor)[None, :].expand(
+                batch_size, -1)
+        else:
+            action = trees.action[nodes]
+
         action = action.reshape(-1, *action.shape[2:])
         model_output = self._model.recurrent_inference(model_state, action)
 

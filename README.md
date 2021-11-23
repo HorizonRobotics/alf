@@ -132,7 +132,7 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
   <img src="alf/examples/ddpg_fetchslide.png" width="300" height="200" alt="ddpg-fetchslide-training-curve"/> <img src="alf/examples/ddpg_fetchslide.gif" width="300" height="200" alf="ddpg-fetchslide-video"/>
 
 ### SAC
-* [Bipedal Walker](alf/examples/sac_bipedal_walker.gin).
+* [Bipedal Walker](alf/examples/sac_bipedal_walker_conf.py).
 
   <img src="alf/examples/sac_bipedal_walker.png" width = "300" height ="200" alt="bipedal-walker-training-curve"/> <img src="alf/examples/sac_bipedal_walker.gif" width = "300" height ="200" alt="bipedal-walker-video"/>
 

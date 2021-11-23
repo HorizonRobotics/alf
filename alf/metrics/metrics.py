@@ -165,16 +165,12 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         raise NotImplementedError()
 
     def _initialize(self, example_metric_value):
-        counter = [0]
-
         def _init_buf(val):
             return MetricBuffer(max_len=self._buffer_size, dtype=self._dtype)
 
         def _init_acc(val):
             accumulator = torch.zeros(
                 self._batch_size, dtype=self._dtype, device='cpu')
-            self.register_buffer('_accumulator%d' % counter[0], accumulator)
-            counter[0] += 1
             return accumulator
 
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)

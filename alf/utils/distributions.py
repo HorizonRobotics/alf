@@ -172,10 +172,10 @@ class TruncatedDistribution(td.Distribution):
 
         super().__init__(batch_shape=batch_shape, event_shape=event_shape)
         self._its = its
-        self._lower_bound = lower_bound
-        self._upper_bound = upper_bound
-        self._cdf_lb = self._its.cdf((lower_bound - loc) / scale)
-        self._cdf_ub = self._its.cdf((upper_bound - loc) / scale)
+        self._lower_bound = lower_bound.to(loc.device)
+        self._upper_bound = upper_bound.to(loc.device)
+        self._cdf_lb = self._its.cdf((self._lower_bound - loc) / scale)
+        self._cdf_ub = self._its.cdf((self._upper_bound - loc) / scale)
         self._logz = (scale * (self._cdf_ub - self._cdf_lb + 1e-30)).log()
 
     @property
