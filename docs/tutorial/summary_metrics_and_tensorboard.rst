@@ -234,7 +234,7 @@ Defining new episode metrics
 
 For step-wise summary, we can directly use the summary functions in :mod:`.alf.summary.summary_ops`.
 To define new episode metrics, please take a look at :mod:`.alf.metrics.metrics`
-on how to use :class:`.AverageEpisodicSumMetric` for this purpose.
+on how to use :class:`.AverageEpisodicAggregationMetric` for this purpose.
 
 After defining the new episode metric, you'll need to override the ``__init__()``
 of :class:`.RLAlgorithm` to insert this new metric. The existing ones are currently
