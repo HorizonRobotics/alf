@@ -935,10 +935,9 @@ class Player(object):
             pygame.display.flip()
         elif mode == 'rgb_array':
             if self._camera_sensor is not None:
-                rgb_img = pygame.surfarray.array3d(self._surface)
-
                 # (x, y, c) => (y, x, c)
-                rgb_img = np.transpose(rgb_img, (1, 0, 2))
+                rgb_img = pygame.surfarray.array3d(self._surface).swapaxes(
+                    0, 1)
 
                 if 'navigation' in obs.keys() and self._render_waypoints:
                     # index of waypoint to be rendered

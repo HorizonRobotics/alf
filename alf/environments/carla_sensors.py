@@ -1226,6 +1226,9 @@ class World(object):
                                       0.4 * wpx.lane_width * vec_right)
             loc_right = carla.Location(wpx.transform.location +
                                        0.4 * wpx.lane_width * vec_right)
+
+            # the list of stoplines for traffic lights, each represented by
+            # two vertices: loc_left and loc_right.
             stopline_vertices.append([loc_left, loc_right])
         # self._draw_waypoints(wps, vertical_shift=1.0, persistency=50000.0)
 
@@ -1553,12 +1556,15 @@ class BEVSensor(SensorBase):
         ev_bbox = self._parent.bounding_box
 
         def is_within_distance(loc):
-            c_distance = abs(ev_loc.x - loc.x) < self._distance_threshold \
-                and abs(ev_loc.y - loc.y) < self._distance_threshold \
-                and abs(ev_loc.z - loc.z) < 8.0
-            c_ev = abs(ev_loc.x - loc.x) < 1.0 and abs(ev_loc.y - loc.y) < 1.0
-
-            return c_distance and (not c_ev)
+            # determine if it is the ego-vehicle
+            is_ev = abs(ev_loc.x - loc.x) < 1.0 and abs(ev_loc.y - loc.y) < 1.0
+            if is_ev:
+                return False
+            else:
+                distance_to_ev = abs(ev_loc.x - loc.x) < self._distance_threshold \
+                    and abs(ev_loc.y - loc.y) < self._distance_threshold \
+                    and abs(ev_loc.z - loc.z) < 8.0
+                return distance_to_ev
 
         vehicle_bbox_list = self._get_actor_bounding_box('vehicle.*')
 
@@ -1776,7 +1782,10 @@ class BEVSensor(SensorBase):
                     bb_ext = bb_ext * scale
                     bb_ext.x = max(bb_ext.x, 0.8)
                     bb_ext.y = max(bb_ext.y, 0.8)
-                actors.append((transform, bb_loc, bb_ext))
+                # actor info contains the tranform, bounding-box location,
+                # and bounding-box extent
+                actor_info = (transform, bb_loc, bb_ext)
+                actors.append(actor_info)
         return actors
 
     def _get_warp_transform(self, ev_loc, ev_rot):
