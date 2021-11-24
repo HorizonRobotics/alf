@@ -168,7 +168,8 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         return canvas
 
     def _acquire_next_frame(self, action):
-        """Returns the TimeStep give the input action.
+        """Returns the TimeStep given the input action.
+
         This is the underlying implementation of both _step() and _reset()
         1. In _step(), normally it just delegates to this method unless a reset
            needs to be performed.
@@ -220,13 +221,14 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
     def seed(self, seed: Optional[int] = None):
         """Reset the underlying MetaDrive environment with a specified seed.
-        MetaDrive uses a slightly different mechanism for seeds. Upon
-        construction of a MetaDrive environment, the user needs to specify a
-        seed range [start_seed, start_seed + scenario_num]. When being forced
-        to reset with a specific seed, that seed must be within the predefined
-        range.
-        Args:
 
+        MetaDrive uses a slightly different mechanism for seeds. Upon
+        construction of a MetaDrive environment, the user needs to
+        specify a seed range [start_seed, start_seed + scenario_num].
+        When being forced to reset with a specific seed, that seed
+        must be within the predefined range.
+
+        Args:
             seed: the seed that the environment will be reset with. If it is
                 specified as None, a random seed within the range will be
                 selected by the underlying MetaDrive environment.
