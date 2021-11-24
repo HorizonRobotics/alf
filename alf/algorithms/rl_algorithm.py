@@ -235,23 +235,21 @@ class RLAlgorithm(Algorithm):
         if env is not None:
             metric_buf_size = max(self._config.metric_min_buffer_size,
                                   self._env.batch_size)
+            example_time_step = env.reset()
             self._metrics = [
                 alf.metrics.NumberOfEpisodes(),
                 alf.metrics.EnvironmentSteps(),
                 alf.metrics.AverageReturnMetric(
-                    batch_size=env.batch_size,
                     buffer_size=metric_buf_size,
-                    reward_shape=reward_spec.shape),
+                    example_time_step=example_time_step),
                 alf.metrics.AverageEpisodeLengthMetric(
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
                 alf.metrics.AverageEnvInfoMetric(
-                    example_env_info=env.reset().env_info,
-                    batch_size=env.batch_size,
+                    example_time_step=example_time_step,
                     buffer_size=metric_buf_size),
                 alf.metrics.AverageDiscountedReturnMetric(
-                    batch_size=env.batch_size,
                     buffer_size=metric_buf_size,
-                    reward_shape=reward_spec.shape)
+                    example_time_step=example_time_step)
             ]
 
         self._original_rollout_step = self.rollout_step

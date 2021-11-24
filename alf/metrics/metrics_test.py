@@ -59,22 +59,17 @@ class AverageDrivingMetric(AverageEpisodicAggregationMetric):
     """
 
     def __init__(self,
+                 example_time_step: TimeStep,
                  name='AverageDrivingMetric',
                  prefix='Metrics',
                  dtype=torch.float32,
-                 batch_size=1,
                  buffer_size=10):
         super().__init__(
             name=name,
             dtype=dtype,
             prefix=prefix,
-            batch_size=batch_size,
             buffer_size=buffer_size,
-            example_metric_value={
-                'velocity@step': 1.0,
-                'acceleration@step': 0.1,
-                'success': 0.0
-            })
+            example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         return {
@@ -139,14 +134,10 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         if metric_class in [AverageEpisodeLengthMetric]:
             metric = metric_class(batch_size=2)
         elif metric_class in [
-                AverageReturnMetric, AverageDiscountedReturnMetric
+                AverageReturnMetric, AverageDiscountedReturnMetric,
+                AverageEnvInfoMetric
         ]:
-
-            metric = metric_class(
-                batch_size=2, reward_shape=(2, ) if vector_reward else ())
-        elif metric_class == AverageEnvInfoMetric:
-            metric = metric_class(
-                batch_size=2, example_env_info=dict(x=0, y=0))
+            metric = metric_class(example_time_step=trajectories[0])
         else:
             metric = metric_class()
 
@@ -166,7 +157,17 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                              metric.result())
 
     def test_average_per_step(self):
-        metric = AverageDrivingMetric(batch_size=2)
+        metric = AverageDrivingMetric(
+            example_time_step=timestep_first(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity': to_tensor([4.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
 
         trajectories = []
         trajectories.append(

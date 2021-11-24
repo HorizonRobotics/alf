@@ -20,6 +20,7 @@ import torch
 
 import alf
 import alf.utils.data_buffer as db
+from alf.data_structures import TimeStep, StepType
 
 from alf.utils import common
 from . import metric
@@ -146,33 +147,35 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                  name="AverageEpisodicAggregationMetric",
                  prefix='Metrics',
                  dtype=torch.float32,
-                 batch_size=1,
                  buffer_size=10,
-                 example_metric_value=None):
+                 example_time_step=None):
         """
         Args:
             name (str):
             prefix (str): a prefix indicating the category of the metric
             dtype (torch.dtype): dtype of metric values. Should be floating types
                 in order to be averaged.
-            batch_size (int): the number of metric values generated in parallel
             buffer_size (int): number of episodes the metric value will be averaged
                 across
-            example_metric_value (nest): an example of metric value to be summarized;
-                if ``None``, a zero scalar is used.
+            example_time_step (nest): an example of the time step where the metric
+               values are extracted from. If ``None``, a zero scalar is used as the
+               example metric value.
         """
         super(AverageEpisodicAggregationMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
-        if example_metric_value is None:
+        if example_time_step is None:
             example_metric_value = torch.zeros((), device='cpu')
-        self._batch_size = batch_size
+        else:
+            example_metric_value = self._extract_metric_values(
+                alf.nest.utils.convert_device(example_time_step, device='cpu'))
+        self._batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._buffer_size = buffer_size
         self._initialize(example_metric_value)
 
         # ``self._current_step`` will be set to zero for the first step, and is
         # added by one otherwise. Therefore, at the episode end, its value
         # equals to episode length - 1.
-        self._current_step = torch.zeros(batch_size, device='cpu')
+        self._current_step = torch.zeros(self._batch_size, device='cpu')
 
     def _extract_metric_values(self, time_step):
         """Extract metrics from the time step. The return can be a nest."""
@@ -272,26 +275,17 @@ class AverageReturnMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average return."""
 
     def __init__(self,
+                 example_time_step: TimeStep,
                  name='AverageReturn',
                  prefix='Metrics',
-                 reward_shape=(),
                  dtype=torch.float32,
-                 batch_size=1,
                  buffer_size=10):
-        if reward_shape == ():
-            example_metric_value = torch.zeros((), device='cpu')
-        else:
-            example_metric_value = torch.zeros(
-                reward_shape, device='cpu').reshape(-1)
-            example_metric_value = list(example_metric_value)
-
         super(AverageReturnMetric, self).__init__(
             name=name,
             dtype=dtype,
             prefix=prefix,
-            batch_size=batch_size,
             buffer_size=buffer_size,
-            example_metric_value=example_metric_value)
+            example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
@@ -325,13 +319,12 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
     """
 
     def __init__(self,
+                 example_time_step: TimeStep,
                  name='AverageDiscountedReturn',
                  prefix='Metrics',
-                 reward_shape=(),
                  dtype=torch.float32,
                  discount=0.99,
                  reward_transformer=None,
-                 batch_size=1,
                  buffer_size=10):
         """
         Args:
@@ -341,25 +334,17 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                 discounted return using the transformed reward. It will be called
                 as ``transformed_reward = reward_transformer(original_reward)``.
         """
-        if reward_shape == ():
-            example_metric_value = torch.zeros((), device='cpu')
-        else:
-            example_metric_value = torch.zeros(
-                reward_shape, device='cpu').reshape(-1)
-            example_metric_value = list(example_metric_value)
-
         self._discount = discount
+        batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
-        self._current_step = torch.zeros(batch_size, device='cpu')
         self._timestep_discount = torch.zeros(batch_size, device='cpu')
 
         super(AverageDiscountedReturnMetric, self).__init__(
             name=name,
             dtype=dtype,
             prefix=prefix,
-            batch_size=batch_size,
             buffer_size=buffer_size,
-            example_metric_value=example_metric_value)
+            example_time_step=example_time_step)
 
         self._reward_transformer = reward_transformer
 
@@ -437,8 +422,9 @@ class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
             name=name,
             dtype=dtype,
             prefix=prefix,
-            batch_size=batch_size,
-            buffer_size=buffer_size)
+            buffer_size=buffer_size,
+            example_time_step=TimeStep(
+                step_type=torch.full((batch_size, ), StepType.FIRST)))
 
     def _extract_metric_values(self, time_step):
         """Return a constant of 1 each time, except for ``time_step.is_first()``.
@@ -458,19 +444,17 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
     """
 
     def __init__(self,
-                 example_env_info,
+                 example_time_step: TimeStep,
                  name="AverageEnvInfoMetric",
                  prefix="Metrics",
                  dtype=torch.float32,
-                 batch_size=1,
                  buffer_size=10):
         super(AverageEnvInfoMetric, self).__init__(
             name=name,
             dtype=dtype,
             prefix=prefix,
-            batch_size=batch_size,
             buffer_size=buffer_size,
-            example_metric_value=example_env_info)
+            example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         return time_step.env_info
