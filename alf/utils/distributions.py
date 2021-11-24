@@ -201,7 +201,10 @@ class TruncatedDistribution(td.Distribution):
     @property
     def mode(self):
         """Mode of this distribution."""
-        return self._loc.clamp(self._lower_bound, self._upper_bound)
+        result = torch.maximum(self._lower_bound, self._loc)
+        result = torch.minimum(self._upper_bound, result)
+
+        return result
 
     def rsample(self, sample_shape: torch.Size = torch.Size()):
         """
