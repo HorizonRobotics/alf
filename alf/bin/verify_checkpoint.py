@@ -81,8 +81,7 @@ def _step(algorithm, time_step, policy_state, trans_state, epsilon_greedy):
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
-    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
-                                         epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state)
     return policy_step, trans_state
 
 
@@ -124,7 +123,7 @@ def _run_steps(algorithm, env, nsteps, time_steps=[]):
     return policy_steps, time_steps
 
 
-def _create_algorithm_and_env(root_dir):
+def _create_algorithm_and_env(root_dir, old_configs=None):
     """Create algorithm and env from config file."""
     alf.reset_configs()
     conf_file = common.get_conf_file()
@@ -133,6 +132,20 @@ def _create_algorithm_and_env(root_dir):
     except Exception as e:
         alf.close_env()
         raise e
+    new_configs = dict(alf.get_inoperative_configs())
+    if old_configs is not None:
+        ok = True
+        for k, v in old_configs.items():
+            if k not in new_configs:
+                logging.error("config '%s' is set by the original config file "
+                              "but is noet set by root_dir/alf_config.py" % k)
+                ok = False
+        if not ok:
+            logging.fatal(
+                "Some config set by the original config file are not "
+                "set by root_dir/alf_config.py. It may be because these configs "
+                "are set through import. Currently verify_checkpoint.py does "
+                "not support this.")
     config = policy_trainer.TrainerConfig(root_dir=root_dir)
 
     env = alf.get_env()
@@ -153,7 +166,8 @@ def _create_algorithm_and_env(root_dir):
         reward_spec=env.reward_spec(),
         config=config,
         env=env)
-    return algorithm, env
+    algorithm.set_path('')
+    return algorithm, env, new_configs
 
 
 def main(_):
@@ -162,7 +176,13 @@ def main(_):
         conf_file = common.get_conf_file()
         step_num = FLAGS.num_train_iterations
         ckpt_dir = os.path.join(root_dir, 'ckpt')
-        algorithm1, env1 = _create_algorithm_and_env(root_dir)
+        algorithm1, env1, configs = _create_algorithm_and_env(root_dir)
+        # The behavior of some algorithms is based by scheduler using training
+        # progress (e.g. VisitSoftmaxTemperatureByProgress for MCTSAlgorithm). So we
+        # need to set a valid value for progress.
+        # TODO: we may want to use a different progress value based on the actual
+        # progress of the checkpoint or user provided progress value.
+        policy_trainer.Trainer._trainer_progress.set_progress(0.0)
         for i in range(FLAGS.num_train_iterations):
             # The values of some checkpointed objects (e.g. Normalizer) are
             # changed by training (i.e. not through random initialization), we
@@ -176,7 +196,7 @@ def main(_):
 
         FLAGS.gin_file = None
         FLAGS.conf = None
-        algorithm2, env2 = _create_algorithm_and_env(root_dir)
+        algorithm2, env2, _ = _create_algorithm_and_env(root_dir, configs)
         # need one iteration to load checkpoint correctly
         algorithm2.train_iter()
         ckpt_mngr2 = ckpt_utils.Checkpointer(ckpt_dir, alg=algorithm2)
