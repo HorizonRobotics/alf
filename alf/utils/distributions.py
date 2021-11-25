@@ -282,12 +282,12 @@ def _kl_truncated_normal_trucated_normal(p, q):
             torch.isclose(p.lower_bound, q.lower_bound),
             torch.isclose(p.upper_bound, q.upper_bound)))
 
-    delta = (p.loc - q.loc)
-    delta2 = delta * delta
+    delta = p.loc - q.loc
+    delta2 = delta**2
 
-    sigma_p2 = p.scale * p.scale
+    sigma_p2 = p.scale**2
     # Pad sigma_q2 as it is positive will only be served as denominator
-    sigma_q2 = q.scale * q.scale + 1e-30
+    sigma_q2 = q.scale**2 + 1e-30
 
     c1 = 0.5 * (torch.log(q.scale) - torch.log(p.scale)) + 0.25 * (
         delta2 + sigma_p2) / sigma_q2 - 0.25
@@ -315,7 +315,7 @@ def _kl_truncated_normal_trucated_normal(p, q):
     area_q = q._cdf_ub - q._cdf_lb
 
     return (torch.log(area_q / area_p) + before_normalization / area_p).sum(
-        dim=-1)
+        dim=list(range(-len(p._event_shape), 0)))
 
 
 class TruncatedCauchy(TruncatedDistribution):
