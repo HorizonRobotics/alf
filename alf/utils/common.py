@@ -159,6 +159,8 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
 
         w_t = (1 - \tau) * w_t + \tau * w_s.
 
+    Note: we only perform soft updates for parameters and always copy buffers.
+
     Args:
         models (Network | list[Network] | Parameter | list[Parameter] ): the
             current model or parameter.
@@ -181,6 +183,8 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
                 wt.data.copy_(ws)
+            for ws, wt in zip(s.buffers(), t.buffers()):
+                wt.copy_(ws)
 
     def _lerp_model_or_parameter(s, t):
         if isinstance(s, nn.Parameter):
@@ -188,6 +192,8 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
                 wt.data.lerp_(ws, tau)
+            for ws, wt in zip(s.buffers(), t.buffers()):
+                wt.copy_(ws)
 
     if copy:
         for model, target_model in zip(models, target_models):
