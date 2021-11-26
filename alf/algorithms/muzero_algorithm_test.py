@@ -52,7 +52,8 @@ class MockMCTSModel(nn.Module):
 _mcts_model_id = 0
 
 
-def _create_mcts_model(observation_spec, action_spec, debug_summaries):
+def _create_mcts_model(observation_spec, action_spec, num_unroll_steps,
+                       debug_summaries):
     global _mcts_model_id
     scale = 1 + _mcts_model_id % 2
     _mcts_model_id += 1

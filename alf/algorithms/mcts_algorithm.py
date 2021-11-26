@@ -147,6 +147,9 @@ class _MCTSTrees(object):
         children = self.children_index[parents]
         return (parents[0].unsqueeze(1), children)
 
+    def get_model_state(self, nodes):
+        return nest.map_structure(lambda x: x[nodes], self.model_state)
+
 
 MCTSState = namedtuple("MCTSState", ["steps"])
 MCTSInfo = namedtuple(
@@ -505,7 +508,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 torch.float32).mean() * psims
             # [B] or [B, psims]
             prev_nodes = search_paths[(path_lengths - 2, B) + i]
-            model_state = trees.model_state[B, prev_nodes]
+            model_state = trees.get_model_state((B, prev_nodes))
             # [B] or [B, psims]
             best_child_index = trees.best_child_index[(B, prev_nodes) + i]
             if trees.action is None:
@@ -1019,7 +1022,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         """
         batch_size = nodes[0].shape[0]
         branch_factor = trees.branch_factor
-        model_state = trees.model_state[nodes]
+        model_state = trees.get_model_state(nodes)
 
         def _repeat(x):
             return x.repeat_interleave(trees.branch_factor, dim=0)
