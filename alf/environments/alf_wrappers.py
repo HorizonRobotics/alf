@@ -831,6 +831,34 @@ class CarlaActionWrapper(AlfEnvironmentBaseWrapper):
         return self._time_step_spec
 
 
+class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
+    """Wrapper that converts non-batched numpy-based I/O to batched tensors.
+    """
+
+    def __init__(self, env):
+        assert not env.batched, (
+            'BatchedTensorWrapper can only be used to wrap non-batched env')
+        super().__init__(env)
+
+    @staticmethod
+    def _to_batched_tensor(raw):
+        """Conver the structured input into batched (batch_size = 1) tensors
+        of the same structure.
+        """
+        return nest.map_structure(
+            lambda x: (torch.as_tensor(x).unsqueeze(dim=0) if isinstance(
+                x, (np.ndarray, np.number, float, int)) else x), raw)
+
+    def _step(self, action):
+        numpy_action = nest.map_structure(
+            lambda x: x.squeeze(dim=0).cpu().numpy(), action)
+        return BatchedTensorWrapper._to_batched_tensor(
+            super()._step(numpy_action))
+
+    def _reset(self):
+        return BatchedTensorWrapper._to_batched_tensor(super()._reset())
+
+
 @alf.configurable
 class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
     """Discretize each continuous action dim into several evenly distributed
