@@ -133,6 +133,8 @@ class Algorithm(AlgorithmInterface):
         self._metrics = []
         self._replay_buffer = None
 
+        self._ddp_activated_rank = -1
+
         # These 3 parameters are only set when ``set_replay_buffer()`` is called.
         self._replay_buffer_num_envs = None
         self._replay_buffer_max_length = None
@@ -212,6 +214,17 @@ class Algorithm(AlgorithmInterface):
         be a subset of the ``rollout_state_spec``.
         """
         return self._use_rollout_state
+
+    def activate_ddp(self, rank: int):
+        """Prepare the RLAlgorithm with DistributedDataParallel wrapper
+
+        Note that RLAlgorithm does not need to remember the rank of the device.
+
+        Args:
+            rank (int): DDP wrapper needs to know on which GPU device this
+                module's parameters and buffers are supposed to be.
+        """
+        self._ddp_activated_rank = rank
 
     @use_rollout_state.setter
     def use_rollout_state(self, flag):
