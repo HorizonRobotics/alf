@@ -901,9 +901,13 @@ def set_exe_mode(mode):
 
     Args:
         training (bool): True for training, False for unrolling
+    Returns:
+        the old exe mode
     """
     global _exe_mode
+    old = _exe_mode
     _exe_mode = mode
+    return old
 
 
 def exe_mode_name():

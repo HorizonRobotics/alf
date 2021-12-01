@@ -21,6 +21,7 @@ import torch
 import alf
 import alf.utils.data_buffer as db
 
+from alf.utils import common
 from . import metric
 
 
@@ -329,8 +330,17 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                  reward_shape=(),
                  dtype=torch.float32,
                  discount=0.99,
+                 reward_transformer=None,
                  batch_size=1,
                  buffer_size=10):
+        """
+        Args:
+            discount (float): the discount factor for calculating the discounted
+                return
+            reward_transformer (Callable): if provided, will calculate the
+                discounted return using the transformed reward. It will be called
+                as ``transformed_reward = reward_transformer(original_reward)``.
+        """
         if reward_shape == ():
             example_metric_value = torch.zeros((), device='cpu')
         else:
@@ -340,6 +350,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
 
         self._discount = discount
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
+        self._current_step = torch.zeros(batch_size, device='cpu')
+        self._timestep_discount = torch.zeros(batch_size, device='cpu')
 
         super(AverageDiscountedReturnMetric, self).__init__(
             name=name,
@@ -349,6 +361,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
             buffer_size=buffer_size,
             example_metric_value=example_metric_value)
 
+        self._reward_transformer = reward_transformer
+
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
         return. It also updates the accumulated discount and step count.
@@ -356,10 +370,17 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         self._update_discount(time_step)
 
         ndim = time_step.step_type.ndim
+        reward = time_step.reward
+        if self._reward_transformer is not None:
+            # RewardNormalizer may change its statistics if the exe_mode is
+            # ROLLOUT. We don't want that happen for metric calculation.
+            old_mode = common.set_exe_mode(common.EXE_MODE_OTHER)
+            reward = self._reward_transformer(reward)
+            common.set_exe_mode(old_mode)
         if time_step.reward.ndim == ndim:
-            discounted_reward = time_step.reward * self._accumulated_discount
+            discounted_reward = reward * self._accumulated_discount
         else:
-            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            reward = reward.reshape(*time_step.step_type.shape, -1)
             discounted_reward = [
                 reward[..., i] * self._accumulated_discount
                 for i in range(reward.shape[-1])
@@ -382,8 +403,9 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = (
-            self._discount * self._accumulated_discount + 1)
+        self._accumulated_discount = (self._discount * self._timestep_discount
+                                      * self._accumulated_discount + 1)
+        self._timestep_discount = time_step.discount
         self._accumulated_discount = torch.where(
             is_first, torch.zeros_like(self._accumulated_discount),
             self._accumulated_discount)

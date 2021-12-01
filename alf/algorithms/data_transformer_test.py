@@ -28,6 +28,23 @@ DataItem = namedtuple(
     default_value=())
 
 
+class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters(
+        alf.algorithms.data_transformer.RewardClipping(),
+        alf.algorithms.data_transformer.RewardScaling(scale=0.01),
+        alf.algorithms.data_transformer.RewardNormalizer(
+            update_mode="rollout"),
+    )
+    def test_reward_transformer(self, transformer):
+        # make sure reward transformer does not change its internal statics
+        # for EXE_MODE_OTHER
+        x = torch.randn(100)
+        common.set_exe_mode(common.EXE_MODE_OTHER)
+        y1 = transformer(x)
+        y2 = transformer(x)
+        self.assertTensorEqual(y1, y2)
+
+
 class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(-1, 0)
     def test_frame_stacker(self, stack_axis=0):
