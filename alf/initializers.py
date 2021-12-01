@@ -29,7 +29,9 @@ def _is_elementwise_op(op):
     y = op(x)
     y1 = [op(x1[5 * i:5 * i + 5, :]) for i in range(4)]
     y1 = torch.stack(y1, dim=0).reshape(10, 20)
-    return (y == y1).all()
+    # for some unknown reason y is not always exactly same as y1 for some
+    # op (e.g. torch.sigmoid). So we cannot use (y==y1).all()
+    return ((y - y1).abs() < 1e-7).all()
 
 
 @alf.configurable

@@ -25,6 +25,7 @@ class InitializerTest(alf.test.TestCase):
         self.assertFalse(_is_elementwise_op(torch.nn.Softmax(dim=-1)))
         self.assertTrue(_is_elementwise_op(torch.relu))
         self.assertTrue(_is_elementwise_op(torch.relu_))
+        self.assertTrue(_is_elementwise_op(torch.sigmoid))
         self.assertFalse(
             _is_elementwise_op(lambda x: x * (x**2).sum().rsqrt()))
 
