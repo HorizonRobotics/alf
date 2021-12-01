@@ -52,7 +52,7 @@ class _MethodPerformer(torch.nn.Module):
         # DDP will panic if the wrapped module has member in its state_dict()
         # that is not a Tensor. Here such state_dict members are picked and
         # thrown into _ddp_params_and_buffers_to_ignore. By contract this
-        # implicitly instruct DDP wrapper to not include them in its
+        # implicitly instructs DDP wrapper to not include them in its
         # parameter/buffer synchronization.
         self._ddp_params_and_buffers_to_ignore = []
         for name, value in self.state_dict().items():
@@ -69,6 +69,16 @@ def data_distributed(method):
 
     This is to provide a simple and transparent way to enable DDP for specific
     code logics.
+
+    When the method is wrapped by @data_distributed, the outputs (tensors) of
+    this method will have gradient synchronization hooks attached to them. Later
+    when those outputs are used in ``backward()`` to compute gradients, the
+    hooks will be called to synchronize across all processes. As a result, the
+    corresponding parameters does not only receive the gradients from this
+    process, but also gradients from the other processes. Note that each single
+    process will be TRAPPED at the call to the ``backward()`` that involves
+    those output tensors, until all processes finished the back propagation and
+    have the gradients sync'ed.
 
     Example usage:
 

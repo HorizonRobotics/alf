@@ -17,7 +17,6 @@ from abc import abstractmethod
 import os
 import time
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable
 from absl import logging
 
