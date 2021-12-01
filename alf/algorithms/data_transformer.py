@@ -550,15 +550,31 @@ class ObservationNormalizer(SimpleDataTransformer):
         return timestep_or_exp._replace(observation=observation)
 
 
+class RewardTransformer(SimpleDataTransformer):
+    """Base class for transforming reward.
+    """
+
+    def __init__(self, observation_spec):
+        """
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+
+    def _transform(self, timestep_or_exp):
+        return timestep_or_exp._replace(
+            reward=self.forward(timestep_or_exp.reward))
+
+
 @alf.configurable
-class RewardClipping(SimpleDataTransformer):
+class RewardClipping(RewardTransformer):
     """Clamp immediate rewards to the range :math:`[min, max]`.
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
     """
 
-    def __init__(self, observation_spec, minmax=(-1, 1)):
+    def __init__(self, observation_spec=(), minmax=(-1, 1)):
         """
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
@@ -568,17 +584,16 @@ class RewardClipping(SimpleDataTransformer):
         assert minmax[0] <= minmax[1], "range error"
         self._minmax = minmax
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp._replace(
-            reward=timestep_or_exp.reward.clamp(*self._minmax))
+    def forward(self, reward):
+        return reward.clamp(*self._minmax)
 
 
 @alf.configurable
-class RewardNormalizer(SimpleDataTransformer):
+class RewardNormalizer(RewardTransformer):
     """Transform reward to be zero-mean and unit-variance."""
 
     def __init__(self,
-                 observation_spec,
+                 observation_spec=(),
                  normalizer=None,
                  update_max_calls=0,
                  clip_value=-1.0,
@@ -612,18 +627,6 @@ class RewardNormalizer(SimpleDataTransformer):
         self._max_calls = update_max_calls
         self._calls = 0
 
-    def _transform(self, timestep_or_exp):
-        norm = self._normalizer
-        if ((self._update_mode == "replay" and common.is_replay())
-                or (self._update_mode == "rollout" and common.is_rollout())):
-            if self._max_calls == 0 or self._calls < self._max_calls:
-                norm.update(timestep_or_exp.reward)
-            self._calls += 1
-
-        return timestep_or_exp._replace(
-            reward=norm.normalize(
-                timestep_or_exp.reward, clip_value=self._clip_value))
-
     @property
     def normalizer(self):
         return self._normalizer
@@ -632,16 +635,26 @@ class RewardNormalizer(SimpleDataTransformer):
     def clip_value(self):
         return self._clip_value
 
+    def forward(self, reward):
+        norm = self._normalizer
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
+            if self._max_calls == 0 or self._calls < self._max_calls:
+                norm.update(reward)
+            self._calls += 1
+
+        return norm.normalize(reward, clip_value=self._clip_value)
+
 
 @alf.configurable
-class RewardScaling(SimpleDataTransformer):
+class RewardScaling(RewardTransformer):
     """Scale immediate rewards by a factor of ``scale``.
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
     """
 
-    def __init__(self, observation_spec, scale):
+    def __init__(self, observation_spec=(), scale=1.0):
         """
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
@@ -650,9 +663,8 @@ class RewardScaling(SimpleDataTransformer):
         super().__init__(observation_spec)
         self._scale = scale
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp._replace(
-            reward=timestep_or_exp.reward * self._scale)
+    def forward(self, reward):
+        return reward * self._scale
 
 
 @alf.configurable

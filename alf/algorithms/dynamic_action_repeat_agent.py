@@ -154,7 +154,6 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         self._repr_learner = repr_learner
         self._reward_normalizer = None
         if reward_normalizer_ctor is not None:
-            assert reward_normalizer_ctor.__name__ == "RewardNormalizer"
             self._reward_normalizer = reward_normalizer_ctor(
                 observation_spec=())
         self._rl = rl

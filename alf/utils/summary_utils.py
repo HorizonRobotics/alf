@@ -413,20 +413,22 @@ def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
         alf.summary.scalar(name + '/max_norm', norm.max())
         alf.summary.scalar(name + '/avg_norm', norm.mean())
 
+    def _register_hook1(tensor, name):
+        if tensor.requires_grad:
+            if clone:
+                tensor = tensor.clone()
+            tensor.register_hook(functools.partial(_hook, name=name))
+        return tensor
+
     name = '/' + alf.summary.scope_name() + name
     if not is_nested(tensor):
-        if clone:
-            tensor = tensor.clone()
-        tensor.register_hook(functools.partial(_hook, name=name))
-        return tensor
+        return _register_hook1(tensor, name)
     else:
-        if clone:
-            tensor = map_structure(torch.clone, tensor)
 
         def _register_hook(path, x):
-            x.register_hook(functools.partial(_hook, name=name + '/' + path))
+            return _register_hook1(x, name + '/' + path)
 
-        py_map_structure_with_path(_register_hook, tensor)
+        tensor = py_map_structure_with_path(_register_hook, tensor)
         return tensor
 
 

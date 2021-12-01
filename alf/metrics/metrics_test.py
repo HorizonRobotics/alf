@@ -17,7 +17,8 @@ import torch
 import alf
 from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
                          AverageReturnMetric, AverageDiscountedReturnMetric,
-                         AverageEpisodeLengthMetric, AverageEnvInfoMetric)
+                         AverageEpisodeLengthMetric, AverageEnvInfoMetric,
+                         AverageEpisodicAggregationMetric)
 from alf.utils.tensor_utils import to_tensor
 from alf.data_structures import TimeStep, StepType
 
@@ -28,6 +29,9 @@ from absl.testing import parameterized
 def _create_timestep(reward, env_id, step_type, env_info):
     return TimeStep(
         step_type=to_tensor(step_type),
+        discount=torch.where(
+            to_tensor(step_type) == StepType.LAST, torch.tensor(0.0),
+            torch.tensor(1.0)),
         reward=to_tensor(reward),
         env_info=env_info,
         env_id=to_tensor(env_id))
@@ -43,6 +47,44 @@ def timestep_mid(reward, env_id, env_info):
 
 def timestep_last(reward, env_id, env_info):
     return _create_timestep(reward, env_id, [StepType.LAST] * 2, env_info)
+
+
+class AverageDrivingMetric(AverageEpisodicAggregationMetric):
+    """Metrics for computing the average velocity and accelration.
+
+    This is purely for the purpose of unit testing the "@step" feature. It
+    assumes the time step has velocity, acceleration and "success or not"logged
+    in its ``env_info`` field.
+
+    """
+
+    def __init__(self,
+                 name='AverageDrivingMetric',
+                 prefix='Metrics',
+                 dtype=torch.float32,
+                 batch_size=1,
+                 buffer_size=10):
+        super().__init__(
+            name=name,
+            dtype=dtype,
+            prefix=prefix,
+            batch_size=batch_size,
+            buffer_size=buffer_size,
+            example_metric_value={
+                'velocity@step': 1.0,
+                'acceleration@step': 0.1,
+                'success': 0.0
+            })
+
+    def _extract_metric_values(self, time_step):
+        return {
+            'velocity@step':
+                time_step.env_info['kinetics']['velocity'],
+            'acceleration@step':
+                time_step.env_info['kinetics']['acceleration'],
+            'success':
+                time_step.env_info['success']
+        }
 
 
 class THMetricsTest(parameterized.TestCase, unittest.TestCase):
@@ -122,6 +164,70 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         else:
             self.assertEqual([0.0] * 2 if vector_reward else 0.0,
                              metric.result())
+
+    def test_average_per_step(self):
+        metric = AverageDrivingMetric(batch_size=2)
+
+        trajectories = []
+        trajectories.append(
+            timestep_first(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity': to_tensor([4.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_mid(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity': to_tensor([4.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_mid(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity': to_tensor([5.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([0.0, 0.0])
+                }))
+        trajectories.append(
+            timestep_last(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'kinetics': {
+                        'velocity': to_tensor([6.0, 0.0]),
+                        'acceleration': to_tensor([1.0, 0.0]),
+                    },
+                    'success': to_tensor([1.0, 0.0])
+                }))
+        for traj in trajectories:
+            metric(traj)
+
+        self.assertEqual(
+            {
+                # Sum is 15.0, divided by 3 (episode length) and 2 (batch size)
+                # = 2.5
+                'velocity@step': torch.as_tensor(2.5000),
+                # Sum is 3.0, divided by 3 (episode length) and 2
+                # (batch size) = 0.5
+                'acceleration@step': torch.as_tensor(0.5000),
+                # Sum is 1.0, divided by 2 (batch size) = 0.5
+                'success': torch.as_tensor(0.5000)
+            },
+            metric.result())
 
 
 if __name__ == "__main__":
