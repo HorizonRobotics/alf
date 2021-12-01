@@ -59,6 +59,16 @@ class _MethodPerformer(torch.nn.Module):
             if type(value) is not torch.Tensor:
                 self._ddp_params_and_buffers_to_ignore.append(name)
 
+        # We also need to ignore all the buffers that is under the replay buffer
+        # of the module (e.g. when the module is an Algorithm) for DDP, because
+        # we do not want DDP to synchronize replay buffers across processes.
+        # Those buffers are not registered in the state_dict() because of Alf's
+        # special treatment but can be found under named_buffers(). We do not
+        # want DDP to synchronize replay buffers.
+        for name, _ in self.named_buffers():
+            if '_replay_buffer' in name.split('.'):
+                self._ddp_params_and_buffers_to_ignore.append(name)
+
     def forward(self, *args, **kwargs):
         return self._perform(*args, **kwargs)
 
