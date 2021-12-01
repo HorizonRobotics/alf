@@ -331,6 +331,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
         self._discount = discount
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
         self._current_step = torch.zeros(batch_size, device='cpu')
+        self._timestep_discount = torch.zeros(batch_size, device='cpu')
 
         super(AverageDiscountedReturnMetric, self).__init__(
             name=name,
@@ -385,8 +386,9 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = (
-            self._discount * self._accumulated_discount + 1)
+        self._accumulated_discount = (self._discount * self._timestep_discount
+                                      * self._accumulated_discount + 1)
+        self._timestep_discount = time_step.discount
         self._accumulated_discount = torch.where(
             is_first, torch.zeros_like(self._accumulated_discount),
             self._accumulated_discount)

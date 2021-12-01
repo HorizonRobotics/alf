@@ -28,6 +28,9 @@ from absl.testing import parameterized
 def _create_timestep(reward, env_id, step_type, env_info):
     return TimeStep(
         step_type=to_tensor(step_type),
+        discount=torch.where(
+            to_tensor(step_type) == StepType.LAST, torch.tensor(0.0),
+            torch.tensor(1.0)),
         reward=to_tensor(reward),
         env_info=env_info,
         env_id=to_tensor(env_id))

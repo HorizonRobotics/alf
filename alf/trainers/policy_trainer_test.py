@@ -34,10 +34,6 @@ env_load.batched = True
 class TrainerTest(alf.test.TestCase):
     def test_rl_trainer(self):
         with tempfile.TemporaryDirectory() as root_dir:
-            # create_environment() might have been used in other tests.
-            # We need to reset_configs() so we can avoid the error of configuring
-            # a function after it is used.
-            alf.reset_configs()
             alf.config("create_environment", env_load_fn=env_load)
             conf = TrainerConfig(
                 algorithm_ctor=MyAlg,
