@@ -17,7 +17,7 @@ import torch
 import alf
 import alf.examples.muzero_conf
 from alf.utils import dist_utils
-from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.algorithms.data_transformer import RewardNormalizer
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, VisitSoftmaxTemperatureByProgress
 from alf.optimizers import AdamTF
@@ -62,7 +62,7 @@ alf.config(
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
     td_steps=10,
-    reward_normalizer=ScalarAdaptiveNormalizer(auto_update=False),
+    reward_normalizer=RewardNormalizer(update_mode="rollout"),
     reanalyze_ratio=1.0,
     target_update_period=1,
     target_update_tau=0.01)
