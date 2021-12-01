@@ -36,7 +36,7 @@ class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
             update_mode="rollout"),
     )
     def test_reward_transformer(self, transformer):
-        # make sure reward transformer does not change its internal statics
+        # make sure reward transformer does not change its internal statistics
         # for EXE_MODE_OTHER
         x = torch.randn(100)
         common.set_exe_mode(common.EXE_MODE_OTHER)

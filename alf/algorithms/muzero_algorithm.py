@@ -70,8 +70,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  td_steps,
                  reward_spec=TensorSpec(()),
                  recurrent_gradient_scaling_factor=0.5,
-                 reward_normalizer=None,
-                 reward_clip_value=-1.,
+                 reward_transformer=None,
                  calculate_priority=None,
                  train_reward_function=True,
                  train_game_over_function=True,
@@ -108,8 +107,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             recurrent_gradient_scaling_factor (float): the gradient go through
                 the ``model.recurrent_inference`` is scaled by this factor. This
                 is suggested in Appendix G.
-            reward_normalizer (Normalizer|None): if provided, will be used to
-                normalize reward.
+            reward_transformer (Callable|None): if provided, will be used to
+                transform reward.
             train_reward_function (bool): whether train reward function. If
                 False, reward should only be given at the last step of an episode.
             calculate_priority (bool): whether to calculate priority. If not provided,
@@ -179,8 +178,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._td_steps = td_steps
         self._discount = mcts.discount
         self._recurrent_gradient_scaling_factor = recurrent_gradient_scaling_factor
-        self._reward_normalizer = reward_normalizer
-        self._reward_clip_value = reward_clip_value
+        self._reward_transformer = reward_transformer
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
         self._reanalyze_ratio = reanalyze_ratio
@@ -212,21 +210,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         return ['_target_model', '_reanalyze_mcts']
 
     def predict_step(self, time_step: TimeStep, state):
-        if self._reward_normalizer is not None:
+        if self._reward_transformer is not None:
             time_step = time_step._replace(
-                reward=self._reward_normalizer.normalize(
-                    time_step.reward, self._reward_clip_value))
+                reward=self._reward_transformer(time_step.reward))
         return self._mcts.predict_step(time_step, state)
 
     def rollout_step(self, time_step: TimeStep, state):
-        if self._reward_normalizer is not None:
-            self._reward_normalizer.update(time_step.reward)
+        if self._reward_transformer is not None:
             time_step = time_step._replace(
-                reward=self._reward_normalizer.normalize(
-                    time_step.reward, self._reward_clip_value))
+                reward=self._reward_transformer(time_step.reward))
         return self._mcts.predict_step(time_step, state)
 
-    def train_step(self, exp: TimeStep, state, rollout_info):
+    def train_step(self, exp: TimeStep, state, rollout_info: MuzeroInfo):
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
@@ -364,7 +359,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         rollout_info = convert_device(rollout_info)
         rollout_info = rollout_info._replace(value=rollout_value)
 
-        if self._reward_normalizer:
+        if self._reward_transformer:
             root_inputs = root_inputs._replace(
                 reward=rollout_info.target.reward[:, :, 0])
         return root_inputs, rollout_info
@@ -441,10 +436,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     def _get_reward(self, replay_buffer, env_ids, positions):
         reward = replay_buffer.get_field('reward', env_ids, positions)
-        if self._reward_normalizer is not None:
-            reward = self._reward_normalizer.normalize(
-                convert_device(reward, self._device),
-                self._reward_clip_value).cpu()
+        if self._reward_transformer is not None:
+            reward = self._reward_transformer(
+                convert_device(reward, self._device)).cpu()
         return reward
 
     def _reanalyze(self, replay_buffer: ReplayBuffer, env_ids, positions,
@@ -629,10 +623,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         positions = torch.min(positions, episode_end_positions)
         return env_ids, positions
 
-    def calc_loss(self, info: LossInfo):
+    def calc_loss(self, info: MuzeroInfo):
         if self._calculate_priority:
-            priority = (info.value - info.target.value[..., 0])
-            priority = priority.abs().sum(dim=0)
+            priority = info.loss.extra['value'].sqrt().sum(dim=0)
         else:
             priority = ()
 
