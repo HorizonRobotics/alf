@@ -131,7 +131,7 @@ def explained_variance(ypred, y, valid_mask=None, dim=None):
         y (Tensor): target
         valid_mask (Tensor): an optional
         dim (None|int): the dimension to reduce. If not provided, the explained
-            variance is calculated for dimensitions.
+            variance is calculated for all dimensions.
     Returns:
         1 - Var[y-ypred] / Var[y]
     """
