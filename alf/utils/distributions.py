@@ -172,10 +172,10 @@ class TruncatedDistribution(td.Distribution):
 
         super().__init__(batch_shape=batch_shape, event_shape=event_shape)
         self._its = its
-        self._lower_bound = lower_bound
-        self._upper_bound = upper_bound
-        self._cdf_lb = self._its.cdf((lower_bound - loc) / scale)
-        self._cdf_ub = self._its.cdf((upper_bound - loc) / scale)
+        self._lower_bound = lower_bound.to(loc.device)
+        self._upper_bound = upper_bound.to(loc.device)
+        self._cdf_lb = self._its.cdf((self._lower_bound - loc) / scale)
+        self._cdf_ub = self._its.cdf((self._upper_bound - loc) / scale)
         self._logz = (scale * (self._cdf_ub - self._cdf_lb + 1e-30)).log()
 
     @property
@@ -201,7 +201,10 @@ class TruncatedDistribution(td.Distribution):
     @property
     def mode(self):
         """Mode of this distribution."""
-        return self._loc.clamp(self._lower_bound, self._upper_bound)
+        result = torch.maximum(self._lower_bound, self._loc)
+        result = torch.minimum(self._upper_bound, result)
+
+        return result
 
     def rsample(self, sample_shape: torch.Size = torch.Size()):
         """
@@ -265,6 +268,54 @@ class TruncatedNormal(TruncatedDistribution):
 
     def __init__(self, loc, scale, lower_bound, upper_bound):
         super().__init__(loc, scale, lower_bound, upper_bound, NormalITS())
+
+
+@td.kl.register_kl(TruncatedNormal, TruncatedNormal)
+def _kl_truncated_normal_trucated_normal(p, q):
+    """Registered KL Divergence computation specialized for TruncatedNormal
+
+    It is closed form w.r.t. torch.erf.
+
+    """
+    assert torch.all(
+        torch.logical_and(
+            torch.isclose(p.lower_bound, q.lower_bound),
+            torch.isclose(p.upper_bound, q.upper_bound)))
+
+    delta = p.loc - q.loc
+    delta2 = delta**2
+
+    sigma_p2 = p.scale**2
+    # Pad sigma_q2 as it is positive will only be served as denominator
+    sigma_q2 = q.scale**2 + 1e-30
+
+    c1 = 0.5 * (torch.log(q.scale) - torch.log(p.scale)) + 0.25 * (
+        delta2 + sigma_p2) / sigma_q2 - 0.25
+
+    # 1 / sqrt(2 pi) = 0.3989422804014327
+    c2 = -0.3989422804014327 * p.scale * delta / sigma_q2
+
+    # 0.5 / sqrt(pi) = 0.28209479177387814
+    c3 = (1.0 - sigma_p2 / sigma_q2) * 0.28209479177387814
+
+    # sqrt(0.5) = 0.7071067811865475
+    t_u = (p.upper_bound - p.loc) * 0.7071067811865475 / (p.scale + 1e-30)
+    t_l = (p.lower_bound - p.loc) * 0.7071067811865475 / (p.scale + 1e-30)
+
+    upper = c1 * torch.erf(t_u) + (c3 * t_u + c2) * torch.exp(-t_u * t_u)
+    lower = c1 * torch.erf(t_l) + (c3 * t_l + c2) * torch.exp(-t_l * t_l)
+
+    # At this moment, before_normalization holds the integral part of
+    # original gaussian (but both p and q are not normalized by area_p
+    # and area_q respectively). This will be handled below.
+    before_normalization = upper - lower
+
+    # Pad area_p as it is positive will only be served as denominator
+    area_p = p._cdf_ub - p._cdf_lb + 1e-30
+    area_q = q._cdf_ub - q._cdf_lb
+
+    return (torch.log(area_q / area_p) + before_normalization / area_p).sum(
+        dim=list(range(-len(p._event_shape), 0)))
 
 
 class TruncatedCauchy(TruncatedDistribution):

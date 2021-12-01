@@ -31,6 +31,8 @@ alf.config(
     'suite_carla.Player',
     # camera is on for visualization purpose during play
     with_camera_sensor=True,
+    # uncomment to turn on BEV for visualization
+    # with_bev_sensor=True,
     with_gnss_sensor=False,
     with_imu_sensor=False,
     with_radar_sensor=False,

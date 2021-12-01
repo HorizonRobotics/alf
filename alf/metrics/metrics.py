@@ -21,6 +21,7 @@ import torch
 import alf
 import alf.utils.data_buffer as db
 
+from alf.utils import common
 from . import metric
 
 
@@ -128,13 +129,21 @@ class NumberOfEpisodes(metric.StepMetric):
         self._number_episodes.fill_(0)
 
 
-class AverageEpisodicSumMetric(metric.StepMetric):
-    """A base metric to sum up quantities over an episode. It supports accumulating
+class AverageEpisodicAggregationMetric(metric.StepMetric):
+    """A base metric to aggregate quantities over an episode. It supports accumulating
     a nest of scalar values.
+
+    NOTE: normally this class and its sub-classes report metrics by summing values
+    over the whole episode. However, there is a special treatment: if
+    ``_extract_metric_values()`` returns a nested structure in which a dictionary or
+    namedtuple has a field with postfix "@step", the corresponding value will be
+    averaged instead of summed over the whole episode length, so that a per-step
+    average value is reported.
+
     """
 
     def __init__(self,
-                 name="AverageEpisodicSumMetric",
+                 name="AverageEpisodicAggregationMetric",
                  prefix='Metrics',
                  dtype=torch.float32,
                  batch_size=1,
@@ -152,7 +161,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
             example_metric_value (nest): an example of metric value to be summarized;
                 if ``None``, a zero scalar is used.
         """
-        super(AverageEpisodicSumMetric, self).__init__(
+        super(AverageEpisodicAggregationMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
         if example_metric_value is None:
             example_metric_value = torch.zeros((), device='cpu')
@@ -160,21 +169,22 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         self._buffer_size = buffer_size
         self._initialize(example_metric_value)
 
+        # ``self._current_step`` will be set to zero for the first step, and is
+        # added by one otherwise. Therefore, at the episode end, its value
+        # equals to episode length - 1.
+        self._current_step = torch.zeros(batch_size, device='cpu')
+
     def _extract_metric_values(self, time_step):
         """Extract metrics from the time step. The return can be a nest."""
         raise NotImplementedError()
 
     def _initialize(self, example_metric_value):
-        counter = [0]
-
         def _init_buf(val):
             return MetricBuffer(max_len=self._buffer_size, dtype=self._dtype)
 
         def _init_acc(val):
             accumulator = torch.zeros(
                 self._batch_size, dtype=self._dtype, device='cpu')
-            self.register_buffer('_accumulator%d' % counter[0], accumulator)
-            counter[0] += 1
             return accumulator
 
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
@@ -191,6 +201,10 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         Returns:
             The arguments, for easy chaining.
         """
+
+        self._current_step = torch.where(time_step.is_first(),
+                                         torch.zeros_like(self._current_step),
+                                         self._current_step + 1)
 
         values = self._extract_metric_values(time_step)
 
@@ -213,17 +227,24 @@ class AverageEpisodicSumMetric(metric.StepMetric):
 
         alf.nest.map_structure(_update_accumulator_, self._accumulator, values)
 
+        def _episode_end_aggregate_(path, buf, acc):
+            value = self._extract_and_process_acc_value(
+                acc, last_episode_indices)
+            # If the metric's name ends with '@step', the value will
+            # be further averaged over episode length so that the
+            # result is per-step value.
+            if path.endswith('@step'):
+                value = value / self._current_step[last_episode_indices]
+            buf.append(value)
+
         # Extract the final accumulated value and do customizable processing
         # via ``_extract_and_process_acc_value``, and add the processed
         # result to buffer
         last_episode_indices = torch.where(time_step.is_last())[0]
 
         if len(last_episode_indices) > 0:
-            alf.nest.map_structure(
-                lambda buf, acc: buf.append(
-                    self._extract_and_process_acc_value(
-                        acc, last_episode_indices)), self._buffer,
-                self._accumulator)
+            alf.nest.py_map_structure_with_path(
+                _episode_end_aggregate_, self._buffer, self._accumulator)
 
         return time_step
 
@@ -247,7 +268,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         alf.nest.map_structure(lambda acc: acc.fill_(0), self._accumulator)
 
 
-class AverageReturnMetric(AverageEpisodicSumMetric):
+class AverageReturnMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average return."""
 
     def __init__(self,
@@ -283,7 +304,7 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
 
 
 @alf.configurable
-class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
+class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average discounted episodic return.
     It is calculated according to the following formula:
 
@@ -309,8 +330,17 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
                  reward_shape=(),
                  dtype=torch.float32,
                  discount=0.99,
+                 reward_transformer=None,
                  batch_size=1,
                  buffer_size=10):
+        """
+        Args:
+            discount (float): the discount factor for calculating the discounted
+                return
+            reward_transformer (Callable): if provided, will calculate the
+                discounted return using the transformed reward. It will be called
+                as ``transformed_reward = reward_transformer(original_reward)``.
+        """
         if reward_shape == ():
             example_metric_value = torch.zeros((), device='cpu')
         else:
@@ -321,6 +351,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
         self._discount = discount
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
         self._current_step = torch.zeros(batch_size, device='cpu')
+        self._timestep_discount = torch.zeros(batch_size, device='cpu')
 
         super(AverageDiscountedReturnMetric, self).__init__(
             name=name,
@@ -330,17 +361,26 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
             buffer_size=buffer_size,
             example_metric_value=example_metric_value)
 
+        self._reward_transformer = reward_transformer
+
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
         return. It also updates the accumulated discount and step count.
         """
-        self._update_discount_and_step_count(time_step)
+        self._update_discount(time_step)
 
         ndim = time_step.step_type.ndim
+        reward = time_step.reward
+        if self._reward_transformer is not None:
+            # RewardNormalizer may change its statistics if the exe_mode is
+            # ROLLOUT. We don't want that happen for metric calculation.
+            old_mode = common.set_exe_mode(common.EXE_MODE_OTHER)
+            reward = self._reward_transformer(reward)
+            common.set_exe_mode(old_mode)
         if time_step.reward.ndim == ndim:
-            discounted_reward = time_step.reward * self._accumulated_discount
+            discounted_reward = reward * self._accumulated_discount
         else:
-            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            reward = reward.reshape(*time_step.step_type.shape, -1)
             discounted_reward = [
                 reward[..., i] * self._accumulated_discount
                 for i in range(reward.shape[-1])
@@ -348,17 +388,14 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
 
         return discounted_reward
 
-    def _update_discount_and_step_count(self, time_step):
-        """Set/Update the values of ``self._accumulated_discount`` and
-        the value of ``self._current_step``.
+    def _update_discount(self, time_step):
+        """Set/Update the values of ``self._accumulated_discount``.
+
         If this is the first step, ``self._accumulated_discount`` will be set
         to zero. Otherwise, it is multiplied by ``discount`` and added by one.
         The updated accumulated discount will be used for computing the
         accumulated contribution of the the reward received at the current step
         to the discounted return.
-        ``self._current_step`` will be set to zero for the first step, and
-        is added by one otherwise. Therefore, at the episode end, its value
-        equals to episode length - 1.
 
         Args:
             time_step (alf.data_structures.TimeStep): batched tensor
@@ -366,15 +403,12 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = (
-            self._discount * self._accumulated_discount + 1)
+        self._accumulated_discount = (self._discount * self._timestep_discount
+                                      * self._accumulated_discount + 1)
+        self._timestep_discount = time_step.discount
         self._accumulated_discount = torch.where(
             is_first, torch.zeros_like(self._accumulated_discount),
             self._accumulated_discount)
-
-        self._current_step = torch.where(is_first,
-                                         torch.zeros_like(self._current_step),
-                                         self._current_step + 1)
 
     def _extract_and_process_acc_value(self, acc, last_episode_indices):
         """Extract the final accumulated value and divide by the number of
@@ -390,7 +424,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
             last_episode_indices]
 
 
-class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):
+class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
     """Metric for computing the average episode length."""
 
     def __init__(self,
@@ -416,7 +450,7 @@ class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):
                            torch.ones_like(time_step.step_type))
 
 
-class AverageEnvInfoMetric(AverageEpisodicSumMetric):
+class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
     """Metric for computing average quantities contained in the environment info.
     An example of env info (which can be a nest) has to be provided when constructing
     an instance in order to initialize the accumulator and buffer with the same
