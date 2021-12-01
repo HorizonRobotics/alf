@@ -742,7 +742,7 @@ def plot(env, her, train, curves):
             "Breakout": 12000000,
             "Seaquest": 12000000,
             "SpaceInvaders": 12000000,
-            "Atlantis": 6000000,
+            "Atlantis": 12000000,
             "Frostbite": 12000000,
             "Qbert": 12000000
         }
@@ -751,7 +751,7 @@ def plot(env, her, train, curves):
                 "Breakout": (0, 400),
                 "Seaquest": (0, 5000),
                 "SpaceInvaders": (0, 1200),
-                "Atlantis": (0, 180000),
+                "Atlantis": (0, 300000),
                 "Frostbite": (0, 3500),
                 "Qbert": (0, 16000),
             }
@@ -761,7 +761,7 @@ def plot(env, her, train, curves):
                 "Breakout": 50000,
                 "Seaquest": 50000,
                 "SpaceInvaders": 50000,
-                "Atlantis": 25000,
+                "Atlantis": 50000,
                 "Frostbite": 50000,
                 "Qbert": 50000
             }
