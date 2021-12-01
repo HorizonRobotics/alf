@@ -74,11 +74,11 @@ def data_distributed(method):
     this method will have gradient synchronization hooks attached to them. Later
     when those outputs are used in ``backward()`` to compute gradients, the
     hooks will be called to synchronize across all processes. As a result, the
-    corresponding parameters does not only receive the gradients from this
-    process, but also gradients from the other processes. Note that each single
-    process will be TRAPPED at the call to the ``backward()`` that involves
-    those output tensors, until all processes finished the back propagation and
-    have the gradients sync'ed.
+    corresponding parameters receive not only the gradients from this process,
+    but also gradients from the other processes. Note that each single process
+    will be TRAPPED at the call to the ``backward()`` that involves those output
+    tensors, until all processes finished the back propagation and have the
+    gradients sync'ed.
 
     Example usage:
 
@@ -90,9 +90,6 @@ def data_distributed(method):
             def compute_something(self, input):
               return self._network1(input), self._network2(input)
             # ...
-        variance_scaling_init(layer.weight.data,
-                              nonlinearity=nn.functional.leaky_relu)
-
 
     In the above code, after applying the decorator, the method
     ``compute_something`` will be made data distributed if the following

@@ -216,9 +216,9 @@ class Algorithm(AlgorithmInterface):
         return self._use_rollout_state
 
     def activate_ddp(self, rank: int):
-        """Prepare the RLAlgorithm with DistributedDataParallel wrapper
+        """Prepare the Algorithm with DistributedDataParallel wrapper
 
-        Note that RLAlgorithm does not need to remember the rank of the device.
+        Note that Algorithm does not need to remember the rank of the device.
 
         Args:
             rank (int): DDP wrapper needs to know on which GPU device this
