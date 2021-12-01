@@ -124,7 +124,7 @@ class MeanCurveReader(object):
 
     def __init__(self,
                  event_file,
-                 x_steps,
+                 x_steps=None,
                  name="MeanCurveReader",
                  smoothing=None,
                  interval_mode="std"):
@@ -135,7 +135,23 @@ class MeanCurveReader(object):
                 "eval/" or "train/". The curves of these files will be averaged.
                 It's the user's responsibility to ensure that it's meaningful to
                 group these event files and show their mean and variance.
-            x_steps (list[int]): x steps whose y values will be plot
+            x_steps (list[int]): we support merging curves that have different
+                :math:`x` into a ``MeanCurve``. For example, if there are three
+                curves:
+
+                .. code-block:: python
+
+                    curve1 x: (1, 9),
+                    curve2 x: (0, 10),
+                    curve3 x: (0, 8),
+
+                then the merged ``MeanCurve`` will have :math:`(1, 8)` as the
+                final :math:`x` range. Each curve's new :math:`y` values will
+                be interpolated w.r.t. this common :math:`x` range approperiately
+                given their original :math:`y=f(x)` curve. The common :math:`x`
+                range will be automatically determined as in the example if this
+                argument ``x_steps==None``. Alternatively, the user can specify
+                a pre-defined list of integers for interpolation.
             name (str): name of the mean curve.
             smoothing (int | float): if None, no smoothing is applied; if int,
                 it's the window width of a Savitzky-Golay filter; if float,
@@ -161,6 +177,22 @@ class MeanCurveReader(object):
             # 'scalar_events' is a list of ScalarEvent(wall_time, step, value)
             scalar_events = event_acc.Scalars(self._get_metric_name())
             scalar_events_list.append(scalar_events)
+
+        if x_steps is None:
+            max_x, min_x, num_steps = int(1e15), 0, 0
+            for scalar_events in scalar_events_list:
+                steps = [se.step for se in scalar_events]
+                max_x = min(max_x, steps[-1])
+                min_x = max(min_x, steps[0])
+                # In case we always summarize every step in the first interval,
+                # len(steps) is much bigger than we expected. So we need to calculate.
+                num_steps = max(
+                    num_steps,
+                    (steps[-1] - steps[0]) // (steps[-1] - steps[-2]))
+            # calcuate x_steps by evenly dividing (min_x, max_x)
+            assert max_x > min_x and num_steps > 1
+            delta_x = (max_x - min_x) / (num_steps - 1)
+            x_steps = np.arange(num_steps) * delta_x + min_x
 
         for scalar_events in scalar_events_list:
             steps, values = zip(*[(se.step, se.value) for se in scalar_events])
@@ -211,6 +243,11 @@ class MeanCurveReader(object):
             tuple: the first is the adjusted x values and the second is the
                 interpolated and smoothed y values.
         """
+        # a rouch check to make sure the interpolation won't be too much
+        assert abs(steps[-1] - output_x[-1]) / output_x[-1] < 0.05, (
+            "Inconsistent final steps! actual %d output %d" % (steps[-1],
+                                                               output_x[-1]))
+
         func = interp1d(steps, values, kind=kind, fill_value='extrapolate')
         new_values = func(output_x)
 
@@ -408,7 +445,6 @@ class CurvesPlotter(object):
     ``min_y`` and ``max_y`` will be plotted by a shaded area around ``y``, and
     its ``x`` determines the x-axis range.
     """
-    _COLORS = ['C%d' % i for i in range(10)]
 
     def __init__(self,
                  mean_curves,
@@ -423,9 +459,11 @@ class CurvesPlotter(object):
                  dpi=100,
                  linestyle='-',
                  linewidth=2,
-                 std_alpha=0.3,
-                 bg_color=None,
-                 grid_color=None,
+                 std_alpha=0.2,
+                 colors=None,
+                 markers=None,
+                 bg_color='white',
+                 grid_color='#e6e5e3',
                  plot_mean_only=False,
                  legend_kwargs=dict(loc="best"),
                  title=None):
@@ -446,9 +484,30 @@ class CurvesPlotter(object):
                 std region, the input y values might be out of this range.
             x_label (str): shown besides x-axis
             y_label (str): shown besides y-axis
-            x_scaled_and_aligned (bool): If True, the x axes of all MeanCurves
-                will be scaled and aligned to ``x_range``; otherwise, the x axes
-                will be plot according to ``x`` of each MeanCurve.
+            x_scaled_and_aligned (bool): If True, the x axes of all ``MeanCurve``
+                will be scaled and aligned so that the lower and upper :math:`x`
+                bounds of all curves will be ``x_range``, and each curve's :math:`x`
+                axix will be proportionally scaled. If False, the :math:`x` axis
+                will be plotted according to :math:`x` of each ``MeanCurve`` as
+                it is. Note that this process only involves :math:`x` scaling and
+                no interpolation of :math:`y` values will ever be performed. For
+                example, we have three ``MeanCurves`` to be plotted in a figure:
+
+                .. code-block:: python
+
+                    mean_curve1 x: (0, 100)
+                    mean_curve2 x: (20, 80)
+                    mean_curve3 x: (100, 200)
+
+                with ``x_range==(0,1)``. Then in the plotted figure, the :math:`x`
+                range (not x-ticks which can be specified differently!) will be
+
+                .. code-block:: python
+
+                    mean_curve1 x: (0, 0.5)
+                    mean_curve2 x: (0.1, 0.4)
+                    mean_curve3 x: (0.5, 1)
+
             figsize (tuple[int]): a tuple of ints determining the size of the
                 figure in inches. A larger figure size will allow for longer texts,
                 more axes or more ticklabels to be shown.
@@ -474,18 +533,31 @@ class CurvesPlotter(object):
         if not isinstance(mean_curves, list):
             mean_curves = [mean_curves]
 
+        if colors is None:
+            colors = ['C%d' % i for i in range(10)]
+
+        if markers is None:
+            markers = [''] * len(mean_curves)
+
         if x_scaled_and_aligned:
             if x_range is None:
                 x_range = (0., 1.)
-
-            n_points = len(mean_curves[0].y)
-            # check n_points are all the same
+            scaled_x = []
+            # determine the lower and upper bounds of actual x
+            min_x, max_x = int(1e15), 0
             for mc in mean_curves:
-                assert n_points == len(
-                    mc.y), ("All curves must have the same number of points!")
+                max_x = max(max_x, mc.x[-1])
+                min_x = min(min_x, mc.x[0])
 
-            delta_x = (x_range[-1] - x_range[0]) / (n_points - 1)
-            scaled_x = np.arange(n_points) * delta_x + x_range[0]
+            def _scale(x):
+                # compute a scaled x according to the bounds
+                return ((x - min_x) / (max_x - min_x) *
+                        (x_range[-1] - x_range[0]) + x_range[0])
+
+            for mc in mean_curves:
+                x0, x1 = _scale(mc.x[0]), _scale(mc.x[-1])
+                delta_x = (x1 - x0) / (len(mc.y) - 1)
+                scaled_x.append(np.arange(len(mc.y)) * delta_x + x0)
 
         def _clip_y(y):
             return np.clip(y, y_clipping[0],
@@ -497,16 +569,13 @@ class CurvesPlotter(object):
             linestyle += linestyle[-1:] * (len(mean_curves) - len(linestyle))
 
         for i, c in enumerate(mean_curves):
-            if i < len(mean_curves) - 1:
-                color = self._COLORS[i % len(self._COLORS)]
-
-            else:  # assume the last method is best; "black" for highlighting
-                color = "black"
-            x = (scaled_x if x_scaled_and_aligned else c.x)
+            color = colors[i % len(colors)]
+            x = (scaled_x[i] if x_scaled_and_aligned else c.x)
             ax.plot(
                 x,
                 _clip_y(c.y),
                 color=color,
+                marker=markers[i],
                 lw=linewidth,
                 linestyle=linestyle[i],
                 label=c.name)

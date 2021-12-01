@@ -384,7 +384,12 @@ class DMAtariPreprocessing(gym.Wrapper):
     FrameStack. See atari.gin for an example.)
     """
 
-    def __init__(self, env, frame_skip=4, noop_max=30, screen_size=84):
+    def __init__(self,
+                 env,
+                 frame_skip=4,
+                 noop_max=30,
+                 screen_size=84,
+                 gray_scale=True):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
@@ -392,6 +397,7 @@ class DMAtariPreprocessing(gym.Wrapper):
             frame_skip (int): the frequency at which the agent experiences the game.
             noop_max (int): the maximum number of no-op actions after resetting the env
             screen_size (int): size of a resized Atari 2600 frame.
+            gray_scale (bool):
         """
         super().__init__(env)
         if frame_skip <= 0:
@@ -405,20 +411,32 @@ class DMAtariPreprocessing(gym.Wrapper):
         self.frame_skip = frame_skip
         self.screen_size = screen_size
         self.noop_max = noop_max
+        self.gray_scale = gray_scale
+        num_channels = 1 if gray_scale else 3
         assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
         obs_dims = self.env.observation_space
         # Stores temporary observations used for pooling over two successive
         # frames.
-        self.screen_buffer = [
-            np.empty((obs_dims.shape[0], obs_dims.shape[1]), dtype=np.uint8),
-            np.empty((obs_dims.shape[0], obs_dims.shape[1]), dtype=np.uint8)
-        ]
+        if gray_scale:
+            self.screen_buffer = [
+                np.empty((obs_dims.shape[0], obs_dims.shape[1]),
+                         dtype=np.uint8),
+                np.empty((obs_dims.shape[0], obs_dims.shape[1]),
+                         dtype=np.uint8)
+            ]
+        else:
+            self.screen_buffer = [
+                np.empty((obs_dims.shape[0], obs_dims.shape[1], 3),
+                         dtype=np.uint8),
+                np.empty((obs_dims.shape[0], obs_dims.shape[1], 3),
+                         dtype=np.uint8)
+            ]
 
         self.observation_space = gym.spaces.Box(
             low=0,
             high=255,
-            shape=(self.screen_size, self.screen_size, 1),
+            shape=(self.screen_size, self.screen_size, num_channels),
             dtype=np.uint8)
 
         self._lives = 0
@@ -445,7 +463,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     def _start_new_life(self):
         self.fire()
         # in either case, we need to clear the screen buffer
-        self._fetch_grayscale_observation(self.screen_buffer[0])
+        self._fetch_observation(self.screen_buffer[0])
         self.screen_buffer[1].fill(0)
         return self._pool_and_resize()
 
@@ -503,7 +521,7 @@ class DMAtariPreprocessing(gym.Wrapper):
             elif time_step >= self.frame_skip - 2:
                 t = time_step - (self.frame_skip - 2)
                 # when frame_skip==1, self.screen_buffer[1] will be filled!
-                self._fetch_grayscale_observation(self.screen_buffer[t])
+                self._fetch_observation(self.screen_buffer[t])
         info['num_env_frames'] = num_env_frames
 
         if self.frame_skip == 1:
@@ -517,8 +535,8 @@ class DMAtariPreprocessing(gym.Wrapper):
 
         return observation, accumulated_reward, game_over, info
 
-    def _fetch_grayscale_observation(self, output):
-        """Returns the current observation in grayscale.
+    def _fetch_observation(self, output):
+        """Returns the current observation in grayscale or RGB.
 
         The returned observation is stored in 'output'.
 
@@ -526,9 +544,12 @@ class DMAtariPreprocessing(gym.Wrapper):
             output (np.array): screen buffer to hold the returned observation.
 
         Returns:
-            observation (np.array): the current observation in grayscale.
+            observation (np.array): the current observation in grayscale or RGB
         """
-        self.env.ale.getScreenGrayscale(output)
+        if self.gray_scale:
+            self.env.ale.getScreenGrayscale(output)
+        else:
+            self.env.ale.getScreenRGB2(output)
         return output
 
     def _pool_and_resize(self):
@@ -550,7 +571,10 @@ class DMAtariPreprocessing(gym.Wrapper):
             self.screen_buffer[0], (self.screen_size, self.screen_size),
             interpolation=cv2.INTER_AREA)
         int_image = np.asarray(transformed_image, dtype=np.uint8)
-        return np.expand_dims(int_image, axis=2)
+        if self.gray_scale:
+            return np.expand_dims(int_image, axis=2)
+        else:
+            return int_image
 
 
 def _gym_space_to_nested_space(space):

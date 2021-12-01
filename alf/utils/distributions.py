@@ -172,10 +172,10 @@ class TruncatedDistribution(td.Distribution):
 
         super().__init__(batch_shape=batch_shape, event_shape=event_shape)
         self._its = its
-        self._lower_bound = lower_bound
-        self._upper_bound = upper_bound
-        self._cdf_lb = self._its.cdf((lower_bound - loc) / scale)
-        self._cdf_ub = self._its.cdf((upper_bound - loc) / scale)
+        self._lower_bound = lower_bound.to(loc.device)
+        self._upper_bound = upper_bound.to(loc.device)
+        self._cdf_lb = self._its.cdf((self._lower_bound - loc) / scale)
+        self._cdf_ub = self._its.cdf((self._upper_bound - loc) / scale)
         self._logz = (scale * (self._cdf_ub - self._cdf_lb + 1e-30)).log()
 
     @property
@@ -201,7 +201,10 @@ class TruncatedDistribution(td.Distribution):
     @property
     def mode(self):
         """Mode of this distribution."""
-        return self._loc.clamp(self._lower_bound, self._upper_bound)
+        result = torch.maximum(self._lower_bound, self._loc)
+        result = torch.minimum(self._upper_bound, result)
+
+        return result
 
     def rsample(self, sample_shape: torch.Size = torch.Size()):
         """
