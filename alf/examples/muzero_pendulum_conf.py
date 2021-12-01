@@ -62,7 +62,7 @@ alf.config(
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
     td_steps=10,
-    reward_normalizer=RewardNormalizer(update_mode="rollout"),
+    reward_transformer=RewardNormalizer(update_mode="rollout"),
     reanalyze_ratio=1.0,
     target_update_period=1,
     target_update_tau=0.01)
