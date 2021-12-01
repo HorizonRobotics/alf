@@ -92,6 +92,7 @@ function test() {
         alf.environments.alf_wrappers_test \
         alf.experience_replayers.replay_buffer_test \
         alf.experience_replayers.segment_tree_test \
+        alf.initializers_test \
         alf.layers_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
