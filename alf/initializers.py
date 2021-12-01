@@ -25,9 +25,10 @@ import alf.utils.math_ops as math_ops
 def _is_elementwise_op(op):
     """Check whether ``op`` is an elementwise operation."""
     x = torch.randn(10, 20)
-    x1 = x.clone()
+    x1 = x.clone().reshape(20, 10)
     y = op(x)
-    y1 = op(x1.reshape(-1)).reshape(10, 20)
+    y1 = [op(x1[5 * i:5 * i + 5, :]) for i in range(4)]
+    y1 = torch.stack(y1, dim=0).reshape(10, 20)
     return (y == y1).all()
 
 
