@@ -832,10 +832,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         because in the case of multi-step TD learning, the entropy should also
         appear in intermediate steps! This doesn't affect one-step TD loss, however.
 
-        One difference between our implementation with SAC official is that
-        for StepType.LAST with discount=0, they mask out both the entropy reward
-        and the target Q value, while we only mask out the target Q value.
-        See https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py#L32
+        Following the SAC official implementation,
+        https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py#L32
+        for StepType.LAST with discount=0, we mask out both the entropy reward
+        and the target Q value. The reason is that there is no guarantee of what
+        the last entropy will look like because the policy is never trained on
+        that. If the entropy is very small, the the agent might hesitate to terminate
+        the episode.
         (There is an issue in their implementation: their "terminals" can't
         differentiate between discount=0 (NormalEnd) and discount=1 (TimeOut).
         In the latter case, masking should not be performed.)
@@ -852,11 +855,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
                     log_pi)
                 entropy_reward = sum(nest.flatten(entropy_reward))
-                entropy_reward = common.expand_dims_as(
-                    entropy_reward, info.reward)  # handle multi-dim reward
-                gamma = self._critic_losses[0].gamma
+                discount = self._critic_losses[0].gamma * info.discount
                 info = info._replace(
-                    reward=info.reward + entropy_reward * gamma)
+                    reward=(info.reward + common.expand_dims_as(
+                        entropy_reward * discount, info.reward)))
 
         critic_info = info.critic
         critic_losses = []
