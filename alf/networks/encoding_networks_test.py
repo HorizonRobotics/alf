@@ -21,11 +21,10 @@ import time
 import torch
 
 import alf
+from alf.networks.encoding_networks import AutoShapeImageDeconvNetwork
+from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
-from alf.networks.encoding_networks import ImageDeconvNetwork
-from alf.networks.encoding_networks import EncodingNetwork
-from alf.networks.encoding_networks import ParallelEncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.network_test import test_net_copy
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -96,7 +95,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
-        network = ImageDeconvNetwork(
+        network = AutoShapeImageDeconvNetwork(
             input_size=input_spec.shape[0],
             transconv_layer_params=((16, (2, 3), 1, (1, 2)), (output_shape[0],
                                                               (3, 5), 1, 0)),

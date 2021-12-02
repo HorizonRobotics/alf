@@ -14,8 +14,10 @@
 
 import functools
 import numpy as np
+from typing import Callable, Optional, Tuple
 
 import torch
+import torch.nn as nn
 from .containers import _Sequential
 from .network import Network
 import alf
@@ -47,7 +49,7 @@ class ImageEncodingNetwork(_Sequential):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        `<https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d>`_::
+        `<https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html>`_::
 
             H = (H1 - HF + 2P) // strides + 1
 
@@ -131,7 +133,7 @@ class ImageDecodingNetwork(_Sequential):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        `<https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d>`_::
+        `<https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html>`_::
 
             H = (H1-1) * strides + HF - 2P + OP
 
@@ -231,26 +233,27 @@ class ImageDecodingNetwork(_Sequential):
 
 
 @alf.configurable
-class ImageDeconvNetwork(_Sequential):
+class AutoShapeImageDeconvNetwork(_Sequential):
     """
     A general template class for creating image deconv (transposed convolutional)
-        networks with auto-shape inference.
+        networks with auto-shape inference (thus named as
+        ``AutoShapeImageDeconvNetwork``).
     """
 
     def __init__(self,
-                 input_size,
-                 transconv_layer_params,
-                 output_shape,
-                 start_decoding_channels,
-                 preprocess_fc_layer_params=None,
-                 activation=torch.relu_,
-                 kernel_initializer=None,
-                 output_activation=torch.tanh,
-                 name="ImageDeconvNetwork"):
+                 input_size: int,
+                 transconv_layer_params: Tuple,
+                 output_shape: Tuple,
+                 start_decoding_channels: int,
+                 preprocess_fc_layer_params: Optional[Tuple] = None,
+                 activation: Optional[Callable] = torch.relu_,
+                 kernel_initializer: Optional[Callable] = None,
+                 output_activation: Optional[Callable] = torch.tanh,
+                 name="AutoShapeImageDeconvNetwork"):
         """
-        Instead of specifying an initial start shape for image deconv, this
-        class only needs to specify the desired output shape for the image
-        and will automatically calculate the desired shape to start
+        Auto-shape inference: instead of specifying an initial start shape for
+        image deconv, this class only needs to specify the desired output shape
+        for the image and will automatically calculate the desired shape to start
         decoding based on the specified ``transconv_layer_params``
         and uses a FC layer to map the to the desired start shape.
 
@@ -265,7 +268,10 @@ class ImageDeconvNetwork(_Sequential):
                 like to have for the feature map. Note that we always first
                 project an input latent vector into a vector of an appropriate
                 length so that it can be reshaped into (``start_decoding_channels``,
-                ``start_decoding_height``, ``start_decoding_width``).
+                ``start_decoding_height``, ``start_decoding_width``),
+                where ``start_decoding_height`` and ``start_decoding_width``
+                are automatically inferred based on the specified ``output_shape``
+                and ``transconv_layer_params``.
             preprocess_fc_layer_params (tuple[int]): a tuple of fc
                 layer units. These fc layers are used for preprocessing the
                 latent vector before transposed convolutions.
@@ -291,9 +297,9 @@ class ImageDeconvNetwork(_Sequential):
 
             padding = paras[3] if len(paras) > 3 else 0
             padding = common.tuplify2d(padding)
-            conv_shape = self._conv_out_shape(out_shape, padding, kernel_size,
-                                              stride)
-            out_padding = self._output_padding_shape(
+            conv_shape = self._calc_conv_out_shape(out_shape, padding,
+                                                   kernel_size, stride)
+            out_padding = self._calc_output_padding_shape(
                 out_shape, conv_shape, padding, kernel_size, stride)
             out_shape = conv_shape
             conv_shapes.append(conv_shape)
@@ -353,24 +359,33 @@ class ImageDeconvNetwork(_Sequential):
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
-    def _conv_out(self, h_in, padding, kernel_size, stride):
-        return int((h_in + 2. * padding - (kernel_size - 1.) - 1.) / stride +
-                   1.)
+    def _calc_conv_out_shape(self, input_size, padding, kernel_size, stride):
+        """Calculate the output shape of a conv2d operation.
+        Reference:
+        `<https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html>`_.
+        """
 
-    def _output_padding(self, h_in, conv_out, padding, kernel_size, stride):
-        return h_in - (conv_out - 1) * stride + 2 * padding - (
-            kernel_size - 1) - 1
+        def _conv_out_1d(input_size, padding, kernel_size, stride):
+            return int((input_size + 2. * padding - kernel_size) / stride + 1.)
 
-    def _conv_out_shape(self, h_in, padding, kernel_size, stride):
         return tuple(
-            self._conv_out(x, p, k, stride)
-            for x, p, k in zip(h_in, padding, kernel_size))
+            _conv_out_1d(x, p, k, stride)
+            for x, p, k in zip(input_size, padding, kernel_size))
 
-    def _output_padding_shape(self, h_in, conv_out, padding, kernel_size,
-                              stride):
-        return tuple(
-            self._output_padding(x, c, p, k, stride)
-            for x, c, p, k in zip(h_in, conv_out, padding, kernel_size))
+    def _calc_output_padding_shape(self, input_size, conv_out, padding,
+                                   kernel_size, stride):
+        """Calculate the necessary output padding to be used for
+        ``ConvTranspose2D`` to ensure the image obatained from it will have a
+        size that matches the ``input size``.
+        """
+
+        def _output_padding_1d(input_size, conv_out, padding, kernel_size,
+                               stride):
+            return input_size - (
+                conv_out - 1) * stride + 2 * padding - kernel_size
+
+        return tuple(_output_padding_1d(x, c, p, k, stride) for x, c, p, k in \
+                        zip(input_size, conv_out, padding, kernel_size))
 
 
 @alf.configurable
