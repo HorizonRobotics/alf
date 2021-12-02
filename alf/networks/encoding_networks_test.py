@@ -23,6 +23,7 @@ import torch
 import alf
 from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
+from alf.networks.encoding_networks import ImageDeconvNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
@@ -85,6 +86,29 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             output_shape = (64, 21, 63)
         else:
             output_shape = (64, 21, 65)
+        self.assertEqual(output_shape, network.output_spec.shape)
+        self.assertEqual(output_shape, tuple(output.size()[1:]))
+
+    @parameterized.parameters((None, 1, (64, 21, 65)), ((100, 100), 5,
+                                                        (18, 31, 24)))
+    def test_image_deconv_network(self, preprocessing_fc_layers,
+                                  start_decoding_channels, output_shape):
+
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(1, ))
+        network = ImageDeconvNetwork(
+            input_size=input_spec.shape[0],
+            transconv_layer_params=((16, (2, 3), 1, (1, 2)), (output_shape[0],
+                                                              (3, 5), 1, 0)),
+            output_shape=output_shape,
+            start_decoding_channels=start_decoding_channels,
+            preprocess_fc_layer_params=preprocessing_fc_layers)
+
+        num_layers = 3 if preprocessing_fc_layers is None else 5
+        self.assertLen(list(network.parameters()), num_layers * 2)
+
+        output, _ = network(embedding)
+
         self.assertEqual(output_shape, network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 

@@ -231,6 +231,149 @@ class ImageDecodingNetwork(_Sequential):
 
 
 @alf.configurable
+class ImageDeconvNetwork(_Sequential):
+    """
+    A general template class for creating image deconv (transposed convolutional)
+        networks with auto-shape inference.
+    """
+
+    def __init__(self,
+                 input_size,
+                 transconv_layer_params,
+                 output_shape,
+                 start_decoding_channels,
+                 preprocess_fc_layer_params=None,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 output_activation=torch.tanh,
+                 name="ImageDeconvNetwork"):
+        """
+        Instead of specifying an initial start shape for image deconv, this
+        class only needs to specify the desired output shape for the image
+        and will automatically calculate the desired shape to start
+        decoding based on the specified ``transconv_layer_params``
+        and uses a FC layer to map the to the desired start shape.
+
+        Args:
+            input_size (int): the size of the input latent vector
+            transconv_layer_params (tuple[tuple]): a non-empty
+                tuple of tuple (num_filters, kernel_size, strides, padding),
+                where ``padding`` is optional.
+            output_shape (tuple): the complete output size would be
+                output_shape = (c, h, w).
+            start_decoding_channels (int): the initial number of channels we'd
+                like to have for the feature map. Note that we always first
+                project an input latent vector into a vector of an appropriate
+                length so that it can be reshaped into (``start_decoding_channels``,
+                ``start_decoding_height``, ``start_decoding_width``).
+            preprocess_fc_layer_params (tuple[int]): a tuple of fc
+                layer units. These fc layers are used for preprocessing the
+                latent vector before transposed convolutions.
+            activation (nn.functional): activation for hidden layers
+            kernel_initializer (Callable): initializer for all the layers.
+            output_activation (nn.functional): activation for the output layer.
+                Usually our image inputs are normalized to [0, 1] or [-1, 1],
+                so this function should be ``torch.sigmoid`` or
+                ``torch.tanh``.
+            name (str):
+        """
+        assert len(output_shape) == 3, "the output_shape should be (c, h, w)"
+        assert output_shape[0] == transconv_layer_params[-1][0], (
+            "channel number mis-match")
+
+        # compute conv shape and padding shape
+        conv_shapes = []
+        out_paddings = []
+        out_shape = output_shape[1:]
+        for i, paras in enumerate(transconv_layer_params[::-1]):
+            filters, kernel_size, stride = paras[:3]
+            kernel_size = common.tuplify2d(kernel_size)
+
+            padding = paras[3] if len(paras) > 3 else 0
+            padding = common.tuplify2d(padding)
+            conv_shape = self._conv_out_shape(out_shape, padding, kernel_size,
+                                              stride)
+            out_padding = self._output_padding_shape(
+                out_shape, conv_shape, padding, kernel_size, stride)
+            out_shape = conv_shape
+            conv_shapes.append(conv_shape)
+            out_paddings.append(out_padding)
+
+        input_tensor_spec = TensorSpec((input_size, ))
+
+        assert isinstance(transconv_layer_params, tuple)
+        assert len(transconv_layer_params) > 0
+
+        nets = []
+        if preprocess_fc_layer_params is not None:
+            for size in preprocess_fc_layer_params:
+                nets.append(
+                    layers.FC(
+                        input_size,
+                        size,
+                        activation=activation,
+                        kernel_initializer=kernel_initializer))
+                input_size = size
+
+        start_decoding_shape = [
+            start_decoding_channels, conv_shapes[-1][0], conv_shapes[-1][1]
+        ]
+        nets.append(
+            layers.FC(
+                input_size,
+                np.prod(start_decoding_shape),
+                activation=activation,
+                kernel_initializer=kernel_initializer))
+
+        nets.append(alf.layers.Reshape(start_decoding_shape))
+
+        in_channels = start_decoding_channels
+
+        for i, paras in enumerate(transconv_layer_params):
+
+            filters, kernel_size, strides = paras[:3]
+            padding = paras[3] if len(paras) > 3 else 0
+            output_padding = out_paddings[-(i + 1)]
+
+            act = activation
+            if i == len(transconv_layer_params) - 1:
+                act = output_activation
+
+            nets.append(
+                layers.ConvTranspose2D(
+                    in_channels,
+                    filters,
+                    kernel_size,
+                    activation=act,
+                    kernel_initializer=kernel_initializer,
+                    strides=strides,
+                    padding=padding,
+                    output_padding=output_padding))
+            in_channels = filters
+
+        super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+    def _conv_out(self, h_in, padding, kernel_size, stride):
+        return int((h_in + 2. * padding - (kernel_size - 1.) - 1.) / stride +
+                   1.)
+
+    def _output_padding(self, h_in, conv_out, padding, kernel_size, stride):
+        return h_in - (conv_out - 1) * stride + 2 * padding - (
+            kernel_size - 1) - 1
+
+    def _conv_out_shape(self, h_in, padding, kernel_size, stride):
+        return tuple(
+            self._conv_out(x, p, k, stride)
+            for x, p, k in zip(h_in, padding, kernel_size))
+
+    def _output_padding_shape(self, h_in, conv_out, padding, kernel_size,
+                              stride):
+        return tuple(
+            self._output_padding(x, c, p, k, stride)
+            for x, c, p, k in zip(h_in, conv_out, padding, kernel_size))
+
+
+@alf.configurable
 class EncodingNetwork(_Sequential):
     """Feed Forward network with CNN and FC layers which allows the last layer
     to have different settings from the other layers.
