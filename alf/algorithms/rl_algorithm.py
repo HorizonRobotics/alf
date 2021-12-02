@@ -17,7 +17,6 @@ from abc import abstractmethod
 import os
 import time
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 from typing import Callable
 from absl import logging
 
@@ -26,47 +25,9 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
+from alf.utils.distributed import data_distributed
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
-
-
-class _UnrollPerformer(torch.nn.Module):
-    """Wraps RLAlgorithm.unroll() as a forward()
-
-    In fact, UnrollPerformer.forward() is just a delegation to
-    RLAlgorithm.unroll(). The reason that we need this wrapper is to trick DDP
-    to add necessary callbacks to the unroll process. DDP wrapper only
-    recognizes and hijacks the method named "forward()".
-
-    """
-
-    def __init__(self, algorithm: 'RLAlgorithm'):
-        """Construct the unroll() wrapper
-
-        Args:
-            algorithm (RLAlgorithm): an RLAlgorithm instance whose unroll() is
-                wrapped by UnrollPerformer's forward().
-        """
-        super().__init__()
-        self.inner_algorithm = algorithm
-
-        # DDP will panic if the wrapped module (i.e. UnrollPerformer here) has
-        # member in its state_dict() that is not a Tensor. Here such state_dict
-        # members are picked and thrown into _ddp_params_and_buffers_to_ignore.
-        # By contract this implicitly instruct DDP wrapper to not include them
-        # in its parameter/buffer synchronization.
-        self._ddp_params_and_buffers_to_ignore = []
-        for name, value in self.state_dict().items():
-            if type(value) is not torch.Tensor:
-                self._ddp_params_and_buffers_to_ignore.append(name)
-
-    def forward(self, unroll_length: int):
-        """This is simply a delegation to the underlying algorithm's unroll()
-
-        Args:
-            unroll_length (int): the number of steps to unroll
-        """
-        return self.inner_algorithm._unroll(unroll_length)
 
 
 def adjust_replay_buffer_length(config: TrainerConfig,
@@ -244,13 +205,6 @@ class RLAlgorithm(Algorithm):
             assert reward_weights is None, (
                 "reward_weights cannot be used for one dimensional reward")
 
-        # When in DDP (distributed data parallel) mode, self._unroll_performer
-        # will be set to a DDP wrapped nn.odule that does the unroll(), so that
-        # gradients derived in the next backward() will be aggregated and
-        # syncrhonized across all DDP processes. The caller decides whether to
-        # activate the DDP (as a result the unroll performer too) by calling
-        # RLAlgorithm.activate_ddp().
-        self._unroll_performer = None
         self._rollout_info_spec = None
 
         self._current_time_step = None
@@ -324,21 +278,6 @@ class RLAlgorithm(Algorithm):
     def action_spec(self):
         """Return the action spec."""
         return self._action_spec
-
-    def activate_ddp(self, rank: int):
-        """Prepare the RLAlgorithm with DistributedDataParallel wrapper
-
-        Note that RLAlgorithm does not need to remember the rank of the device.
-
-        Args:
-            rank (int): DDP wrapper needs to know on which GPU device this
-                module's parameters and buffers are supposed to be.
-        """
-        # The DDP wrapped module is still a module. To prevent it from being
-        # taken into the state_dict of this RLAlgorithm, it is put into a tuple
-        # to avoid triggering automatic state_dict inclusion by __setattr__.
-        self._unroll_performer = (DDP(
-            _UnrollPerformer(self), device_ids=[rank]), )
 
     @torch.no_grad()
     def set_reward_weights(self, reward_weights):
@@ -491,22 +430,9 @@ class RLAlgorithm(Algorithm):
             self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
         return policy_step
 
-    def unroll(self, unroll_length: int):
-        """Unroll ``unroll_length`` steps using the current policy.
-
-        This is a delegation over _unroll() which decides whether to call it
-        with DDP wrapper on or off.
-
-        """
-        if self._unroll_performer is not None:
-            # If DDP is on, self._unroll_performer will be activated. In this
-            # case, call its foward().
-            return self._unroll_performer[0](unroll_length)
-        else:
-            return self._unroll(unroll_length)
-
     @common.mark_rollout
-    def _unroll(self, unroll_length: int):
+    @data_distributed
+    def unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
         Because the ``self._env`` is a batched environment. The total number of
