@@ -143,6 +143,58 @@ class ParallelCategoricalProjectionNetwork(Network):
 
 
 @alf.configurable
+class QuantileProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 output_tensor_spec,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=0.1,
+                 name="QuantileProjectionNetwork"):
+        """Creates an instance of QuantileProjectionNetwork.
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
+
+        Args:
+            input_size (int): input vector dimension
+            output_tensor_spec (TensorSpec): tensor spec of output quantiles,
+                for discrete action case, it should have shape 
+                ``(action_size, num_quantiles)``, for continuous action case,
+                it should have shape ``(num_quantiles, )``.
+            activation (Callable): activation function to use in dense layers
+            projection_output_init_gain (float): Output gain for initializing
+                the quantile projection layer weights.
+            name (str): name of this network.
+        """
+        if output_tensor_spec.ndim == 1:
+            action_size = None
+            num_quantiles = output_tensor_spec.shape[0]
+            output_size = num_quantiles
+        else:
+            action_size, num_quantiles = output_tensor_spec.shape
+            output_size = action_size * num_quantiles
+
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        self._quantile_projection_layer = layers.FC(
+            input_size,
+            output_size,
+            activation=activation,
+            kernel_init_gain=projection_output_init_gain)
+
+        self._action_size = action_size
+        self._num_quantiles = num_quantiles
+
+    def forward(self, inputs, state=()):
+        quantiles = self._quantile_projection_layer(inputs)
+        if self._action_size is not None:
+            quantiles = quantiles.reshape(-1, self._action_size,
+                                          self._num_quantiles)
+        return quantiles, state
+
+
+@alf.configurable
 class NormalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
