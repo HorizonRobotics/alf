@@ -760,13 +760,18 @@ class HindsightExperienceTransformer(DataTransformer):
         # buffer (ReplayBuffer) is needed for access to future achieved goals.
         buffer = info.replay_buffer
         assert buffer != (), "Hindsight requires replay_buffer to be populated"
+        accessed_fields = [
+            "batch_info", "reward", self._desired_goal_field,
+            self._achieved_goal_field
+        ]
         with alf.device(buffer.device):
-            experience = alf.data_structures.clear_batch_info(experience)
-            info = info._replace(replay_buffer=())
-            experience = experience._replace(batch_info=info)
-            experience = convert_device(experience)
-            info = experience.batch_info
+            experience = alf.nest.transform_nest(
+                experience, "batch_info.replay_buffer", lambda _: ())
+            for f in accessed_fields:
+                experience = alf.nest.transform_nest(
+                    experience, f, lambda t: convert_device(t))
             result = experience
+            info = experience.batch_info
 
             env_ids = info.env_ids
             start_pos = info.positions
@@ -836,9 +841,11 @@ class HindsightExperienceTransformer(DataTransformer):
             result, self._desired_goal_field, lambda _: relabed_goal)
         result = result._replace(reward=relabeled_rewards)
         if alf.get_default_device() != buffer.device:
-            result, info = convert_device((result, info))
-        info = info._replace(replay_buffer=buffer)
-        result = alf.data_structures.add_batch_info(result, info)
+            for f in accessed_fields:
+                result = alf.nest.transform_nest(
+                    result, f, lambda t: convert_device(t))
+        result = alf.nest.transform_nest(
+            result, "batch_info.replay_buffer", lambda _: buffer)
         return result
 
 
