@@ -68,7 +68,7 @@ class MerlinAlgorithmTest(alf.test.TestCase):
             self.skipTest("It takes very long to run this test.")
 
     def test_merlin_algorithm(self):
-        batch_size = 100
+        batch_size = 200
         steps_per_episode = 15
         gap = 10
         env = RNNPolicyUnittestEnv(
@@ -78,7 +78,7 @@ class MerlinAlgorithmTest(alf.test.TestCase):
         algorithm = _create_merlin_algorithm(
             env, learning_rate=3e-3, debug_summaries=False)
 
-        for i in range(500):
+        for i in range(300):
             algorithm.train_iter()
             if (i + 1) % 100 == 0:
                 eval_env.reset()

@@ -35,7 +35,7 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         """Estimate a covariance matrix given data.
 
         Args:
-            data (tensor): A 1-D or 2-D tensor containing multiple observations 
+            data (tensor): A 1-D or 2-D tensor containing multiple observations
                 of multiple dimentions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
@@ -60,14 +60,14 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(('svgd'), ('gfsf'), ('minmax'))
     def test_par_vi_algorithm(self, par_vi='svgd'):
         """
-        The par_vi algorithm is trained to match the likelihood of a Gaussian 
+        The par_vi algorithm is trained to match the likelihood of a Gaussian
         distribution with zero mean and diagonal variance :math:`(1, 4)`.
-        After training, :math:`w^T w` is the variance of the distribution 
+        After training, :math:`w^T w` is the variance of the distribution
         implied by the particles. So it should be :math:`diag(1,4)`.
         """
         logging.info("par_vi: %s" % (par_vi))
         dim = 2
-        num_particles = 128
+        num_particles = 256
         ParVI = ParVIAlgorithm(
             dim,
             num_particles=num_particles,
