@@ -126,6 +126,13 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     settings, the value needs to be overriden with 16 if there are 4 identical
     processes running DDP training to achieve parity.
 
+    The adjusted configs are
+
+    1. TrainerConfig.mini_batch_size: divided by processes
+    2. TrainerConfig.num_env_steps: divided by processes if used
+    3. TrainerConfig.mini_batch_size: divided by processes if used
+    4. TrainerConfig.evaluate: set to False except for process 0
+
     Args:
         ddp_rank: the rank of device to the process.
         multi_process_divider: this is equivalent to number of processes
