@@ -185,7 +185,7 @@ class DisjointPolicyValueNetwork(Network):
         # Like the value head Aux head is outputing value estimation
         self._aux_head = alf.nn.Sequential(
             alf.layers.FC(input_size=encoder_output_size, output_size=1),
-            alf.layers.Reshape(shape=()))
+            alf.layers.Reshape(()))
 
         # +------------------------------------------+
         # | Step 4: Assemble network + value head    |
@@ -201,7 +201,7 @@ class DisjointPolicyValueNetwork(Network):
                         alf.layers.Detach(),
                         alf.layers.FC(
                             input_size=encoder_output_size, output_size=1),
-                        alf.layers.Reshape(shape=()),
+                        alf.layers.Reshape(()),
                         input_tensor_spec=self._actor_encoder.output_spec),
                     self._aux_head))
         else:
@@ -222,7 +222,7 @@ class DisjointPolicyValueNetwork(Network):
                         self._value_encoder,
                         alf.layers.FC(
                             input_size=encoder_output_size, output_size=1),
-                        alf.layers.Reshape(shape=()))),
+                        alf.layers.Reshape(()))),
                 # Order: policy, value, aux value
                 lambda heads: (heads[0][0], heads[1], heads[0][1]))
 

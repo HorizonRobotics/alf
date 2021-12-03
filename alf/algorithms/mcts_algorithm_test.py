@@ -39,7 +39,10 @@ class TicTacToeModel(MCTSModel):
 
     def __init__(self):
         super().__init__(
-            train_reward_function=True, train_game_over_function=True)
+            representation_net=None,
+            dynamics_net=None,
+            train_reward_function=True,
+            train_game_over_function=True)
         self._line_x = torch.tensor(
             [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2],
              [0, 1, 2], [0, 1, 2]]).unsqueeze(0)

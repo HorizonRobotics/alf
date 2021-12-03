@@ -93,27 +93,41 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                  train_game_over_function,
                  train_repr_prediction=False,
                  predict_reward_sum=False,
-                 initial_alpha=0.0,
                  value_loss_weight=1.0,
                  reward_loss_weight=1.0,
                  policy_loss_weight=1.0,
                  game_over_loss_weight=1.0,
                  repr_prediction_loss_weight=1.0,
+                 initial_alpha=0.0,
                  target_entropy=None,
                  alpha_adjust_rate=0.001,
                  debug_summaries=False,
                  name="MCTSModel"):
         """
         Args:
-            entropy_regularization (float): Coefficient for entropy regularization
-                loss term for policy.
+            representation_net (Network): the network for generating initial
+                latent representation from observation. It is called as
+                ``representation_net(observation)``.
+            dynamics_net (Network): the network for generating the next latent
+                representation given the current latent representation and action.
+                It is called as ``dynamics_net((current_latent_representation, action))``
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
+            train_repr_prediction (bool): whether to train to predict future
+                latent representation.
+            predict_reward_sum (bool): If True, the loss for reward is the mean
+                square error between the sum of predicted reward and the sum of
+                actual reward. If False, the loss for reward is the mean square
+                error between the predicted reward and the actual reward.
+            value_loss_weight (float): the weight for value prediction loss.
+            reward_loss_weight (float): the weight for reward prediction loss
+            policy_loss_weight (float): the weight for policy prediction loss
+            repr_prediction_loss_weight (float): the weight for the loss of
+                predicting latent representation.
             initial_alpha (float): initial value for the weight of entropy regulariation
             target_entropy (float): if provided, will adjust alpha automatically
                 so that the entropy is not smaller than this.
             alpha_adjust_rate (float): the speed to adjust alpha
-            train_latent_predictor:
         """
         super().__init__()
         self._representation_net = representation_net
@@ -168,7 +182,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         The shapes of the tensors in model_output are [B, unroll_steps+1, ...]
         Returns:
-            LossInfo
+            LossInfo: the shapes of the tensors are [B]
         """
         batch_size = target.value.shape[0]
         num_unroll_steps = target.value.shape[1] - 1
@@ -240,13 +254,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 # there is no need to predict the first latent
                 return x[:, 1:, :].reshape(-1, *x.shape[2:])
 
+            # [B*unroll_steps, ...]
             observation = alf.nest.map_structure(_flatten, target.observation)
             with torch.no_grad():
                 target_repr = self._representation_net(observation)[0]
+            # [B*unroll_steps, ...]
             repr = _flatten(model_output.state)
+            # [B*unroll_steps]
             repr_loss = self.calc_repr_prediction_loss(repr, target_repr)
-
-            repr_loss = repr_loss.reshape(batch_size, -1, *repr_loss.shape[1:])
+            # [B, unroll_steps]
+            repr_loss = repr_loss.reshape(batch_size, -1)
             repr_loss = repr_loss.mean(dim=1)
             loss = loss + self._repr_prediction_loss_weight * repr_loss
 
@@ -318,6 +335,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 game_over=game_over_loss))
 
     def calc_repr_prediction_loss(self, repr, target_repr):
+        """Calculate the loss given the predicted representation and target representation"""
         raise NotImplementedError
 
 
@@ -500,8 +518,21 @@ class SimpleMCTSModel(MCTSModel):
             alpha_adjust_rate (float): the speed to adjust alpha
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
+            train_repr_prediction (bool): whether to train to predict future
+                latent representation.  This implements the self-supervised
+                consistency loss described in `Ye et. al. Mastering Atari Games
+                with Limited Data <https://arxiv.org/abs/2111.00210>`_. The loss
+                is ``-cosine(prediction_net(projection_net(x), projection_net(y))``,
+                where x is the representation calcuated by the dynamics_net and
+                y is the representation calcualted by the representation_net
+                from the corresponding future observations.
+            repr_projection_net_ctor (Callable): called as
+                ``repr_projection_net_ctor(repr_spec)`` to construct the
+                projection_net described above
+            repr_prediction_net_ctor (Callable): called as
+                ``repr_prediction_net_ctor(projection_net.output_spec) to
+                construct the prediction_net described above
         """
-        self._num_sampled_actions = num_sampled_actions
         encoding_net = encoding_net_ctor(observation_spec)
         repr_spec = encoding_net.output_spec
         dynamics_net = dynamics_net_ctor(
@@ -517,6 +548,7 @@ class SimpleMCTSModel(MCTSModel):
             alpha_adjust_rate=alpha_adjust_rate,
             debug_summaries=debug_summaries,
             name=name)
+        self._num_sampled_actions = num_sampled_actions
         self._prediction_net = prediction_net_ctor(repr_spec, action_spec)
         self._action_spec = action_spec
 

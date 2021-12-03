@@ -48,7 +48,6 @@ alf.config(
     scale_bias_initializer_value=math.log(math.exp(initial_scale) - 1),
     min_scale=0.05,
     max_scale=10.0,
-    #loc_transform=alf.math.softsign,
     dist_ctor=dist_utils.TruncatedNormal)
 
 alf.config(
