@@ -68,18 +68,18 @@ class _MethodPerformer(torch.nn.Module):
         # Those buffers are not registered in the state_dict() because of Alf's
         # special treatment but can be found under named_buffers(). We do not
         # want DDP to synchronize replay buffers.
-        ignored_named_buffers = []
+        ignored_named_buffers = set()
         for sub_module in module.modules():
             if isinstance(sub_module, ReplayBuffer):
                 for _, buf in sub_module.named_buffers():
                     # Find all the buffers that are registered under a
                     # ReplayBuffer submodule.
-                    ignored_named_buffers.append(buf)
+                    ignored_named_buffers.add(buf)
 
         for name, buf in self.named_buffers():
             # If the buffer is in the ignored_named_buffers (address-wise equal,
             # i.e. ``is``), add its name to DDP's ignore list.
-            if any([buf is x for x in ignored_named_buffers]):
+            if buf in ignored_named_buffers:
                 self._ddp_params_and_buffers_to_ignore.append(name)
 
     def forward(self, *args, **kwargs):
