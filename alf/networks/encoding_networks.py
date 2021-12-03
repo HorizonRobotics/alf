@@ -288,7 +288,6 @@ class AutoShapeImageDeconvNetwork(_Sequential):
             "channel number mis-match")
 
         # compute conv shape and padding shape
-        conv_shapes = []
         out_paddings = []
         out_shape = output_shape[1:]
         for i, paras in enumerate(transconv_layer_params[::-1]):
@@ -302,7 +301,6 @@ class AutoShapeImageDeconvNetwork(_Sequential):
             out_padding = self._calc_output_padding_shape(
                 out_shape, conv_shape, padding, kernel_size, stride)
             out_shape = conv_shape
-            conv_shapes.append(conv_shape)
             out_paddings.append(out_padding)
 
         input_tensor_spec = TensorSpec((input_size, ))
@@ -322,7 +320,7 @@ class AutoShapeImageDeconvNetwork(_Sequential):
                 input_size = size
 
         start_decoding_shape = [
-            start_decoding_channels, conv_shapes[-1][0], conv_shapes[-1][1]
+            start_decoding_channels, conv_shape[0], conv_shape[1]
         ]
         nets.append(
             layers.FC(
