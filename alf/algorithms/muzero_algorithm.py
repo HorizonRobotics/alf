@@ -365,7 +365,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             observation = ()
             if self._train_repr_prediction:
-                if type(self._data_transformer) != IdentityDataTransformer:
+                if type(self._data_transformer) == IdentityDataTransformer:
                     observation = replay_buffer.get_field(
                         'observation', env_ids, positions)
                 else:

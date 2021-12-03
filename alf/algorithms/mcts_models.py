@@ -116,9 +116,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
             predict_reward_sum (bool): If True, the loss for reward is the mean
-                square error between the sum of predicted reward and the sum of
-                actual reward. If False, the loss for reward is the mean square
-                error between the predicted reward and the actual reward.
+                square error between the sum of predicted reward over unroll
+                steps and the sum of actual reward over unroll steps. If False,
+                the loss for reward is the mean square error between the predicted
+                reward and the actual reward.
             value_loss_weight (float): the weight for value prediction loss.
             reward_loss_weight (float): the weight for reward prediction loss
             policy_loss_weight (float): the weight for policy prediction loss
@@ -519,18 +520,18 @@ class SimpleMCTSModel(MCTSModel):
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
             train_repr_prediction (bool): whether to train to predict future
-                latent representation.  This implements the self-supervised
+                latent representation. This implements the self-supervised
                 consistency loss described in `Ye et. al. Mastering Atari Games
                 with Limited Data <https://arxiv.org/abs/2111.00210>`_. The loss
-                is ``-cosine(prediction_net(projection_net(x), projection_net(y))``,
-                where x is the representation calcuated by the dynamics_net and
-                y is the representation calcualted by the representation_net
+                is ``-cosine(prediction_net(projection_net(x)), projection_net(y))``,
+                where x is the representation calcuated by dynamics_net and
+                y is the representation calcualted by representation_net
                 from the corresponding future observations.
             repr_projection_net_ctor (Callable): called as
                 ``repr_projection_net_ctor(repr_spec)`` to construct the
                 projection_net described above
             repr_prediction_net_ctor (Callable): called as
-                ``repr_prediction_net_ctor(projection_net.output_spec) to
+                ``repr_prediction_net_ctor(projection_net.output_spec)`` to
                 construct the prediction_net described above
         """
         encoding_net = encoding_net_ctor(observation_spec)

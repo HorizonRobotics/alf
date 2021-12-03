@@ -2102,7 +2102,7 @@ class Reshape(nn.Module):
         ``B`` is ``x.shape[0]``
 
         Args:
-            shape (tuple): desired shape not including the batch dimension.
+            shape (tuple of ints|int...): desired shape not including the batch dimension.
         """
         super().__init__()
         if len(shape) == 1:
