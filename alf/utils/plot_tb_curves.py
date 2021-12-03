@@ -682,7 +682,7 @@ def plot(env, her, train, curves):
     if her:
         methods = ["lbtqgdist", "gdist", "her"]
     else:
-        if env == "atari":
+        if env in ["atari", "atarirn"]:
             methods = ["lbtq", "sac"]  # , "tdl", "retrace"
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
@@ -731,7 +731,7 @@ def plot(env, her, train, curves):
             else:  # drgt
                 task_y_range = {t: (0, 0.1) for t in tasks}
         cluster_str = ""
-    elif env == "atari":
+    elif env in ["atari", "atarirn"]:
         critic_num = 1
         tasks = [
             "Atlantis", "Frostbite", "Qbert", "Breakout", "Seaquest",
@@ -804,7 +804,7 @@ def plot(env, her, train, curves):
     else:
         if env == "fetch":
             plot_interval = 10
-        elif env in ["atari", "atariac"]:
+        elif env in ["atari", "atarirn", "atariac"]:
             plot_interval = 200
         elif env == "pioneer":
             plot_interval = 50
@@ -825,6 +825,22 @@ def plot(env, her, train, curves):
         elif env == "pioneer":
             n = "%s%s%s-curri_0-randrange_1-lr_0.001-crirep_2-herk_0.5-endsucc-sparserwd-posrwd_0-mdimr_0-hitpenal_0-randagentpp-it_5000" % (
                 bstr, task_map[t], mstr)
+        elif env == "atarirn":
+            assert not her
+            rn = "-rnorm_at_AdaptiveNormalizer"
+            lr = "-lr_0.001"
+            # rn, lr = "", ""
+            if mstr == "-lbtq":
+                upit = "-upit_8-batsz_250-coll_1e5"
+                # upit = "-upit_4-batsz_500-coll_1e5"
+            else:
+                upit = "-upit_4-batsz_500-coll_1e5"
+                # upit = "-upit_4-batsz_500"
+            n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_100-sd_3" % (
+                mstr, rn, t, lr, upit)
+            # n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10*-sd_" % (
+            #     mstr, rn, t, lr, upit)
+
         elif env in ["atari", "atariac"]:
             assert not her
             if mstr == "-lbtq":
@@ -905,18 +921,21 @@ def plot(env, her, train, curves):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) <= 1:
-        env = "pioneer"  # one of "pioneer", "atari", "atariac", "fetch"
+        env = "pioneer"  # one of "pioneer", "atari", "atariac", "atarirn", "fetch"
     else:
         env = sys.argv[1]
     env_her = {
         "atari": [False, ],
+        "atarirn": [False, ],
         "atariac": [False, ],
         "fetch": [False, True],
         "pioneer": [True, ]
     }
-    train_curves = [("eval", "return", False), ("eval", "return", True),
-                    ("train", "value", False), ("train", "value", True),
-                    ("train", "drgt", False), ("train", "gdgt", True)]
+    train_curves = [
+        ("eval", "return", False),
+        ("eval", "return", True),
+        #("train", "value", False), ("train", "value", True),
+    ]  #("train", "drgt", False), ("train", "gdgt", True)]
     if env == "atariac":
         train_curves = [("eval", "return", False), ("eval", "discreturn",
                                                     False),
