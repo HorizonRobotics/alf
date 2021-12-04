@@ -53,7 +53,7 @@ alf.config(
     num_env_steps=int(3e6),
     num_iterations=0,
     num_checkpoints=5,
-    evaluate=False,
+    evaluate=True,
     eval_interval=20000,
     num_eval_episodes=20,
     debug_summaries=True,

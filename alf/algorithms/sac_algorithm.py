@@ -369,7 +369,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._entropy_normalizer = None
         if normalize_entropy_reward:
-            self._entropy_normalizer = ScalarAdaptiveNormalizer()
+            self._entropy_normalizer = ScalarAdaptiveNormalizer(unit_std=True)
 
         self._update_target = common.get_target_updater(
             models=[self._critic_networks],
