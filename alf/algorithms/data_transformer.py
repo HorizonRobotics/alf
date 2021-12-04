@@ -121,25 +121,18 @@ class SequentialDataTransformer(DataTransformer):
                 transfomer.
         """
         data_transformers = nn.ModuleList()
-        has_non_frame_stacker = False
-        has_non_hindsight = False
         state_spec = []
         max_stack_size = 1
-        for ctor in data_transformer_ctors:
+        for i, ctor in enumerate(data_transformer_ctors):
             obs_trans = ctor(observation_spec)
+            if isinstance(obs_trans, FrameStacker) or isinstance(
+                    obs_trans, HindsightExperienceTransformer):
+                assert i == 0, (
+                    "HindsightExperienceTransformer or FrameStacker needs to "
+                    "be the first data transformer, and cannot be combined. "
+                    "Check docs/notes/knowledge_base.rst for details.")
             if isinstance(obs_trans, FrameStacker):
                 max_stack_size = max(max_stack_size, obs_trans.stack_size)
-                assert not has_non_frame_stacker, (
-                    "FrameStacker needs to be the "
-                    "first data transformer if it is used.")
-            else:
-                has_non_frame_stacker = True
-            if isinstance(obs_trans, HindsightExperienceTransformer):
-                assert not has_non_hindsight, (
-                    "HindsightExperienceTransformer needs to be the "
-                    "first data transformer if it is used.")
-            else:
-                has_non_hindsight = True
             observation_spec = obs_trans.transformed_observation_spec
             data_transformers.append(obs_trans)
             state_spec.append(obs_trans.state_spec)
