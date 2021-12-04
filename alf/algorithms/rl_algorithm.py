@@ -25,7 +25,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
-from alf.utils.distributed import data_distributed
+from alf.utils.distributed import data_distributed_when
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -431,7 +431,7 @@ class RLAlgorithm(Algorithm):
         return policy_step
 
     @common.mark_rollout
-    @data_distributed
+    @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 

@@ -32,7 +32,7 @@ from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
-from alf.utils.distributed import data_distributed
+from alf.utils.distributed import data_distributed_when
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
@@ -1474,14 +1474,15 @@ class Algorithm(AlgorithmInterface):
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
-    @data_distributed
+    @data_distributed_when(lambda algorithm: not algorithm.on_policy)
     def _compute_train_info_and_loss_info(self, experience):
         """Compute train_info and loss_info based on the experience.
 
-        This function has data distributed support. This means that if the
-        Algorithm instance has DDP activated, the output will have a hook to
-        synchronize gradients across processes upon the call to the backward()
-        that involes the output (i.e. train_info and loss_info).
+        This function has data distributed support if the algorithm is
+        off-policy. This means that if the Algorithm instance has DDP activated
+        and is off-policy, the output will have a hook to synchronize gradients
+        across processes upon the call to the backward() that involes the output
+        (i.e. train_info and loss_info).
 
         """
         length = alf.nest.get_nest_size(experience, dim=0)
