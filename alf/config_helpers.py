@@ -156,10 +156,11 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     # mini_batch_size of 16.
     tag = 'TrainerConfig.mini_batch_size'
     mini_batch_size = get_config_value(tag)
-    config1(
-        tag,
-        math.ceil(mini_batch_size / multi_process_divider),
-        raise_if_used=False)
+    if isinstance(mini_batch_size, int):
+        config1(
+            tag,
+            math.ceil(mini_batch_size / multi_process_divider),
+            raise_if_used=False)
 
     # If the termination condition is num_env_steps instead of num_iterations,
     # we need to adjust it as well since each process only sees env steps taking
