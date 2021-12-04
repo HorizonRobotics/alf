@@ -207,7 +207,7 @@ It is a useful abstraction to organize all kinds of data processing. For example
 
 However, it is important to note that ``HindsightExperienceTransformer``,
 ``FrameStacker`` or any data transformer that need to access the replay buffer
-for additional data need to be before all other data transformers.
+directly for data needs to happen before all other data transformers.
 
 The reason is the following: In off policy training, the replay buffer stores
 raw input w/o being processed by any data transformer.  If say
@@ -215,6 +215,12 @@ raw input w/o being processed by any data transformer.  If say
 replay will be normalized whereas hindsight data directly pulled from the replay
 buffer will not be normalized.  Data will be in mismatch, causing training to
 suffer and potentially fail.
+
+For the same reason, one needs to be very careful when retrieving any data directly
+from the replay buffer, when there are data transformers present.  For example, when
+RewardClip or RewardNormalizer is present, we need to manually process any rewards
+retrieved directly from the replay buffer (hence raw rewards) using the same clipping
+or normalization transformations.  Otherwise, results will be likely incorrect.
 
 It is very hard to debug such an error at the moment.  We try to raise errors where
 we suspect a problematic sequence of data transformers is present, but it does not

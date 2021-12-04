@@ -122,6 +122,7 @@ class SequentialDataTransformer(DataTransformer):
         """
         data_transformers = nn.ModuleList()
         has_non_frame_stacker = False
+        has_non_hindsight = False
         state_spec = []
         max_stack_size = 1
         for ctor in data_transformer_ctors:
@@ -129,10 +130,16 @@ class SequentialDataTransformer(DataTransformer):
             if isinstance(obs_trans, FrameStacker):
                 max_stack_size = max(max_stack_size, obs_trans.stack_size)
                 assert not has_non_frame_stacker, (
-                    "FrameStacker need to be the "
-                    "first data transformers if it is used.")
-            elif not isinstance(obs_trans, HindsightExperienceTransformer):
+                    "FrameStacker needs to be the "
+                    "first data transformer if it is used.")
+            else:
                 has_non_frame_stacker = True
+            if isinstance(obs_trans, HindsightExperienceTransformer):
+                assert not has_non_hindsight, (
+                    "HindsightExperienceTransformer needs to be the "
+                    "first data transformer if it is used.")
+            else:
+                has_non_hindsight = True
             observation_spec = obs_trans.transformed_observation_spec
             data_transformers.append(obs_trans)
             state_spec.append(obs_trans.state_spec)
@@ -869,7 +876,4 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
     if len(data_transformer_ctor) == 1:
         return data_transformer_ctor[0](observation_spec)
 
-    if HindsightExperienceTransformer in data_transformer_ctor:
-        assert HindsightExperienceTransformer == data_transformer_ctor[0], \
-            "Hindsight relabeling should happen before all other transforms."
     return SequentialDataTransformer(data_transformer_ctor, observation_spec)
