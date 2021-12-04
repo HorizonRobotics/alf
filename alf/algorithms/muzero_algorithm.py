@@ -16,9 +16,12 @@
 from functools import partial
 from typing import Optional
 import torch
+import typing
 
 import alf
-from alf.algorithms.data_transformer import create_data_transformer
+from alf.algorithms.data_transformer import (
+    create_data_transformer, IdentityDataTransformer, RewardTransformer,
+    SequentialDataTransformer)
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, Experience, LossInfo, namedtuple, TimeStep
@@ -74,6 +77,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  calculate_priority=None,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 train_repr_prediction=False,
                  reanalyze_mcts_algorithm_ctor=None,
                  reanalyze_ratio=0.,
                  reanalyze_td_steps=5,
@@ -115,6 +119,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 will be same as ``TrainerConfig.priority_replay``. This is only
                 useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
+            train_repr_prediction (bool): whether to train to predict future
+                latent representation.
             reanalyze_mcts_algorithm_ctor (Callable): will be called as
                 ``reanalyze_mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
                 to construct an ``MCTSAlgorithm`` instance. If not provided,
@@ -133,16 +139,15 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 reanalyzing all the data for one training iteration. If so, provide
                 a number for this so that it will analyzing the data in several
                 batches.
-            data_transformer_ctor (Callable|list[Callable]): should be same as
-                ``TrainerConfig.data_transformer_ctor``.
+            data_transformer_ctor (None|Callable|list[Callable]): if provided,
+                will used to construct data transformer. Otherwise, the one
+                provided in config will be used.
             target_update_tau (float): Factor for soft update of the target
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
                 networks used for reanalyzing.
             config: The trainer config that will eventually be assigned to
-                ``self._config``. It is NOT NECESSARY to pass it to construct
-                ``MuzeroAlgorithm`` and the agrument is kept here to be
-                compatible to use with Agent.
+                ``self._config``.
             debug_summaries (bool):
             name (str):
 
@@ -181,12 +186,15 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reward_transformer = reward_transformer
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
+        self._train_repr_prediction = train_repr_prediction
         self._reanalyze_ratio = reanalyze_ratio
         self._reanalyze_td_steps_func = reanalyze_td_steps_func
         self._reanalyze_td_steps = reanalyze_td_steps
         self._reanalyze_batch_size = reanalyze_batch_size
-        self._data_transformer = None
-        self._data_transformer_ctor = data_transformer_ctor
+        if data_transformer_ctor is not None:
+            self._data_transformer = create_data_transformer(
+                data_transformer_ctor, observation_spec)
+        self._check_data_transformer()
         self._mcts.set_model(model)
         self._update_target = None
         self._reanalyze_mcts = None
@@ -208,6 +216,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_model', '_reanalyze_mcts']
+
+    def _check_data_transformer(self):
+        """Make sure data transformer does not contain reward transformer."""
+        if isinstance(self._data_transformer, SequentialDataTransformer):
+            transformers = self._data_transformer.members()
+        else:
+            transformers = [self._data_transformer]
+        for transformer in transformers:
+            assert not isinstance(transformer, RewardTransformer), (
+                "DataTranformer for reward (%s) is not supported."
+                "Please specify them using reward_transformer instead" %
+                transformer)
 
     def predict_step(self, time_step: TimeStep, state):
         if self._reward_transformer is not None:
@@ -343,6 +363,24 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action = replay_buffer.get_field('prev_action', env_ids,
                                              positions[:, 1:])
 
+            observation = ()
+            if self._train_repr_prediction:
+                if type(self._data_transformer) == IdentityDataTransformer:
+                    observation = replay_buffer.get_field(
+                        'observation', env_ids, positions)
+                else:
+                    observation, step_type = replay_buffer.get_field(
+                        ('observation', 'step_type'), env_ids, positions)
+                    exp = alf.data_structures.make_experience(
+                        root_inputs, AlgStep(), state=())
+                    exp = exp._replace(
+                        step_type=step_type,
+                        observation=observation,
+                        batch_info=batch_info,
+                        replay_buffer=replay_buffer)
+                    exp = self._data_transformer.transform_experience(exp)
+                    observation = exp.observation
+
             rollout_info = MuzeroInfo(
                 action=action,
                 value=(),
@@ -351,12 +389,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     action=candidate_actions,
                     action_policy=candidate_action_policy,
                     value=values,
-                    game_over=game_overs))
+                    game_over=game_overs,
+                    observation=observation))
 
         # make the shape to [B, T, ...], where T=1
         rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(1),
                                               rollout_info)
-        rollout_info = convert_device(rollout_info)
         rollout_info = rollout_info._replace(value=rollout_value)
 
         if self._reward_transformer:
@@ -448,6 +486,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reanalyze_batch_size is not None:
             mini_batch_size = self._reanalyze_batch_size
 
+        self._reanalyze_mcts.eval()
         result = []
         for i in range(0, batch_size, mini_batch_size):
             # Divide into several batches so that memory is enough.
@@ -455,6 +494,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 self._reanalyze1(replay_buffer, env_ids[i:i + mini_batch_size],
                                  positions[i:i + mini_batch_size],
                                  mcts_state_field))
+        self._reanalyze_mcts.train()
 
         if len(result) == 1:
             result = result[0]
@@ -475,12 +515,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         flat_positions = positions.reshape(-1)
         exp = replay_buffer.get_field(None, flat_env_ids, flat_positions)
 
-        if self._data_transformer_ctor is not None:
-            if self._data_transformer is None:
-                observation_spec = dist_utils.extract_spec(exp.observation)
-                self._data_transformer = create_data_transformer(
-                    self._data_transformer_ctor, observation_spec)
-
+        if type(self._data_transformer) != IdentityDataTransformer:
             # DataTransformer assumes the shape of exp is [B, T, ...]
             # It also needs exp.batch_info and exp.replay_buffer.
             exp = alf.nest.map_structure(lambda x: x.unsqueeze(1), exp)

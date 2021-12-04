@@ -2095,16 +2095,19 @@ class ParamConv2D(nn.Module):
 
 @alf.configurable
 class Reshape(nn.Module):
-    def __init__(self, shape):
+    def __init__(self, *shape):
         """A layer for reshape the tensor.
 
         The result of this layer is a tensor reshaped to ``(B, *shape)`` where
         ``B`` is ``x.shape[0]``
 
         Args:
-            shape (tuple): desired shape not including the batch dimension.
+            shape (tuple of ints|int...): desired shape not including the batch dimension.
         """
         super().__init__()
+        if len(shape) == 1:
+            if isinstance(shape[0], Iterable):
+                shape = tuple(shape[0])
         self._shape = shape
 
     def forward(self, x):

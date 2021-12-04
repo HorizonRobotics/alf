@@ -1030,7 +1030,6 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 batch_size, -1)
         else:
             action = trees.action[nodes]
-
         action = action.reshape(-1, *action.shape[2:])
         model_output = self._model.recurrent_inference(model_state, action)
 
