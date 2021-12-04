@@ -560,6 +560,23 @@ def _get_categorical_builder(obj: td.Categorical):
         return td.Categorical, {'logits': obj.logits}
 
 
+def _get_onehot_categorical_builder(obj: td.OneHotCategorical):
+    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
+        # This means that obj is constructed using probs
+        return td.OneHotCategorical, {'probs': obj.probs}
+    else:
+        return td.OneHotCategorical, {'logits': obj.logits}
+
+
+def _get_onehot_categorical_st_builder(
+        obj: td.OneHotCategoricalStraightThrough):
+    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
+        # This means that obj is constructed using probs
+        return td.OneHotCategoricalStraightThrough, {'probs': obj.probs}
+    else:
+        return td.OneHotCategoricalStraightThrough, {'logits': obj.logits}
+
+
 def _get_independent_builder(obj: td.Independent):
     builder, params = _get_builder(obj.base_dist)
     new_builder = functools.partial(_builder_independent, builder,
@@ -589,6 +606,10 @@ def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
 _get_builder_map = {
     td.Categorical:
         _get_categorical_builder,
+    td.OneHotCategorical:
+        _get_onehot_categorical_builder,
+    td.OneHotCategoricalStraightThrough:
+        _get_onehot_categorical_st_builder,
     td.Normal:
         lambda obj: (td.Normal, {
             'loc': obj.mean,
@@ -966,6 +987,10 @@ def get_mode(dist):
     """
     if isinstance(dist, td.categorical.Categorical):
         mode = torch.argmax(dist.logits, -1)
+    elif isinstance(dist, td.OneHotCategorical) or \
+                isinstance(dist, td.OneHotCategoricalStraightThrough):
+        mode = torch.nn.functional.one_hot(
+            torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
     elif isinstance(dist, td.normal.Normal):
         mode = dist.mean
     elif isinstance(dist, StableCauchy):

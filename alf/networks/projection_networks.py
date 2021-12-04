@@ -765,3 +765,68 @@ class TruncatedProjectionNetwork(Network):
             upper_bound=self._action_high)
 
         return dist, state
+
+
+@alf.configurable
+class OnehotCategoricalProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 logits_init_output_factor=0.1,
+                 use_straight_through_gradient=True,
+                 name="OnehotCategoricalProjectionNetwork"):
+        """Creates a onehot categorical projection network that outputs a
+        discrete distribution over a number of classes.
+
+        An option to use the `straight-through` estimator is provided for
+        this network, which is proposed by Bengio et al., "Estimating or
+        Propagating Gradients Through Stochastic Neurons for Conditional
+        Computation", 2013.
+
+        Args:
+            input_size (int): the input vector size
+            action_spec (BounedTensorSpec): a tensor spec containing the
+                information of the output distribution.
+            logits_init_output_factor (float): the gain factor to initialize
+                the FC layer for predicting the logits
+            use_straight_through_gradient (bool): whether to use the straight
+                through gradient estimator.
+            name (str):
+        """
+        super(OnehotCategoricalProjectionNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        unique_num_actions = np.unique(action_spec.maximum -
+                                       action_spec.minimum + 1)
+        if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
+            raise ValueError(
+                'Bounds on discrete actions must be the same for all '
+                'dimensions and have at least 1 action. Projection '
+                'Network requires num_actions to be equal across '
+                'action dimensions. Implement a more general '
+                'categorical projection if you need more flexibility.')
+
+        output_shape = action_spec.shape + (int(unique_num_actions), )
+        self._output_shape = output_shape
+        self._use_straight_through_gradient = use_straight_through_gradient
+
+        self._projection_layer = layers.FC(
+            input_size,
+            np.prod(output_shape),
+            kernel_init_gain=logits_init_output_factor)
+
+    def forward(self, inputs, state=()):
+        logits = self._projection_layer(inputs)
+        logits = logits.reshape(inputs.shape[0], *self._output_shape)
+
+        if self._use_straight_through_gradient:
+            dist_cls = td.OneHotCategoricalStraightThrough
+        else:
+            dist_cls = td.OneHotCategorical
+
+        if len(self._output_shape) > 1:
+            return td.Independent(
+                dist_cls(logits=logits),
+                reinterpreted_batch_ndims=len(self._output_shape) - 1), state
+        else:
+            return dist_cls(logits=logits), state
