@@ -416,13 +416,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         values = replay_buffer.get_field(value_field, env_ids,
                                          bootstrap_positions)
-        discount = replay_buffer.get_field('discount', env_ids,
-                                           bootstrap_positions)
-        values = values * discount
-        values = values * (self._discount**bootstrap_n.to(torch.float32))
-        sum_reward = self._sum_discounted_reward(
+        sum_reward, discount = self._sum_discounted_reward(
             replay_buffer, env_ids, positions, bootstrap_positions,
             self._td_steps)
+        values = values * discount
+        values = values * (self._discount**bootstrap_n.to(torch.float32))
 
         if not self._train_reward_function:
             # For this condition, we need to set the value at and after the last
@@ -434,8 +432,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     def _sum_discounted_reward(self, replay_buffer, env_ids, positions,
                                bootstrap_positions, td_steps):
-        # [B, unroll_steps+1, td_steps]
-        positions = 1 + positions.unsqueeze(-1) + torch.arange(td_steps)
+        """
+        Returns:
+            tuple
+            - sum of discounted TimeStep.reward from positions + 1 to positions + bootstrap_positions
+            - product of TimeStep.discount from positions to positions + bootstrap_positions
+        """
+        # [B, unroll_steps+1, td_steps+1]
+        positions = positions.unsqueeze(-1) + torch.arange(td_steps + 1)
         # [B, 1, 1]
         env_ids = env_ids.unsqueeze(-1)
         # [B, unroll_steps+1, 1]
@@ -444,8 +448,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         rewards = self._get_reward(replay_buffer, env_ids,
                                    torch.min(positions, bootstrap_positions))
         rewards[positions > bootstrap_positions] = 0.
-        discounts = self._discount**torch.arange(td_steps, dtype=torch.float32)
-        return (rewards * discounts).sum(dim=-1)
+        discounts = replay_buffer.get_field(
+            'discount', env_ids, torch.min(positions, bootstrap_positions))
+        discounts = discounts.cumprod(dim=-1)
+        d = discounts[..., :-1] * self._discount**torch.arange(
+            td_steps, dtype=torch.float32)
+        return (rewards[..., 1:] * d).sum(dim=-1), discounts[..., -1]
 
     def _calc_monte_carlo_return(self, replay_buffer, env_ids, positions,
                                  value_field):
@@ -583,9 +591,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                                                   positions, n1, n2)
 
         bootstrap_position = positions1 + bootstrap_n
-        discount = replay_buffer.get_field('discount', env_ids,
-                                           bootstrap_position)
-        sum_reward = self._sum_discounted_reward(
+        sum_reward, discount = self._sum_discounted_reward(
             replay_buffer, env_ids, positions1, bootstrap_position, n2)
 
         if not self._train_reward_function:
