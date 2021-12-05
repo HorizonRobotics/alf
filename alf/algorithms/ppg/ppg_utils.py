@@ -95,27 +95,27 @@ class PPGTrainInfo(
 def ppg_network_forward(network: DisjointPolicyValueNetwork,
                         inputs: TimeStep,
                         state,
+                        require_aux: bool = True,
                         epsilon_greedy: Optional[float] = None) -> AlgStep:
     """Evaluates the network forward pass for roll out or training
-
     The signature mimics ``rollout_step()`` of ``Algorithm`` completedly.
-
     Args:
     
         network: the network whose forward pass is to be performed.
         inputs: carries the observation that is needed as input to the
             network.
         state (nested Tesnor): carries the state for RNN-based network
+        require_aux: whether to compute and return auxiliary estimation.
+            See DisjointPolicyValueNetwork.forward() for details.
         epsilon_greedy: if set to None, the action will be sampled
             strictly based on the action distribution. If set to a
             value in [0, 1], epsilon-greedy sampling will be used to
             sample the action from the action distribution, and the
             float value determines the chance of action sampling
             instead of taking argmax.
-
     """
     (action_distribution, value, aux), state = network(
-        inputs.observation, state=state)
+        inputs.observation, state=state, require_aux=require_aux)
 
     if epsilon_greedy is not None:
         action = dist_utils.epsilon_greedy_sample(action_distribution,
