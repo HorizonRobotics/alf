@@ -21,6 +21,7 @@ import unittest
 
 import alf
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.td_loss import TDQRLoss
 from alf.algorithms.one_step_loss import OneStepTDQRLoss
 from alf.algorithms.qrsac_algorithm import QrsacAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -33,14 +34,15 @@ from alf.utils import common
 from alf.utils.math_ops import clipped_exp
 
 
-class QRSACAlgorithmTest(alf.test.TestCase):
-    def test_qrsac_algorithm(self):
-        reward_dim = 1
+class QRSACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((True, 1, False, False), (False, 3, True, True))
+    def test_qrsac_algorithm(self, use_naive_parallel_network, reward_dim,
+                             use_n_step_td, min_critic_by_critic_mean):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
-            mini_batch_length=2,
+            mini_batch_length=4,
             mini_batch_size=64,
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
@@ -77,20 +79,18 @@ class QRSACAlgorithmTest(alf.test.TestCase):
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
         num_quantiles = 50
+        critic_network = partial(
+            alf.nn.QuantileCriticNetwork,
+            output_tensor_spec=TensorSpec((num_quantiles, )),
+            joint_fc_layer_params=fc_layer_params[:-1],
+            quantile_fc_layer_params=fc_layer_params[-1:],
+            use_naive_parallel_network=use_naive_parallel_network)
 
-        def critic_network(input_tensor_spec):
-            return alf.nn.Sequential(
-                alf.nn.EncodingNetwork(
-                    input_tensor_spec,
-                    preprocessing_combiner=alf.layers.NestConcat(dim=-1),
-                    fc_layer_params=fc_layer_params[:-1],
-                    last_layer_size=fc_layer_params[-1],
-                    last_activation=torch.relu_),
-                alf.nn.QuantileProjectionNetwork(
-                    input_size=fc_layer_params[-1],
-                    output_tensor_spec=TensorSpec((num_quantiles, ))))
-
-        critic_loss = partial(OneStepTDQRLoss, num_quantiles=num_quantiles)
+        if use_n_step_td:
+            td_qr_loss_ctor = TDQRLoss
+        else:
+            td_qr_loss_ctor = OneStepTDQRLoss
+        critic_loss = partial(td_qr_loss_ctor, num_quantiles=num_quantiles)
 
         alg = QrsacAlgorithm(
             observation_spec=obs_spec,
@@ -99,6 +99,7 @@ class QRSACAlgorithmTest(alf.test.TestCase):
             actor_network_cls=actor_network,
             critic_network_cls=critic_network,
             critic_loss_ctor=critic_loss,
+            min_critic_by_critic_mean=min_critic_by_critic_mean,
             use_entropy_reward=reward_dim == 1,
             env=env,
             config=config,

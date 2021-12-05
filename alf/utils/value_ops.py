@@ -160,6 +160,7 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
 
     rets = torch.zeros_like(values)
     rets[-1] = values[-1]
@@ -200,6 +201,7 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
 
     discounted_values = discounts * values
     rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \

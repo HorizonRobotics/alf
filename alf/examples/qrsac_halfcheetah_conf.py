@@ -17,9 +17,9 @@ import torch
 
 import alf
 from alf.algorithms.qrsac_algorithm import QrsacAlgorithm
+from alf.algorithms.td_loss import TDQRLoss
 from alf.algorithms.one_step_loss import OneStepTDQRLoss
 from alf.nest.utils import NestConcat
-from alf.networks import ActorDistributionNetwork, CriticNetwork, NormalProjectionNetwork
 from alf.optimizers import Adam, AdamTF
 from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import clipped_exp
@@ -37,43 +37,33 @@ fc_layer_params = (256, 256)
 num_quantiles = 50
 
 actor_network_cls = partial(
-    ActorDistributionNetwork,
+    alf.nn.ActorDistributionNetwork,
     fc_layer_params=fc_layer_params,
     continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
+        alf.nn.NormalProjectionNetwork,
         state_dependent_std=True,
         scale_distribution=True,
         std_transform=clipped_exp))
 
 critic_network_cls = partial(
-    CriticNetwork,
+    alf.nn.QuantileCriticNetwork,
     joint_fc_layer_params=fc_layer_params,
     output_tensor_spec=TensorSpec((num_quantiles, )))
 
-# def critic_network_cls(input_tensor_spec):
-#     return alf.nn.Sequential(
-#         alf.nn.EncodingNetwork(
-#             input_tensor_spec,
-#             preprocessing_combiner=alf.layers.NestConcat(dim=-1),
-#             fc_layer_params=fc_layer_params[:-1],
-#             last_layer_size=fc_layer_params[-1],
-#             last_activation=torch.relu_),
-#         alf.nn.QuantileProjectionNetwork(
-#             input_size=fc_layer_params[-1],
-#             output_tensor_spec=TensorSpec((num_quantiles, ))))
-
 alf.config('calc_default_target_entropy', min_prob=0.184)
 
+critic_loss_ctor = OneStepTDQRLoss
 alf.config(
     'QrsacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    critic_loss_ctor=OneStepTDQRLoss,
+    critic_loss_ctor=critic_loss_ctor,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4))
 
+alf.config('TDQRLoss', num_quantiles=num_quantiles)
 alf.config('OneStepTDQRLoss', num_quantiles=num_quantiles)
 
 # training config

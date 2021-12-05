@@ -299,3 +299,100 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
         to create the parallel network.
         """
         return super().make_parallel(n, True)
+
+
+@alf.configurable
+class QuantileCriticNetwork(CriticNetwork):
+    """Creates an instance of ``QuantileCriticNetwork`` for estimating 
+    the quantiles of action-value distribution of continuous or discrete actions. 
+    This module takes observation as input and action as input and outputs an
+    action-quantiles tensor with the shape of ``[batch_size, num_quantiles]``.
+
+    The network take a tuple of (observation, action) as input to computes the
+    action-quantiles.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=TensorSpec((50, )),
+                 observation_input_processors=None,
+                 observation_preprocessing_combiner=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_input_processors=None,
+                 action_preprocessing_combiner=None,
+                 action_fc_layer_params=None,
+                 joint_fc_layer_params=None,
+                 quantile_fc_layer_params=None,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 use_naive_parallel_network=False,
+                 name="CriticNetwork"):
+        """
+
+        Args:
+            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
+                representing the inputs.
+            output_tensor_spec (TensorSpec): spec for the output, should have 
+                shape ``(num_quantiles, )`` for continuous actions or
+                ``(num_actions, num_quantiles)`` for discrete actions.
+            observation_input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding observation input.
+            observation_preprocessing_combiner (NestCombiner): preprocessing called
+                on complex observation inputs.
+            observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            observation_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes for observations.
+            action_input_processors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding action input.
+            action_preprocessing_combiner (NestCombiner): preprocessing called
+                to combine complex action inputs.
+            action_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes for actions.
+            joint_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes FC layers after merging observations and
+                actions.
+            quantile_fc_layer_params (tuple[int]): a tuple of integers representing
+                quantile FC layer sizes for outputing the quantiles.
+            activation (nn.functional): activation used for hidden layers. The
+                last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
+            use_fc_bn (bool): whether use Batch Normalization for the internal
+                FC layers (i.e. FC layers beside the last one).
+            use_naive_parallel_network (bool): if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
+            name (str):
+        """
+        if joint_fc_layer_params is None:
+            joint_fc_layer_params = quantile_fc_layer_params
+        else:
+            if quantile_fc_layer_params is not None:
+                joint_fc_layer_params += quantile_fc_layer_params
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            output_tensor_spec=output_tensor_spec,
+            observation_input_processors=observation_input_processors,
+            observation_preprocessing_combiner=
+            observation_preprocessing_combiner,
+            observation_conv_layer_params=observation_conv_layer_params,
+            observation_fc_layer_params=observation_fc_layer_params,
+            action_input_processors=action_input_processors,
+            action_preprocessing_combiner=action_preprocessing_combiner,
+            action_fc_layer_params=action_fc_layer_params,
+            joint_fc_layer_params=joint_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
+            use_naive_parallel_network=use_naive_parallel_network,
+            name="QuantileCriticNetwork")

@@ -21,7 +21,7 @@ import torch
 
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.networks import CriticNetwork, CriticRNNNetwork
+from alf.networks import CriticNetwork, CriticRNNNetwork, QuantileCriticNetwork
 from alf.networks.network import NaiveParallelNetwork
 from alf.networks.network_test import test_net_copy
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -98,6 +98,52 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         value, state = pnet(network_input, state)
         self.assertEqual(pnet.output_spec, TensorSpec((6, )))
         self.assertEqual(value.shape, (1, 6))
+
+    def test_quantile_critic(self):
+        obs_spec = TensorSpec((3, 20, 20), torch.float32)
+        action_spec = TensorSpec((5, ), torch.float32)
+        input_spec = (obs_spec, action_spec)
+        num_quantiles = 9
+        output_spec = TensorSpec((num_quantiles, ), torch.float32)
+
+        observation_conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
+        action_fc_layer_params = (10, 8)
+        joint_fc_layer_params = (6, 5)
+        quantile_fc_layer_params = (4, )
+
+        image = obs_spec.zeros(outer_dims=(1, ))
+        action = action_spec.randn(outer_dims=(1, ))
+
+        network_input = (image, action)
+
+        critic_net = QuantileCriticNetwork(
+            input_spec,
+            output_tensor_spec=output_spec,
+            observation_conv_layer_params=observation_conv_layer_params,
+            action_fc_layer_params=action_fc_layer_params,
+            joint_fc_layer_params=joint_fc_layer_params,
+            quantile_fc_layer_params=quantile_fc_layer_params)
+        test_net_copy(critic_net)
+
+        value, state = critic_net._test_forward()
+        self.assertEqual(value.shape, (1, num_quantiles))
+
+        value, state = critic_net(network_input, state)
+
+        self.assertEqual(critic_net.output_spec, output_spec)
+        # (batch_size,)
+        self.assertEqual(value.shape, (1, num_quantiles))
+
+        # test make_parallel
+        pnet = critic_net.make_parallel(6)
+        test_net_copy(pnet)
+
+        state = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
+
+        value, state = pnet(network_input, state)
+        self.assertEqual(pnet.output_spec, TensorSpec((6, num_quantiles)))
+        self.assertEqual(value.shape, (1, 6, num_quantiles))
 
     def test_make_parallel(self):
         obs_spec = TensorSpec((20, ), torch.float32)

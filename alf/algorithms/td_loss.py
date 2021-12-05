@@ -18,7 +18,7 @@ import torch.nn as nn
 import alf
 from alf.data_structures import LossInfo, StepType
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import tensor_utils, value_ops
+from alf.utils import losses, tensor_utils, value_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.utils.normalizers import AdaptiveNormalizer
 
@@ -105,6 +105,48 @@ class TDLoss(nn.Module):
         """
         return self._gamma.clone()
 
+    def compute_td_target(self, info, target_value):
+        """Calculate the td target.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            info (namedtuple): experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            target_value (torch.Tensor): the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``.
+        Returns:
+            td_target
+        """
+        if self._lambda == 1.0:
+            returns = value_ops.discounted_return(
+                rewards=info.reward,
+                values=target_value,
+                step_types=info.step_type,
+                discounts=info.discount * self._gamma)
+        elif self._lambda == 0.0:
+            returns = value_ops.one_step_discounted_return(
+                rewards=info.reward,
+                values=target_value,
+                step_types=info.step_type,
+                discounts=info.discount * self._gamma)
+        else:
+            advantages = value_ops.generalized_advantage_estimation(
+                rewards=info.reward,
+                values=target_value,
+                step_types=info.step_type,
+                discounts=info.discount * self._gamma,
+                td_lambda=self._lambda)
+            returns = advantages + target_value[:-1]
+
+        return returns
+
     def forward(self, info, value, target_value):
         """Calculate the loss.
 
@@ -126,35 +168,9 @@ class TDLoss(nn.Module):
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
-        if info.reward.ndim == 3:
-            # [T, B, D] or [T, B, 1]
-            discounts = info.discount.unsqueeze(-1) * self._gamma
-        else:
-            # [T, B]
-            discounts = info.discount * self._gamma
-
-        if self._lambda == 1.0:
-            returns = value_ops.discounted_return(
-                rewards=info.reward,
-                values=target_value,
-                step_types=info.step_type,
-                discounts=discounts)
-        elif self._lambda == 0.0:
-            returns = value_ops.one_step_discounted_return(
-                rewards=info.reward,
-                values=target_value,
-                step_types=info.step_type,
-                discounts=discounts)
-        else:
-            advantages = value_ops.generalized_advantage_estimation(
-                rewards=info.reward,
-                values=target_value,
-                step_types=info.step_type,
-                discounts=discounts,
-                td_lambda=self._lambda)
-            returns = advantages + target_value[:-1]
-
+        returns = self.compute_td_target(info, target_value)
         value = value[:-1]
+
         if self._normalize_target:
             if self._target_normalizer is None:
                 self._target_normalizer = AdaptiveNormalizer(
@@ -189,6 +205,124 @@ class TDLoss(nn.Module):
                                    suffix)
 
         loss = self._td_error_loss_fn(returns.detach(), value)
+
+        if loss.ndim == 3:
+            # Multidimensional reward. Average over the critic loss for all dimensions
+            loss = loss.mean(dim=2)
+
+        # The shape of the loss expected by Algorith.update_with_gradient is
+        # [T, B], so we need to augment it with additional zeros.
+        loss = tensor_utils.tensor_extend_zero(loss)
+        return LossInfo(loss=loss, extra=loss)
+
+
+@alf.configurable
+class TDQRLoss(TDLoss):
+    """Temporal difference quantile regression loss. 
+    Compared to TDLoss, GAE support has not been implemented. """
+
+    def __init__(self,
+                 num_quantiles=50,
+                 gamma=0.99,
+                 td_error_loss_fn=losses.huber_function,
+                 td_lambda=1.0,
+                 sum_over_quantiles=False,
+                 debug_summaries=False,
+                 name="TDQRLoss"):
+        """
+        Args:
+            num_quantiles (int): the number of quantiles.
+            gamma (float|list[float]): A discount factor for future rewards. For
+                multi-dim reward, this can also be a list of discounts, each
+                discount applies to a reward dim.
+            td_error_loss_fn (Callable): A function for computing the TD errors
+                loss. This function takes as input the target and the estimated
+                Q values and returns the loss for each element of the batch.
+            td_lambda (float): Lambda parameter for TD-lambda computation. Currently
+                only supports 1 and 0.
+            sum_over_quantiles (bool): Whether to sum over the quantiles.
+            debug_summaries (bool): True if debug summaries should be created
+            name (str): The name of this loss.
+        """
+        super().__init__(
+            gamma=gamma,
+            td_error_loss_fn=td_error_loss_fn,
+            td_lambda=td_lambda,
+            debug_summaries=debug_summaries,
+            name=name)
+
+        self._num_quantiles = num_quantiles
+        self._cdf_midpoints = (torch.arange(
+            num_quantiles, dtype=torch.float32) + 0.5) / num_quantiles
+        self._sum_over_quantiles = sum_over_quantiles
+
+    def forward(self, info, value, target_value):
+        """Calculate the loss.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            info (namedtuple): experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            value (torch.Tensor): the time-major tensor for the value at each time
+                step. The loss is between this and the calculated return.
+            target_value (torch.Tensor): the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``.
+        Returns:
+            LossInfo: with the ``extra`` field same as ``loss``.
+        """
+        assert value.shape[-1] == self._num_quantiles, (
+            "The input value should have same num_quantiles as pre-defiend.")
+        assert target_value.shape[-1] == self._num_quantiles, (
+            "The input target_value should have same num_quantiles as pre-defiend."
+        )
+        returns = self.compute_td_target(info, target_value)
+        value = value[:-1]
+
+        # for quantile regression TD, the value has shape
+        # (T-1, B, n_quantiles) for scalar reward and
+        # (T-1, B, reward_dim, n_quantiles) for multi-dim reward.
+        # Make cdf_midpoints broadcastable to quantile TD, which has shape
+        # (T-1, B, n_quantiles, n_quantiles) for scalar reward and
+        # (T-1, B, reward_dim, n_quantiles, n_quantiles) for multi-dim reward
+        cdf_midpoints = self._cdf_midpoints.view(*([1] * value.ndim), -1)
+        quantiles = value.unsqueeze(-2)
+        quantiles_target = returns.detach().unsqueeze(-1)
+        diff = quantiles_target - quantiles
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = info.step_type[:-1] != StepType.LAST
+            with alf.summary.scope(self._name):
+
+                def _summarize(v, r, d, suffix):
+                    cdf = (d <= 0).float().mean(-2)
+                    mean_cdf = cdf.mean(0).mean(0)
+                    alf.summary.histogram(
+                        "explained_cdf_of_return_by_value_quantile" + suffix,
+                        mean_cdf)
+
+                if value.ndim == 3:
+                    _summarize(value, returns, diff, '')
+                else:
+                    for i in range(value.shape[-2]):
+                        suffix = '/' + str(i)
+                        _summarize(value[..., i, :], returns[..., i, :],
+                                   diff[..., i, :, :], suffix)
+
+        huber_loss = self._td_error_loss_fn(diff)
+        loss = torch.abs(
+            (cdf_midpoints - (diff.detach() < 0).float())) * huber_loss
+
+        if self._sum_over_quantiles:
+            loss = loss.mean(-2).sum(-1)
+        else:
+            loss = loss.mean(-2).mean(-1)
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions

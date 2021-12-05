@@ -25,37 +25,39 @@ from alf.data_structures import TimeStep
 from alf.data_structures import AlgStep
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorDistributionNetwork, CriticNetwork
+from alf.networks import ActorDistributionNetwork, QuantileCriticNetwork
 from alf.networks import QNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
 
 
-def critic_network_cls(input_tensor_spec, quantile_size=64):
-    return alf.nn.Sequential(
-        alf.nn.EncodingNetwork(
-            input_tensor_spec,
-            fc_layer_params=(64, 64),
-            last_layer_size=64,
-            last_activation=alf.math.identity),
-        alf.nn.QuantileProjectionNetwork(
-            input_size=64, output_tensor_spec=TensorSpec((quantile_size, ))))
-
-
 @alf.configurable
 class QrsacAlgorithm(SacAlgorithm):
-    """Quantile regression actor critic algorithm. """
+    """Quantile regression actor critic algorithm. 
+    
+    A SAC variant that applies the following quantile regression based 
+    distributional RL approach to model the critic function:
+
+    ::
+        
+        Dabney et al "Distributional Reinforcement Learning with Quantile Regression",
+        arXiv:1710.10044
+
+    Currently, only continuous action space is supported.
+    """
 
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
-                 critic_network_cls=critic_network_cls,
+                 critic_network_cls=QuantileCriticNetwork,
                  epsilon_greedy=None,
                  use_entropy_reward=False,
+                 normalize_entropy_reward=False,
                  calculate_priority=False,
                  num_critic_replicas=2,
+                 min_critic_by_critic_mean=False,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -71,10 +73,18 @@ class QrsacAlgorithm(SacAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  debug_summaries=False,
+                 reproduce_locomotion=False,
                  name="QrsacAlgorithm"):
         """
-        Refer to SacAlgorithm for Args. Currently only continuous action
-        space is supported.
+        Refer to SacAlgorithm for Args beside the following. Args used for 
+        discrete and mixed actions are omitted.
+
+        Args:
+            min_critic_by_critic_mean (bool): If True, compute the min quantile 
+                distribution of critic replicas by choosing the one with the
+                lowest distribution mean. Otherwise, compute the min quantile
+                by taking a minimum value across all critic replicas for each
+                quantile.
         """
         super().__init__(
             observation_spec,
@@ -84,6 +94,7 @@ class QrsacAlgorithm(SacAlgorithm):
             critic_network_cls=critic_network_cls,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
+            normalize_entropy_reward=normalize_entropy_reward,
             calculate_priority=calculate_priority,
             num_critic_replicas=num_critic_replicas,
             env=env,
@@ -100,12 +111,12 @@ class QrsacAlgorithm(SacAlgorithm):
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
             debug_summaries=debug_summaries,
+            reproduce_locomotion=reproduce_locomotion,
             name=name)
 
+        self._min_critic_by_critic_mean = min_critic_by_critic_mean
         assert self._act_type == ActionType.Continuous, (
             "Only continuous action space is supported for qrsac algorithm.")
-
-        self._num_quantiles = self._critic_networks.output_spec.shape[-1]
 
     def _compute_critics(self,
                          critic_net,
@@ -118,8 +129,34 @@ class QrsacAlgorithm(SacAlgorithm):
         critic_quantiles, critics_state = critic_net(
             critic_inputs, state=critics_state)
 
+        # For multi-dim reward, do:
+        #   [B, replicas * reward_dim] -> [B, replicas, reward_dim]
+        # For scalar reward, do nothing
+        if self.has_multidim_reward():
+            remaining_shape = critic_quantiles.shape[2:]
+            critic_quantiles = critic_quantiles.reshape(
+                -1, self._num_critic_replicas, *self._reward_spec.shape,
+                *remaining_shape)
         if replica_min:
-            critic_quantiles = critic_quantiles.min(dim=1)[0]
+            if self._min_critic_by_critic_mean:
+                # [B, replicas] or [B, replicas, reward_dim]
+                critic_mean = critic_quantiles.mean(-1)
+                idx = torch.min(
+                    critic_mean, dim=1)[1]  # [B] or [B, reward_dim]
+                if self.has_multidim_reward():
+                    idx = torch.repeat_interleave(
+                        idx.unsqueeze(-1), critic_quantiles.shape[-1],
+                        dim=-1)  # [B, reward_dim, n_quantiles]
+                    idx = idx.unsqueeze(1)  # [B, 1, reward_dim, n_quantiles]
+                    # [B, reward_dim, n_quantiles]
+                    critic_quantiles = torch.gather(
+                        critic_quantiles, dim=1, index=idx).squeeze()
+                else:
+                    # [B, n_quantiles]
+                    critic_quantiles = critic_quantiles[torch.
+                                                        arange(len(idx)), idx]
+            else:
+                critic_quantiles = critic_quantiles.min(dim=1)[0]
         if quantile_mean:
             critic_quantiles = critic_quantiles.mean(-1)
 
