@@ -20,7 +20,6 @@ import torch
 import alf
 from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
-from alf.networks import QuantileProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
 from alf.networks import BetaProjectionNetwork
 from alf.networks import TruncatedProjectionNetwork
