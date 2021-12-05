@@ -828,15 +828,16 @@ def plot(env, her, train, curves):
         elif env == "atarirn":
             assert not her
             rn = "-rnorm_at_AdaptiveNormalizer"
-            lr = "-lr_0.001"
-            # rn, lr = "", ""
-            if mstr == "-lbtq":
-                upit = "-upit_8-batsz_250-coll_1e5"
-                # upit = "-upit_4-batsz_500-coll_1e5"
-            else:
-                upit = "-upit_4-batsz_500-coll_1e5"
-                # upit = "-upit_4-batsz_500"
-            n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_100-sd_3" % (
+            # rn = ""
+            # lr = "-lr_0.001"
+            lr = ""
+            # if mstr == "-lbtq":
+            #     upit = "-upit_8-batsz_250-coll_1e5"
+            #     # upit = "-upit_4-batsz_500-coll_1e5"
+            # else:
+            upit = "-upit_4-batsz_500-coll_1e5"
+            #    # upit = "-upit_4-batsz_500"
+            n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10-sd_?-" % (
                 mstr, rn, t, lr, upit)
             # n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10*-sd_" % (
             #     mstr, rn, t, lr, upit)
