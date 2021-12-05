@@ -352,10 +352,6 @@ class RLTrainer(Trainer):
             debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
         if ddp_rank >= 0:
-            if not self._algorithm.on_policy:
-                raise RuntimeError(
-                    'Mutli-GPU with DDP does not support off-policy training yet'
-                )
             # Activate the DDP training
             self._algorithm.activate_ddp(ddp_rank)
 
