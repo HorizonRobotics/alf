@@ -80,38 +80,6 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
 
 
-class TestQuantileProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, ), (2, ))
-    def test_discrete_quantile_projection_net(self, batch_size):
-        input_size = 10
-        action_dim = 5
-        num_quantiles = 50
-        input_spec = TensorSpec((input_size, ), torch.float32)
-        embedding = input_spec.ones(outer_dims=(batch_size, ))
-
-        net = QuantileProjectionNetwork(
-            input_size=input_size,
-            output_tensor_spec=TensorSpec((action_dim, num_quantiles)))
-
-        out = net(embedding)[0]
-        self.assertEqual(
-            tuple(out.size()), (batch_size, action_dim, num_quantiles))
-
-    @parameterized.parameters((1, ), (2, ))
-    def test_continuous_quantile_projection_net(self, batch_size):
-        input_size = 10
-        num_quantiles = 50
-        input_spec = TensorSpec((input_size, ), torch.float32)
-        embedding = input_spec.ones(outer_dims=(batch_size, ))
-
-        net = QuantileProjectionNetwork(
-            input_size=input_size,
-            output_tensor_spec=TensorSpec((num_quantiles, )))
-
-        out = net(embedding)[0]
-        self.assertEqual(tuple(out.size()), (batch_size, num_quantiles))
-
-
 class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((True, ), (False, ))
     def test_zero_normal_projection_net(self, state_dependent_std):
