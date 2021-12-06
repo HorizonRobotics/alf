@@ -226,7 +226,7 @@ class TDQRLoss(TDLoss):
                  gamma=0.99,
                  td_error_loss_fn=losses.huber_function,
                  td_lambda=1.0,
-                 sum_over_quantiles=False,
+                 sum_over_quantiles=True,
                  debug_summaries=False,
                  name="TDQRLoss"):
         """

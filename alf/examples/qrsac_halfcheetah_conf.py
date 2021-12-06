@@ -58,6 +58,7 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     critic_loss_ctor=critic_loss_ctor,
+    use_entropy_reward=True,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
