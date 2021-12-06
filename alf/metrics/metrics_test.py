@@ -132,7 +132,7 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                    vector_reward):
         trajectories = self._create_trajectories(vector_reward)
         if metric_class in [AverageEpisodeLengthMetric]:
-            metric = metric_class(batch_size=2)
+            metric = metric_class(example_time_step=trajectories[0])
         elif metric_class in [
                 AverageReturnMetric, AverageDiscountedReturnMetric,
                 AverageEnvInfoMetric

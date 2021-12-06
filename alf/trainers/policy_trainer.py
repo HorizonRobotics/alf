@@ -385,6 +385,7 @@ class RLTrainer(Trainer):
                     buffer_size=self._num_eval_episodes,
                     example_time_step=example_time_step),
                 alf.metrics.AverageEpisodeLengthMetric(
+                    example_time_step=example_time_step,
                     buffer_size=self._num_eval_episodes),
                 alf.metrics.AverageEnvInfoMetric(
                     example_time_step=example_time_step,
@@ -714,7 +715,8 @@ def play(root_dir,
     metrics = [
         alf.metrics.AverageReturnMetric(
             buffer_size=num_episodes, example_time_step=time_step),
-        alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
+        alf.metrics.AverageEpisodeLengthMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
     ]
     while episodes < num_episodes:
         next_time_step, policy_step, trans_state = _step(

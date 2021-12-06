@@ -250,7 +250,8 @@ hard-coded as below:
             buffer_size=metric_buf_size,
             example_time_step=example_time_step),
         alf.metrics.AverageEpisodeLengthMetric(
-            batch_size=env.batch_size, buffer_size=metric_buf_size),
+            example_time_step=example_time_step,
+            buffer_size=metric_buf_size),
         alf.metrics.AverageEnvInfoMetric(
             example_time_step=example_time_step,
             buffer_size=metric_buf_size),
