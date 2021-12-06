@@ -761,7 +761,7 @@ class HindsightExperienceTransformer(DataTransformer):
         buffer = info.replay_buffer
         assert buffer != (), "Hindsight requires replay_buffer to be populated"
         accessed_fields = [
-            "batch_info", "reward", self._desired_goal_field,
+            "batch_info", "reward", "step_type", self._desired_goal_field,
             self._achieved_goal_field
         ]
         with alf.device(buffer.device):
@@ -783,7 +783,6 @@ class HindsightExperienceTransformer(DataTransformer):
             # relabel only these sampled indices
             her_cond = torch.rand(batch_size) < her_proportion
             (her_indices, ) = torch.where(her_cond)
-            (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
 
             last_step_pos = start_pos[her_indices] + batch_length - 1
             last_env_ids = env_ids[her_indices]
@@ -812,6 +811,30 @@ class HindsightExperienceTransformer(DataTransformer):
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
 
+            non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
+                                                       StepType.FIRST)
+            # assert reward function is the same as used by the environment.
+            if not torch.allclose(relabeled_rewards[non_her_or_fst],
+                                  result.reward[non_her_or_fst]):
+                not_close = torch.abs(relabeled_rewards[non_her_or_fst] -
+                                      result.reward[non_her_or_fst]) > 0.01
+                msg = (
+                    "hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
+                    "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
+                    + "\n{}").format(
+                        relabeled_rewards[non_her_or_fst][not_close],
+                        result.reward[non_her_or_fst][not_close],
+                        result_ag[non_her_or_fst][not_close],
+                        result_desired_goal[non_her_or_fst][not_close],
+                        env_ids.unsqueeze(1).expand(
+                            shape[:2])[non_her_or_fst][not_close],
+                        start_pos.unsqueeze(1).expand(
+                            shape[:2])[non_her_or_fst][not_close])
+                logging.warning(msg)
+                # assert False, msg
+                relabeled_rewards[non_her_or_fst] = result.reward[
+                    non_her_or_fst]
+
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_before_relabel",
@@ -819,23 +842,6 @@ class HindsightExperienceTransformer(DataTransformer):
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_after_relabel",
                 torch.mean(relabeled_rewards[her_indices][:-1]))
-        # assert reward function is the same as used by the environment.
-        if not torch.allclose(relabeled_rewards[non_her_indices],
-                              result.reward[non_her_indices]):
-            not_close = torch.abs(relabeled_rewards[non_her_indices] -
-                                  result.reward[non_her_indices]) > 0.01
-            msg = ("hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
-                   "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
-                   + "\n{}").format(
-                       relabeled_rewards[non_her_indices][not_close],
-                       result.reward[non_her_indices][not_close],
-                       result_ag[non_her_indices][not_close],
-                       result_desired_goal[non_her_indices][not_close],
-                       env_ids[non_her_indices][not_close[:, 0]],
-                       start_pos[non_her_indices][not_close[:, 0]])
-            logging.warning(msg)
-            # assert False, msg
-            relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
 
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabed_goal)
