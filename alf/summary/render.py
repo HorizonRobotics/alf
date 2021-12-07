@@ -263,6 +263,8 @@ def _convert_to_image(name, fig, dpi, height, width):
 
 
 def _heatmap(data,
+             row_ticks=None,
+             col_ticks=None,
              row_labels=None,
              col_labels=None,
              ax=None,
@@ -275,10 +277,14 @@ def _heatmap(data,
 
     Args:
         data (np.ndarray): A 2D numpy array of shape ``[H, W]``.
-        row_labels (list[str]): A list of length ``H`` with the labels for
-            the rows.
-        col_labels (list[str]): A list of length ``M`` with the labels for
-            the columns.
+        row_ticks (list[float]): List of row (y-axis) tick locations.
+        col_ticks (list[float]): List of column (x-axis) tick locations.
+        row_labels (list[str]): A list labels for the rows. Its length
+            should be equal to that of ``row_ticks`` if ``row_ticks`` is not None.
+            Otherwise, it should have a length of ``H``.
+        col_labels (list[str]): A list of labels for the columns. Its length
+            should be equal to that of ``col_ticks`` if ``col_ticks`` is not None.
+            Otherwise, it should have a length of ``W``.
         ax (matplotlib.axes.Axes): instance to which the heatmap is plotted.
             If None, use current axes or create a new one.
         cbar_kw (dict): A dictionary with arguments to ``matplotlib.Figure.colorbar``.
@@ -301,14 +307,29 @@ def _heatmap(data,
     cbar = ax.figure.colorbar(im, ax=ax, **cbar_kw)
     cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
 
-    # We want to show all ticks...
-    ax.set_xticks(np.arange(data.shape[1]))
-    ax.set_yticks(np.arange(data.shape[0]))
+    if col_ticks is None:
+        # show all the ticks by default
+        col_ticks = np.arange(data.shape[1] + 1) - .5
+
+    ax.set_xticks(col_ticks, minor=True)
+
+    if row_ticks is None:
+        # show all the ticks by default
+        row_ticks = np.arange(data.shape[0] + 1) - .5
+
+    ax.set_yticks(row_ticks, minor=True)
 
     # ... and label them with the respective list entries.
     if col_labels is not None:
+        assert len(col_ticks) == len(col_labels), (
+            "'col_ticks' should have the "
+            "same length as 'col_labels'")
         ax.set_xticklabels(col_labels)
+
     if row_labels is not None:
+        assert len(row_ticks) == len(row_labels), (
+            "'row_ticks' should have the "
+            "same length as 'row_labels'")
         ax.set_yticklabels(row_labels)
 
     # Let the horizontal axes labeling appear on top.
@@ -321,8 +342,6 @@ def _heatmap(data,
     # Turn spines off and create white grid.
     ax.spines[:].set_visible(False)
 
-    ax.set_xticks(np.arange(data.shape[1] + 1) - .5, minor=True)
-    ax.set_yticks(np.arange(data.shape[0] + 1) - .5, minor=True)
     ax.grid(which="minor", color="w", linestyle='-', linewidth=3)
     ax.tick_params(which="minor", bottom=False, left=False)
 
@@ -376,6 +395,8 @@ def _annotate_heatmap(im,
 def render_heatmap(name,
                    data,
                    val_label="",
+                   row_ticks=None,
+                   col_ticks=None,
                    row_labels=None,
                    col_labels=None,
                    cbar_kw={},
@@ -390,12 +411,16 @@ def render_heatmap(name,
 
     Args:
         name (str): rendering identifier
-        data (Tensor|np.ndarray): a tensor/np.array of shape ``[H,W]``
+        data (Tensor|np.ndarray): a tensor/np.array of shape ``[H, W]``
         val_label (str): The label for the rendered values.
-        row_labels (list[str]): A list of length ``H`` with the labels for
-            the rows.
-        col_labels (list[str]): A list of length ``W`` with the labels for
-            the columns.
+        row_ticks (list[float]): List of row (y-axis) tick locations.
+        col_ticks (list[float]): List of column (x-axis) tick locations.
+        row_labels (list[str]): A list labels for the rows. Its length
+            should be equal to that of ``row_ticks`` if ``row_ticks`` is not None.
+            Otherwise, it should have a length of ``H``.
+        col_labels (list[str]): A list of labels for the columns. Its length
+            should be equal to that of ``col_ticks`` if ``col_ticks`` is not None.
+            Otherwise, it should have a length of ``W``.
         cbar_kw (dict): A dictionary with arguments to ``matplotlib.Figure.colorbar``.
         annotate_format (str): The format of the annotations on the heatmap to
             show the actual value represented by each heatmap cell. This should
@@ -416,10 +441,6 @@ def render_heatmap(name,
         Image: an output image rendered for the tensor
     """
     assert len(data.shape) == 2, "Must be a rank-2 tensor!"
-    if row_labels:
-        assert len(row_labels) == data.shape[0]
-    if col_labels:
-        assert len(col_labels) == data.shape[1]
     if not isinstance(data, np.ndarray):
         array = data.cpu().numpy()
     else:
@@ -427,6 +448,8 @@ def render_heatmap(name,
     fig, ax = plt.subplots(figsize=figsize)
     im, _ = _heatmap(
         array,
+        row_ticks,
+        col_ticks,
         row_labels,
         col_labels,
         ax,
