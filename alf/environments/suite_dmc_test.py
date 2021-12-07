@@ -37,19 +37,15 @@ class SuiteDmcTest(alf.test.TestCase):
         super(SuiteDmcTest, self).tearDown()
 
     def test_load_adds_time_limit_steps(self):
-        env = suite_dmc.dmc_loader(
-            'DMControl', from_pixels=False, alf_env_wrappers=[])
+        env = suite_dmc.dmc_loader('DMControl', from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertIsInstance(env, alf_wrappers.TimeLimit)
+        self.assertIsInstance(env.base_env, alf_wrappers.TimeLimit)
 
     def test_load_disable_step_limit(self):
         env = suite_dmc.dmc_loader(
-            'DMControl',
-            max_episode_steps=0,
-            from_pixels=False,
-            alf_env_wrappers=[])
+            'DMControl', max_episode_steps=0, from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertNotIsInstance(env, alf_wrappers.TimeLimit)
+        self.assertNotIsInstance(env.base_env, alf_wrappers.TimeLimit)
 
     def test_load_disable_alf_wrappers_applied(self):
         duration_wrapper = functools.partial(
@@ -64,13 +60,10 @@ class SuiteDmcTest(alf.test.TestCase):
 
     def test_custom_max_steps(self):
         env = suite_dmc.dmc_loader(
-            'DMControl',
-            max_episode_steps=5,
-            from_pixels=False,
-            alf_env_wrappers=[])
+            'DMControl', max_episode_steps=5, from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertIsInstance(env, alf_wrappers.TimeLimit)
-        self.assertEqual(5, env._duration)
+        self.assertIsInstance(env.base_env, alf_wrappers.TimeLimit)
+        self.assertEqual(5, env.base_env._duration)
 
 
 if __name__ == '__main__':
