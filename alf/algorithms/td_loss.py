@@ -226,7 +226,7 @@ class TDQRLoss(TDLoss):
                  gamma=0.99,
                  td_error_loss_fn=losses.huber_function,
                  td_lambda=1.0,
-                 sum_over_quantiles=True,
+                 sum_over_quantiles=False,
                  debug_summaries=False,
                  name="TDQRLoss"):
         """
@@ -285,13 +285,12 @@ class TDQRLoss(TDLoss):
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
 
-        # for quantile regression TD, the value has shape
+        # for quantile regression TD, the value and target both have shape
         # (T-1, B, n_quantiles) for scalar reward and
         # (T-1, B, reward_dim, n_quantiles) for multi-dim reward.
-        # Make cdf_midpoints broadcastable to quantile TD, which has shape
+        # The quantile TD has shape
         # (T-1, B, n_quantiles, n_quantiles) for scalar reward and
         # (T-1, B, reward_dim, n_quantiles, n_quantiles) for multi-dim reward
-        cdf_midpoints = self._cdf_midpoints.view(*([1] * value.ndim), -1)
         quantiles = value.unsqueeze(-2)
         quantiles_target = returns.detach().unsqueeze(-1)
         diff = quantiles_target - quantiles
@@ -317,7 +316,7 @@ class TDQRLoss(TDLoss):
 
         huber_loss = self._td_error_loss_fn(diff)
         loss = torch.abs(
-            (cdf_midpoints - (diff.detach() < 0).float())) * huber_loss
+            (self._cdf_midpoints - (diff.detach() < 0).float())) * huber_loss
 
         if self._sum_over_quantiles:
             loss = loss.mean(-2).sum(-1)
