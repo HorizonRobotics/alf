@@ -43,9 +43,21 @@ Then commit your change to the local branch using :code:`git commit`.
 
 5. Make pull request:
 
+For Horizon team members or collaborators with the access, you can directly
+push a branch to the ALF repo and then create a PR:
+
 .. code-block:: bash
 
     git push origin PR_change_name
+
+For the public without the access, you need to first fork the ALF repo, push
+a local change to your forked repo, and then create a PR from there:
+
+.. code-block:: bash
+
+    git push <your_fork> PR_change_name
+
+In either case, a PR can be created from the Github website.
 
 6. Change your code based on review comments. The new change should be added
 as NEW commit to your previous commits. Do not use :code:`--amend` option for the
