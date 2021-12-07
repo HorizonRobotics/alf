@@ -25,7 +25,7 @@ import alf
 from alf.data_structures import LossInfo
 from alf.nest import is_namedtuple, is_nested, py_map_structure_with_path, map_structure
 from alf.utils import dist_utils
-from alf.summary import should_record_summaries
+from alf.summary import should_record_summaries, get_global_counter
 
 DEFAULT_BUCKET_COUNT = 30
 
@@ -372,7 +372,7 @@ class record_time(object):
         # token is a string of filename:lineno:tag
         token = caller[0] + ':' + str(caller[1]) + ':' + tag
         if token not in _contexts:
-            _contexts[token] = {'time': 0., 'n': 0}
+            _contexts[token] = {'time': 0., 'c0': int(get_global_counter())}
         self._counter = _contexts[token]
 
     def __enter__(self):
@@ -384,12 +384,14 @@ class record_time(object):
         if self._sync and torch.cuda.is_available():
             torch.cuda.synchronize()
         self._counter['time'] += time.time() - self._t0
-        self._counter['n'] += 1
         if should_record_summaries():
-            alf.summary.scalar(self._tag,
-                               self._counter['time'] / self._counter['n'])
-            self._counter['time'] = .0
-            self._counter['n'] = 0
+            c0 = self._counter['c0']
+            c1 = int(get_global_counter())
+            if c1 > c0:
+                alf.summary.scalar(self._tag,
+                                   self._counter['time'] / (c1 - c0))
+                self._counter['time'] = .0
+                self._counter['c0'] = c1
 
 
 def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
