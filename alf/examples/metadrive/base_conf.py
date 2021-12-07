@@ -26,6 +26,7 @@ alf.config(
 
 alf.config(
     'suite_metadrive.load',
+    vel_encoding=suite_metadrive.VelocityEncoding(num_steps=1),
     scenario_num=5000,
     crash_penalty=50.0,
     success_reward=200.0)

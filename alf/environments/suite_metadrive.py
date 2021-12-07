@@ -35,6 +35,21 @@ except ImportError:
     # create 'metadrive' as a mock to not break python argument type hints
     metadrive = Mock()
 
+# This is for configuration of encoding velocity in the BEV. See load() below
+# for details about how encoding is done.
+VelocityEncoding = ds.namedtuple(
+    'VelocityEncoding',
+    [
+        # Velocity in [current - num_steps, current] will be encoded.
+        'num_steps',
+        # Velocity (in km/h) will be divided by this number before encoded.
+        'normalization_factor',
+    ],
+    default_values={
+        'num_steps': 1,
+        'normalization_factor': 100.0,
+    })
+
 
 def _space_to_spec(space: gym.spaces.box.Box):
     # NOTE: this is meta drive specific conversion function as it
@@ -54,6 +69,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
     def __init__(self,
                  metadrive_env: metadrive.MetaDriveEnv,
                  env_id: int = 0,
+                 vel_encoding: Optional[VelocityEncoding] = None,
                  image_channel_first: bool = True):
         """Constructor of AlfMetaDriveWrapper.
         Args:
@@ -62,10 +78,14 @@ class AlfMetaDriveWrapper(AlfEnvironment):
                 own before being wrapped.
             env_id: the ID of this environment when appear as part of a batched
                 environment.
+            vel_encoding: when provided, an extra channel will be added to the
+                BEV which encodes the velocity of the vehilce in the current and
+                a few past steps.
             image_channel_first: when set to True, the returned image-based
                 observation will have a shape of (channel, height, width). Note
                 that the raw observation from meta drive environment place
                 channel as the last dimension.
+
         """
 
         self._env = metadrive_env
@@ -74,10 +94,19 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         self._image_channel_first = image_channel_first
         self._observation_spec = _space_to_spec(self._env.observation_space)
 
-        if self._image_channel_first:
-            w, h, c = self._observation_spec.shape
+        self._vel_encoding = vel_encoding
+        if self._vel_encoding is not None:
+            h, w, c = self._observation_spec.shape
             self._observation_spec = BoundedTensorSpec(
-                shape=(c, w, h),
+                shape=(h, w, c + 1),
+                dtype=self._observation_spec.dtype,
+                minimum=self._observation_spec.minimum,
+                maximum=self._observation_spec.maximum)
+
+        if self._image_channel_first:
+            h, w, c = self._observation_spec.shape
+            self._observation_spec = BoundedTensorSpec(
+                shape=(c, h, w),
                 dtype=self._observation_spec.dtype,
                 minimum=self._observation_spec.minimum,
                 maximum=self._observation_spec.maximum)
@@ -102,8 +131,12 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
         # Stores some of the internal states for visualization purpose
         self._current_observation = None
-        self._current_velocity = 0.0
         self._current_action = self._action_spec.zeros().cpu().numpy()
+
+        if self._vel_encoding is not None:
+            self._velocity_history = [0.0] * self._vel_encoding.num_steps
+        else:
+            self._velocity_history = [0.0]
 
     @property
     def batched(self):
@@ -139,7 +172,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         frame.blit(text, (40, 70))
 
         # Convert from km/h to m/s
-        speed = self._current_velocity * 1000.0 / 3600.0
+        speed = self._velocity_history[-1] * 1000.0 / 3600.0
         text = font.render(f'Velocity: {speed:.3f} m/s', True, (52, 82, 235))
         frame.blit(text, (40, 100))
 
@@ -163,6 +196,11 @@ class AlfMetaDriveWrapper(AlfEnvironment):
             observation_surface = pygame.surfarray.make_surface(bevs[:, :, 4])
             frame.blit(observation_surface, (900, 400))
 
+            if self._vel_encoding is not None:
+                observation_surface = pygame.surfarray.make_surface(
+                    bevs[:, :, 5])
+                frame.blit(observation_surface, (900, 300))
+
         # Now canvas is a numpy H x W x C image (ndarray)
         canvas = pygame.surfarray.array3d(frame).swapaxes(0, 1)
         return canvas
@@ -179,9 +217,29 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         """
         observation, reward, done, info = self._env.step(action)
 
-        self._current_observation = observation
-        self._current_velocity = info['velocity']
+        self._velocity_history.pop(0)
+        self._velocity_history.append(info['velocity'])
         self._current_action = action
+
+        if self._vel_encoding is not None:
+            # Original observation is 84 x 84 x 5
+            h, w = observation.shape[:2]
+            velocity_frame = np.zeros((h, w, 1), dtype=np.float32)
+            stripe_size = h // self._vel_encoding.num_steps
+            # Now create the image that encodes the velocity. The whole image is
+            # divided vertically into equal-sized stripes, where the normalized
+            # velocities are filled in the pixels of the stripes in the order of
+            # most recent steps.
+            index = 0
+            for i in range(self._vel_encoding.num_steps):
+                value = self._velocity_history[
+                    i] / self._vel_encoding.normalization_factor
+                velocity_frame[index:(index + stripe_size), :, :] = value
+                index += stripe_size
+            observation = np.concatenate((observation, velocity_frame),
+                                         axis=-1)
+
+        self._current_observation = observation
 
         if self._image_channel_first:
             observation = nest.map_structure(lambda x: x.transpose(2, 0, 1),
@@ -248,6 +306,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 def load(
         map_name: str = 'RandomMap',
         env_id: int = 0,
+        vel_encoding: Optional[VelocityEncoding] = None,
         traffic_density: float = 0.1,
         start_seed: int = np.random.randint(10000),
         scenario_num: int = 5000,
@@ -260,7 +319,11 @@ def load(
     Args:
         map_name: The type of map to be generated. Currently it only supports
             'RandomMap' where maps are being generated randomly.
-        env_id (int): (optional) ID of the environment.
+        env_id: (optional) ID of the environment.
+        vel_encoding: when provided, an extra channel of velocity encoding will
+            be added to the observation (BEV). Depending on the specified number
+            of steps, the extra channel will be an image of stripes where each
+            stripe is filled with the velocity of one (recent) step.
         traffic_density: number of traffic vehicles per 10 meter per lane.
         start_seed: random seed of the first map.
         scenario_num: specifies the range of the scenario seeds together with
@@ -287,6 +350,7 @@ def load(
             high speed is this weight * the speed in km/h.
         success_reward: the amount of reward will be given (at most 1 time per
             episode) when the ego car reaches the destination.
+
     """
     # TODO(breakds): Support other types of map such as predefined towns.
     assert map_name in ['RandomMap'
@@ -315,7 +379,7 @@ def load(
                 'success_reward': success_reward,
             })
 
-    return AlfMetaDriveWrapper(env, env_id=env_id)
+    return AlfMetaDriveWrapper(env, env_id=env_id, vel_encoding=vel_encoding)
 
 
 # Set no_thread_env to True so that when being created for evaluation or play,
