@@ -32,6 +32,8 @@ class SuiteCarlaTest(alf.test.TestCase):
             self.skipTest('suite_carla is not available.')
 
     def test_carla(self):
+        alf.config('suite_carla.Player', with_bev_sensor=True)
+
         env = suite_carla.CarlaEnvironment(4, 'Town01')
         logging.info(
             "observation_spec: %s" % pprint.pformat(env.observation_spec()))
@@ -145,6 +147,8 @@ def main():
 
     logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
+
+    alf.config('suite_carla.Player', with_bev_sensor=True)
     env = suite_carla.CarlaEnvironment(
         batch_size=1,
         map_name='Town01',

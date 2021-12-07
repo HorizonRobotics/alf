@@ -96,12 +96,19 @@ def create_environment(env_name='CartPole-v0',
                 env_name, batch_size=num_parallel_environments)
     elif nonparallel:
         # Each time we can only create one unwrapped env at most
+        if getattr(env_load_fn, 'no_thread_env', False):
+            # In this case the environment is marked as "not compatible with
+            # thread environment", and we will create it in the main thread.
+            # BatchedTensorWrapper is applied to make sure the I/O is batched
+            # torch tensor based.
+            alf_env = alf_wrappers.BatchedTensorWrapper(env_load_fn(env_name))
+        else:
+            # Create and step the env in a separate thread. env `step` and
+            #   `reset` must run in the same thread which the env is created in
+            #   for some simulation environments such as social_bot(gazebo)
+            alf_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
+                env_name))
 
-        # Create and step the env in a separate thread. env `step` and `reset` must
-        #   run in the same thread which the env is created in for some simulation
-        #   environments such as social_bot(gazebo)
-        alf_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
-            env_name))
         if seed is None:
             alf_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
         else:

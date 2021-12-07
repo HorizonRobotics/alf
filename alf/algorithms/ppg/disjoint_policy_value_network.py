@@ -185,7 +185,7 @@ class DisjointPolicyValueNetwork(Network):
         # Like the value head Aux head is outputing value estimation
         self._aux_head = alf.nn.Sequential(
             alf.layers.FC(input_size=encoder_output_size, output_size=1),
-            alf.layers.Reshape(shape=()))
+            alf.layers.Reshape(()))
 
         # +------------------------------------------+
         # | Step 4: Assemble network + value head    |
@@ -201,9 +201,9 @@ class DisjointPolicyValueNetwork(Network):
                         alf.layers.Detach(),
                         alf.layers.FC(
                             input_size=encoder_output_size, output_size=1),
-                        alf.layers.Reshape(shape=()),
+                        alf.layers.Reshape(()),
                         input_tensor_spec=self._actor_encoder.output_spec),
-                    self._aux_head))
+                    alf.layers.Identity()))
         else:
             # When not sharing encoder, create a separate encoder for the value
             # component.
@@ -216,36 +216,51 @@ class DisjointPolicyValueNetwork(Network):
                         self._actor_encoder,
                         alf.nn.Branch(
                             self._policy_head,
-                            self._aux_head,
+                            alf.layers.Identity(),
                             name='PolicyComponent')),
                     alf.nn.Sequential(
                         self._value_encoder,
                         alf.layers.FC(
                             input_size=encoder_output_size, output_size=1),
-                        alf.layers.Reshape(shape=()))),
+                        alf.layers.Reshape(()))),
                 # Order: policy, value, aux value
                 lambda heads: (heads[0][0], heads[1], heads[0][1]))
 
-    # TODO(breakds): Currently the method ``forward`` always evaluate all 3
-    # heads, which can be wasteful if only 1 of them is needed (for example,
-    # there can be cases when only action distribution is needed). Such overhead
-    # is not significant as the networks are not complex (yet). Will defer the
-    # decision to the future when such performance gain is huge and necessary.
-    def forward(self, observation, state):
+    def forward(self, observation, state, require_aux: bool = True):
         """Computes the action distribution, aux value and value estimation
 
-        Args:
+        In PPG's policy phase update, auxiliary estimation is not needed as it
+        does not participate in computing the policy phase loss. Depending on
+        whether require_aux is set to True or False, forward will choose to
+        compute auxiliary value estimation or not accordingly.
 
+        NOTE: Although by not computing the auxiliary value estimation it saves
+        a tiny bit of computation, the main reason we want to prevent it from
+        being computed for PPG's policy phase is to make PPG work with DDP (Data
+        Distributed Parallel). DDP need to wait for all parameters that
+        contributes to the output of ``forward()`` to go through ``backward()``.
+        If auxiliary value estimation were computed, DDP will panic since it
+        will not go through ``backward()`` in the policy phase update.
+
+        Args:
             observation (nested torch.Tensor): a tensor that is consistent with
                 the encoding network
             state: the state(s) for RNN based network
-
+            require_aux: When set to False, return () as the auxiliary value
+                estimation in the output.
         Returns:
-
             output (Triplet): network output in the order of policy (action
                 distribution), value function estimation, auxiliary value
                 function estimation
             state (Triplet): RNN states in the order of policy, value, aux value
 
         """
-        return self._composition(observation, state=state)
+        (action_distribution, value,
+         encoded), output_state = self._composition(
+             observation, state=state)
+
+        if require_aux:
+            aux, _ = self._aux_head(encoded)
+            return (action_distribution, value, aux), output_state
+        else:
+            return (action_distribution, value, ()), output_state

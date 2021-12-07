@@ -115,7 +115,8 @@ def get_reward_spec():
 _is_parsing = False
 
 
-def adjust_config_by_multi_process_divider(multi_process_divider: int = 1):
+def adjust_config_by_multi_process_divider(ddp_rank: int,
+                                           multi_process_divider: int = 1):
     """Adjust specific configuration value in multiple process settings
     Alf assumes all configuration files geared towards single process training.
     This means that in multi-process settings such as DDP some of the
@@ -124,8 +125,17 @@ def adjust_config_by_multi_process_divider(multi_process_divider: int = 1):
     For example, if we run 64 environments in parallel for single process
     settings, the value needs to be overriden with 16 if there are 4 identical
     processes running DDP training to achieve parity.
+
+    The adjusted configs are
+
+    1. TrainerConfig.mini_batch_size: divided by processes
+    2. TrainerConfig.num_env_steps: divided by processes if used
+    3. TrainerConfig.mini_batch_size: divided by processes if used
+    4. TrainerConfig.evaluate: set to False except for process 0
+
     Args:
-        multi_process_divider (int): this is equivalent to number of processes
+        ddp_rank: the rank of device to the process.
+        multi_process_divider: this is equivalent to number of processes
     """
     if multi_process_divider <= 1:
         return
@@ -139,6 +149,35 @@ def adjust_config_by_multi_process_divider(multi_process_divider: int = 1):
         tag,
         math.ceil(num_parallel_environments / multi_process_divider),
         raise_if_used=False)
+
+    # Adjust the mini_batch_size. If the original configured value is 64 and
+    # there are 4 processes, it should mean that "jointly the 4 processes have
+    # an effective mini_batch_size of 64", and each process has a
+    # mini_batch_size of 16.
+    tag = 'TrainerConfig.mini_batch_size'
+    mini_batch_size = get_config_value(tag)
+    if isinstance(mini_batch_size, int):
+        config1(
+            tag,
+            math.ceil(mini_batch_size / multi_process_divider),
+            raise_if_used=False)
+
+    # If the termination condition is num_env_steps instead of num_iterations,
+    # we need to adjust it as well since each process only sees env steps taking
+    # by itself.
+    tag = 'TrainerConfig.num_env_steps'
+    num_env_steps = get_config_value(tag)
+    if num_env_steps > 0:
+        config1(
+            tag,
+            math.ceil(num_env_steps / multi_process_divider),
+            raise_if_used=False)
+
+    # Only allow process with rank 0 to have evaluate. Enabling evaluation for
+    # other parallel processes is a waste as such evaluation does not offer more
+    # information.
+    if ddp_rank > 0:
+        config1('TrainerConfig.evaluate', False, raise_if_used=False)
 
 
 def parse_config(conf_file, conf_params):
@@ -208,6 +247,7 @@ def get_env():
         # In case when running in multi-process mode, the number of environments
         # per process need to be adjusted (divided by number of processes).
         adjust_config_by_multi_process_divider(
+            PerProcessContext().ddp_rank,
             PerProcessContext().num_processes)
         _env = create_environment(seed=random_seed)
     return _env

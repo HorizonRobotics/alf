@@ -121,18 +121,18 @@ class SequentialDataTransformer(DataTransformer):
                 transfomer.
         """
         data_transformers = nn.ModuleList()
-        has_non_frame_stacker = False
         state_spec = []
         max_stack_size = 1
-        for ctor in data_transformer_ctors:
+        for i, ctor in enumerate(data_transformer_ctors):
             obs_trans = ctor(observation_spec)
+            if isinstance(obs_trans, FrameStacker) or isinstance(
+                    obs_trans, HindsightExperienceTransformer):
+                assert i == 0, (
+                    "HindsightExperienceTransformer or FrameStacker needs to "
+                    "be the first data transformer, and cannot be combined. "
+                    "Check docs/notes/knowledge_base.rst for details.")
             if isinstance(obs_trans, FrameStacker):
                 max_stack_size = max(max_stack_size, obs_trans.stack_size)
-                assert not has_non_frame_stacker, (
-                    "FrameStacker need to be the "
-                    "first data transformers if it is used.")
-            else:
-                has_non_frame_stacker = True
             observation_spec = obs_trans.transformed_observation_spec
             data_transformers.append(obs_trans)
             state_spec.append(obs_trans.state_spec)
@@ -550,15 +550,31 @@ class ObservationNormalizer(SimpleDataTransformer):
         return timestep_or_exp._replace(observation=observation)
 
 
+class RewardTransformer(SimpleDataTransformer):
+    """Base class for transforming reward.
+    """
+
+    def __init__(self, observation_spec):
+        """
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+
+    def _transform(self, timestep_or_exp):
+        return timestep_or_exp._replace(
+            reward=self.forward(timestep_or_exp.reward))
+
+
 @alf.configurable
-class RewardClipping(SimpleDataTransformer):
+class RewardClipping(RewardTransformer):
     """Clamp immediate rewards to the range :math:`[min, max]`.
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
     """
 
-    def __init__(self, observation_spec, minmax=(-1, 1)):
+    def __init__(self, observation_spec=(), minmax=(-1, 1)):
         """
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
@@ -568,17 +584,16 @@ class RewardClipping(SimpleDataTransformer):
         assert minmax[0] <= minmax[1], "range error"
         self._minmax = minmax
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp._replace(
-            reward=timestep_or_exp.reward.clamp(*self._minmax))
+    def forward(self, reward):
+        return reward.clamp(*self._minmax)
 
 
 @alf.configurable
-class RewardNormalizer(SimpleDataTransformer):
+class RewardNormalizer(RewardTransformer):
     """Transform reward to be zero-mean and unit-variance."""
 
     def __init__(self,
-                 observation_spec,
+                 observation_spec=(),
                  normalizer=None,
                  update_max_calls=0,
                  clip_value=-1.0,
@@ -612,18 +627,6 @@ class RewardNormalizer(SimpleDataTransformer):
         self._max_calls = update_max_calls
         self._calls = 0
 
-    def _transform(self, timestep_or_exp):
-        norm = self._normalizer
-        if ((self._update_mode == "replay" and common.is_replay())
-                or (self._update_mode == "rollout" and common.is_rollout())):
-            if self._max_calls == 0 or self._calls < self._max_calls:
-                norm.update(timestep_or_exp.reward)
-            self._calls += 1
-
-        return timestep_or_exp._replace(
-            reward=norm.normalize(
-                timestep_or_exp.reward, clip_value=self._clip_value))
-
     @property
     def normalizer(self):
         return self._normalizer
@@ -632,16 +635,26 @@ class RewardNormalizer(SimpleDataTransformer):
     def clip_value(self):
         return self._clip_value
 
+    def forward(self, reward):
+        norm = self._normalizer
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
+            if self._max_calls == 0 or self._calls < self._max_calls:
+                norm.update(reward)
+            self._calls += 1
+
+        return norm.normalize(reward, clip_value=self._clip_value)
+
 
 @alf.configurable
-class RewardScaling(SimpleDataTransformer):
+class RewardScaling(RewardTransformer):
     """Scale immediate rewards by a factor of ``scale``.
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
     """
 
-    def __init__(self, observation_spec, scale):
+    def __init__(self, observation_spec=(), scale=1.0):
         """
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
@@ -650,9 +663,8 @@ class RewardScaling(SimpleDataTransformer):
         super().__init__(observation_spec)
         self._scale = scale
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp._replace(
-            reward=timestep_or_exp.reward * self._scale)
+    def forward(self, reward):
+        return reward * self._scale
 
 
 @alf.configurable
@@ -694,7 +706,7 @@ class HindsightExperienceTransformer(DataTransformer):
 
             ReplayBuffer.keep_episodic_info=True
             HindsightExperienceTransformer.her_proportion=0.8
-            TrainerConfig.data_transformer_ctor=[@ObservationNormalizer, @HindsightExperienceTransformer]
+            TrainerConfig.data_transformer_ctor=[@HindsightExperienceTransformer, @ObservationNormalizer]
 
         See unit test for more details on behavior.
     """
@@ -748,13 +760,18 @@ class HindsightExperienceTransformer(DataTransformer):
         # buffer (ReplayBuffer) is needed for access to future achieved goals.
         buffer = info.replay_buffer
         assert buffer != (), "Hindsight requires replay_buffer to be populated"
+        accessed_fields = [
+            "batch_info", "reward", self._desired_goal_field,
+            self._achieved_goal_field
+        ]
         with alf.device(buffer.device):
-            experience = alf.data_structures.clear_batch_info(experience)
-            info = info._replace(replay_buffer=())
-            experience = experience._replace(batch_info=info)
-            experience = convert_device(experience)
-            info = experience.batch_info
+            experience = alf.nest.transform_nest(
+                experience, "batch_info.replay_buffer", lambda _: ())
+            for f in accessed_fields:
+                experience = alf.nest.transform_nest(
+                    experience, f, lambda t: convert_device(t))
             result = experience
+            info = experience.batch_info
 
             env_ids = info.env_ids
             start_pos = info.positions
@@ -824,9 +841,11 @@ class HindsightExperienceTransformer(DataTransformer):
             result, self._desired_goal_field, lambda _: relabed_goal)
         result = result._replace(reward=relabeled_rewards)
         if alf.get_default_device() != buffer.device:
-            result, info = convert_device((result, info))
-        info = info._replace(replay_buffer=buffer)
-        result = alf.data_structures.add_batch_info(result, info)
+            for f in accessed_fields:
+                result = alf.nest.transform_nest(
+                    result, f, lambda t: convert_device(t))
+        result = alf.nest.transform_nest(
+            result, "batch_info.replay_buffer", lambda _: buffer)
         return result
 
 

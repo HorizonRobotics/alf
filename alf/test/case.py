@@ -25,6 +25,12 @@ class TestCase(unittest.TestCase):
         self.addTypeEqualityFunc(torch.Tensor, 'assertTensorEqual')
 
     def setUp(self):
+        # create_environment() might have been used in other tests.
+        # We need to reset_configs() so we can avoid the error of configuring
+        # a function after it is used.
+        alf.reset_configs()
+        # Some test may create a globel env. We need to close it.
+        alf.close_env()
         common.set_random_seed(1)
         alf.summary.reset_global_counter()
 

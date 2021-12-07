@@ -32,6 +32,7 @@ from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
+from alf.utils.distributed import data_distributed_when
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
@@ -133,6 +134,8 @@ class Algorithm(AlgorithmInterface):
         self._metrics = []
         self._replay_buffer = None
 
+        self._ddp_activated_rank = -1
+
         # These 3 parameters are only set when ``set_replay_buffer()`` is called.
         self._replay_buffer_num_envs = None
         self._replay_buffer_max_length = None
@@ -212,6 +215,17 @@ class Algorithm(AlgorithmInterface):
         be a subset of the ``rollout_state_spec``.
         """
         return self._use_rollout_state
+
+    def activate_ddp(self, rank: int):
+        """Prepare the Algorithm with DistributedDataParallel wrapper
+
+        Note that Algorithm does not need to remember the rank of the device.
+
+        Args:
+            rank (int): DDP wrapper needs to know on which GPU device this
+                module's parameters and buffers are supposed to be.
+        """
+        self._ddp_activated_rank = rank
 
     @use_rollout_state.setter
     def use_rollout_state(self, flag):
@@ -1460,17 +1474,32 @@ class Algorithm(AlgorithmInterface):
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
-    def _update(self, experience, batch_info, weight):
+    @data_distributed_when(lambda algorithm: not algorithm.on_policy)
+    def _compute_train_info_and_loss_info(self, experience):
+        """Compute train_info and loss_info based on the experience.
+
+        This function has data distributed support if the algorithm is
+        off-policy. This means that if the Algorithm instance has DDP activated
+        and is off-policy, the output will have a hook to synchronize gradients
+        across processes upon the call to the backward() that involes the output
+        (i.e. train_info and loss_info).
+
+        """
         length = alf.nest.get_nest_size(experience, dim=0)
         if self._config.temporally_independent_train_step or length == 1:
             train_info = self._collect_train_info_parallelly(experience)
         else:
             train_info = self._collect_train_info_sequentially(experience)
-
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
-
         loss_info = self.calc_loss(train_info)
+
+        return train_info, loss_info
+
+    def _update(self, experience, batch_info, weight):
+        train_info, loss_info = self._compute_train_info_and_loss_info(
+            experience)
+
         if loss_info.priority != ():
             priority = (
                 loss_info.priority**self._config.priority_replay_alpha() +

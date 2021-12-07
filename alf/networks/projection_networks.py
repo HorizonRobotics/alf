@@ -670,7 +670,10 @@ class TruncatedProjectionNetwork(Network):
                  projection_output_init_gain=0.3,
                  scale_bias_initializer_value=0.0,
                  state_dependent_scale=False,
+                 loc_transform=torch.tanh,
                  scale_transform=nn.functional.softplus,
+                 min_scale=None,
+                 max_scale=None,
                  dist_ctor=dist_utils.TruncatedNormal,
                  name="TruncatedProjectionNetwork"):
         """Creates an instance of TruncatedProjectionNetwork.
@@ -691,8 +694,14 @@ class TruncatedProjectionNetwork(Network):
             state_dependent_scale (bool): If True, std will be generated depending
                 on the current state (i.e. inputs); otherwise a global scale will
                 be generated regardless of the current state.
+            loc_transform (Callable): Tranform to apply to the loc, on top of
+                `activation` to make it within [-1, 1].
             scale_transform (Callable): Transform to apply to the std, on top of
-                `activation`.
+                `activation` to make it positive.
+            min_scale (float): Minimum value for scale. If None, no maximum is
+                enforced.
+            max_scale (float): Maximum value for scale. If None, no maximum is
+                enforced.
             dist_ctor(Callable): constructor for the distribution called as:
                 `dist_ctor(loc=loc, scale=scale, lower_bound=lower_bound, upper_bound=upper_bound)`.
             name (str): name of this network.
@@ -738,12 +747,17 @@ class TruncatedProjectionNetwork(Network):
         # Although the TruncatedDistribution will ensure the actions are within
         # the bound, we still make sure the loc parameter to be within the bound
         # for better numerical stability
-        self._loc_transform = (
-            lambda inputs: action_means + action_magnitudes * inputs.tanh())
+        self._loc_transform = (lambda inputs: action_means + action_magnitudes
+                               * loc_transform(inputs))
+
+        self._min_scale = min_scale
+        self._max_scale = max_scale
 
     def forward(self, inputs, state=()):
         loc = self._loc_transform(self._loc_projection_layer(inputs))
         scale = self._scale_transform(self._scale_projection_layer(inputs))
+        if self._min_scale is not None or self._max_scale is not None:
+            scale = scale.clamp(min=self._min_scale, max=self._max_scale)
         dist = self._dist_ctor(
             loc=loc,
             scale=scale,

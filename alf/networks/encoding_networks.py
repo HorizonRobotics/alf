@@ -14,8 +14,10 @@
 
 import functools
 import numpy as np
+from typing import Callable, Optional, Tuple
 
 import torch
+import torch.nn as nn
 from .containers import _Sequential
 from .network import Network
 import alf
@@ -47,7 +49,7 @@ class ImageEncodingNetwork(_Sequential):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        `<https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d>`_::
+        `<https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html>`_::
 
             H = (H1 - HF + 2P) // strides + 1
 
@@ -131,7 +133,7 @@ class ImageDecodingNetwork(_Sequential):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        `<https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d>`_::
+        `<https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html>`_::
 
             H = (H1-1) * strides + HF - 2P + OP
 
@@ -228,6 +230,160 @@ class ImageDecodingNetwork(_Sequential):
             in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+
+@alf.configurable
+class AutoShapeImageDeconvNetwork(_Sequential):
+    """
+    A general template class for creating image deconv (transposed convolutional)
+        networks with auto-shape inference (thus named as
+        ``AutoShapeImageDeconvNetwork``).
+    """
+
+    def __init__(self,
+                 input_size: int,
+                 transconv_layer_params: Tuple,
+                 output_shape: Tuple,
+                 start_decoding_channels: int,
+                 preprocess_fc_layer_params: Optional[Tuple] = None,
+                 activation: Optional[Callable] = torch.relu_,
+                 kernel_initializer: Optional[Callable] = None,
+                 output_activation: Optional[Callable] = torch.tanh,
+                 name="AutoShapeImageDeconvNetwork"):
+        """
+        Auto-shape inference: instead of specifying an initial start shape for
+        image deconv, this class only needs to specify the desired output shape
+        for the image and will automatically calculate the desired shape to start
+        decoding based on the specified ``transconv_layer_params``
+        and uses a FC layer to map the to the desired start shape.
+
+        Args:
+            input_size (int): the size of the input latent vector
+            transconv_layer_params (tuple[tuple]): a non-empty
+                tuple of tuple (num_filters, kernel_size, strides, padding),
+                where ``padding`` is optional.
+            output_shape (tuple): the complete output size would be
+                output_shape = (c, h, w).
+            start_decoding_channels (int): the initial number of channels we'd
+                like to have for the feature map. Note that we always first
+                project an input latent vector into a vector of an appropriate
+                length so that it can be reshaped into (``start_decoding_channels``,
+                ``start_decoding_height``, ``start_decoding_width``),
+                where ``start_decoding_height`` and ``start_decoding_width``
+                are automatically inferred based on the specified ``output_shape``
+                and ``transconv_layer_params``.
+            preprocess_fc_layer_params (tuple[int]): a tuple of fc
+                layer units. These fc layers are used for preprocessing the
+                latent vector before transposed convolutions.
+            activation (nn.functional): activation for hidden layers
+            kernel_initializer (Callable): initializer for all the layers.
+            output_activation (nn.functional): activation for the output layer.
+                Usually our image inputs are normalized to [0, 1] or [-1, 1],
+                so this function should be ``torch.sigmoid`` or
+                ``torch.tanh``.
+            name (str):
+        """
+        assert len(output_shape) == 3, "the output_shape should be (c, h, w)"
+        assert output_shape[0] == transconv_layer_params[-1][0], (
+            "channel number mis-match")
+
+        # compute conv shape and padding shape
+        out_paddings = []
+        out_shape = output_shape[1:]
+        for i, paras in enumerate(transconv_layer_params[::-1]):
+            filters, kernel_size, stride = paras[:3]
+            kernel_size = common.tuplify2d(kernel_size)
+
+            padding = paras[3] if len(paras) > 3 else 0
+            padding = common.tuplify2d(padding)
+            conv_shape = self._calc_conv_out_shape(out_shape, padding,
+                                                   kernel_size, stride)
+            out_padding = self._calc_output_padding_shape(
+                out_shape, conv_shape, padding, kernel_size, stride)
+            out_shape = conv_shape
+            out_paddings.append(out_padding)
+
+        input_tensor_spec = TensorSpec((input_size, ))
+
+        assert isinstance(transconv_layer_params, tuple)
+        assert len(transconv_layer_params) > 0
+
+        nets = []
+        if preprocess_fc_layer_params is not None:
+            for size in preprocess_fc_layer_params:
+                nets.append(
+                    layers.FC(
+                        input_size,
+                        size,
+                        activation=activation,
+                        kernel_initializer=kernel_initializer))
+                input_size = size
+
+        start_decoding_shape = [
+            start_decoding_channels, conv_shape[0], conv_shape[1]
+        ]
+        nets.append(
+            layers.FC(
+                input_size,
+                np.prod(start_decoding_shape),
+                activation=activation,
+                kernel_initializer=kernel_initializer))
+
+        nets.append(alf.layers.Reshape(start_decoding_shape))
+
+        in_channels = start_decoding_channels
+
+        for i, paras in enumerate(transconv_layer_params):
+
+            filters, kernel_size, strides = paras[:3]
+            padding = paras[3] if len(paras) > 3 else 0
+            output_padding = out_paddings[-(i + 1)]
+
+            act = activation
+            if i == len(transconv_layer_params) - 1:
+                act = output_activation
+
+            nets.append(
+                layers.ConvTranspose2D(
+                    in_channels,
+                    filters,
+                    kernel_size,
+                    activation=act,
+                    kernel_initializer=kernel_initializer,
+                    strides=strides,
+                    padding=padding,
+                    output_padding=output_padding))
+            in_channels = filters
+
+        super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+    def _calc_conv_out_shape(self, input_size, padding, kernel_size, stride):
+        """Calculate the output shape of a conv2d operation.
+        Reference:
+        `<https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html>`_.
+        """
+
+        def _conv_out_1d(input_size, padding, kernel_size, stride):
+            return int((input_size + 2. * padding - kernel_size) / stride + 1.)
+
+        return tuple(
+            _conv_out_1d(x, p, k, stride)
+            for x, p, k in zip(input_size, padding, kernel_size))
+
+    def _calc_output_padding_shape(self, input_size, conv_out, padding,
+                                   kernel_size, stride):
+        """Calculate the necessary output padding to be used for
+        ``ConvTranspose2D`` to ensure the image obatained from it will have a
+        size that matches the ``input size``.
+        """
+
+        def _output_padding_1d(input_size, conv_out, padding, kernel_size,
+                               stride):
+            return input_size - (
+                conv_out - 1) * stride + 2 * padding - kernel_size
+
+        return tuple(_output_padding_1d(x, c, p, k, stride) for x, c, p, k in \
+                        zip(input_size, conv_out, padding, kernel_size))
 
 
 @alf.configurable

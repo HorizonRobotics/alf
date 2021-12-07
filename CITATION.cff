@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Xu
+    given-names: Wei
+  - family-names: Yu
+    given-names: Haonan
+  - family-names: Zhang
+    given-names: Haichao
+  - family-names: Hong
+    given-names: Yingxiang
+  - family-names: Yang
+    given-names: Break
+  - family-names: Zhao
+    given-names: Le
+  - family-names: Bai
+    given-names: Jerry
+  - family-names: ALF contributors
+    given-names:
+title: "Agent Learning Framework"
+date-released: "2021"
+repository-code: "https://github.com/HorizonRobotics/alf"

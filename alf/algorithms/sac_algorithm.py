@@ -36,6 +36,7 @@ from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
+from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -152,6 +153,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  reward_weights=None,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
+                 normalize_entropy_reward=False,
                  calculate_priority=False,
                  num_critic_replicas=2,
                  env=None,
@@ -201,6 +203,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
             use_entropy_reward (bool): whether to include entropy as reward
+            normalize_entropy_reward (bool): if True, normalize entropy reward
+                to reduce bias in episodic cases. Only used if
+                ``use_entropy_reward==True``.
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
             num_critic_replicas (int): number of critics to be used. Default is 2.
@@ -264,9 +269,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._use_entropy_reward = use_entropy_reward
 
         if reward_spec.numel > 1:
-            assert not use_entropy_reward, (
-                "use_entropy_reward=True is not supported for multidimensional reward"
-            )
             assert self._act_type != ActionType.Mixed, (
                 "Only continuous/discrete action is supported for multidimensional reward"
             )
@@ -364,6 +366,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._training_started = False
         self._reproduce_locomotion = reproduce_locomotion
+
+        self._entropy_normalizer = None
+        if normalize_entropy_reward:
+            self._entropy_normalizer = ScalarAdaptiveNormalizer(unit_std=True)
 
         self._update_target = common.get_target_updater(
             models=[self._critic_networks],
@@ -821,19 +827,38 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 alpha=alpha_loss))
 
     def _calc_critic_loss(self, info: SacInfo):
-        # We need to put entropy reward in ``experience.reward`` instead of
-        # ``target_critics`` because in the case of multi-step TD learning,
-        # the entropy should also appear in intermediate steps!
-        # This doesn't affect one-step TD loss, however.
+        """
+        We need to put entropy reward in ``experience.reward`` instead of ``target_critics``
+        because in the case of multi-step TD learning, the entropy should also
+        appear in intermediate steps! This doesn't affect one-step TD loss, however.
+
+        Following the SAC official implementation,
+        https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py#L32
+        for StepType.LAST with discount=0, we mask out both the entropy reward
+        and the target Q value. The reason is that there is no guarantee of what
+        the last entropy will look like because the policy is never trained on
+        that. If the entropy is very small, the the agent might hesitate to terminate
+        the episode.
+        (There is an issue in their implementation: their "terminals" can't
+        differentiate between discount=0 (NormalEnd) and discount=1 (TimeOut).
+        In the latter case, masking should not be performed.)
+
+        When the reward is multi-dim, the entropy reward will be added to *all*
+        dims.
+        """
         if self._use_entropy_reward:
             with torch.no_grad():
+                log_pi = info.log_pi
+                if self._entropy_normalizer is not None:
+                    log_pi = self._entropy_normalizer.normalize(log_pi)
                 entropy_reward = nest.map_structure(
                     lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
-                    info.log_pi)
+                    log_pi)
                 entropy_reward = sum(nest.flatten(entropy_reward))
-                gamma = self._critic_losses[0].gamma
+                discount = self._critic_losses[0].gamma * info.discount
                 info = info._replace(
-                    reward=info.reward + entropy_reward * gamma)
+                    reward=(info.reward + common.expand_dims_as(
+                        entropy_reward * discount, info.reward)))
 
         critic_info = info.critic
         critic_losses = []
