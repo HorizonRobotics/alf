@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 import functools
 
 import torch
@@ -127,36 +127,55 @@ def data_distributed(method):
     Otherwise the method ``compute_something()`` will behave normally.
 
     """
+    return data_distributed_when(None)(method)
 
-    @functools.wraps(method)
-    def wrapped(*args, **kwargs):
-        # The first argument to the method is going to be ``self``, i.e. the
-        # instance that the method belongs to. By accessing it we get the
-        # reference of the module to wrap.
-        module_to_wrap = args[0]
-        assert isinstance(module_to_wrap, torch.nn.Module), (
-            f'Cannot apply @data_distributed on {type(module_to_wrap)}')
 
-        ddp_rank = getattr(module_to_wrap, '_ddp_activated_rank', -1)
+def data_distributed_when(
+        cond: Optional[Callable[[torch.nn.Module], bool]] = None):
+    """This is @ data_distributed with an extra conditionon.
 
-        # A ddp_rank of -1 means DDP is not activated for this module. In this
-        # case, just perform the normal method call.
-        if ddp_rank == -1:
-            return method(*args, **kwargs)
+    The condition is a function that returns True or False given the wrapped
+    module as the input. If the condition evaluates to False, DDP will not be
+    activated and the original method will be called.
 
-        # Create a DDP wrapped _MethodPerformer instance if not yet. All the
-        # _MethodPerformer instances are registered in a map called
-        # _ddp_performer_map, which belongs to the module to wrap.
-        if not hasattr(module_to_wrap, '_ddp_performer_map'):
-            setattr(module_to_wrap, '_ddp_performer_map', {})
+    """
 
-        performer = module_to_wrap._ddp_performer_map.get(
-            method.__name__, None)
-        if performer is None:
-            performer = DDP(
-                _MethodPerformer(module=module_to_wrap, perform=method),
-                device_ids=[ddp_rank])
-            module_to_wrap._ddp_performer_map[method.__name__] = performer
-        return performer(*args[1:], **kwargs)
+    def decorator(method):
+        @functools.wraps(method)
+        def wrapped(*args, **kwargs):
+            # The first argument to the method is going to be ``self``, i.e. the
+            # instance that the method belongs to. By accessing it we get the
+            # reference of the module to wrap.
+            module_to_wrap = args[0]
+            assert isinstance(module_to_wrap, torch.nn.Module), (
+                f'Cannot apply @data_distributed on {type(module_to_wrap)}')
 
-    return wrapped
+            ddp_rank = getattr(module_to_wrap, '_ddp_activated_rank', -1)
+
+            # Evaluate the condition if it is provided.
+            if (cond is not None) and (not cond(module_to_wrap)):
+                ddp_rank = -1
+
+            # A ddp_rank of -1 means DDP is not activated for this module. In this
+            # case, just perform the normal method call.
+            if ddp_rank == -1:
+                return method(*args, **kwargs)
+
+            # Create a DDP wrapped _MethodPerformer instance if not yet. All the
+            # _MethodPerformer instances are registered in a map called
+            # _ddp_performer_map, which belongs to the module to wrap.
+            if not hasattr(module_to_wrap, '_ddp_performer_map'):
+                setattr(module_to_wrap, '_ddp_performer_map', {})
+
+            performer = module_to_wrap._ddp_performer_map.get(
+                method.__name__, None)
+            if performer is None:
+                performer = DDP(
+                    _MethodPerformer(module=module_to_wrap, perform=method),
+                    device_ids=[ddp_rank])
+                module_to_wrap._ddp_performer_map[method.__name__] = performer
+            return performer(*args[1:], **kwargs)
+
+        return wrapped
+
+    return decorator
