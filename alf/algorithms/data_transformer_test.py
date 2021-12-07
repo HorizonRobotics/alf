@@ -226,8 +226,7 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
             data_spec=self.data_spec,
             num_environments=num_envs,
             max_length=max_length,
-            keep_episodic_info=True,
-            step_type_field="t")
+            keep_episodic_info=True)
 
         transform = HindsightExperienceTransformer(
             self.data_spec,
