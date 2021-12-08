@@ -14,9 +14,10 @@
 
 import torch
 import torch.nn as nn
+from typing import Union, List, Callable
 
 import alf
-from alf.data_structures import LossInfo, StepType
+from alf.data_structures import LossInfo, namedtuple, StepType
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import losses, tensor_utils, value_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
@@ -28,12 +29,12 @@ class TDLoss(nn.Module):
     """Temporal difference loss."""
 
     def __init__(self,
-                 gamma=0.99,
-                 td_error_loss_fn=element_wise_squared_loss,
-                 td_lambda=0.95,
-                 normalize_target=False,
-                 debug_summaries=False,
-                 name="TDLoss"):
+                 gamma: Union[float, List[float]] = 0.99,
+                 td_error_loss_fn: Callable = element_wise_squared_loss,
+                 td_lambda: float = 0.95,
+                 normalize_target: bool = False,
+                 debug_summaries: bool = False,
+                 name: str = "TDLoss"):
         r"""
         Let :math:`G_{t:T}` be the bootstraped return from t to T:
 
@@ -73,18 +74,18 @@ class TDLoss(nn.Module):
         <http://incompleteideas.net/book/the-book.html>`_, Chapter 12, 2018
 
         Args:
-            gamma (float|list[float]): A discount factor for future rewards. For
+            gamma: A discount factor for future rewards. For
                 multi-dim reward, this can also be a list of discounts, each
                 discount applies to a reward dim.
-            td_error_loss_fn (Callable): A function for computing the TD errors
+            td_error_loss_fn: A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
-            td_lambda (float): Lambda parameter for TD-lambda computation.
+            td_lambda: Lambda parameter for TD-lambda computation.
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The critic
                 value itself is not normalized.
-            debug_summaries (bool): True if debug summaries should be created.
-            name (str): The name of this loss.
+            debug_summaries: True if debug summaries should be created.
+            name: The name of this loss.
         """
         super().__init__()
 
@@ -105,7 +106,7 @@ class TDLoss(nn.Module):
         """
         return self._gamma.clone()
 
-    def compute_td_target(self, info, target_value):
+    def compute_td_target(self, info: namedtuple, target_value: torch.Tensor):
         """Calculate the td target.
 
         The first dimension of all the tensors is time dimension and the second
@@ -147,22 +148,23 @@ class TDLoss(nn.Module):
 
         return returns
 
-    def forward(self, info, value, target_value):
+    def forward(self, info: namedtuple, value: torch.Tensor,
+                target_value: torch.Tensor):
         """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.
 
         Args:
-            info (namedtuple): experience collected from ``unroll()`` or
+            info: experience collected from ``unroll()`` or
                 a replay buffer. All tensors are time-major. ``info`` should
                 contain the following fields:
                 - reward:
                 - step_type:
                 - discount:
-            value (torch.Tensor): the time-major tensor for the value at each time
+            value: the time-major tensor for the value at each time
                 step. The loss is between this and the calculated return.
-            target_value (torch.Tensor): the time-major tensor for the value at
+            target_value: the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
                 can be same as ``value``.
         Returns:
@@ -222,28 +224,32 @@ class TDQRLoss(TDLoss):
     Compared to TDLoss, GAE support has not been implemented. """
 
     def __init__(self,
-                 num_quantiles=50,
-                 gamma=0.99,
-                 td_error_loss_fn=losses.huber_function,
-                 td_lambda=1.0,
-                 sum_over_quantiles=False,
-                 debug_summaries=False,
-                 name="TDQRLoss"):
+                 num_quantiles: int = 50,
+                 gamma: Union[float, List[float]] = 0.99,
+                 td_error_loss_fn: Callable = losses.huber_function,
+                 td_lambda: float = 1.0,
+                 sum_over_quantiles: bool = False,
+                 debug_summaries: bool = False,
+                 name: str = "TDQRLoss"):
         """
         Args:
-            num_quantiles (int): the number of quantiles.
-            gamma (float|list[float]): A discount factor for future rewards. For
+            num_quantiles: the number of quantiles.
+            gamma: A discount factor for future rewards. For
                 multi-dim reward, this can also be a list of discounts, each
                 discount applies to a reward dim.
-            td_error_loss_fn (Callable): A function for computing the TD errors
+            td_error_loss_fn: A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
-            td_lambda (float): Lambda parameter for TD-lambda computation. Currently
+            td_lambda: Lambda parameter for TD-lambda computation. Currently
                 only supports 1 and 0.
-            sum_over_quantiles (bool): Whether to sum over the quantiles.
-            debug_summaries (bool): True if debug summaries should be created
-            name (str): The name of this loss.
+            sum_over_quantiles: If True, the quantile regression loss will
+                be summed along the quantile dimension. Otherwise, it will be
+                averaged along the quantile dimension instead. Default is False.
+            debug_summaries: True if debug summaries should be created
+            name: The name of this loss.
         """
+        assert td_lambda in (0, 1), (
+            "Currently GAE is not supported, so td_lambda has to be 0 or 1.")
         super().__init__(
             gamma=gamma,
             td_error_loss_fn=td_error_loss_fn,
@@ -252,26 +258,28 @@ class TDQRLoss(TDLoss):
             name=name)
 
         self._num_quantiles = num_quantiles
-        self._cdf_midpoints = (torch.arange(
-            num_quantiles, dtype=torch.float32) + 0.5) / num_quantiles
+        cdf_midpoints = (torch.arange(num_quantiles, dtype=torch.float32) +
+                         0.5) / num_quantiles
+        self._cdf_midpoints = cdf_midpoints.unsqueeze(-1)
         self._sum_over_quantiles = sum_over_quantiles
 
-    def forward(self, info, value, target_value):
+    def forward(self, info: namedtuple, value: torch.Tensor,
+                target_value: torch.Tensor):
         """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.
 
         Args:
-            info (namedtuple): experience collected from ``unroll()`` or
+            info: experience collected from ``unroll()`` or
                 a replay buffer. All tensors are time-major. ``info`` should
                 contain the following fields:
                 - reward:
                 - step_type:
                 - discount:
-            value (torch.Tensor): the time-major tensor for the value at each time
+            value: the time-major tensor for the value at each time
                 step. The loss is between this and the calculated return.
-            target_value (torch.Tensor): the time-major tensor for the value at
+            target_value: the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
                 can be same as ``value``.
         Returns:

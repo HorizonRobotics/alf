@@ -80,10 +80,9 @@ class QRSACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         num_quantiles = 50
         critic_network = partial(
-            alf.nn.QuantileCriticNetwork,
+            alf.nn.CriticNetwork,
             output_tensor_spec=TensorSpec((num_quantiles, )),
-            joint_fc_layer_params=fc_layer_params[:-1],
-            quantile_fc_layer_params=fc_layer_params[-1:],
+            joint_fc_layer_params=fc_layer_params,
             use_naive_parallel_network=use_naive_parallel_network)
 
         if use_n_step_td:
@@ -125,7 +124,7 @@ class QRSACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=0.3)
 
 
-def unroll(env, algorithm, steps, epsilon_greedy=0.1):
+def unroll(env, algorithm, steps, epsilon_greedy: float = 0.1):
     """Run `steps` environment steps using QrsacAlgorithm._predict_action()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)

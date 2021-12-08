@@ -46,12 +46,12 @@ def element_wise_squared_loss(x, y):
 
 
 @alf.configurable
-def huber_function(x, delta=1.0):
+def huber_function(x: torch.Tensor, delta: float = 1.0):
     """Huber function.
 
     Args:
-        x (Tensor): difference between the observed and predicted values
-        delta (float): the threshold at which to change between delta-scaled 
+        x: difference between the observed and predicted values
+        delta: the threshold at which to change between delta-scaled 
             L1 and L2 loss, must be positive. Default value is 1.0
     Returns:
         Huber function (Tensor)

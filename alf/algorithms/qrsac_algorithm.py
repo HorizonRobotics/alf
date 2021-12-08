@@ -15,6 +15,7 @@
 
 import torch
 import torch.distributions as td
+from typing import Union, Callable, Optional
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -25,7 +26,7 @@ from alf.data_structures import TimeStep
 from alf.data_structures import AlgStep
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorDistributionNetwork, QuantileCriticNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks import QNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
@@ -50,37 +51,37 @@ class QrsacAlgorithm(SacAlgorithm):
                  observation_spec,
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
-                 actor_network_cls=ActorDistributionNetwork,
-                 critic_network_cls=QuantileCriticNetwork,
-                 epsilon_greedy=None,
-                 use_entropy_reward=False,
-                 normalize_entropy_reward=False,
-                 calculate_priority=False,
-                 num_critic_replicas=2,
-                 min_critic_by_critic_mean=False,
+                 actor_network_cls: Callable = ActorDistributionNetwork,
+                 critic_network_cls: Callable = CriticNetwork,
+                 epsilon_greedy: Optional[float] = None,
+                 use_entropy_reward: bool = False,
+                 normalize_entropy_reward: bool = False,
+                 calculate_priority: bool = False,
+                 num_critic_replicas: int = 2,
+                 min_critic_by_critic_mean: bool = False,
                  env=None,
-                 config: TrainerConfig = None,
-                 critic_loss_ctor=None,
-                 target_entropy=None,
-                 prior_actor_ctor=None,
-                 target_kld_per_dim=3.,
-                 initial_log_alpha=0.0,
-                 max_log_alpha=None,
-                 target_update_tau=0.05,
-                 target_update_period=1,
-                 dqda_clipping=None,
-                 actor_optimizer=None,
-                 critic_optimizer=None,
-                 alpha_optimizer=None,
-                 debug_summaries=False,
-                 reproduce_locomotion=False,
-                 name="QrsacAlgorithm"):
+                 config: Optional[TrainerConfig] = None,
+                 critic_loss_ctor: Optional[Callable] = None,
+                 target_entropy: Optional[Union[float, Callable]] = None,
+                 prior_actor_ctor: Optional[Callable] = None,
+                 target_kld_per_dim: float = 3.,
+                 initial_log_alpha: float = 0.0,
+                 max_log_alpha: Optional[float] = None,
+                 target_update_tau: float = 0.05,
+                 target_update_period: int = 1,
+                 dqda_clipping: Optional[float] = None,
+                 actor_optimizer: Optional[torch.optim.Optimizer] = None,
+                 critic_optimizer: Optional[torch.optim.Optimizer] = None,
+                 alpha_optimizer: Optional[torch.optim.Optimizer] = None,
+                 debug_summaries: bool = False,
+                 reproduce_locomotion: bool = False,
+                 name: str = "QrsacAlgorithm"):
         """
         Refer to SacAlgorithm for Args beside the following. Args used for 
         discrete and mixed actions are omitted.
 
         Args:
-            min_critic_by_critic_mean (bool): If True, compute the min quantile 
+            min_critic_by_critic_mean: If True, compute the min quantile 
                 distribution of critic replicas by choosing the one with the
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
@@ -123,8 +124,8 @@ class QrsacAlgorithm(SacAlgorithm):
                          observation,
                          action,
                          critics_state,
-                         replica_min=True,
-                         quantile_mean=True):
+                         replica_min: bool = True,
+                         quantile_mean: bool = True):
         critic_inputs = (observation, action)
         critic_quantiles, critics_state = critic_net(
             critic_inputs, state=critics_state)

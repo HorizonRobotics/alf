@@ -46,7 +46,7 @@ actor_network_cls = partial(
         std_transform=clipped_exp))
 
 critic_network_cls = partial(
-    alf.nn.QuantileCriticNetwork,
+    alf.nn.CriticNetwork,
     joint_fc_layer_params=fc_layer_params,
     output_tensor_spec=TensorSpec((num_quantiles, )))
 
