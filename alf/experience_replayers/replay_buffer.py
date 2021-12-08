@@ -61,7 +61,6 @@ class ReplayBuffer(RingBuffer):
                  device="cpu",
                  allow_multiprocess=False,
                  keep_episodic_info=None,
-                 step_type_field="step_type",
                  enable_checkpoint=False,
                  name="ReplayBuffer"):
         """
@@ -91,8 +90,6 @@ class ReplayBuffer(RingBuffer):
             allow_multiprocess (bool): whether multiprocessing is supported.
             keep_episodic_info (bool): index episode start and ending positions.
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
-            step_type_field (string): path to the step_type field in exp nest.
-                This and the following fields are for hindsight relabeling.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
         """
@@ -109,7 +106,6 @@ class ReplayBuffer(RingBuffer):
                 keep_episodic_info = True
         if keep_episodic_info is None:
             keep_episodic_info = False
-        self._step_type_field = step_type_field
         self._prioritized_sampling = prioritized_sampling
         if prioritized_sampling:
             self._mini_batch_length = 1
@@ -257,8 +253,7 @@ class ReplayBuffer(RingBuffer):
                 batch = convert_device(batch)
                 # 1. save episode beginning data that will be overwritten
                 overwriting_pos = self._current_pos[env_ids]
-                buffer_step_types = alf.nest.get_field(self._buffer,
-                                                       self._step_type_field)
+                buffer_step_types = self._buffer.step_type
                 first, = torch.where(
                     (buffer_step_types[(env_ids, self.circular(overwriting_pos)
                                         )] == ds.StepType.FIRST) *
@@ -286,7 +281,7 @@ class ReplayBuffer(RingBuffer):
             if self._keep_episodic_info:
                 # 3. Update associated episode end indices
                 # 3.1. find ending steps in batch (incl. MID and LAST steps)
-                step_types = alf.nest.get_field(batch, self._step_type_field)
+                step_types = batch.step_type
                 non_first, = torch.where(step_types != ds.StepType.FIRST)
                 # 3.2. update episode ending positions
                 self._store_episode_end_pos(non_first, overwriting_pos,
@@ -512,8 +507,7 @@ class ReplayBuffer(RingBuffer):
         first_step_idx = self.circular(first_step_pos)
         result = self._indexed_pos[(env_ids, first_step_idx)]
         # If current step is FIRST, skip second lookup.
-        buffer_step_types = alf.nest.get_field(self._buffer,
-                                               self._step_type_field)
+        buffer_step_types = self._buffer.step_type
         is_first = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
         result[is_first] = first_step_pos[is_first]
         # If the current timestep is "headless", i.e. whose ``FIRST`` step
@@ -550,8 +544,7 @@ class ReplayBuffer(RingBuffer):
         """
         indices = (env_ids, self.circular(pos))
         first_step_pos = self._indexed_pos[indices]
-        buffer_step_types = alf.nest.get_field(self._buffer,
-                                               self._step_type_field)
+        buffer_step_types = self._buffer.step_type
         is_first = buffer_step_types[indices] == ds.StepType.FIRST
         first_step_pos[is_first] = pos[is_first]
         return first_step_pos
@@ -707,12 +700,10 @@ class ReplayBuffer(RingBuffer):
         super()._load_from_state_dict(state_dict, prefix, local_metadata,
                                       strict, missing_keys, unexpected_keys,
                                       error_msgs)
-        if not self._step_type_field:
-            return
         env_ids = torch.arange(self._num_envs)
         positions = self._current_pos - 1
         valid = positions >= 0
         env_ids = env_ids[valid]
         positions = positions[valid]
-        step_type = alf.nest.get_field(self._buffer, self._step_type_field)
+        step_type = self._buffer.step_type
         step_type[env_ids, self.circular(positions)] = int(ds.StepType.LAST)

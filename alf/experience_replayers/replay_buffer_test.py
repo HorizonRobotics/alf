@@ -151,7 +151,7 @@ class ReplayBufferTest(RingBufferTest):
                 episode ending/LAST steps.
                 We assume every possible ``env_id`` is present.
         """
-        step_types = alf.nest.get_field(b._buffer, b._step_type_field)
+        step_types = b._buffer.step_type
         epi_ends = torch.where(step_types == ds.StepType.LAST)
         epi_ends = alf.nest.map_structure(lambda d: d.type(torch.int64),
                                           epi_ends)
