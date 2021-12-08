@@ -56,19 +56,21 @@ class BatchNormTest(alf.test.TestCase):
         bn.eval()
         bn.set_batch_norm_current_step(
             torch.tensor([0] * n + [1] * n + [2] * n))
-        x = torch.randn((n, dim))
-        x = torch.cat([0.5 * x, 1 + x, 10 + 10 * x], dim=0)
-        y = bn(x)
-        y0 = y[:n]
-        y1 = y[n:2 * n]
-        y2 = y[2 * n:]
-        self.assertLess(y0.mean(dim=0).abs().max(), 0.01)
-        self.assertLess((y0.var(dim=0) - 1).max(), 0.01)
-        self.assertLess(y1.mean(dim=0).abs().max(), 0.01)
-        self.assertLess((y1.var(dim=0) - 1).max(), 0.01)
-        # step out of limit will use the running stats for max_steps - 1
-        self.assertLess((y2.mean(dim=0) - 9).abs().max(), 0.1)
-        self.assertLess((y2.var(dim=0) - 100).max(), 1.)
+        for i in range(2):
+            # multiple evals should not change the statistics
+            x = torch.randn((n, dim))
+            x = torch.cat([0.5 * x, 1 + 2 * x, 10 + 10 * x], dim=0)
+            y = bn(x)
+            y0 = y[:n]
+            y1 = y[n:2 * n]
+            y2 = y[2 * n:]
+            self.assertLess(y0.mean(dim=0).abs().max(), 0.01)
+            self.assertLess((y0.var(dim=0) - 1).max(), 0.01)
+            self.assertLess(y1.mean(dim=0).abs().max(), 0.01)
+            self.assertLess((y1.var(dim=0) - 4).max(), 0.04)
+            # step out of limit will use the running stats for max_steps - 1
+            self.assertLess((y2.mean(dim=0) - 9).abs().max(), 0.1)
+            self.assertLess((y2.var(dim=0) - 100).max(), 1.0)
 
 
 if __name__ == "__main__":
