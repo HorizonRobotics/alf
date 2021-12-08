@@ -21,6 +21,7 @@ import torch.distributions as td
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 import torch.nn as nn
+from typing import Union
 
 import alf
 import alf.nest as nest
@@ -552,29 +553,17 @@ def _builder_transformed(base_builder, transforms_, **kwargs):
     return td.TransformedDistribution(base_builder(**kwargs), transforms_)
 
 
-def _get_categorical_builder(obj: td.Categorical):
+def _get_categorical_builder(
+        obj: Union[td.Categorical, td.OneHotCategorical, td.
+                   OneHotCategoricalStraightThrough]):
+
+    dist_cls = type(obj)
+
     if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
         # This means that obj is constructed using probs
-        return td.Categorical, {'probs': obj.probs}
+        return dist_cls, {'probs': obj.probs}
     else:
-        return td.Categorical, {'logits': obj.logits}
-
-
-def _get_onehot_categorical_builder(obj: td.OneHotCategorical):
-    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
-        # This means that obj is constructed using probs
-        return td.OneHotCategorical, {'probs': obj.probs}
-    else:
-        return td.OneHotCategorical, {'logits': obj.logits}
-
-
-def _get_onehot_categorical_st_builder(
-        obj: td.OneHotCategoricalStraightThrough):
-    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
-        # This means that obj is constructed using probs
-        return td.OneHotCategoricalStraightThrough, {'probs': obj.probs}
-    else:
-        return td.OneHotCategoricalStraightThrough, {'logits': obj.logits}
+        return dist_cls, {'logits': obj.logits}
 
 
 def _get_independent_builder(obj: td.Independent):
@@ -607,9 +596,9 @@ _get_builder_map = {
     td.Categorical:
         _get_categorical_builder,
     td.OneHotCategorical:
-        _get_onehot_categorical_builder,
+        _get_categorical_builder,
     td.OneHotCategoricalStraightThrough:
-        _get_onehot_categorical_st_builder,
+        _get_categorical_builder,
     td.Normal:
         lambda obj: (td.Normal, {
             'loc': obj.mean,
