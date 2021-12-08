@@ -337,7 +337,6 @@ class FrameStacker(DataTransformer):
         def _stack_frame(obs, i):
             prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
                                                prev_positions)
-            prev_obs = convert_device(prev_obs)
             stacked_shape = alf.nest.get_field(
                 self._transformed_observation_spec, self._fields[i]).shape
             # [batch_size, mini_batch_length + stack_size - 1, ...]
@@ -447,8 +446,10 @@ class ImageScaleTransformer(SimpleDataTransformer):
             assert isinstance(obs,
                               torch.Tensor), str(type(obs)) + ' is not Tensor'
             assert obs.dtype == torch.uint8, "Image must have dtype uint8!"
-            obs = obs.type(torch.float32)
-            return self._scale * obs + self._min
+            obs = self._scale * obs
+            if self._min != 0:
+                obs.add_(self._min)
+            return obs
 
         observation = timestep_or_exp.observation
         for field in self._fields:
