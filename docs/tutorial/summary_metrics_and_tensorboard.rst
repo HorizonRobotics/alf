@@ -242,23 +242,24 @@ hard-coded as below:
 
 .. code-block:: python
 
+    example_time_step = env.reset()
     self._metrics = [
-       alf.metrics.NumberOfEpisodes(),
-       alf.metrics.EnvironmentSteps(),
-       alf.metrics.AverageReturnMetric(
-           batch_size=env.batch_size,
-           buffer_size=metric_buf_size,
-           reward_shape=reward_spec.shape),
-       alf.metrics.AverageEpisodeLengthMetric(
-           batch_size=env.batch_size, buffer_size=metric_buf_size),
-       alf.metrics.AverageEnvInfoMetric(
-           example_env_info=env.reset().env_info,
-           batch_size=env.batch_size,
-           buffer_size=metric_buf_size),
-       alf.metrics.AverageDiscountedReturnMetric(
-           batch_size=env.batch_size,
-           buffer_size=metric_buf_size,
-           reward_shape=reward_spec.shape)]
+        alf.metrics.NumberOfEpisodes(),
+        alf.metrics.EnvironmentSteps(),
+        alf.metrics.AverageReturnMetric(
+            buffer_size=metric_buf_size,
+            example_time_step=example_time_step),
+        alf.metrics.AverageEpisodeLengthMetric(
+            example_time_step=example_time_step,
+            buffer_size=metric_buf_size),
+        alf.metrics.AverageEnvInfoMetric(
+            example_time_step=example_time_step,
+            buffer_size=metric_buf_size),
+        alf.metrics.AverageDiscountedReturnMetric(
+            buffer_size=metric_buf_size,
+            example_time_step=example_time_step)
+    ]
+
 
 Summary
 -------

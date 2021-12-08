@@ -379,19 +379,20 @@ class RLTrainer(Trainer):
         self._eval_metrics = None
         self._eval_summary_writer = None
         if self._evaluate:
+            example_time_step = self._eval_env.reset()
             self._eval_metrics = [
                 alf.metrics.AverageReturnMetric(
                     buffer_size=self._num_eval_episodes,
-                    reward_shape=self._eval_env.reward_spec().shape),
+                    example_time_step=example_time_step),
                 alf.metrics.AverageEpisodeLengthMetric(
+                    example_time_step=example_time_step,
                     buffer_size=self._num_eval_episodes),
                 alf.metrics.AverageEnvInfoMetric(
-                    example_env_info=self._eval_env.reset().env_info,
-                    batch_size=self._eval_env.batch_size,
+                    example_time_step=example_time_step,
                     buffer_size=self._num_eval_episodes),
                 alf.metrics.AverageDiscountedReturnMetric(
                     buffer_size=self._num_eval_episodes,
-                    reward_shape=self._eval_env.reward_spec().shape),
+                    example_time_step=example_time_step),
             ]
             self._eval_summary_writer = alf.summary.create_summary_writer(
                 self._eval_dir, flush_secs=config.summaries_flush_secs)
@@ -713,8 +714,9 @@ def play(root_dir,
     episodes = 0
     metrics = [
         alf.metrics.AverageReturnMetric(
-            buffer_size=num_episodes, reward_shape=env.reward_spec().shape),
-        alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
+            buffer_size=num_episodes, example_time_step=time_step),
+        alf.metrics.AverageEpisodeLengthMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
     ]
     while episodes < num_episodes:
         next_time_step, policy_step, trans_state = _step(
