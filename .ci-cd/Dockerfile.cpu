@@ -23,6 +23,8 @@ RUN python3.7 -m pip install --upgrade pip
 RUN ln -sf /usr/bin/python3.7 /usr/bin/python \
     && ln -sf /usr/bin/python3.7 /usr/bin/python3
 
+RUN apt install -y wget
+
 # install code style tools
 RUN pip3 install  pre-commit==1.17.0 \
     cpplint==1.4.4 \
@@ -31,8 +33,25 @@ RUN pip3 install  pre-commit==1.17.0 \
     pylint==2.3.1 \
     yapf==0.28.0
 
+# Ubuntu 18.04 officially supports git version 2.17 (through apt-get),
+# but github CI checkout@v2 requires a higher version of git (>=2.18).
+# Here we install git 2.18 from source.
 
-RUN apt update && apt install -y git
+# install some pre-requisites for building git from source
+RUN apt-get update && apt-get install -y libssl-dev libghc-zlib-dev \
+    libcurl4-gnutls-dev libexpat1-dev gettext unzip
+
+RUN mkdir -p /opt/local_git \
+    && cd /opt/local_git \
+    && wget https://github.com/git/git/archive/v2.18.0.zip -O git.zip \
+    && unzip git.zip \
+    && cd git-* \
+    && make prefix=/usr/local all \
+    && make prefix=/usr/local install
+
+# should get "git version 2.18.0"
+RUN git --version
+
 
 RUN apt install -y \
         libsm6  \
@@ -51,7 +70,6 @@ RUN apt install -y \
 RUN echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" > \
     /etc/apt/sources.list.d/gazebo-stable.list
 
-RUN apt install -y wget
 RUN wget http://packages.osrfoundation.org/gazebo.key -O - |  apt-key add -
 RUN apt update
 
