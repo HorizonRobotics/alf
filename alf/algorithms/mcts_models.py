@@ -28,6 +28,13 @@ from alf.utils import dist_utils, tensor_utils, summary_utils
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils.schedulers import ConstantScheduler
 
+ModelState = namedtuple(
+    'ModelState',
+    [
+        'state',  # the actual latent state of the model
+        'step',  # the current unroll step of the model
+    ])
+
 ModelOutput = namedtuple(
     'ModelOutput',
     [
@@ -173,14 +180,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         """
         state = self._representation_net(observation)[0]
         if not self._handle_bn:
-            return self.prediction_model(state)
+            model_output = self.prediction_model(state)
+            return model_output._replace(
+                state=ModelState(state=model_output.state))
         else:
             self._prediction_net.set_batch_norm_current_step(0)
             model_output = self.prediction_model(state)
             batch_size = model_output.value.shape[0]
             current_steps = torch.zeros(batch_size, dtype=torch.long)
             return model_output._replace(
-                state=(model_output.state, current_steps))
+                state=ModelState(model_output.state, current_steps))
 
     def recurrent_inference(self, state, action):
         """Generate prediction given state and action.
@@ -194,7 +203,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         """
         if not self._handle_bn:
             new_state = self._dynamics_net((state, action))[0]
-            return self.prediction_model(new_state)
+            model_output = self.prediction_model(state)
+            return model_output._replace(
+                state=ModelState(state=model_output.state))
         else:
             state, current_steps = state
             self._prediction_net.set_batch_norm_current_step(current_steps)
@@ -203,7 +214,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             self._dynamics_net.set_batch_norm_current_step(current_steps)
             model_output = self.prediction_model(new_state)
             return model_output._replace(
-                state=(model_output.state, current_steps))
+                state=ModelState(model_output.state, current_steps))
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -287,12 +298,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             observation = alf.nest.map_structure(_flatten, target.observation)
             with torch.no_grad():
                 target_repr = self._representation_net(observation)[0]
-            if self._handle_bn:
-                # [B*unroll_steps, ...]
-                repr = _flatten(model_output.state[0])
-            else:
-                # [B*unroll_steps, ...]
-                repr = _flatten(model_output.state)
+            # [B*unroll_steps, ...]
+            repr = _flatten(model_output.state.state)
             # [B*unroll_steps]
             repr_loss = self.calc_repr_prediction_loss(repr, target_repr)
             # [B, unroll_steps]

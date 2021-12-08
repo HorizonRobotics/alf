@@ -71,8 +71,9 @@ class _NormBase(nn.Module):
         """Use and/or update the running statistics at current_step for normalization.
 
         Args:
-            current_step: the current step. If it is a Tensor, it means that
-                the current step for each sample in a batch.
+            current_step: the current step. If it is a Tensor, it should be a 1D
+                int64 Tensor of shape [batch_size,]. And each of its element
+                means the current step for the corresponding sample in a batch.
         """
         if not self._track_running_stats:
             return
@@ -148,7 +149,7 @@ class _NormBase(nn.Module):
                 not self._clamped,
                 exponential_average_factor,
                 self._eps)
-        else:
+        else:  # not training and tracking running stats
             running_means = torch.stack(
                 self._running_means, dim=0)[self._current_step]
             running_vars = torch.stack(
@@ -194,6 +195,8 @@ class BatchNorm1d(_NormBase):
             rnn.set_batch_norm_current_step(i)
             y, state = rnn(input[i], state)
 
+    Note that ``set_batch_norm_current_step()`` also accepts Tensor as its argument.
+    In that case, it means that the current step for each sample in a batch.
 
     Args:
         num_features: :math:`C` from an expected input of size
@@ -239,8 +242,8 @@ class BatchNorm2d(_NormBase):
 
     .. code-block:: python
 
-        prepare_rnn_batch_norm(rnn)
-        rnn.set_batch_norm_max_steps(5)
+        prepare_rnn_batch_norm(rnn)     # Only need to call once in the lifetime of rnn
+        rnn.set_batch_norm_max_steps(5) # Only need to call once in the lifetime of rnn
 
         for i in range(t):
             rnn.set_batch_norm_current_step(i)
@@ -315,7 +318,7 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
             bns.add(m)
         elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
             raise ValueError(
-                "MCTSModel does not support torch.nn.BatchNorm layer "
+                "RNN does not support torch.nn.BatchNorm layer "
                 "(at %s). Please use alf.layers.BatchNorm instead." % path)
         elif isinstance(m, nn.Module):
             for name, submodule in m.named_children():
@@ -328,3 +331,5 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
         set_batch_norm_max_steps, module)
     module.set_batch_norm_current_step = types.MethodType(
         set_batch_norm_current_step, module)
+
+    return len(bns) > 0

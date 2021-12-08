@@ -253,11 +253,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         model_output = self._model.initial_inference(exp.observation)
         if alf.summary.should_record_summaries():
-            if isinstance(model_output.state, tuple):
-                # in this case, state[0] is the current unroll step
-                model_output.state[0].register_hook(partial(_hook, name="s0"))
-            else:
-                model_output.state.register_hook(partial(_hook, name="s0"))
+            model_output.state.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
         model_outputs = [dist_utils.distributions_to_params(model_output)]
         info = rollout_info
@@ -266,13 +262,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             model_output = self._model.recurrent_inference(
                 model_output.state, info.action[:, i, ...])
             if alf.summary.should_record_summaries():
-                if isinstance(model_output.state, tuple):
-                    # in this case, state[0] is the current unroll step
-                    model_output.state[0].register_hook(
-                        partial(_hook, name="s" + str(i + 1)))
-                else:
-                    model_output.state.register_hook(
-                        partial(_hook, name="s" + str(i + 1)))
+                model_output.state.state.register_hook(
+                    partial(_hook, name="s" + str(i + 1)))
             model_output = model_output._replace(
                 state=alf.nest.map_structure(
                     lambda x: scale_gradient(
