@@ -763,6 +763,7 @@ class Player(object):
         else:
             step_type = ds.StepType.MID
 
+        distance_reward = 0
         if self._sparse_reward:
             current_index = self._navigation.get_next_waypoint_index()
             if step_type == ds.StepType.LAST and info['success'] == 1.0:
