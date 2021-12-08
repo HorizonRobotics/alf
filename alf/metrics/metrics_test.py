@@ -131,11 +131,9 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
     def testMetric(self, metric_class, num_trajectories, expected_result,
                    vector_reward):
         trajectories = self._create_trajectories(vector_reward)
-        if metric_class in [AverageEpisodeLengthMetric]:
-            metric = metric_class(example_time_step=trajectories[0])
-        elif metric_class in [
-                AverageReturnMetric, AverageDiscountedReturnMetric,
-                AverageEnvInfoMetric
+        if metric_class in [
+                AverageEpisodeLengthMetric, AverageReturnMetric,
+                AverageDiscountedReturnMetric, AverageEnvInfoMetric
         ]:
             metric = metric_class(example_time_step=trajectories[0])
         else:
@@ -214,6 +212,9 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                     },
                     'success': to_tensor([1.0, 0.0])
                 }))
+
+        metric = AverageDrivingMetric(example_time_step=trajectories[0])
+
         for traj in trajectories:
             metric(traj)
 
