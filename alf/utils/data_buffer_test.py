@@ -28,8 +28,8 @@ from alf.utils.checkpoint_utils import Checkpointer
 
 DataItem = alf.data_structures.namedtuple(
     "DataItem", [
-        "env_id", "x", "t", "o", "reward", "batch_info", "replay_buffer",
-        "rollout_info_field"
+        "env_id", "x", "o", "reward", "step_type", "batch_info",
+        "replay_buffer", "rollout_info_field"
     ],
     default_value=())
 
@@ -55,7 +55,7 @@ def get_batch(env_ids, dim, t, x):
     return DataItem(
         env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
         x=ox,
-        t=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+        step_type=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
         o=dict({
             "a": a,
             "g": g
@@ -74,7 +74,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.data_spec = DataItem(
             env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
             x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
-            t=alf.TensorSpec(shape=(), dtype=torch.int32),
+            step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
             o=dict({
                 "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                 "g": alf.TensorSpec(shape=(), dtype=torch.float32)
@@ -118,15 +118,16 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         # Exception because some environments do not have data
         self.assertRaises(AssertionError, ring_buffer.dequeue)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
-        self.assertEqual(batch.t, torch.tensor([6] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([6] * 5))
         # test that RingBuffer detaches gradients of inputs
         self.assertFalse(batch.x.requires_grad)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
-        self.assertEqual(batch.t, torch.tensor([7] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([7] * 5))
         batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))
-        self.assertEqual(batch.t, torch.tensor([8] * 2))
+        self.assertEqual(batch.step_type, torch.tensor([8] * 2))
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
-        self.assertEqual(batch.t, torch.tensor([[9], [9], [8], [8], [8]]))
+        self.assertEqual(batch.step_type,
+                         torch.tensor([[9], [9], [8], [8], [8]]))
         # Exception because some environments do not have data
         self.assertRaises(
             AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
@@ -139,10 +140,10 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             ring_buffer.enqueue(batch1, batch1.env_id)
         # Normal dequeue in the middle of the ring buffer
         batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
-        self.assertEqual(batch.t, torch.tensor([[6, 7]] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([[6, 7]] * 5))
         # This dequeue crosses the end of the ring buffer
         batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
-        self.assertEqual(batch.t, torch.tensor([[8, 9]] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([[8, 9]] * 5))
 
         # Test remove_up_to
         ring_buffer.remove_up_to(4)
@@ -172,7 +173,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                       alf.nest.map_structure(lambda x: x.cpu(), batch1)))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
-            self.assertEqual(batch.t, torch.tensor([9] * 2))
+            self.assertEqual(batch.step_type, torch.tensor([9] * 2))
 
             # Test block on enqueue without free space
             ring_buffer.clear()

@@ -40,7 +40,6 @@ class ReplayBufferTest(RingBufferTest):
             num_environments=2,
             max_length=self.max_length,
             keep_episodic_info=True,
-            step_type_field="t",
             with_replacement=True)
 
         transform = HindsightExperienceTransformer(
@@ -152,7 +151,7 @@ class ReplayBufferTest(RingBufferTest):
                 episode ending/LAST steps.
                 We assume every possible ``env_id`` is present.
         """
-        step_types = alf.nest.get_field(b._buffer, b._step_type_field)
+        step_types = b._buffer.step_type
         epi_ends = torch.where(step_types == ds.StepType.LAST)
         epi_ends = alf.nest.map_structure(lambda d: d.type(torch.int64),
                                           epi_ends)
@@ -245,7 +244,7 @@ class ReplayBufferTest(RingBufferTest):
                          torch.tensor([1, 1, 1, 1, 1, 1, 1, 1]))
 
         batch, _ = replay_buffer.gather_all()
-        self.assertEqual(list(batch.t.shape), [8, 1])
+        self.assertEqual(list(batch.step_type.shape), [8, 1])
         # test that RingBuffer detaches gradients of inputs
         self.assertFalse(batch.x.requires_grad)
 
@@ -259,10 +258,10 @@ class ReplayBufferTest(RingBufferTest):
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat1.env_id, batch1.env_id)
         self.assertEqual(bat1.x, batch1.x)
-        self.assertEqual(bat1.t, batch1.t)
+        self.assertEqual(bat1.step_type, batch1.step_type)
         self.assertEqual(bat2.env_id, batch2.env_id)
         self.assertEqual(bat2.x, batch2.x)
-        self.assertEqual(bat2.t, batch2.t)
+        self.assertEqual(bat2.step_type, batch2.step_type)
 
         for t in range(1, 10):
             batch3 = get_batch([0, 4, 7], self.dim, t=t, x=0.3)
@@ -295,28 +294,28 @@ class ReplayBufferTest(RingBufferTest):
                                           batch_t)
             bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id],
                                           batch_t)
-            t2.append(bat2.t)
+            t2.append(bat2.step_type)
             self.assertEqual(bat3.env_id, batch3.env_id)
             self.assertEqual(bat3.x, batch3.x)
             self.assertEqual(bat2.env_id, batch2.env_id)
             self.assertEqual(bat2.x, batch2.x)
-            t3.append(bat3.t)
+            t3.append(bat3.step_type)
 
         # Test time consistency
         self.assertEqual(t2[0] + 1, t2[1])
         self.assertEqual(t3[0] + 1, t3[1])
 
         batch = replay_buffer.get_batch(128, 2)[0]
-        self.assertEqual(batch.t[:, 0] + 1, batch.t[:, 1])
-        self.assertEqual(list(batch.t.shape), [128, 2])
+        self.assertEqual(batch.step_type[:, 0] + 1, batch.step_type[:, 1])
+        self.assertEqual(list(batch.step_type.shape), [128, 2])
 
         batch = replay_buffer.get_batch(10, 2)[0]
-        self.assertEqual(batch.t[:, 0] + 1, batch.t[:, 1])
-        self.assertEqual(list(batch.t.shape), [10, 2])
+        self.assertEqual(batch.step_type[:, 0] + 1, batch.step_type[:, 1])
+        self.assertEqual(list(batch.step_type.shape), [10, 2])
 
         batch = replay_buffer.get_batch(4, 2)[0]
-        self.assertEqual(batch.t[:, 0] + 1, batch.t[:, 1])
-        self.assertEqual(list(batch.t.shape), [4, 2])
+        self.assertEqual(batch.step_type[:, 0] + 1, batch.step_type[:, 1])
+        self.assertEqual(list(batch.step_type.shape), [4, 2])
 
         # Test gather_all()
         # Exception because the size of all the environments are not same
@@ -326,7 +325,7 @@ class ReplayBufferTest(RingBufferTest):
             batch4 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             replay_buffer.add_batch(batch4, batch4.env_id)
         batch, _ = replay_buffer.gather_all()
-        self.assertEqual(list(batch.t.shape), [8, 4])
+        self.assertEqual(list(batch.step_type.shape), [8, 4])
 
         # Test clear()
         replay_buffer.clear()
@@ -382,7 +381,7 @@ class ReplayBufferTest(RingBufferTest):
         replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=2, x=0.))
         for _ in range(10):
             batch, batch_info = replay_buffer.get_batch(1, 1)
-            self.assertEqual(batch.t, torch.tensor([[2]]))
+            self.assertEqual(batch.step_type, torch.tensor([[2]]))
 
     def test_num_earliest_frames_ignored_priortized(self):
         replay_buffer = ReplayBuffer(
@@ -411,7 +410,7 @@ class ReplayBufferTest(RingBufferTest):
                              torch.tensor([1], dtype=torch.int64))
             self.assertEqual(batch_info.importance_weights, 1.)
             self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
-            self.assertEqual(batch.t, torch.tensor([[2]]))
+            self.assertEqual(batch.step_type, torch.tensor([[2]]))
 
     def test_prioritized_replay(self):
         replay_buffer = ReplayBuffer(
@@ -528,7 +527,8 @@ class ReplayBufferTest(RingBufferTest):
 
         self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
         self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
-        self.assertEqual(torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.t)
+        self.assertEqual(
+            torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.step_type)
 
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=9, x=5.9))
         replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=10, x=6.9))
@@ -551,7 +551,8 @@ class ReplayBufferTest(RingBufferTest):
         # Note that the position of t = 8 never change and remains as 7.
         self.assertEqual(torch.tensor([7, 7, 7, 7]), batch_info.positions)
         self.assertEqual(
-            torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4), experience.t)
+            torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4),
+            experience.step_type)
 
 
 if __name__ == '__main__':
