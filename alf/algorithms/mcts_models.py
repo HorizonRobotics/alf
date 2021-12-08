@@ -33,7 +33,8 @@ ModelState = namedtuple(
     [
         'state',  # the actual latent state of the model
         'step',  # the current unroll step of the model
-    ])
+    ],
+    default_value=())
 
 ModelOutput = namedtuple(
     'ModelOutput',
@@ -202,16 +203,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             ModelOutput: the prediction
         """
         if not self._handle_bn:
-            new_state = self._dynamics_net((state, action))[0]
+            state = self._dynamics_net((state.state, action))[0]
             model_output = self.prediction_model(state)
             return model_output._replace(
                 state=ModelState(state=model_output.state))
         else:
             state, current_steps = state
-            self._prediction_net.set_batch_norm_current_step(current_steps)
+            self._dynamics_net.set_batch_norm_current_step(current_steps)
             new_state = self._dynamics_net((state, action))[0]
             current_steps = current_steps + 1
-            self._dynamics_net.set_batch_norm_current_step(current_steps)
+            self._prediction_net.set_batch_norm_current_step(current_steps)
             model_output = self.prediction_model(new_state)
             return model_output._replace(
                 state=ModelState(model_output.state, current_steps))
