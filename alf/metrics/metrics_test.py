@@ -155,18 +155,6 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                              metric.result())
 
     def test_average_per_step(self):
-        metric = AverageDrivingMetric(
-            example_time_step=timestep_first(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'kinetics': {
-                        'velocity': to_tensor([4.0, 0.0]),
-                        'acceleration': to_tensor([1.0, 0.0]),
-                    },
-                    'success': to_tensor([0.0, 0.0])
-                }))
-
         trajectories = []
         trajectories.append(
             timestep_first(
