@@ -87,6 +87,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  target_update_tau=1.,
                  target_update_period=1000,
                  config: Optional[TrainerConfig] = None,
+                 enable_amp: bool = True,
                  debug_summaries=False,
                  name="MuZero"):
         """
@@ -148,6 +149,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 networks used for reanalyzing.
             config: The trainer config that will eventually be assigned to
                 ``self._config``.
+            enable_amp: whether to use automatic mixed precision for inference.
+                This usually makes the algorithm run faster. However, the result
+                may be different (mostly likely due to random fluctuation).
             debug_summaries (bool):
             name (str):
 
@@ -180,7 +184,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             config=config,
             debug_summaries=debug_summaries,
             name=name)
-
+        self._enable_amp = enable_amp
         self._mcts = mcts
         self._model = model
         self._num_unroll_steps = num_unroll_steps
@@ -240,7 +244,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reward_transformer is not None:
             time_step = time_step._replace(
                 reward=self._reward_transformer(time_step.reward))
-        return self._mcts.predict_step(time_step, state)
+        with torch.cuda.amp.autocast(self._enable_amp):
+            return self._mcts.predict_step(time_step, state)
 
     def rollout_step(self, time_step: TimeStep, state):
         if self._reward_transformer is not None:
@@ -372,34 +377,34 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action = replay_buffer.get_field('prev_action', env_ids,
                                              positions[:, 1:])
 
-            observation = ()
-            if self._train_repr_prediction:
-                if type(self._data_transformer) == IdentityDataTransformer:
-                    observation = replay_buffer.get_field(
-                        'observation', env_ids, positions)
-                else:
-                    observation, step_type = replay_buffer.get_field(
-                        ('observation', 'step_type'), env_ids, positions)
-                    exp = alf.data_structures.make_experience(
-                        root_inputs, AlgStep(), state=())
-                    exp = exp._replace(
-                        step_type=step_type,
-                        observation=observation,
-                        batch_info=batch_info,
-                        replay_buffer=replay_buffer)
-                    exp = self._data_transformer.transform_experience(exp)
-                    observation = exp.observation
+        observation = ()
+        if self._train_repr_prediction:
+            if type(self._data_transformer) == IdentityDataTransformer:
+                observation = replay_buffer.get_field('observation', env_ids,
+                                                      positions)
+            else:
+                observation, step_type = replay_buffer.get_field(
+                    ('observation', 'step_type'), env_ids, positions)
+                exp = alf.data_structures.make_experience(
+                    root_inputs, AlgStep(), state=())
+                exp = exp._replace(
+                    step_type=step_type,
+                    observation=observation,
+                    batch_info=batch_info,
+                    replay_buffer=replay_buffer)
+                exp = self._data_transformer.transform_experience(exp)
+                observation = exp.observation
 
-            rollout_info = MuzeroInfo(
-                action=action,
-                value=(),
-                target=ModelTarget(
-                    reward=rewards,
-                    action=candidate_actions,
-                    action_policy=candidate_action_policy,
-                    value=values,
-                    game_over=game_overs,
-                    observation=observation))
+        rollout_info = MuzeroInfo(
+            action=action,
+            value=(),
+            target=ModelTarget(
+                reward=rewards,
+                action=candidate_actions,
+                action_policy=candidate_action_policy,
+                value=values,
+                game_over=game_overs,
+                observation=observation))
 
         # make the shape to [B, T, ...], where T=1
         rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(1),
@@ -528,33 +533,26 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         """
         batch_size = env_ids.shape[0]
         n = n1 + n2
-        flat_env_ids = env_ids.expand_as(positions).reshape(-1)
-        flat_positions = positions.reshape(-1)
-        exp = replay_buffer.get_field(None, flat_env_ids, flat_positions)
-
-        if type(self._data_transformer) != IdentityDataTransformer:
-            # DataTransformer assumes the shape of exp is [B, T, ...]
-            # It also needs exp.batch_info and exp.replay_buffer.
-            exp = alf.nest.map_structure(lambda x: x.unsqueeze(1), exp)
-            exp = exp._replace(
-                batch_info=BatchInfo(flat_env_ids, flat_positions),
-                replay_buffer=replay_buffer)
-            exp = self._data_transformer.transform_experience(exp)
-            exp = exp._replace(batch_info=(), replay_buffer=())
-            exp = alf.nest.map_structure(lambda x: x.squeeze(1), exp)
-
-        def _split1(x):
-            shape = x.shape[1:]
-            x = x.reshape(batch_size, n, *shape)
-            return x[:, :n1, ...].reshape(batch_size * n1, *shape)
-
-        def _split2(x):
-            shape = x.shape[1:]
-            x = x.reshape(batch_size, n, *shape)
-            return x[:, n1:, ...].reshape(batch_size * n2, *shape)
-
+        env_ids = env_ids.expand_as(positions)
         with alf.device(self._device):
-            exp = convert_device(exp)
+            # [B, n1 + n2, ...]
+            exp = replay_buffer.get_field(None, env_ids, positions)
+            if type(self._data_transformer) != IdentityDataTransformer:
+                # The shape of BatchInfo should be [B]
+                exp = exp._replace(
+                    batch_info=BatchInfo(env_ids[:, 0], positions[:, 0]),
+                    replay_buffer=replay_buffer)
+                exp = self._data_transformer.transform_experience(exp)
+                exp = exp._replace(batch_info=(), replay_buffer=())
+
+            def _split1(x):
+                shape = x.shape[2:]
+                return x[:, :n1, ...].reshape(batch_size * n1, *shape)
+
+            def _split2(x):
+                shape = x.shape[2:]
+                return x[:, n1:, ...].reshape(batch_size * n2, *shape)
+
             exp1 = alf.nest.map_structure(_split1, exp)
             exp2 = alf.nest.map_structure(_split2, exp)
 
@@ -614,8 +612,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             game_overs = convert_device(game_overs)
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
-            mcts_step = self._reanalyze_mcts.predict_step(
-                exp1, alf.nest.get_field(exp1, mcts_state_field))
+            with torch.cuda.amp.autocast(self._enable_amp):
+                mcts_step = self._reanalyze_mcts.predict_step(
+                    exp1, alf.nest.get_field(exp1, mcts_state_field))
             candidate_actions = ()
             if mcts_step.info.candidate_actions != ():
                 candidate_actions = mcts_step.info.candidate_actions
@@ -628,8 +627,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             # 2. Calulate the value of the next n2 steps so that n2-step return
             # can be computed.
-            model_output = self._target_model.initial_inference(
-                exp2.observation)
+            with torch.cuda.amp.autocast(self._enable_amp):
+                model_output = self._target_model.initial_inference(
+                    exp2.observation)
             values2 = model_output.value.reshape(batch_size, n2)
 
             # 3. Calculate n2-step return
