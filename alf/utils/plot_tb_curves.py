@@ -749,7 +749,7 @@ def plot(env, her, train, curves):
         if curves == "return":
             task_y_range = {
                 "Breakout": (0, 400),
-                "Seaquest": (0, 5000),
+                "Seaquest": (0, 8000),
                 "SpaceInvaders": (0, 1200),
                 "Atlantis": (0, 300000),
                 "Frostbite": (0, 3500),
@@ -837,10 +837,10 @@ def plot(env, her, train, curves):
             # else:
             upit = "-upit_4-batsz_500-coll_1e5"
             #    # upit = "-upit_4-batsz_500"
-            n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10-sd_?-" % (
-                mstr, rn, t, lr, upit)
-            # n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10*-sd_" % (
+            # n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_10-sd_?-" % (
             #     mstr, rn, t, lr, upit)
+            n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-evit_1000-evepi_100-sd_4" % (
+                mstr, rn, t, lr, upit)
 
         elif env in ["atari", "atariac"]:
             assert not her
