@@ -18,6 +18,7 @@ import functools
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+import alf
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 
 
@@ -82,8 +83,39 @@ class _MethodPerformer(torch.nn.Module):
             if buf in ignored_named_buffers:
                 self._ddp_params_and_buffers_to_ignore.append(name)
 
+        # TODO(breakds): In the future when needed, we can do explicit filtering
+        # if the wrapped module is an Algorithm. All parameters and buffers that
+        # are not within the optimizer can be added to ignore list.
+
     def forward(self, *args, **kwargs):
         return self._perform(*args, **kwargs)
+
+
+@alf.configurable
+def make_ddp_performer(module: torch.nn.Module,
+                       method,
+                       ddp_rank: int,
+                       find_unused_parameters: bool = False):
+    """Creates a DDP wrapped MethodPerformer.
+
+    This function is an alf.configurable and used in the @data_distributed
+    series of decorators below. Override this in your configuration with
+    
+        alf.config('make_ddp_performer', find_unused_parameters=True)
+
+    to enable ``find_unused_parameters``. This asks DDP to ignore parameters
+    that are not used for computing the output of ``forward()`` when waiting for
+    synchronization of gradients and parameters upon ``backward()``. Normally
+    you do not need to worry about this. It is useful for algorithms such as PPG
+    where part of the parameters of the model does NOT ALWAYS contribute to the
+    network output.
+
+    """
+    print(f'find_unused_parameters={find_unused_parameters}')
+    return DDP(
+        _MethodPerformer(module=module, perform=method),
+        device_ids=[ddp_rank],
+        find_unused_parameters=find_unused_parameters)
 
 
 def data_distributed(method):
@@ -170,9 +202,8 @@ def data_distributed_when(
             performer = module_to_wrap._ddp_performer_map.get(
                 method.__name__, None)
             if performer is None:
-                performer = DDP(
-                    _MethodPerformer(module=module_to_wrap, perform=method),
-                    device_ids=[ddp_rank])
+                performer = make_ddp_performer(module_to_wrap, method,
+                                               ddp_rank)
                 module_to_wrap._ddp_performer_map[method.__name__] = performer
             return performer(*args[1:], **kwargs)
 

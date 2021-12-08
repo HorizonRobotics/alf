@@ -30,3 +30,5 @@ alf.config(
     algorithm_ctor=Agent,
     whole_replay_buffer_training=True,
     clear_replay_buffer=True)
+
+alf.config('make_ddp_performer', find_unused_parameters=True)
