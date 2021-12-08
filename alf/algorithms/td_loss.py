@@ -258,9 +258,8 @@ class TDQRLoss(TDLoss):
             name=name)
 
         self._num_quantiles = num_quantiles
-        cdf_midpoints = (torch.arange(num_quantiles, dtype=torch.float32) +
-                         0.5) / num_quantiles
-        self._cdf_midpoints = cdf_midpoints.unsqueeze(-1)
+        self._cdf_midpoints = (torch.arange(
+            num_quantiles, dtype=torch.float32) + 0.5) / num_quantiles
         self._sum_over_quantiles = sum_over_quantiles
 
     def forward(self, info: namedtuple, value: torch.Tensor,

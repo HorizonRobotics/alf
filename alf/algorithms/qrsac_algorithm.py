@@ -85,7 +85,7 @@ class QrsacAlgorithm(SacAlgorithm):
                 distribution of critic replicas by choosing the one with the
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
-                quantile.
+                quantile value.
         """
         super().__init__(
             observation_spec,
@@ -131,7 +131,7 @@ class QrsacAlgorithm(SacAlgorithm):
             critic_inputs, state=critics_state)
 
         # For multi-dim reward, do:
-        #   [B, replicas * reward_dim] -> [B, replicas, reward_dim]
+        #   [B, replicas * reward_dim, n_quantiles] -> [B, replicas, reward_dim, n_quantiles]
         # For scalar reward, do nothing
         if self.has_multidim_reward():
             remaining_shape = critic_quantiles.shape[2:]
@@ -139,23 +139,24 @@ class QrsacAlgorithm(SacAlgorithm):
                 -1, self._num_critic_replicas, *self._reward_spec.shape,
                 *remaining_shape)
         if replica_min:
+            # Compute the min quantile distribution of critic replicas by
+            # choosing the one with the lowest distribution mean
             if self._min_critic_by_critic_mean:
                 # [B, replicas] or [B, replicas, reward_dim]
                 critic_mean = critic_quantiles.mean(-1)
                 idx = torch.min(
                     critic_mean, dim=1)[1]  # [B] or [B, reward_dim]
                 if self.has_multidim_reward():
-                    idx = torch.repeat_interleave(
-                        idx.unsqueeze(-1), critic_quantiles.shape[-1],
-                        dim=-1)  # [B, reward_dim, n_quantiles]
-                    idx = idx.unsqueeze(1)  # [B, 1, reward_dim, n_quantiles]
-                    # [B, reward_dim, n_quantiles]
-                    critic_quantiles = torch.gather(
-                        critic_quantiles, dim=1, index=idx).squeeze()
+                    B, replicas, reward_dim = critic_mean.shape
+                    critic_quantiles = critic_quantiles[
+                        torch.arange(B)[:, None], idx,
+                        torch.arange(reward_dim)]
                 else:
                     # [B, n_quantiles]
                     critic_quantiles = critic_quantiles[torch.
                                                         arange(len(idx)), idx]
+            # Compute the min quantile distribution by taking a minimum value
+            # across all critic replicas for each quantile value
             else:
                 critic_quantiles = critic_quantiles.min(dim=1)[0]
         if quantile_mean:
