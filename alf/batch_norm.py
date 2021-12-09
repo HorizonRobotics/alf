@@ -318,7 +318,7 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
             bns.add(m)
         elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
             warning_once(
-                "MCTSModel may not perform well with torch.nn.BatchNorm layer "
+                "RNN may not perform well with torch.nn.BatchNorm layer "
                 "(at %s). Consider using alf.layers.BatchNorm instead." % path)
         elif isinstance(m, nn.Module):
             for name, submodule in m.named_children():
