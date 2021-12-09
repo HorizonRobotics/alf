@@ -935,6 +935,7 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
         return time_step._replace(prev_action=prev_action)
 
 
+@alf.configurable
 class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
     """Wrapper to change discount to 0 upon life loss for Atari.
 
@@ -951,7 +952,7 @@ class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
             actions_num: number of values to discretize each action dim into
         """
         super().__init__(env)
-        self._prev_lives = torch.zeros(env.batch_size, dtype=torch.long)
+        self._prev_lives = 0
 
     def _reset(self):
         time_step = self._env.reset()
@@ -961,6 +962,7 @@ class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
     def _step(self, action):
         time_step = self._env.step(action)
         lives = time_step.env_info['ale.lives']
-        time_step.discount[lives < self._prev_lives] = 0.
+        if lives < self._prev_lives:
+            time_step = time_step._replace(discount=np.float32(0))
         self._prev_lives = lives
         return time_step
