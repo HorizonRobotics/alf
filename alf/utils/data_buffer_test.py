@@ -63,6 +63,10 @@ def get_batch(env_ids, dim, t, x):
             "a": a,
             "g": g
         }),
+        discount=torch.tensor(
+            t != alf.data_structures.StepType.LAST,
+            dtype=torch.float32,
+            device="cpu"),
         reward=r)
 
 

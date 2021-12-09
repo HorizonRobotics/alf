@@ -525,9 +525,11 @@ class ReplayBuffer(RingBuffer):
         while torch.any(mask):
             # accumulate return
             r = self._buffer.reward[(env_ids, self.circular(current_pos))]
+            disc = self._buffer.discount[(env_ids, self.circular(current_pos))]
             if self._reward_clip:
                 r = torch.clamp(r, *self._reward_clip)
-            discounted_return[mask] = r + self._gamma * discounted_return[mask]
+            discounted_return[
+                mask] = r + self._gamma * disc * discounted_return[mask]
             # point to previous step
             current_pos -= 1
             # make sure it's not underflowing
