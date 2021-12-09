@@ -597,7 +597,6 @@ class SimpleMCTSModel(MCTSModel):
             debug_summaries=debug_summaries,
             name=name)
         self._num_sampled_actions = num_sampled_actions
-        self._prediction_net = prediction_net_ctor(repr_spec, action_spec)
 
         self._sample_actions = False
         if action_spec.is_continuous or action_spec.numel > 1:
