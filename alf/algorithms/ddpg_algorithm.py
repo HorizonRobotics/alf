@@ -140,8 +140,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         """
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+            epsilon_greedy = config.epsilon_greedy
         self._epsilon_greedy = epsilon_greedy
 
         critic_network = critic_network_ctor(
