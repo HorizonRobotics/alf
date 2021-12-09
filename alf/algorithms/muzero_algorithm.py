@@ -153,7 +153,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         """
         model = model_ctor(
-            observation_spec, action_spec, debug_summaries=debug_summaries)
+            observation_spec,
+            action_spec,
+            num_unroll_steps=num_unroll_steps,
+            debug_summaries=debug_summaries)
         mcts = mcts_algorithm_ctor(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -206,7 +209,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 debug_summaries=debug_summaries,
                 name="mcts_reanalyze")
             self._target_model = model_ctor(
-                observation_spec, action_spec, debug_summaries=debug_summaries)
+                observation_spec,
+                action_spec,
+                num_unroll_steps=num_unroll_steps,
+                debug_summaries=debug_summaries)
             self._update_target = common.get_target_updater(
                 models=[self._model],
                 target_models=[self._target_model],
@@ -247,7 +253,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         model_output = self._model.initial_inference(exp.observation)
         if alf.summary.should_record_summaries():
-            model_output.state.register_hook(partial(_hook, name="s0"))
+            model_output.state.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
         model_outputs = [dist_utils.distributions_to_params(model_output)]
         info = rollout_info
@@ -256,11 +262,13 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             model_output = self._model.recurrent_inference(
                 model_output.state, info.action[:, i, ...])
             if alf.summary.should_record_summaries():
-                model_output.state.register_hook(
+                model_output.state.state.register_hook(
                     partial(_hook, name="s" + str(i + 1)))
             model_output = model_output._replace(
-                state=scale_gradient(model_output.state, self.
-                                     _recurrent_gradient_scaling_factor))
+                state=alf.nest.map_structure(
+                    lambda x: scale_gradient(
+                        x, self._recurrent_gradient_scaling_factor),
+                    model_output.state))
             model_outputs.append(
                 dist_utils.distributions_to_params(model_output))
 

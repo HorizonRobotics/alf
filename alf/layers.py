@@ -31,6 +31,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
 from alf.utils.tensor_utils import BatchSquash
+from .batch_norm import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -306,6 +307,7 @@ class FC(nn.Module):
                  use_bias=True,
                  use_bn=False,
                  use_ln=False,
+                 bn_ctor=nn.BatchNorm1d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -321,6 +323,8 @@ class FC(nn.Module):
             use_bias (bool): whether use bias
             use_bn (bool): whether use batch normalization.
             use_ln (bool): whether use layer normalization
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -352,7 +356,7 @@ class FC(nn.Module):
         self._use_bn = use_bn
         self._use_ln = use_ln
         if use_bn:
-            self._bn = nn.BatchNorm1d(output_size)
+            self._bn = bn_ctor(output_size)
         else:
             self._bn = None
         if use_ln:
@@ -603,6 +607,7 @@ class ParallelFC(nn.Module):
                  use_bias=True,
                  use_bn=False,
                  use_ln=False,
+                 bn_ctor=nn.BatchNorm1d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -617,6 +622,8 @@ class ParallelFC(nn.Module):
             activation (torch.nn.functional):
             use_bn (bool): whether use Batch Normalization.
             use_ln (bool): whether use layer normalization
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain
@@ -644,7 +651,7 @@ class ParallelFC(nn.Module):
         self._use_bn = use_bn
         self._use_ln = use_ln
         if use_bn:
-            self._bn = nn.BatchNorm1d(n * output_size)
+            self._bn = bn_ctor(n * output_size)
         else:
             self._bn = None
         if use_ln:
@@ -1064,6 +1071,7 @@ class Conv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1081,6 +1089,8 @@ class Conv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -1111,7 +1121,7 @@ class Conv2D(nn.Module):
         self._bias_init_value = bias_init_value
         self._use_bias = use_bias
         if use_bn:
-            self._bn = nn.BatchNorm2d(out_channels)
+            self._bn = bn_ctor(out_channels)
         else:
             self._bn = None
 
@@ -1320,6 +1330,7 @@ class ParallelConv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1339,6 +1350,8 @@ class ParallelConv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a ``variance_scaling_initializer`` with gain
                 as ``kernel_init_gain`` will be used.
@@ -1370,7 +1383,7 @@ class ParallelConv2D(nn.Module):
             bias=use_bias)
 
         if use_bn:
-            self._bn = nn.BatchNorm2d(n * out_channels)
+            self._bn = bn_ctor(n * out_channels)
         else:
             self._bn = None
         self.reset_parameters()
@@ -1485,6 +1498,7 @@ class ConvTranspose2D(nn.Module):
                  output_padding=0,
                  use_bias=None,
                  use_bn=False,
+                 bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1506,6 +1520,8 @@ class ConvTranspose2D(nn.Module):
                 documentation for more detail.
             use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -1543,7 +1559,7 @@ class ConvTranspose2D(nn.Module):
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
 
         if use_bn:
-            self._bn = nn.BatchNorm2d(out_channels)
+            self._bn = bn_ctor(out_channels)
         else:
             self._bn = None
 
@@ -1578,6 +1594,7 @@ class ParallelConvTranspose2D(nn.Module):
                  output_padding=0,
                  use_bias=None,
                  use_bn=False,
+                 bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1597,6 +1614,8 @@ class ParallelConvTranspose2D(nn.Module):
                 documentation for more detail.
             use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool):
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a ``variance_scaling_initializer`` with gain
                 as ``kernel_init_gain`` will be used.
@@ -1649,7 +1668,7 @@ class ParallelConvTranspose2D(nn.Module):
             self._bias = None
 
         if use_bn:
-            self._bn = nn.BatchNorm2d(n * out_channels)
+            self._bn = bn_ctor(n * out_channels)
         else:
             self._bn = None
 
@@ -2136,8 +2155,7 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
-@alf.configurable(
-    whitelist=['v1_5', 'with_batch_normalization', 'keep_conv_bias'])
+@alf.configurable(whitelist=['v1_5', 'with_batch_normalization', 'bn_ctor'])
 class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
 
@@ -2159,7 +2177,7 @@ class BottleneckBlock(nn.Module):
                  transpose=False,
                  v1_5=True,
                  with_batch_normalization=True,
-                 keep_conv_bias=False):
+                 bn_ctor=nn.BatchNorm2d):
         """
         Args:
             kernel_size (int): the kernel size of middle layer at main path
@@ -2173,10 +2191,8 @@ class BottleneckBlock(nn.Module):
             v1_5 (bool): whether to use the ResNet V1.5 structure
             with_batch_normalization (bool): whether to include batch normalization.
                 Note that standard ResNet uses batch normalization.
-            keep_conv_bias (bool): by default, if ``with_batch_normalization`` is
-                True, the biases of conv layers are not used because they are useless.
-                This behavior can be overrided by setting ``keep_conv_bias`` to
-                True. The main purpose of this is for loading legacy models.
+            bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
         Return:
             Output tensor for the block
         """
@@ -2213,7 +2229,7 @@ class BottleneckBlock(nn.Module):
             if bias:
                 nn.init.zeros_(s.bias.data)
             if with_batch_normalization:
-                shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
+                shortcut_layers = nn.Sequential(s, bn_ctor(filters3))
             else:
                 shortcut_layers = s
         else:
@@ -2222,9 +2238,9 @@ class BottleneckBlock(nn.Module):
         relu = nn.ReLU(inplace=True)
 
         if with_batch_normalization:
-            core_layers = nn.Sequential(a, nn.BatchNorm2d(filters1), relu, b,
-                                        nn.BatchNorm2d(filters2), relu, c,
-                                        nn.BatchNorm2d(filters3))
+            core_layers = nn.Sequential(a, bn_ctor(filters1), relu, b,
+                                        bn_ctor(filters2), relu, c,
+                                        bn_ctor(filters3))
         else:
             core_layers = nn.Sequential(a, relu, b, relu, c)
 

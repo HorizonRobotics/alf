@@ -28,6 +28,14 @@ from alf.utils import dist_utils, tensor_utils, summary_utils
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils.schedulers import ConstantScheduler
 
+ModelState = namedtuple(
+    'ModelState',
+    [
+        'state',  # the actual latent state of the model
+        'step',  # the current unroll step of the model
+    ],
+    default_value=())
+
 ModelOutput = namedtuple(
     'ModelOutput',
     [
@@ -87,8 +95,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     """The interface for the model used by MCTSAlgorithm."""
 
     def __init__(self,
+                 num_unroll_steps,
                  representation_net,
                  dynamics_net,
+                 prediction_net,
                  train_reward_function,
                  train_game_over_function,
                  train_repr_prediction=False,
@@ -133,6 +143,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         super().__init__()
         self._representation_net = representation_net
         self._dynamics_net = dynamics_net
+        self._prediction_net = prediction_net
         self._debug_summaries = debug_summaries
         self._name = name
         self._train_reward_function = train_reward_function
@@ -155,6 +166,13 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._game_over_loss_weight = game_over_loss_weight
         self._repr_prediction_loss_weight = repr_prediction_loss_weight
 
+        found1 = alf.layers.prepare_rnn_batch_norm(self._dynamics_net)
+        found2 = alf.layers.prepare_rnn_batch_norm(self._prediction_net)
+        self._handle_bn = found1 or found2
+        if self._handle_bn:
+            self._dynamics_net.set_batch_norm_max_steps(num_unroll_steps)
+            self._prediction_net.set_batch_norm_max_steps(num_unroll_steps + 1)
+
     def initial_inference(self, observation):
         """Generate the initial prediction given observation.
 
@@ -162,7 +180,17 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             ModelOutput: the prediction
         """
         state = self._representation_net(observation)[0]
-        return self.prediction_model(state)
+        if not self._handle_bn:
+            model_output = self.prediction_model(state)
+            return model_output._replace(
+                state=ModelState(state=model_output.state))
+        else:
+            self._prediction_net.set_batch_norm_current_step(0)
+            model_output = self.prediction_model(state)
+            batch_size = model_output.value.shape[0]
+            current_steps = torch.zeros(batch_size, dtype=torch.long)
+            return model_output._replace(
+                state=ModelState(model_output.state, current_steps))
 
     def recurrent_inference(self, state, action):
         """Generate prediction given state and action.
@@ -174,8 +202,20 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         Returns:
             ModelOutput: the prediction
         """
-        new_state = self._dynamics_net((state, action))[0]
-        return self.prediction_model(new_state)
+        if not self._handle_bn:
+            state = self._dynamics_net((state.state, action))[0]
+            model_output = self.prediction_model(state)
+            return model_output._replace(
+                state=ModelState(state=model_output.state))
+        else:
+            state, current_steps = state
+            self._dynamics_net.set_batch_norm_current_step(current_steps)
+            new_state = self._dynamics_net((state, action))[0]
+            current_steps = current_steps + 1
+            self._prediction_net.set_batch_norm_current_step(current_steps)
+            model_output = self.prediction_model(new_state)
+            return model_output._replace(
+                state=ModelState(model_output.state, current_steps))
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -253,14 +293,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
             def _flatten(x):
                 # there is no need to predict the first latent
-                return x[:, 1:, :].reshape(-1, *x.shape[2:])
+                return x[:, 1:, ...].reshape(-1, *x.shape[2:])
 
             # [B*unroll_steps, ...]
             observation = alf.nest.map_structure(_flatten, target.observation)
             with torch.no_grad():
                 target_repr = self._representation_net(observation)[0]
             # [B*unroll_steps, ...]
-            repr = _flatten(model_output.state)
+            repr = _flatten(model_output.state.state)
             # [B*unroll_steps]
             repr_loss = self.calc_repr_prediction_loss(repr, target_repr)
             # [B, unroll_steps]
@@ -337,6 +377,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
     def calc_repr_prediction_loss(self, repr, target_repr):
         """Calculate the loss given the predicted representation and target representation"""
+        raise NotImplementedError
+
+    def prediction_model(self, state) -> ModelOutput:
         raise NotImplementedError
 
 
@@ -480,6 +523,7 @@ class SimpleMCTSModel(MCTSModel):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 num_unroll_steps,
                  num_sampled_actions=None,
                  encoding_net_ctor=create_simple_encoding_net,
                  dynamics_net_ctor=create_simple_dynamics_net,
@@ -538,9 +582,12 @@ class SimpleMCTSModel(MCTSModel):
         repr_spec = encoding_net.output_spec
         dynamics_net = dynamics_net_ctor(
             input_tensor_spec=(repr_spec, action_spec))
+        prediction_net = prediction_net_ctor(repr_spec, action_spec)
         super().__init__(
+            num_unroll_steps=num_unroll_steps,
             representation_net=encoding_net,
             dynamics_net=dynamics_net,
+            prediction_net=prediction_net,
             train_repr_prediction=train_repr_prediction,
             train_reward_function=train_reward_function,
             train_game_over_function=train_game_over_function,
@@ -551,7 +598,6 @@ class SimpleMCTSModel(MCTSModel):
             name=name)
         self._num_sampled_actions = num_sampled_actions
         self._prediction_net = prediction_net_ctor(repr_spec, action_spec)
-        self._action_spec = action_spec
 
         self._sample_actions = False
         if action_spec.is_continuous or action_spec.numel > 1:
