@@ -137,8 +137,10 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
 
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
-        values (Tensor): shape is [T,B] (or [T]) representing values.
-        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
+        values (Tensor): shape is [T, B] (or [T]) when representing values,
+            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
+            of value distributions.
+        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
         time_major (bool): Whether input tensors are time major.
             False means input tensors have shape [B, T].
@@ -160,6 +162,7 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
 
     rets = torch.zeros_like(values)
     rets[-1] = values[-1]
@@ -186,8 +189,10 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     Note: Input tensors must be time major
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
-        values (Tensor): shape is [T,B] (or [T]) representing values.
-        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
+        values (Tensor): shape is [T, B] (or [T]) when representing values,
+            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
+            of value distributions.
+        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
     Returns:
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
@@ -200,6 +205,7 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
 
     discounted_values = discounts * values
     rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \

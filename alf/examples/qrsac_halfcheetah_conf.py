@@ -16,12 +16,13 @@ from functools import partial
 import torch
 
 import alf
-from alf.algorithms.oac_algorithm import OacAlgorithm
+from alf.algorithms.qrsac_algorithm import QrsacAlgorithm
+from alf.algorithms.td_loss import TDQRLoss
+from alf.algorithms.one_step_loss import OneStepTDQRLoss
 from alf.nest.utils import NestConcat
-from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork, CriticNetwork
 from alf.optimizers import Adam, AdamTF
+from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import clipped_exp
-from alf.utils.losses import element_wise_squared_loss
 
 from alf.examples import sac_conf
 
@@ -33,36 +34,41 @@ alf.config(
 
 # algorithm config
 fc_layer_params = (256, 256)
+num_quantiles = 50
 
 actor_network_cls = partial(
-    ActorDistributionNetwork,
+    alf.nn.ActorDistributionNetwork,
     fc_layer_params=fc_layer_params,
     continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
+        alf.nn.NormalProjectionNetwork,
         state_dependent_std=True,
         scale_distribution=True,
         std_transform=clipped_exp))
 
 critic_network_cls = partial(
-    CriticNetwork, joint_fc_layer_params=fc_layer_params)
+    alf.nn.CriticNetwork,
+    joint_fc_layer_params=fc_layer_params,
+    output_tensor_spec=TensorSpec((num_quantiles, )))
 
 alf.config('calc_default_target_entropy', min_prob=0.184)
 
+critic_loss_ctor = OneStepTDQRLoss
 alf.config(
-    'OacAlgorithm',
+    'QrsacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    explore=True,
-    explore_delta=6.,
+    critic_loss_ctor=critic_loss_ctor,
+    use_entropy_reward=True,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4))
 
-alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
+alf.config('TDQRLoss', num_quantiles=num_quantiles)
+alf.config('OneStepTDQRLoss', num_quantiles=num_quantiles)
 
 # training config
-alf.config('Agent', rl_algorithm_cls=OacAlgorithm)
+alf.config('Agent', rl_algorithm_cls=QrsacAlgorithm)
 
 alf.config(
     'TrainerConfig',
@@ -74,10 +80,10 @@ alf.config(
     num_iterations=2500000,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=1000,
+    eval_interval=10000,
     num_eval_episodes=5,
-    debug_summaries=False,
+    debug_summaries=True,
     random_seed=0,
-    summarize_grads_and_vars=False,
+    summarize_grads_and_vars=True,
     summary_interval=1000,
     replay_buffer_length=1000000)

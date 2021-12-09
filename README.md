@@ -22,6 +22,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[A2C](alf/algorithms/actor_critic_algorithm.py)|On-policy RL|[OpenAI Baselines: ACKTR & A2C](https://openai.com/blog/baselines-acktr-a2c/)|
 |[PPO](alf/algorithms/ppo_algorithm.py)|On-policy RL|Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)|
 |[DDPG](alf/algorithms/ddpg_algorithm.py)|Off-policy RL|Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)|
+|[QRSAC](alf/algorithms/qrsac_algorithm.py)|Off-policy RL|Dabney et al. "Distributional Reinforcement Learning with Quantile Regression" [arXiv:1710.10044](https://arxiv.org/abs/1710.10044)|
 |[SAC](alf/algorithms/sac_algorithm.py)|Off-policy RL|Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)|
 |[OAC](alf/algorithms/oac_algorithm.py)|Off-policy RL|Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)|
 |[HER](https://github.com/HorizonRobotics/alf/blob/911d9573866df41e9e3adf6cdd94ee03016bf5a8/alf/algorithms/data_transformer.py#L672)|Off-policy RL|Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495)|

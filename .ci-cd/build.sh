@@ -65,6 +65,7 @@ function test() {
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.predictive_representation_learner_test \
         alf.algorithms.prior_actor_test \
+        alf.algorithms.qrsac_algorithm_test \
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \
         alf.algorithms.sac_algorithm_test \
