@@ -328,7 +328,7 @@ class TDQRLoss(TDLoss):
         if self._sum_over_quantiles:
             loss = loss.mean(-2).sum(-1)
         else:
-            loss = loss.mean(-2).mean(-1)
+            loss = loss.mean(dim=(-2, -1))
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions
