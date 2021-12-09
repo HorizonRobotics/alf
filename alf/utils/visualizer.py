@@ -16,26 +16,39 @@
 import torch
 
 
-def critic_network_visualizer(net, observation, origin, dx, dy, H=20, W=20):
-    """Generate a batched network response image within the range specified by
-    ``origin``, ``dx``, ``dy`` as shown below:
+def critic_network_visualizer(net,
+                              observation,
+                              action_upper_left,
+                              action_upper_right,
+                              action_lower_left,
+                              H=20,
+                              W=20):
+    """Generate a batched network response image within the rectangular range
+    of actions (referred to as probing region) specified by ``action_top_left``,
+    ``action_top_right``, ``action_bottom_left`` as shown below:
 
-    ``origin`` ---> ``dx``
-        |
-        v
-      ``dy``
+    ``action_upper_left`` -----> ``action_upper_right``
+            |                           |
+            |                           |
+            v                           |
+    ``action_lower_left``---- ``action_lower_right``
+
+    where ``action_lower_right`` is computed from the three provided points
+    as the following because of the rectangular assumption:
+
+    ``action_lower_right = (action_upper_right + action_lower_left - action_upper_left)``
 
     Example usage:
 
     .. code-block:: python
 
         # assume a case where the dimensionality of action is 4
-        # the upper-left point
-        origin = torch.Tensor([1, -1, 0, 0])
-        # the upper right point
-        dx = torch.Tensor([1, 1, 0, 0])
-        # the lower-left point
-        dy = torch.Tensor([-1, -1, 0, 0])
+        # the action for the upper-left point of the probing region
+        action_upper_left = torch.Tensor([1, -1, 0, 0])
+        # the action for the upper-right point of the probing region
+        action_upper_right = torch.Tensor([1, 1, 0, 0])
+        # the action for the lower-left point of the probing region
+        action_lower_left = torch.Tensor([-1, -1, 0, 0])
 
         # define a network function
         def net_func(net_input):
@@ -47,7 +60,8 @@ def critic_network_visualizer(net, observation, origin, dx, dy, H=20, W=20):
             return critics
 
         img = critic_network_visualizer(net_func, inputs.observation,
-                                origin, dx, dy,
+                                action_upper_left, action_upper_right,
+                                action_lower_left,
                                 20, 20)
 
         # visualize the first response image in the batch
@@ -60,17 +74,17 @@ def critic_network_visualizer(net, observation, origin, dx, dy, H=20, W=20):
     Args:
         net (Callable): a callable that is called as``net((obsevation, actions))``
         observation (Tensor): [B, ...]
-        origin (tensor): tensor representing the start of the probing region,
-            with the shape of [d]
-        dx (tensor): a tensor representing the end position of the probing
-            region along ``dx`` direction, with the shape of [d]
-        dy (tensor): a tensor representing the end position of the probing
-            region along ``dy`` direction, with the shape of [d]
-        H (int): number of samples to be used for creating
-            visualization along ``dx`` direction.
-        W (int): number of samples to be used for creating
-            visualization along ``dx`` direction. The
-            total number of samples is H * W.
+        action_upper_left (tensor): tensor representing the upper-left point of
+            the probing region, with the shape of [action_dim]
+        action_upper_right (tensor): a tensor representing the upper-right point
+            of the probing region, with the shape of [action_dim]
+        action_lower_left (tensor): a tensor representing the lower-left point
+            of the probing region, with the shape of [action_dim]
+        H (int): number of samples to be used for creating visualization along
+            the direction of ``action_lower_left - action_upper_left``.
+        W (int): number of samples to be used for creating visualization along
+            the direction of ``action_upper_right - action_upper_left``.
+            The total number of samples is H * W.
 
     Returns:
         The network response image of the shape [B, K, H, W], where K denotes
@@ -82,29 +96,30 @@ def critic_network_visualizer(net, observation, origin, dx, dy, H=20, W=20):
     num_anchors = H * W
     # expand observation from [B, ...] to [B * num_anchors, ...]
     ext_obs = torch.repeat_interleave(observation, num_anchors, dim=0)
-    dxy = dx + dy - origin
+    action_lower_right = action_upper_right + action_lower_left - action_upper_left
 
-    # create the mini-image: [B, d, 2, 2], where d denotes the action dimensions
-    # [origin, dx]
-    # [dy,     dxy]
-    mini_image = torch.stack((torch.stack(
-        (origin, dy), dim=1), torch.stack((dx, dxy), dim=1)),
-                             dim=2)
+    # create the mini-image: [action_dim, 2, 2]
+    # [action_upper_left,  action_upper_right]
+    # [action_lower_left,  action_lower_right]
+    mini_image = torch.stack(
+        (torch.stack((action_upper_left, action_lower_left), dim=1),
+         torch.stack((action_upper_right, action_lower_right), dim=1)),
+        dim=2)
 
-    # [B, d, 2, 2] -> [B, d, H, W]
+    # [action_dim, 2, 2] -> [1, action_dim, 2, 2] -> [1, action_dim, H, W]
     mini_image = torch.nn.functional.interpolate(
         mini_image.unsqueeze(0),
         size=(H, W),
         mode='bilinear',
         align_corners=True)
 
-    # [d, H, W]
+    # [action_dim, H, W]
     mini_image = mini_image.squeeze(0)
 
-    # [d, H, W] -> [d, H * W] -> [H * W, d]
+    # [action_dim, H, W] -> [action_dim, H * W] -> [H * W, action_dim]
     anchors = mini_image.reshape(-1, num_anchors).transpose(0, 1)
 
-    # expand action from [H * W, d] to [B * H * W, d]
+    # expand action from [H * W, action_dim] to [B * H * W, action_dim]
     other_dims = [1] * (anchors.dim() - 1)
     ext_anchors = anchors.repeat(batch_size, *other_dims)
 
