@@ -18,12 +18,14 @@ from absl.testing import parameterized
 import torch
 
 import alf
+from alf.networks import BetaProjectionNetwork
 from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
+from alf.networks import OnehotCategoricalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
-from alf.networks import BetaProjectionNetwork
 from alf.networks import TruncatedProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.utils import dist_utils
 from alf.utils.dist_utils import DistributionSpec
 import alf.utils.math_ops as math_ops
 
@@ -232,6 +234,98 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(torch.all(samples <= 1))
         self.assertTrue(torch.any(samples <= 0))
         self.assertTrue(torch.any(samples >= 0))
+
+
+class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
+                                             alf.test.TestCase):
+    def test_onehot_categorical_uniform_projection_net(self):
+        """A zero-weight net generates uniform actions."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.ones(outer_dims=(1, ))
+
+        net = OnehotCategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0)
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual(dist.batch_shape, (1, ))
+        self.assertEqual(dist.base_dist.batch_shape, (1, 1))
+        self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
+
+    def test_onehot_samples(self):
+        """Samples from the projection net are onehot vectors."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.ones(outer_dims=(1, ))
+
+        net = OnehotCategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0.1)
+        dist, _ = net(embedding)
+        samples = dist.sample()
+        self.assertTrue(torch.all(samples.sum(dim=-1) == 1))
+
+    @parameterized.parameters((True, ), (False, ))
+    def test_straight_through_gradient(self, use_straight_through_gradient):
+        """Test the gradient with straight through estimator."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.ones(outer_dims=(1, ))
+
+        net = OnehotCategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0.1,
+            use_straight_through_gradient=use_straight_through_gradient)
+        dist, _ = net(embedding)
+
+        if not use_straight_through_gradient:
+            self.assertTrue(dist.has_rsample == False)
+        else:
+            self.assertTrue(dist.has_rsample == True)
+            _, log_prob = dist_utils.rsample_action_distribution(
+                dist, return_log_prob=True)
+
+            loss = log_prob.sum()
+            loss.backward()
+
+            p_layer = net._projection_layer
+            self.assertTrue(p_layer.weight.grad.shape == p_layer.weight.shape)
+            self.assertTrue(p_layer.bias.grad.shape == p_layer.bias.shape)
+
+            self.assertTensorNotClose(p_layer.weight.grad,
+                                      torch.zeros(p_layer.weight.grad.shape))
+            self.assertTensorNotClose(p_layer.bias.grad,
+                                      torch.zeros(p_layer.bias.grad.shape))
+
+    def test_mode(self):
+        """Test the mode of the onehot caregorical distribution."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.randn(outer_dims=(5, ))
+
+        net1 = OnehotCategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0.1)
+        dist1, _ = net1(embedding)
+        onehot_mode1 = dist_utils.get_mode(dist1)
+
+        # create a categorical projection network for comparison
+        net2 = CategoricalProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
+            logits_init_output_factor=0)
+
+        # copy parameters from net1 -> net2
+        for ws, wt in zip(net1.parameters(), net2.parameters()):
+            wt.data.copy_(ws)
+
+        dist2, _ = net2(embedding)
+        mode2 = dist_utils.get_mode(dist2)
+        onehot_mode2 = torch.nn.functional.one_hot(
+            mode2, num_classes=dist2.base_dist.logits.shape[-1])
+
+        self.assertTensorClose(onehot_mode1, onehot_mode2)
 
 
 if __name__ == "__main__":

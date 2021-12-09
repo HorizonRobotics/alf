@@ -21,6 +21,7 @@ import torch.distributions as td
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 import torch.nn as nn
+from typing import Union
 
 import alf
 import alf.nest as nest
@@ -552,12 +553,17 @@ def _builder_transformed(base_builder, transforms_, **kwargs):
     return td.TransformedDistribution(base_builder(**kwargs), transforms_)
 
 
-def _get_categorical_builder(obj: td.Categorical):
+def _get_categorical_builder(
+        obj: Union[td.Categorical, td.OneHotCategorical, td.
+                   OneHotCategoricalStraightThrough]):
+
+    dist_cls = type(obj)
+
     if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
         # This means that obj is constructed using probs
-        return td.Categorical, {'probs': obj.probs}
+        return dist_cls, {'probs': obj.probs}
     else:
-        return td.Categorical, {'logits': obj.logits}
+        return dist_cls, {'logits': obj.logits}
 
 
 def _get_independent_builder(obj: td.Independent):
@@ -588,6 +594,10 @@ def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
 
 _get_builder_map = {
     td.Categorical:
+        _get_categorical_builder,
+    td.OneHotCategorical:
+        _get_categorical_builder,
+    td.OneHotCategoricalStraightThrough:
         _get_categorical_builder,
     td.Normal:
         lambda obj: (td.Normal, {
@@ -966,6 +976,10 @@ def get_mode(dist):
     """
     if isinstance(dist, td.categorical.Categorical):
         mode = torch.argmax(dist.logits, -1)
+    elif isinstance(dist, td.OneHotCategorical) or \
+                isinstance(dist, td.OneHotCategoricalStraightThrough):
+        mode = torch.nn.functional.one_hot(
+            torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
     elif isinstance(dist, td.normal.Normal):
         mode = dist.mean
     elif isinstance(dist, StableCauchy):
