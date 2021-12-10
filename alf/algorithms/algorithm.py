@@ -1361,6 +1361,7 @@ class Algorithm(AlgorithmInterface):
             """Put the time dim to axis=0."""
             return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
 
+        indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 # here we use the cpu version of torch.randperm(n) to generate
@@ -1378,7 +1379,12 @@ class Algorithm(AlgorithmInterface):
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
                 alf.summary.enable_summary(do_summary)
-                batch_indices = indices[b:min(batch_size, b + mini_batch_size)]
+                if indices is None:
+                    batch_indices = slice(b,
+                                          min(batch_size, b + mini_batch_size))
+                else:
+                    batch_indices = indices[b:min(batch_size, b +
+                                                  mini_batch_size)]
                 batch = alf.nest.map_structure(lambda x: x[batch_indices],
                                                experience)
                 if batch_info:
