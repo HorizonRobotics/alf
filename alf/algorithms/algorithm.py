@@ -1231,8 +1231,9 @@ class Algorithm(AlgorithmInterface):
         experience = alf.data_structures.clear_batch_info(experience)
 
         time_step = experience_to_time_step(experience)
-        time_step, rollout_info = self.preprocess_experience(
-            time_step, experience.rollout_info, batch_info)
+        with summary_utils.record_time("time/preprocess_experience"):
+            time_step, rollout_info = self.preprocess_experience(
+                time_step, experience.rollout_info, batch_info)
         experience = experience._replace(
             step_type=time_step.step_type,
             reward=time_step.reward,
@@ -1360,6 +1361,7 @@ class Algorithm(AlgorithmInterface):
             """Put the time dim to axis=0."""
             return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
 
+        indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 # here we use the cpu version of torch.randperm(n) to generate
@@ -1369,12 +1371,6 @@ class Algorithm(AlgorithmInterface):
                 # error: https://github.com/pytorch/pytorch/issues/59756
                 indices = alf.nest.utils.convert_device(
                     torch.randperm(batch_size, device='cpu'))
-                experience = alf.nest.map_structure(lambda x: x[indices],
-                                                    experience)
-                if batch_info is not None:
-                    batch_info = alf.nest.map_structure(
-                        lambda x: x[indices]
-                        if isinstance(x, torch.Tensor) else x, batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
                     alf.summary.increment_global_counter()
@@ -1383,13 +1379,18 @@ class Algorithm(AlgorithmInterface):
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
                 alf.summary.enable_summary(do_summary)
-                batch = alf.nest.map_structure(
-                    lambda x: x[b:min(batch_size, b + mini_batch_size)],
-                    experience)
+                if indices is None:
+                    batch_indices = slice(b,
+                                          min(batch_size, b + mini_batch_size))
+                else:
+                    batch_indices = indices[b:min(batch_size, b +
+                                                  mini_batch_size)]
+                batch = alf.nest.map_structure(lambda x: x[batch_indices],
+                                               experience)
                 if batch_info:
                     binfo = alf.nest.map_structure(
-                        lambda x: x[b:min(batch_size, b + mini_batch_size)]
-                        if isinstance(x, torch.Tensor) else x, batch_info)
+                        lambda x: x[batch_indices] if isinstance(
+                            x, torch.Tensor) else x, batch_info)
                 else:
                     binfo = None
 
