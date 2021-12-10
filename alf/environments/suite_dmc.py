@@ -35,7 +35,7 @@ class AlfEnvironmentDMC2GYMWrapper(AlfEnvironmentBaseWrapper):
     """
     AlfEnvironment wrapper forwards calls to the given environment.
     This wrapper is added to remove env_info, which is useless and 
-    will cause some bug in the training process, in the TimeStep.
+    will cause some bug in the training process, from the TimeStep.
     """
 
     @property
@@ -111,7 +111,7 @@ def dmc_loader(environment_name='dmc2gym',
         visualize_reward=False,
         from_pixels=from_pixels,
         #The episode_length passed to dmc2gym is doubled because we want to
-        #make sure that the reset happens in and only in alf_wrappers.TimeLimit.
+        #make sure that the reset is triggered only in alf_wrappers.TimeLimit.
         episode_length=max_episode_steps * 2,
         height=image_size,
         width=image_size,
