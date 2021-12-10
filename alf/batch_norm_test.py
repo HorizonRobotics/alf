@@ -64,9 +64,9 @@ class BatchNormTest(alf.test.TestCase):
             y0 = y[:n]
             y1 = y[n:2 * n]
             y2 = y[2 * n:]
-            self.assertLess(y0.mean(dim=0).abs().max(), 0.01)
-            self.assertLess((y0.var(dim=0) - 1).max(), 0.01)
-            self.assertLess(y1.mean(dim=0).abs().max(), 0.01)
+            self.assertLess(y0.mean(dim=0).abs().max(), 0.02)
+            self.assertLess((y0.var(dim=0) - 1).max(), 0.02)
+            self.assertLess(y1.mean(dim=0).abs().max(), 0.02)
             self.assertLess((y1.var(dim=0) - 4).max(), 0.04)
             # step out of limit will use the running stats for max_steps - 1
             self.assertLess((y2.mean(dim=0) - 9).abs().max(), 0.1)
