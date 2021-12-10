@@ -314,6 +314,7 @@ class Player(object):
                  with_camera_sensor=True,
                  with_radar_sensor=True,
                  with_bev_sensor=False,
+                 terminate_upon_infraction=False,
                  render_waypoints=True):
         """
         Args:
@@ -375,6 +376,8 @@ class Player(object):
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
             with_bev_sensor (bool): whether to use ``BEVSensor``.
+            terminate_upon_infraction (bool): whether to terminate the episode
+                when the agent has infraction (e.g., collision, running red light)
             render_waypoints (bool): whether to render (interpolated) waypoints
                 in the generated video during rendering. Note that it is only
                 used for visualization and has no impacts on the perception data.
@@ -383,6 +386,7 @@ class Player(object):
         self._alf_world = alf_world
         self._observation_sensors = {}
         self._render_waypoints = render_waypoints
+        self._terminate_upon_infraction = terminate_upon_infraction
 
         self._collision_sensor = CollisionSensor(actor)
         self._observation_sensors['collision'] = self._collision_sensor
@@ -662,6 +666,11 @@ class Player(object):
         if updated_speed_limit is not None:
             self._speed_limit = updated_speed_limit
 
+    def _get_actor_speed(self):
+        v = self._actor.get_velocity()
+        speed = np.linalg.norm(np.array([v.x, v.y, v.z], dtype=np.float))
+        return speed
+
     def get_overspeed_amount(self):
         """Get the difference between the actor's speed and the speed limit,
         lower bounded by 0.
@@ -671,8 +680,8 @@ class Player(object):
                     speed limit
                 - the amount of the actor's speed over the speed limit otherwise
         """
-        v = self._actor.get_velocity()
-        speed = np.linalg.norm(np.array([v.x, v.y, v.z], dtype=np.float))
+
+        speed = self._get_actor_speed()
 
         if self._speed_limit is None or speed < self._speed_limit:
             return 0.
@@ -710,12 +719,16 @@ class Player(object):
             red_light=np.float32(0.0),
             overspeed=np.float32(0.0))
 
+        #===========================Infractions=================================
+
+        # -------- Infraction 1: collision --------
         # When the previous episode ends because of stucking at a collision with
         # another vehicle, it may get an additional collision event in the new frame
         # because the relocation of the car may happen after the simulation of the
         # moving. So we ignore the collision at the first step.
         self._collision = not np.all(
             obs['collision'] == 0) and not self._is_first_step
+
         if self._collision and not self._prev_collision:
             # We only report the first collision event among contiguous collision
             # events.
@@ -731,6 +744,20 @@ class Player(object):
                 self._max_collision_penalty,
                 Player.PENALTY_RATE_COLLISION * max(0., self._episode_reward))
             reward_vector[Player.REWARD_COLLISION] = 1.
+
+        # -------- Infraction 2: running red light --------
+        red_light_id = self._alf_world.is_running_red_light(self._actor)
+        if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
+            logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
+                                                          current_frame))
+            reward_vector[Player.REWARD_RED_LIGHT] = 1.
+            info['red_light'] = np.float32(1.0)
+
+            reward -= min(
+                self._max_red_light_penalty,
+                Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
+
+        self._prev_violated_red_light_id = red_light_id
 
         if self._max_frame is None:
             step_type = ds.StepType.FIRST
@@ -752,6 +779,22 @@ class Player(object):
             logging.info("actor=%d frame=%d FAILURE: out of time" %
                          (self._actor.id, current_frame))
             step_type = ds.StepType.LAST
+        elif self._terminate_upon_infraction and (
+                reward_vector[Player.REWARD_COLLISION] +
+                reward_vector[Player.REWARD_RED_LIGHT]) > 0:
+            # Directly terminate upon some kinds of infractions (currently
+            # collision and running red light). The corresponding infraction
+            # penalty has already been accumulated into the reward earlier.
+            step_type = ds.StepType.LAST
+            discount = 0.0
+
+            if reward_vector[Player.REWARD_COLLISION] > 0:
+                logging.info("actor=%d frame=%d FAILURE: collision infraction"
+                             % (self._actor.id, current_frame))
+            if reward_vector[Player.REWARD_RED_LIGHT] > 0:
+                logging.info("actor=%d frame=%d FAILURE: red light infraction"
+                             % (self._actor.id, current_frame))
+
         elif (self._collision_loc is not None
               and current_frame - self._collision_frame >
               self._max_stuck_at_collision_frames
@@ -800,17 +843,6 @@ class Player(object):
             else:
                 self._unrecorded_distance_reward = 0
         reward += distance_reward
-
-        red_light_id = self._alf_world.is_running_red_light(self._actor)
-        if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
-            logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
-                                                          current_frame))
-            reward_vector[Player.REWARD_RED_LIGHT] = 1.
-            info['red_light'] = np.float32(1.0)
-            reward -= min(
-                self._max_red_light_penalty,
-                Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
-        self._prev_violated_red_light_id = red_light_id
 
         overspeed = self.get_overspeed_amount()
         if overspeed > 0 and self._overspeed_penalty_weight > 0:
