@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union, Callable, Iterable
+from typing import Union, Callable, Iterable, Tuple
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -2157,14 +2157,39 @@ def _conv_transpose_2d(in_channels,
 
 @alf.configurable(whitelist=['with_batch_normalization', 'bn_ctor'])
 class ResidueBlock(nn.Module):
+    """The ResidueBlock for ResNet.
+
+    This is the residual block used in ResNet-18 and ResNet-34 of the original
+    ResNet paper `Deep residual learning for image recognition
+    <https://arxiv.org/abs/1512.03385>`_.
+
+    Compared to BottleneckBlock, it has one less conv layer.
+    """
+
     def __init__(self,
-                 in_channels,
-                 channels,
-                 kernel_size,
-                 stride,
-                 transpose=False,
-                 with_batch_normalization=True,
-                 bn_ctor=nn.BatchNorm2d):
+                 in_channels: int,
+                 channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: Union[int, Tuple[int, int]],
+                 transpose: bool = False,
+                 with_batch_normalization: bool = True,
+                 bn_ctor: Callable[[int], nn.Module] = nn.BatchNorm2d):
+        """
+        Args:
+            in_channels: the number of channels of input
+            kernel_size: the kernel size of middle layer at main path
+            filters: the number of filters of the two conv layers at main path
+            stride: stride for this block.
+            transpose: a indicate using ``Conv2D`` or ``Conv2DTranspose``.
+                If two ``ResidueBlock`` layers ``L`` and ``LT`` are constructed
+                with the same arguments except ``transpose``, it is gauranteed that
+                ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
+                by ``stride``.
+            with_batch_normalization: whether to include batch normalization.
+                Note that standard ResNet uses batch normalization.
+            bn_ctor: will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
+        """
         super().__init__()
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
@@ -2252,8 +2277,6 @@ class BottleneckBlock(nn.Module):
                 Note that standard ResNet uses batch normalization.
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
-        Return:
-            Output tensor for the block
         """
         super().__init__()
         filters1, filters2, filters3 = filters
