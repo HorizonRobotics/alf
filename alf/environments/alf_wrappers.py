@@ -933,3 +933,36 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
         # action: [B, action_dim] or [action_dim]
         time_step = self._env.step(action)
         return time_step._replace(prev_action=prev_action)
+
+
+@alf.configurable
+class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
+    """Wrapper to change discount to 0 upon life loss for Atari.
+
+    This can potentially make it easier for the learning agent to recognize the
+    signficance of losing a life.
+
+    Some papers report the results with this enabled (e.g. arXiv:2111.00210)
+    """
+
+    def __init__(self, env):
+        """
+        Args:
+            env: ALF env to be wrapped
+            actions_num: number of values to discretize each action dim into
+        """
+        super().__init__(env)
+        self._prev_lives = 0
+
+    def _reset(self):
+        time_step = self._env.reset()
+        self._prev_lives = time_step.env_info['ale.lives']
+        return time_step
+
+    def _step(self, action):
+        time_step = self._env.step(action)
+        lives = time_step.env_info['ale.lives']
+        if lives < self._prev_lives:
+            time_step = time_step._replace(discount=np.float32(0))
+        self._prev_lives = lives
+        return time_step
