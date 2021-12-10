@@ -145,6 +145,9 @@ class SequentialDataTransformer(DataTransformer):
     def stack_size(self):
         return self._stack_size
 
+    def members(self):
+        return self._data_transformers
+
     def transform_timestep(self, timestep: TimeStep, state):
         new_state = []
         for trans, state in zip(self._data_transformers, state):

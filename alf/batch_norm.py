@@ -317,9 +317,9 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
         if isinstance(m, (BatchNorm1d, BatchNorm2d)):
             bns.add(m)
         elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
-            raise ValueError(
-                "RNN does not support torch.nn.BatchNorm layer "
-                "(at %s). Please use alf.layers.BatchNorm instead." % path)
+            warning_once(
+                "RNN may not perform well with torch.nn.BatchNorm layer "
+                "(at %s). Consider using alf.layers.BatchNorm instead." % path)
         elif isinstance(m, nn.Module):
             for name, submodule in m.named_children():
                 if submodule not in visited:

@@ -177,6 +177,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             train_state_spec=mcts.predict_state_spec,
             predict_state_spec=mcts.predict_state_spec,
             rollout_state_spec=mcts.predict_state_spec,
+            config=config,
             debug_summaries=debug_summaries,
             name=name)
 
@@ -672,7 +673,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         positions = torch.min(positions, episode_end_positions)
         return env_ids, positions
 
-    def calc_loss(self, info: MuzeroInfo):
+    def calc_loss(self, info: LossInfo):
         if self._calculate_priority:
             priority = info.loss.extra['value'].sqrt().sum(dim=0)
         else:
