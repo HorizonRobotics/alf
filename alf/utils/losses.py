@@ -24,12 +24,12 @@ def element_wise_huber_loss(x, y):
     """Elementwise Huber loss.
 
     Args:
-        x (Tensor): prediction
-        y (Tensor): target
+        x (Tensor): label
+        y (Tensor): prediction
     Returns:
         loss (Tensor)
     """
-    return F.smooth_l1_loss(x, y, reduction="none")
+    return F.smooth_l1_loss(y, x, reduction="none")
 
 
 @alf.configurable
@@ -37,12 +37,12 @@ def element_wise_squared_loss(x, y):
     """Elementwise squared loss.
 
     Args:
-        x (Tensor): prediction
-        y (Tensor): target
+        x (Tensor): label
+        y (Tensor): prediction
     Returns:
         loss (Tensor)
     """
-    return F.mse_loss(x, y, reduction="none")
+    return F.mse_loss(y, x, reduction="none")
 
 
 @alf.configurable
@@ -80,6 +80,10 @@ def multi_quantile_huber_loss(quantiles: torch.Tensor,
         quantiles: batch_shape + [num_quantiles,]
         target: batch_shape or batch_shape + [num_targets, ]
         delta: the smoothness parameter for huber loss (larger means smoother).
+            Note that the quantile estimation with delta > 0 is biased. You should
+            use a small value for ``delta`` if you want the quantile estimation
+            to be less biased (so that the mean of the quantile will be close
+            to mean of the samples).
     Returns:
         loss of batch_shape
     """
