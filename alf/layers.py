@@ -2180,7 +2180,7 @@ class ResidueBlock(nn.Module):
             kernel_size: the kernel size of middle layer at main path
             filters: the number of filters of the two conv layers at main path
             stride: stride for this block.
-            transpose: a indicate using ``Conv2D`` or ``Conv2DTranspose``.
+            transpose: whether use ``Conv2D`` or ``Conv2DTranspose``.
                 If two ``ResidueBlock`` layers ``L`` and ``LT`` are constructed
                 with the same arguments except ``transpose``, it is gauranteed that
                 ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
@@ -2229,7 +2229,7 @@ class ResidueBlock(nn.Module):
         self._core_layers = core_layers
         self._shortcut_layers = shortcut_layers
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         core = self._core_layers(inputs)
         if self._shortcut_layers:
             shortcut = self._shortcut_layers(inputs)
