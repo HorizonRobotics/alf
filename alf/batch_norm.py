@@ -154,21 +154,30 @@ class _NormBase(nn.Module):
                 self._running_means, dim=0)[self._current_step]
             running_vars = torch.stack(
                 self._running_vars, dim=0)[self._current_step]
-            k = input.ndim - 2
-            if k > 0:
-                ones = [1] * k
-                running_means = running_means.reshape(*running_means.shape,
-                                                      *ones)
-                running_vars = running_vars.reshape(*running_vars.shape, *ones)
-            y = (input - running_means) * (running_vars + self._eps).rsqrt()
+            if running_means.ndim == 1:
+                running_means = running_means[None, :].expand(input.shape[:2])
+                running_vars = running_vars[None, :].expand(input.shape[:2])
+            running_means = running_means.reshape(-1)
+            running_vars = running_vars.reshape(-1)
+            weight = self._weight
+            bias = self._bias
             if self._affine:
-                weight = self._weight
-                bias = self._bias
-                if k > 0:
-                    shape = [self._num_features] + ones
-                    weight = weight.reshape(shape)
-                    bias = bias.reshape(shape)
-                y = y * weight + bias
+                weight = weight[None, :].expand(input.shape[:2])
+                bias = bias[None, :].expand(input.shape[:2])
+            batch_size = input.shape[0]
+            input = input.reshape(1, -1, *input.shape[2:])
+            y = F.batch_norm(
+                input,
+                running_means,
+                running_vars,
+                weight,
+                bias,
+                # whether the mini-batch stats should be used for normalization
+                # rather than the running stats.
+                False,
+                0.0,  # exponential_average_factor
+                self._eps)
+            y = y.reshape(batch_size, -1, *y.shape[2:])
             return y
 
 
@@ -307,6 +316,7 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
 
     Returns:
         True if alf.layers.BatchNorm layers have been found
+
         False otherwise.
     """
     bns = set()
