@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union, Callable, Iterable
+from typing import Union, Callable, Iterable, Tuple
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -2155,6 +2155,90 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
+@alf.configurable(whitelist=['with_batch_normalization', 'bn_ctor'])
+class ResidueBlock(nn.Module):
+    """The ResidueBlock for ResNet.
+
+    This is the residual block used in ResNet-18 and ResNet-34 of the original
+    ResNet paper `Deep residual learning for image recognition
+    <https://arxiv.org/abs/1512.03385>`_.
+
+    Compared to BottleneckBlock, it has one less conv layer.
+    """
+
+    def __init__(self,
+                 in_channels: int,
+                 channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: Union[int, Tuple[int, int]],
+                 transpose: bool = False,
+                 with_batch_normalization: bool = True,
+                 bn_ctor: Callable[[int], nn.Module] = nn.BatchNorm2d):
+        """
+        Args:
+            in_channels: the number of channels of input
+            kernel_size: the kernel size of middle layer at main path
+            filters: the number of filters of the two conv layers at main path
+            stride: stride for this block.
+            transpose: whether use ``Conv2D`` or ``Conv2DTranspose``.
+                If two ``ResidueBlock`` layers ``L`` and ``LT`` are constructed
+                with the same arguments except ``transpose``, it is gauranteed that
+                ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
+                by ``stride``.
+            with_batch_normalization: whether to include batch normalization.
+                Note that standard ResNet uses batch normalization.
+            bn_ctor: will be called as ``bn_ctor(num_features)`` to
+                create the BN layer.
+        """
+        super().__init__()
+
+        conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
+        bias = not with_batch_normalization
+        relu = nn.ReLU(inplace=True)
+        padding = (kernel_size - 1) // 2
+
+        conv1 = conv_fn(
+            in_channels,
+            channels,
+            kernel_size,
+            stride,
+            padding=padding,
+            bias=bias)
+        conv2 = conv_fn(
+            channels, channels, kernel_size, padding=padding, bias=bias)
+        nn.init.kaiming_normal_(conv1.weight.data)
+        nn.init.kaiming_normal_(conv2.weight.data)
+
+        if stride != 1 or in_channels != channels:
+            s = conv_fn(in_channels, channels, 1, stride, bias=bias)
+            nn.init.kaiming_normal_(s.weight.data)
+            if bias:
+                nn.init.zeros_(s.bias.data)
+            if with_batch_normalization:
+                shortcut_layers = nn.Sequential(s, bn_ctor(channels))
+            else:
+                shortcut_layers = s
+        else:
+            shortcut_layers = None
+
+        if with_batch_normalization:
+            core_layers = nn.Sequential(conv1, bn_ctor(channels), relu, conv2,
+                                        bn_ctor(channels))
+        else:
+            core_layers = nn.Sequential(conv1, relu, conv2)
+        self._core_layers = core_layers
+        self._shortcut_layers = shortcut_layers
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        core = self._core_layers(inputs)
+        if self._shortcut_layers:
+            shortcut = self._shortcut_layers(inputs)
+        else:
+            shortcut = inputs
+
+        return torch.relu_(core + shortcut)
+
+
 @alf.configurable(whitelist=['v1_5', 'with_batch_normalization', 'bn_ctor'])
 class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
@@ -2193,15 +2277,13 @@ class BottleneckBlock(nn.Module):
                 Note that standard ResNet uses batch normalization.
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
-        Return:
-            Output tensor for the block
         """
         super().__init__()
         filters1, filters2, filters3 = filters
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
 
-        bias = not with_batch_normalization or keep_conv_bias
+        bias = not with_batch_normalization
 
         padding = (kernel_size - 1) // 2
         if v1_5:
