@@ -257,8 +257,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """
         self._num_critic_replicas = num_critic_replicas
         self._calculate_priority = calculate_priority
-        if epsilon_greedy is None and config:
-            epsilon_greedy = config.epsilon_greedy
+        if epsilon_greedy is None:
+            epsilon_greedy = config.epsilon_greedy if config else 0.
         self._epsilon_greedy = epsilon_greedy
 
         critic_networks, actor_network, self._act_type = self._make_networks(
