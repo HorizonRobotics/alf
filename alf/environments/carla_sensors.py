@@ -1368,10 +1368,21 @@ class NavigationSensor(SensorBase):
         return ("Positions of the %s future locations in the route." % len(
             self._future_indices))
 
+    def _update_nearest_index(self):
+        """Update the ``nearest_index``, whici represents the index to the
+        waypoint closest to the player's position in the navigation route.
+        """
+        loc = self._alf_world.get_actor_location(self._parent.id)
+        loc = np.array([loc.x, loc.y, loc.z])
+        nearby_waypoints = self._waypoints[self._nearest_index:self.
+                                           _nearest_index + self.WINDOW]
+        dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
+        self._nearest_index = self._nearest_index + np.argmin(dist)
+
     def get_current_observation(self, current_frame):
         """Get the current observation.
 
-        The observation is an 8x3 array consists of the posistions of 8 future
+        The observation is an 8x3 array consists of the positions of 8 future
         locations on the routes.
 
         Args:
@@ -1382,15 +1393,28 @@ class NavigationSensor(SensorBase):
             will transform them to egocentric coordinates as the observation for
             ``Player``
         """
-        loc = self._alf_world.get_actor_location(self._parent.id)
-        loc = np.array([loc.x, loc.y, loc.z])
-        nearby_waypoints = self._waypoints[self._nearest_index:self.
-                                           _nearest_index + self.WINDOW]
-        dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
-        self._nearest_index = self._nearest_index + np.argmin(dist)
+        self._update_nearest_index()
         indices = np.minimum(self._nearest_index + self._future_indices,
                              self._num_waypoints - 1)
         return self._waypoints[indices]
+
+    def get_current_route(self, future_number):
+        """Get the current navigation route based on the location.
+
+
+        Args:
+            future_number (int): the number of future route waypoints. If -1,
+                all the future way points on the route will be returned.
+        Returns:
+            np.ndarray: contains the 3-D positions of future waypoints on the
+                route. Note that the positions are absolution coordinates.
+        """
+        self._update_nearest_index()
+        if future_number == -1:
+            return self._route_waypoints[self._nearest_index::5]
+        else:
+            return self._route_waypoints[self._nearest_index:self.
+                                         _nearest_index + int(future_number):5]
 
     @property
     def num_waypoints(self):
@@ -1465,9 +1489,10 @@ class BEVSensor(SensorBase):
                  parent_actor,
                  alf_world,
                  navigation_sensor,
-                 image_size_in_pixels=200,
+                 image_height_in_pixels=200,
+                 image_width_in_pixels=200,
                  pixels_per_meter=5,
-                 use_rgb_image=False,
+                 observation_mode="rgb",
                  pixels_ev_to_bottom=50,
                  history_idx=[-16, -11, -6, -1],
                  max_history_len=20,
@@ -1480,18 +1505,29 @@ class BEVSensor(SensorBase):
                 some utility functions (e.g., `_get_traffic_light_waypoints`)
             navigation_sensor (str): the navigation sensor associated with the
                 `parent_actor`
-            image_size_in_pixels (int): number of pixels for the rendered
-                BEV image. The BEV image is square shaped.
+            image_height_in_pixels (int): number of pixels for the height of
+                rendered BEV image.
+            image_width_in_pixels (int): number of pixels for the width of
+                rendered BEV image.
             pixels_per_meter (int): how many pixels in the BEV image correspond
                 to one meter in the world coordinate
-            use_rgb_image (bool): whether use encoded rgb image as observation.
-                If True, the sensor will return encoded rgb image as sensor
-                readings. Otherwise, it will return a multi-channel mask image
-                as the sensor reading (TODO: add support to structured info)
+            observation_mode (str): a string indicating the observation mode
+                for the BEV image.
+                - If "rgb", the sensor will return encoded rgb image as sensor
+                    readings.
+                - If "mask": it will use a multi-channel mask image as the
+                    sensor readings.
+                - If 'bitmap': it will use a multi-channel mask representation,
+                    and encode the mask tensor with bit representation. In this
+                    case, a proper decoder might be needed for the bitmap before
+                    being used for training.
             pixels_ev_to_bottom (int): the number of pixels of the ego
                 vehicle (ev) to the bottom of the BEV image.
             history_idx (list[int]): a list of numbers representing the indices
-                of the history information to be rendered for non-ego vehicles
+                of the history information to be rendered for non-ego vehicles.
+                For example, we can set `history_idx=[-1]` for keep only the
+                most recent observation or `history_idx=[-11, -1]` for both the
+                lastest and also the one 10 steps earlier.
             max_history_len (int): max number of history length preserved
             vehicle_bbox_factor (float): a factor to scale the vehicle bounding
                 boxes
@@ -1500,17 +1536,17 @@ class BEVSensor(SensorBase):
         """
 
         super().__init__(parent_actor)
-        self._width = image_size_in_pixels
+        self._height = image_height_in_pixels
+        self._width = image_width_in_pixels
         self._pixels_ev_to_bottom = pixels_ev_to_bottom
         self._pixels_per_meter = pixels_per_meter
         self._history_idx = history_idx
         self._vehicle_bbox_factor = vehicle_bbox_factor
         self._walker_bbox_factor = walker_bbox_factor
-        self._use_rgb_image = use_rgb_image
+        self._observation_mode = observation_mode
         self._history_queue = deque(maxlen=max_history_len)
 
         self._image_channels = 3
-        self._masks_channels = 3 + 3 * len(self._history_idx)
 
         self._alf_world = alf_world
         self._world = alf_world._world
@@ -1524,14 +1560,30 @@ class BEVSensor(SensorBase):
         TrafficLightHandler.reset(self._alf_world)
 
         self._distance_threshold = np.ceil(
-            self._width / self._pixels_per_meter)
+            self._height / self._pixels_per_meter)
 
-        if self._use_rgb_image:
+        if self._observation_mode == "rgb":
             self._observation_spec = alf.TensorSpec(
-                [3, self._width, self._width], dtype='uint8')
-        else:
+                [3, self._height, self._width], dtype='uint8')
+        elif self._observation_mode == "mask":
+            # [road, route, lane, [tl_g_y_r, vehicle, walker] * hist_len]
+            # 3 static masks: road mask, route mask and lane mask;
+            # 3 * l masks for dynamics objects that can have length-l history
+            # information: vehicle, walker and traffic lights. Note that
+            # the traffic lights are encoded in the same mask channel.
+            self._masks_channels = 3 + 3 * len(self._history_idx)
+
             self._observation_spec = alf.TensorSpec(
-                [self._masks_channels, self._width, self._width],
+                [self._masks_channels, self._height, self._width],
+                dtype='uint8')
+        elif self._observation_mode == "bitmap":
+            # 3 static masks: road mask, route mask and lane mask;
+            # 5 * l masks for dynamics objects that can have length-l
+            # history information: vehicle, walker, green light, yellow
+            # light and red light.
+            self._bitmap_channels = 3 + 5 * len(self._history_idx)
+            self._observation_spec = alf.TensorSpec(
+                [self._bitmap_channels, self._height, self._width],
                 dtype='uint8')
 
     def observation_spec(self):
@@ -1548,12 +1600,12 @@ class BEVSensor(SensorBase):
                  vehicle.get_transform()))
         return bounding_boxes
 
-    def _generate_observation(self, render_rgb_image):
-
+    def _get_objects_within_region(self):
+        """Get relevant objects within a region around the ev and push them
+        into a queue.
+        """
         ev_transform = self._parent.get_transform()
         ev_loc = ev_transform.location
-        ev_rot = ev_transform.rotation
-        ev_bbox = self._parent.bounding_box
 
         def is_within_distance(loc):
             # determine if it is the ego-vehicle
@@ -1588,87 +1640,162 @@ class BEVSensor(SensorBase):
         self._history_queue.append((vehicles, walkers, tl_green, tl_yellow,
                                     tl_red, stops))
 
+    def generate_observation_masks(self):
+        """Generate all the masks required for rendering the BEV observation.
+
+        Return:
+            a dictionary containing masks for different elements in the scene:
+            -
+        """
+        ev_transform = self._parent.get_transform()
+        ev_loc = ev_transform.location
+        ev_rot = ev_transform.rotation
+        ev_bbox = self._parent.bounding_box
+
         M_warp = self._get_warp_transform(ev_loc, ev_rot)
 
         # objects with history
         vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
             = self._get_history_masks(M_warp)
 
-        # road_mask, lane_mask
-        road_mask = cv2.warpAffine(self._road, M_warp,
-                                   (self._width, self._width)).astype(bool)
-        lane_mask = cv2.warpAffine(self._lane, M_warp,
-                                   (self._width, self._width)).astype(bool)
+        # perform joint transformation of masks
+        # note that the shape paramter for wrapAffine is (#cols, #rows)
+        road_lane_mask = cv2.warpAffine(
+            np.stack([self._road, self._lane], axis=2), M_warp,
+            (self._width, self._height)).astype(np.bool)
+
+        road_mask = road_lane_mask[..., 0]
+        lane_mask = road_lane_mask[..., 1]
 
         # route_mask
-        route_mask = np.zeros([self._width, self._width], dtype=np.uint8)
+        route_mask = np.zeros([self._height, self._width], dtype=np.uint8)
+
         route_in_pixel = np.array(
             [[self._world_to_pixel(wp.transform.location)]
-             for wp in self._navigation_sensor._route_waypoints])
-        route_warped = cv2.transform(route_in_pixel, M_warp)
-        cv2.polylines(
-            route_mask, [np.round(route_warped).astype(np.int32)],
-            False,
-            1,
-            thickness=16)
-        route_mask = route_mask.astype(bool)
+             for wp in self._navigation_sensor.get_current_route(
+                 self._height * 1.5 / self._pixels_per_meter)])
+
+        if route_in_pixel != []:
+            route_warped = cv2.transform(route_in_pixel, M_warp)
+
+            cv2.polylines(
+                route_mask, [np.round(route_warped).astype(np.int32)],
+                False,
+                1,
+                thickness=max(1, 3 * self._pixels_per_meter))
+        route_mask = route_mask.astype(np.bool)
 
         # ev_mask
         ev_mask = self._get_mask_from_actor_list(
             [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp)
 
+        mask_dict = {
+            "ev_mask": ev_mask,
+            "road_mask": road_mask,
+            "lane_mask": lane_mask,
+            "route_mask": route_mask,
+            "vehicle_masks": vehicle_masks,
+            "walker_masks": walker_masks,
+            "tl_green_masks": tl_green_masks,
+            "tl_yellow_masks": tl_yellow_masks,
+            "tl_red_masks": tl_red_masks,
+            "stop_masks": stop_masks
+        }
+
+        return mask_dict
+
+    def _generate_observation(self, render_rgb_image):
+
+        # first get all revelant information
+        self._get_objects_within_region()
+
+        mask_dict = self.generate_observation_masks()
+
+        # self._masks_to_indices(mask_dict)
+
         if render_rgb_image:
             # render
-            image = np.zeros([self._width, self._width, 3], dtype=np.uint8)
-            image[road_mask] = COLOR_ALUMINIUM_5
-            image[route_mask] = COLOR_ALUMINIUM_3
-            image[lane_mask] = COLOR_MAGENTA
+            image = np.zeros([3, self._height, self._width], dtype=np.uint8)
+            image[:, mask_dict["road_mask"]] = COLOR_ALUMINIUM_5
+            image[:, mask_dict["route_mask"]] = COLOR_ALUMINIUM_3
+            image[:, mask_dict["lane_mask"]] = COLOR_MAGENTA
 
             h_len = len(self._history_idx) - 1
-            for i, mask in enumerate(stop_masks):
-                image[mask] = interp_color(COLOR_YELLOW_2, (h_len - i) * 0.2)
-            for i, mask in enumerate(tl_green_masks):
-                image[mask] = interp_color(COLOR_GREEN, (h_len - i) * 0.2)
-            for i, mask in enumerate(tl_yellow_masks):
-                image[mask] = interp_color(COLOR_YELLOW, (h_len - i) * 0.2)
-            for i, mask in enumerate(tl_red_masks):
-                image[mask] = interp_color(COLOR_RED, (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["stop_masks"]):
+                image[:, mask] = interp_color(COLOR_YELLOW_2,
+                                              (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["tl_green_masks"]):
+                image[:, mask] = interp_color(COLOR_GREEN, (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["tl_yellow_masks"]):
+                image[:, mask] = interp_color(COLOR_YELLOW, (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["tl_red_masks"]):
+                image[:, mask] = interp_color(COLOR_RED, (h_len - i) * 0.2)
 
-            for i, mask in enumerate(vehicle_masks):
-                image[mask] = interp_color(COLOR_BLUE, (h_len - i) * 0.2)
-            for i, mask in enumerate(walker_masks):
-                image[mask] = interp_color(COLOR_CYAN, (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["vehicle_masks"]):
+                image[:, mask] = interp_color(COLOR_BLUE, (h_len - i) * 0.2)
+            for i, mask in enumerate(mask_dict["walker_masks"]):
+                image[:, mask] = interp_color(COLOR_CYAN, (h_len - i) * 0.2)
 
-            image[ev_mask] = COLOR_WHITE
+            image[:, mask_dict["ev_mask"]] = COLOR_WHITE
 
-            # [H, W, C] -> [C, H, W]
-            image = np.transpose(image, (2, 0, 1))
-            return image.astype(np.uint8)
+            return image
 
-        else:
+        elif self._observation_mode == "mask":
             # use masks
-            c_road = road_mask * 255
-            c_route = route_mask * 255
-            c_lane = lane_mask * 255
+            c_road = mask_dict["road_mask"] * 255
+            c_route = mask_dict["route_mask"] * 255
+            c_lane = mask_dict["lane_mask"] * 255
 
             # masks with history
+            # [road, route, lane, [vehicle, walker, tl_g_y_r] * hist_len]
             c_tl_history = []
             for i in range(len(self._history_idx)):
-                c_tl = np.zeros([self._width, self._width], dtype=np.uint8)
-                c_tl[tl_green_masks[i]] = 80
-                c_tl[tl_yellow_masks[i]] = 170
-                c_tl[tl_red_masks[i]] = 255
-                c_tl[stop_masks[i]] = 255
+                c_tl = np.zeros([self._height, self._width], dtype=np.uint8)
+                c_tl[mask_dict["tl_green_masks"][i]] = 80
+                c_tl[mask_dict["tl_yellow_masks"][i]] = 170
+                c_tl[mask_dict["tl_red_masks"][i]] = 255
+                c_tl[mask_dict["stop_masks"][i]] = 255
                 c_tl_history.append(c_tl)
 
-            c_vehicle_history = [m * 255 for m in vehicle_masks]
-            c_walker_history = [m * 255 for m in walker_masks]
+            c_vehicle_history = [m * 255 for m in mask_dict["vehicle_masks"]]
+            c_walker_history = [m * 255 for m in mask_dict["walker_masks"]]
 
             masks = np.stack((c_road, c_route, c_lane, *c_vehicle_history,
                               *c_walker_history, *c_tl_history),
-                             axis=2)
-            masks = np.transpose(masks, [2, 0, 1])
-            return masks
+                             axis=0)
+
+            return masks.astype(np.uint8)
+
+        elif self._observation_mode == "bitmap":
+            # use masks
+            c_road = mask_dict["road_mask"]
+            c_route = mask_dict["route_mask"]
+            c_lane = mask_dict["lane_mask"]
+
+            # masks with history
+            # [road, route, lane, [vehicle, walker, tl_g, tl_y, tl_r] * hist_len]
+            c_tl_g_history = []
+            c_tl_y_history = []
+            c_tl_r_history = []
+            c_vehicle_history = []
+            c_walker_history = []
+            for i in range(len(self._history_idx)):
+                c_tl_g_history.append(mask_dict["tl_green_masks"][i])
+                c_tl_y_history.append(mask_dict["tl_yellow_masks"][i])
+                c_tl_r_history.append(mask_dict["tl_red_masks"][i])
+
+            c_vehicle_history = [m * 255 for m in mask_dict["vehicle_masks"]]
+            c_walker_history = [m * 255 for m in mask_dict["walker_masks"]]
+
+            masks = np.stack(
+                (mask_dict["road_mask"], mask_dict["route_mask"],
+                 mask_dict["lane_mask"], *mask_dict["vehicle_masks"],
+                 *mask_dict["walker_masks"], *mask_dict["tl_green_masks"],
+                 *mask_dict["tl_yellow_masks"], *mask_dict["tl_red_masks"]),
+                axis=0)
+            bitmap = np.packbits(masks, bitorder='big', axis=0)
+
+            return bitmap.astype(np.uint8)
 
     def get_current_observation(self, current_frame):
         """Get the current observation.
@@ -1684,7 +1811,8 @@ class BEVSensor(SensorBase):
         Returns:
             BEV image
         """
-        return self._generate_observation(render_rgb_image=self._use_rgb_image)
+        return self._generate_observation(
+            render_rgb_image=(self._observation_mode == "rgb"))
 
     def render(self):
         """Return the rendered RGB image of the BEV view
@@ -1786,6 +1914,7 @@ class BEVSensor(SensorBase):
                 # and bounding-box extent
                 actor_info = (transform, bb_loc, bb_ext)
                 actors.append(actor_info)
+
         return actors
 
     def _get_warp_transform(self, ev_loc, ev_rot):
@@ -1800,16 +1929,17 @@ class BEVSensor(SensorBase):
         bottom_left = ev_loc_in_px - self._pixels_ev_to_bottom * forward_vec - (
             0.5 * self._width) * right_vec
         top_left = ev_loc_in_px + (
-            self._width - self._pixels_ev_to_bottom) * forward_vec - (
+            self._height - self._pixels_ev_to_bottom) * forward_vec - (
                 0.5 * self._width) * right_vec
         top_right = ev_loc_in_px + (
-            self._width - self._pixels_ev_to_bottom) * forward_vec + (
+            self._height - self._pixels_ev_to_bottom) * forward_vec + (
                 0.5 * self._width) * right_vec
 
         src_pts = np.stack((bottom_left, top_left, top_right),
                            axis=0).astype(np.float32)
+        # in the order of [x, y]
         dst_pts = np.array(
-            [[0, self._width - 1], [0, 0], [self._width - 1, 0]],
+            [[0, self._height - 1], [0, 0], [self._width - 1, 0]],
             dtype=np.float32)
         return cv2.getAffineTransform(src_pts, dst_pts)
 
