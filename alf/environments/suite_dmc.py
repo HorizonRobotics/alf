@@ -110,8 +110,8 @@ def dmc_loader(environment_name='dmc2gym',
         seed=seed,
         visualize_reward=False,
         from_pixels=from_pixels,
-        #The episode_length passed to dmc2gym is doubled because we want to
-        #make sure that the reset is triggered only in alf_wrappers.TimeLimit.
+        # The episode_length passed to dmc2gym is doubled because we want to
+        # make sure that the reset is triggered only in alf_wrappers.TimeLimit.
         episode_length=max_episode_steps * 2,
         height=image_size,
         width=image_size,
