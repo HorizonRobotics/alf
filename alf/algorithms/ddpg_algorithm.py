@@ -139,7 +139,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
         self._calculate_priority = calculate_priority
-        if epsilon_greedy is None:
+        if epsilon_greedy is None and config:
             epsilon_greedy = config.epsilon_greedy
         self._epsilon_greedy = epsilon_greedy
 
