@@ -83,6 +83,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  reanalyze_td_steps=5,
                  reanalyze_td_steps_func=None,
                  reanalyze_batch_size=None,
+                 full_reanalyze=False,
                  data_transformer_ctor=None,
                  target_update_tau=1.,
                  target_update_period=1000,
@@ -140,6 +141,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 reanalyzing all the data for one training iteration. If so, provide
                 a number for this so that it will analyzing the data in several
                 batches.
+            full_reanalyze (bool): if False, during reanalyze only the first
+                ``num_unroll_steps+1`` steps are calculated using MCTS, and the next
+                 ``reanalyze_td_steps`` are calculated from the model directly.
+                 If True, all are calculated using MCTS.
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
@@ -199,6 +204,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reanalyze_td_steps_func = reanalyze_td_steps_func
         self._reanalyze_td_steps = reanalyze_td_steps
         self._reanalyze_batch_size = reanalyze_batch_size
+        self._full_reanalyze = full_reanalyze
         if data_transformer_ctor is not None:
             self._data_transformer = create_data_transformer(
                 data_transformer_ctor, observation_spec)
@@ -547,14 +553,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             def _split1(x):
                 shape = x.shape[2:]
-                return x[:, :n1, ...].reshape(batch_size * n1, *shape)
+                if n2 > 0:
+                    x = x[:, :n1, ...]
+                return x.reshape(batch_size * n1, *shape)
 
             def _split2(x):
                 shape = x.shape[2:]
                 return x[:, n1:, ...].reshape(batch_size * n2, *shape)
 
             exp1 = alf.nest.map_structure(_split1, exp)
-            exp2 = alf.nest.map_structure(_split2, exp)
+            exp2 = ()
+            if n2 > 0:
+                exp2 = alf.nest.map_structure(_split2, exp)
 
         return exp1, exp2
 
@@ -594,8 +604,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             bootstrap_n = self._reanalyze_td_steps_func(age, n2, progress)
             bootstrap_n = torch.minimum(bootstrap_n, steps_to_episode_end)
 
-        exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
-                                                  positions, n1, n2)
+        if self._full_reanalyze:
+            exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
+                                                      positions, n1 + n2, 0)
+        else:
+            exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
+                                                      positions, n1, n2)
 
         bootstrap_position = positions1 + bootstrap_n
         sum_reward, discount = self._sum_discounted_reward(
@@ -615,25 +629,28 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             with torch.cuda.amp.autocast(self._enable_amp):
                 mcts_step = self._reanalyze_mcts.predict_step(
                     exp1, alf.nest.get_field(exp1, mcts_state_field))
-            candidate_actions = ()
-            if mcts_step.info.candidate_actions != ():
-                candidate_actions = mcts_step.info.candidate_actions
-                candidate_actions = candidate_actions.reshape(
-                    batch_size, n1, *candidate_actions.shape[1:])
+
+            def _reshape(x):
+                x = x.reshape(batch_size, -1, *x.shape[1:])
+                return x[:, :n1] if self._full_reanalyze else x
+
+            candidate_actions = mcts_step.info.candidate_actions
+            if candidate_actions != ():
+                candidate_actions = _reshape(candidate_actions)
             candidate_action_policy = mcts_step.info.candidate_action_policy
-            candidate_action_policy = candidate_action_policy.reshape(
-                batch_size, n1, *candidate_action_policy.shape[1:])
-            values1 = mcts_step.info.value.reshape(batch_size, n1)
+            candidate_action_policy = _reshape(candidate_action_policy)
+            values = mcts_step.info.value.reshape(batch_size, -1)
 
             # 2. Calulate the value of the next n2 steps so that n2-step return
             # can be computed.
-            with torch.cuda.amp.autocast(self._enable_amp):
-                model_output = self._target_model.initial_inference(
-                    exp2.observation)
-            values2 = model_output.value.reshape(batch_size, n2)
+            if not self._full_reanalyze:
+                with torch.cuda.amp.autocast(self._enable_amp):
+                    model_output = self._target_model.initial_inference(
+                        exp2.observation)
+                values2 = model_output.value.reshape(batch_size, n2)
+                values = torch.cat([values, values2], dim=1)
 
             # 3. Calculate n2-step return
-            values = torch.cat([values1, values2], dim=1)
             # [B, n1]
             bootstrap_pos = torch.arange(n1).unsqueeze(0) + bootstrap_n
             values = values[torch.arange(batch_size).
