@@ -76,8 +76,8 @@ def dmc_loader(environment_name='dmc2gym',
 
     This loader will not take environment_name, instead please use domain_name and tesk_name.
     For installation of dmc2gym, see https://github.com/denisyarats/dmc2gym.
-    For installation of DMControl, see https://github.com/deepmind/mujoco.
-    For installation of MuJoCo200, see https://roboti.us.
+    For installation of DMControl, see https://github.com/deepmind/dm_control.
+    For installation of MuJoCo210, see https://mujoco.org.
 
     Args:
         environment_name (str): Do not use this arg, this arg is here to
@@ -85,7 +85,9 @@ def dmc_loader(environment_name='dmc2gym',
         domain_name (str): The name of MuJoCo domain that is used.
         task_name (str): The name of task we want the agent to do in the
             current MuJoCo domain.
-        seed (int): Random seed for the environment.
+        seed (int): Random seed for the environment. This parameter is
+            here to serve as a place holder and will be override by the
+            seed of create_environment().
         from_pixels (boolean): Output image if set to True.
         image_size (int): The height and width of the output 
             image from the environment.
