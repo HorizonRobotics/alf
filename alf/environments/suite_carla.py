@@ -314,7 +314,7 @@ class Player(object):
                  with_camera_sensor=True,
                  with_radar_sensor=True,
                  with_bev_sensor=False,
-                 terminate_upon_infraction=False,
+                 terminate_upon_infraction="",
                  render_waypoints=True):
         """
         Args:
@@ -376,8 +376,9 @@ class Player(object):
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
             with_bev_sensor (bool): whether to use ``BEVSensor``.
-            terminate_upon_infraction (bool): whether to terminate the episode
-                when the agent has infraction (e.g., collision, running red light)
+            terminate_upon_infraction (str): whether to terminate the episode
+                based on the specified mode (collision", "redlight", "all"),
+                when the agent has the corresponding infractions.
             render_waypoints (bool): whether to render (interpolated) waypoints
                 in the generated video during rendering. Note that it is only
                 used for visualization and has no impacts on the perception data.
@@ -386,6 +387,8 @@ class Player(object):
         self._alf_world = alf_world
         self._observation_sensors = {}
         self._render_waypoints = render_waypoints
+
+        assert terminate_upon_infraction in ('collision', 'redlight', 'all')
         self._terminate_upon_infraction = terminate_upon_infraction
 
         self._collision_sensor = CollisionSensor(actor)
@@ -779,21 +782,25 @@ class Player(object):
             logging.info("actor=%d frame=%d FAILURE: out of time" %
                          (self._actor.id, current_frame))
             step_type = ds.StepType.LAST
-        elif self._terminate_upon_infraction and (
-                reward_vector[Player.REWARD_COLLISION] +
-                reward_vector[Player.REWARD_RED_LIGHT]) > 0:
-            # Directly terminate upon some kinds of infractions (currently
-            # collision and running red light). The corresponding infraction
-            # penalty has already been accumulated into the reward earlier.
+        elif (self._terminate_upon_infraction == "redlight" or
+                self._terminate_upon_infraction == "all") and \
+                reward_vector[Player.REWARD_RED_LIGHT] > 0:
+            # directly terminate upon redlight infractions; the corresponding
+            # infraction penalty has already been assigned earlier
             step_type = ds.StepType.LAST
             discount = 0.0
+            logging.info("actor=%d frame=%d FAILURE: red light infraction" %
+                         (self._actor.id, current_frame))
 
-            if reward_vector[Player.REWARD_COLLISION] > 0:
-                logging.info("actor=%d frame=%d FAILURE: collision infraction"
-                             % (self._actor.id, current_frame))
-            if reward_vector[Player.REWARD_RED_LIGHT] > 0:
-                logging.info("actor=%d frame=%d FAILURE: red light infraction"
-                             % (self._actor.id, current_frame))
+        elif (self._terminate_upon_infraction == "collision" or
+                self._terminate_upon_infraction == "all") and \
+                reward_vector[Player.REWARD_COLLISION] > 0:
+            # directly terminate upon collision infractions; the corresponding
+            # infraction penalty has already been assigned earlier
+            step_type = ds.StepType.LAST
+            discount = 0.0
+            logging.info("actor=%d frame=%d FAILURE: collision infraction" %
+                         (self._actor.id, current_frame))
 
         elif (self._collision_loc is not None
               and current_frame - self._collision_frame >
