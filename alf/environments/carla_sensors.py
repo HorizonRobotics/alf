@@ -1772,21 +1772,6 @@ class BEVSensor(SensorBase):
             c_route = mask_dict["route_mask"]
             c_lane = mask_dict["lane_mask"]
 
-            # masks with history
-            # [road, route, lane, [vehicle, walker, tl_g, tl_y, tl_r] * hist_len]
-            c_tl_g_history = []
-            c_tl_y_history = []
-            c_tl_r_history = []
-            c_vehicle_history = []
-            c_walker_history = []
-            for i in range(len(self._history_idx)):
-                c_tl_g_history.append(mask_dict["tl_green_masks"][i])
-                c_tl_y_history.append(mask_dict["tl_yellow_masks"][i])
-                c_tl_r_history.append(mask_dict["tl_red_masks"][i])
-
-            c_vehicle_history = [m * 255 for m in mask_dict["vehicle_masks"]]
-            c_walker_history = [m * 255 for m in mask_dict["walker_masks"]]
-
             masks = np.stack(
                 (mask_dict["road_mask"], mask_dict["route_mask"],
                  mask_dict["lane_mask"], *mask_dict["vehicle_masks"],
