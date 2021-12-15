@@ -57,7 +57,10 @@ class Scheduler(object):
         self._progress_type = progress_type
 
     def progress(self):
-        return float(self._progress_func())
+        try:
+            return float(self._progress_func())
+        except AssertionError:
+            return 0
 
 
 class ConstantScheduler(object):
