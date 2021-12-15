@@ -23,35 +23,28 @@ from alf.environments.alf_environment import AlfEnvironment
 
 
 class SuiteDmcTest(alf.test.TestCase):
-    """
-    Tests for suite_dmc. Notice that this test may need a display output 
-    to function properly.
-    """
-
     def setUp(self):
         super().setUp()
-        if not suite_dmc.is_available():
-            self.skipTest('suite_dmc is not available.')
 
     def tearDown(self):
         super(SuiteDmcTest, self).tearDown()
 
     def test_load_adds_time_limit_steps(self):
-        env = suite_dmc.dmc_loader('DMControl', from_pixels=False)
+        env = suite_dmc.load('fish:swim', from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertIsInstance(env.base_env, alf_wrappers.TimeLimit)
+        self.assertIsInstance(env, alf_wrappers.TimeLimit)
 
     def test_load_disable_step_limit(self):
-        env = suite_dmc.dmc_loader(
-            'DMControl', max_episode_steps=0, from_pixels=False)
+        env = suite_dmc.load(
+            'fish:swim', max_episode_steps=0, from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertNotIsInstance(env.base_env, alf_wrappers.TimeLimit)
+        self.assertNotIsInstance(env, alf_wrappers.TimeLimit)
 
     def test_load_disable_alf_wrappers_applied(self):
         duration_wrapper = functools.partial(
             alf_wrappers.TimeLimit, duration=10)
-        env = suite_dmc.dmc_loader(
-            'DMControl',
+        env = suite_dmc.load(
+            'fish:swim',
             max_episode_steps=0,
             alf_env_wrappers=(duration_wrapper, ),
             from_pixels=False)
@@ -59,11 +52,11 @@ class SuiteDmcTest(alf.test.TestCase):
         self.assertIsInstance(env, alf_wrappers.TimeLimit)
 
     def test_custom_max_steps(self):
-        env = suite_dmc.dmc_loader(
-            'DMControl', max_episode_steps=5, from_pixels=False)
+        env = suite_dmc.load(
+            'fish:swim', max_episode_steps=5, from_pixels=False)
         self.assertIsInstance(env, AlfEnvironment)
-        self.assertIsInstance(env.base_env, alf_wrappers.TimeLimit)
-        self.assertEqual(5, env.base_env._duration)
+        self.assertIsInstance(env, alf_wrappers.TimeLimit)
+        self.assertEqual(5, env._duration)
 
 
 if __name__ == '__main__':
