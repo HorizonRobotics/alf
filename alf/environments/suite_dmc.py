@@ -14,8 +14,15 @@
 import gym
 
 import alf
-from alf.environments.dmc_gym_wrapper import DMCGYMWrapper
+from alf.environments.dmc_gym_wrapper import DMCGYMWrapper, dm_control
 from alf.environments.suite_gym import wrap_env
+
+
+def is_available():
+    """
+    Check if the required environment is installed.
+    """
+    return dm_control is not None
 
 
 class VideoRenderWrapper(gym.Wrapper):
