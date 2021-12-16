@@ -97,7 +97,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         """
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy', override=config.epsilon_greedy)
+                'TrainerConfig.epsilon_greedy', config_override=config)
         self._epsilon_greedy = epsilon_greedy
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
