@@ -383,8 +383,7 @@ def get_config_value(config_name, config_override=None):
     if config_override is not None and config_name.startswith(
             "TrainerConfig."):
         attr_name = config_name.split(".")[1]
-        assert config_override.hasattr(attr_name)
-        return config_override.getattr(attr_name)
+        return getattr(config_override, attr_name)
     config_node = _get_config_node(config_name)
     if not config_node.is_configured() and not config_node.has_default_value():
         raise ValueError(
