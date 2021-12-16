@@ -201,7 +201,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             use_entropy_reward (bool): whether to include entropy as reward
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
@@ -258,7 +259,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
-            epsilon_greedy = config.epsilon_greedy if config else 0.
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy', override=config.epsilon_greedy)
         self._epsilon_greedy = epsilon_greedy
 
         critic_networks, actor_network, self._act_type = self._make_networks(

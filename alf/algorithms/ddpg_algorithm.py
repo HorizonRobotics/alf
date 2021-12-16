@@ -103,7 +103,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
             num_critic_replicas (int): number of critics to be used. Default is 1.
@@ -140,7 +141,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         """
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
-            epsilon_greedy = config.epsilon_greedy if config else 0.
+            epsilon_greedy = alf.get_config_value(
+                'TrainerConfig.epsilon_greedy', override=config.epsilon_greedy)
         self._epsilon_greedy = epsilon_greedy
 
         critic_network = critic_network_ctor(

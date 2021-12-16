@@ -89,7 +89,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -110,7 +111,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             if planner_module is not None else ())
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+                'TrainerConfig.epsilon_greedy', override=config.epsilon_greedy)
         self._epsilon_greedy = epsilon_greedy
 
         super().__init__(

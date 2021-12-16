@@ -262,7 +262,8 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             num_read_keys (int): number of keys for reading memory.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers

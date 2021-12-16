@@ -126,7 +126,8 @@ class SarsaAlgorithm(RLAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             use_entropy_reward (bool): If ``True``, will use alpha*entropy as
                 additional reward.
             calculate_priority (bool): whether to calculate priority. This is
@@ -158,7 +159,7 @@ class SarsaAlgorithm(RLAlgorithm):
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
             epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+                'TrainerConfig.epsilon_greedy', override=config.epsilon_greedy)
         self._epsilon_greedy = epsilon_greedy
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec))

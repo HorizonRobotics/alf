@@ -368,7 +368,7 @@ def get_handled_pre_configs():
     return _HANDLED_PRE_CONFIGS
 
 
-def get_config_value(config_name):
+def get_config_value(config_name, override=None):
     """Get the value of the config with the name ``config_name``.
 
     Args:
@@ -380,6 +380,8 @@ def get_config_value(config_name):
         ValueError: if the value of the config has not been configured and it
             does not have a default value.
     """
+    if override is not None:
+        return override
     config_node = _get_config_node(config_name)
     if not config_node.is_configured() and not config_node.has_default_value():
         raise ValueError(
