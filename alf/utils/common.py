@@ -39,6 +39,7 @@ import types
 from typing import Callable
 
 import alf
+from alf.algorithms.config import TrainerConfig
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec

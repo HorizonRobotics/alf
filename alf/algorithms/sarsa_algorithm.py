@@ -158,7 +158,7 @@ class SarsaAlgorithm(RLAlgorithm):
         """
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
-            epsilon_greedy = alf.common.get_epsilon_greedy(config)
+            epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec))
