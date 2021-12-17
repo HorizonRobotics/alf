@@ -514,6 +514,13 @@ def parse_conf_file(conf_file):
         alf.parse_config(conf_file, conf_params)
 
 
+def get_epsilon_greedy(config: TrainerConfig):
+    if config is not None:
+        return config.epsilon_greedy
+    else:
+        return alf.get_config_value('TrainerConfig.epsilon_greedy')
+
+
 def summarize_config():
     """Write config to TensorBoard."""
 

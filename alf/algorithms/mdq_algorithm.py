@@ -116,8 +116,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         """
 
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy', config_override=config)
+            epsilon_greedy = alf.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
         critic_networks = critic_network

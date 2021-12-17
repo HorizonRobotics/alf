@@ -139,8 +139,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._loss = PPOLoss(debug_summaries=debug_summaries)
 
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+            epsilon_greedy = alf.common.get_epsilon_greedy(config)
         self._predict_step_epsilon_greedy = epsilon_greedy
 
     def _trainable_attributes_to_ignore(self):

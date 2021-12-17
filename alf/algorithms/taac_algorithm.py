@@ -330,8 +330,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         self._num_critic_replicas = num_critic_replicas
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy', config_override=config)
+            epsilon_greedy = alf.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
         self._tau_spec, critic_networks, actor_network = self._make_networks(

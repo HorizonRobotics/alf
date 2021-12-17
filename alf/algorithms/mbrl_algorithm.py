@@ -110,8 +110,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             planner=planner_module.train_state_spec
             if planner_module is not None else ())
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy', config_override=config)
+            epsilon_greedy = alf.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
         super().__init__(

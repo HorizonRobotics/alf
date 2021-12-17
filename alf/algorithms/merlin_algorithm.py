@@ -275,8 +275,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             name (str): name of the algorithm.
         """
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+            epsilon_greedy = alf.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         rnn = LSTMEncodingNetwork(
             input_tensor_spec=alf.TensorSpec((latent_dim, )),
