@@ -72,7 +72,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -95,8 +96,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+            epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)

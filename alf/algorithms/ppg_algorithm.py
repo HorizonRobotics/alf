@@ -92,8 +92,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation. If None, its value is taken
-                from ``alf.get_config_value(TrainerConfig.epsilon_greedy)``. It
-                is used in ``predict_step()`` during evaluation.
+                from ``config.epsilon_greedy`` and then
+                ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
+                It is used in ``predict_step()`` during evaluation.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
 
@@ -138,8 +139,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         self._loss = PPOLoss(debug_summaries=debug_summaries)
 
         if epsilon_greedy is None:
-            epsilon_greedy = alf.get_config_value(
-                'TrainerConfig.epsilon_greedy')
+            epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._predict_step_epsilon_greedy = epsilon_greedy
 
     def _trainable_attributes_to_ignore(self):
