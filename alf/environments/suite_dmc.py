@@ -25,17 +25,6 @@ def is_available():
     return dm_control is not None
 
 
-class VideoRenderWrapper(gym.Wrapper):
-    """A wrapper to enable 'rgb_array' rendering for the gym wrapper of
-    ``dm_control``. To do this, the ``metadata`` field needs to be updated.
-    """
-    _metadata = {'render.modes': ["rgb_array"]}
-
-    def __init__(self, env):
-        super().__init__(env)
-        self.metadata.update(self._metadata)
-
-
 @alf.configurable
 def load(environment_name='cheetah:run',
          from_pixels=True,
@@ -90,7 +79,6 @@ def load(environment_name='cheetah:run',
         episode_length=max_episode_steps * 2,
         height=image_size,
         width=image_size)
-    gym_env = VideoRenderWrapper(gym_env)
     return wrap_env(
         gym_env,
         env_id=env_id,

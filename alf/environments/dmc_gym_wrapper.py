@@ -95,6 +95,8 @@ class DMCGYMWrapper(gym.core.Env):
                 multiple cameras with different views
             environment_kwargs: any argument accepted by ``dm_control.suite.load``.
         """
+        self.metadata.update({'render.modes': ["rgb_array"]})
+
         self._from_pixels = from_pixels
         self._height = height
         self._width = width
