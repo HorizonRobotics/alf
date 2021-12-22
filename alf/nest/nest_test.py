@@ -24,7 +24,7 @@ import cnest
 from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
 from alf.nest.utils import NestConcat, NestSum, NestMultiply
-from alf.nest import transform_nest
+from alf.nest import transform_nest, transform_nests
 
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
@@ -394,6 +394,41 @@ class TestTransformNest(alf.test.TestCase):
 
         res = nest.py_map_structure_with_path(_check_path, nested)
         nest.assert_same_structure(nested, res)
+
+
+class TestTransformNests(alf.test.TestCase):
+    def test_transform_nests(self):
+        ntuple_a = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=torch.zeros((4, )))
+
+        ntuple_b = NTuple(
+            a=dict(x=torch.ones(()), y=torch.ones((2, 4))),
+            b=torch.ones((4, )))
+
+        transformed_ntuple, _ = transform_nests(
+            [ntuple_a, ntuple_b],
+            field='a.x',
+            func=lambda x: (x[0] + x[1] + 1.0, x[0] + x[1] + 1.0))
+
+        ntuple_a.a.update({'x': torch.ones(()) + 1.0})
+        nest.map_structure(self.assertEqual, transformed_ntuple, ntuple_a)
+
+        ntuple_a = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[2])))
+
+        ntuple_b = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[5])))
+
+        transformed_ntuple, _ = transform_nests(
+            [ntuple_a, ntuple_b],
+            field='b.b.b',
+            func=lambda x: ([x[0][0] + x[1][0]], [x[0][0] + x[1][0]]))
+        ntuple_a = ntuple_a._replace(
+            b=ntuple_a.b._replace(b=ntuple_a.b.b._replace(b=[7])))
+        nest.map_structure(self.assertEqual, transformed_ntuple, ntuple_a)
 
 
 class TestExtractAnyLeaf(alf.test.TestCase):
