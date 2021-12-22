@@ -797,6 +797,67 @@ def transform_nest(nested, field, func):
         nested=nested, levels=field.split('.') if field else [])
 
 
+def transform_nests(nests, field, func):
+    """Transform the node of each of the nest in nests indicated by ``field``
+        using ``func``.
+
+    This function can be used to transform multiple nests, and perform
+        transformations with inter-nest interactions.
+
+        .. code-block:: python
+
+            res1, res2 = transform_nests([nest1, nest2], 'a.b',
+                                lambda x: (x[0] * x[1], x[0] + x[1]))
+
+        where ``x[0]`` denotes the value from ``nest1`` and ``x[1]`` is
+        from ``nest2``.
+    Args:
+        nests ([nested Tensor]): the structure to be applied the transformation.
+        field (str): If a string, it's the field to be transformed, multi-level
+            path denoted by "A.B.C". If ``None``, then the root object is
+            transformed.
+        func (Callable): transform func, the function will be called as
+            ``func(nested)`` and should return a new nest.
+    Returns:
+        list of transformed nests, with its length the same as the input nests
+    """
+
+    assert len(nests) > 0
+
+    def _traverse_transform(nests, levels):
+        if not levels:
+            return func(nests)
+
+        type_check = [
+            is_namedtuple(nest) or isinstance(nest, dict) for nest in nests
+        ]
+        assert all(type_check), TypeError(
+            "For multiple nested inputs, each of "
+            "its elements must be either a dict or namedtuple!")
+
+        level = levels[0]
+        if is_namedtuple(nests[0]):
+            new_vals = _traverse_transform(
+                nests=[getattr(nest, level) for nest in nests],
+                levels=levels[1:])
+            return [
+                nest._replace(**{level: new_val})
+                for nest, new_val in zip(nests, new_vals)
+            ]
+        elif isinstance(nests[0], dict):
+            new_nests = [nest.copy() for nest in nests]
+
+            trans_nests_level = _traverse_transform(
+                nests=[nest[level] for nest in nests], levels=levels[1:])
+
+            for nest, val in zip(new_nests, trans_nests_level):
+                nest[level] = val
+
+            return new_nests
+
+    return _traverse_transform(nests, levels=field.split('.') if field else [])
+
+
 def set_field(nested, field, new_value):
     """Set the field in nested to ``new_value``.
 
