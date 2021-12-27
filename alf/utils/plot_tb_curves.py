@@ -649,6 +649,18 @@ def plot(env, her, train, curves):
     """Plotting examples."""
     print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
+    SIX_ATARI_GAMES = [
+        "Atlantis", "Frostbite", "Qbert", "Breakout", "Seaquest",
+        "SpaceInvaders"
+    ]
+    ELEVEN_ATARI_GAMES = [
+        "Enduro", "Riverraid", "Alien", "BankHeist", "Centipede",
+        "FishingDerby", "IceHockey", "MsPacman", "RoadRunner", "TimePilot",
+        "Zaxxon"
+    ]
+
+    SEVENTEEN_ATARI_GAMES = SIX_ATARI_GAMES + ELEVEN_ATARI_GAMES
+
     mstr_map = {
         "ac": "",
         "sac": "",  # baseline
@@ -733,38 +745,44 @@ def plot(env, her, train, curves):
         cluster_str = ""
     elif env in ["atari", "atarirn"]:
         critic_num = 1
-        tasks = [
-            "Atlantis", "Frostbite", "Qbert", "Breakout", "Seaquest",
-            "SpaceInvaders"
-        ]
-        total_steps = 0
-        task_total_steps = {
-            "Breakout": 12000000,
-            "Seaquest": 12000000,
-            "SpaceInvaders": 12000000,
-            "Atlantis": 12000000,
-            "Frostbite": 12000000,
-            "Qbert": 12000000
-        }
+        tasks = SEVENTEEN_ATARI_GAMES
+        total_steps = 12000000
+        # task_total_steps = {
+        #     "Breakout": 12000000,
+        #     "Seaquest": 12000000,
+        #     "SpaceInvaders": 12000000,
+        #     "Atlantis": 12000000,
+        #     "Frostbite": 12000000,
+        #     "Qbert": 12000000
+        # }
         if curves == "return":
             task_y_range = {
                 "Breakout": (0, 400),
                 "Seaquest": (0, 8000),
                 "SpaceInvaders": (0, 1200),
                 "Atlantis": (0, 300000),
-                "Frostbite": (0, 3500),
+                "Frostbite": (0, 5000),
                 "Qbert": (0, 16000),
             }
+            for t in ELEVEN_ATARI_GAMES:
+                task_y_range[t] = (0, 12000)
+            task_y_range["RoadRunner"] = (0, 50000)
+            task_y_range["MsPacman"] = (0, 4000)
+            task_y_range["IceHockey"] = (-20, 0)
+            task_y_range["FishingDerby"] = (-100, 20)
+            task_y_range["Enduro"] = (0, 1000)
+            task_y_range["BankHeist"] = (0, 2000)
+            task_y_range["Alien"] = (0, 2500)
         else:
-            total_steps = 0
-            task_total_steps = {
-                "Breakout": 50000,
-                "Seaquest": 50000,
-                "SpaceInvaders": 50000,
-                "Atlantis": 50000,
-                "Frostbite": 50000,
-                "Qbert": 50000
-            }
+            total_steps = 50000
+            # task_total_steps = {
+            #     "Breakout": 50000,
+            #     "Seaquest": 50000,
+            #     "SpaceInvaders": 50000,
+            #     "Atlantis": 50000,
+            #     "Frostbite": 50000,
+            #     "Qbert": 50000
+            # }
             if curves == "value":
                 task_y_range = {
                     "Breakout": (0, 50),
@@ -774,6 +792,8 @@ def plot(env, her, train, curves):
                     "Frostbite": (0, 28),  # 350
                     "Qbert": (0, 24),  # 250
                 }
+                for t in ELEVEN_ATARI_GAMES:
+                    task_y_range[t] = (0, 100)
             else:  # drgt
                 task_y_range = {t: (0, .3) for t in tasks}
         cluster_str = "/tboardlog"
@@ -843,7 +863,7 @@ def plot(env, her, train, curves):
             n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-sd_4" % (
                 mstr, rn, t, lr, upit)
 
-        elif env in ["atari", "atariac"]:
+        elif env in ["atariac"]:  # "atari",
             assert not her
             if mstr == "-lbtq":
                 if t in ["Breakout", "Seaquest", "SpaceInvaders"]:
@@ -858,6 +878,13 @@ def plot(env, her, train, curves):
                 n = "sacbreakout%s%s-evit_1000-evepi_100-sd_3" % (mstr, upit)
             if m == "ac":
                 n = "acbreakout-envstps_12000000-evepi_100-sd_3"
+        elif env == "atari":
+            assert not her
+            if t in SIX_ATARI_GAMES:
+                n = "envn_%sNoFrameskip--v4-sd_3*" % t
+                n = n + ("/tboardlog/sacbreakout%s-" % mstr) + n
+            else:
+                n = "sacbreakout%s-envn_%sNoFrameskip--v4-sd_3" % (mstr, t)
         return n
 
     reader_cls = {
@@ -897,7 +924,8 @@ def plot(env, her, train, curves):
         reader_cls(
             glob.glob(
                 _get_curve_path(
-                    "%s*%s/%s" % (_run_name(m, t), cluster_str, train),
+                    "%s*%s/%s" % (_run_name(m, t), "" if t in SIX_ATARI_GAMES
+                                  else cluster_str, train),
                     t=t,
                     m=m)),
             np.arange(0, total_steps or task_total_steps[t], plot_interval),
@@ -905,7 +933,7 @@ def plot(env, her, train, curves):
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
 
-    print(curve_readers)
+    print("Plotting ", curves)
     for i, t in enumerate(tasks):
         # Scale and align x-axis of methods on task1
         plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
@@ -933,11 +961,9 @@ if __name__ == "__main__":
         "fetch": [False, True],
         "pioneer": [True, ]
     }
-    train_curves = [
-        ("eval", "return", False),
-        ("eval", "return", True),
-        #("train", "value", False), ("train", "value", True),
-    ]  #("train", "drgt", False), ("train", "gdgt", True)]
+    train_curves = [("eval", "return", False), ("eval", "return", True),
+                    ("train", "value", False), ("train", "value", True),
+                    ("train", "drgt", False), ("train", "gdgt", True)]
     if env == "atariac":
         train_curves = [("eval", "return", False), ("eval", "discreturn",
                                                     False),
