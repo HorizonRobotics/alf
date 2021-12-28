@@ -643,12 +643,22 @@ if __name__ == "__main__":
             smoothing=3) for t in tasks
     ] for m in methods]
 
+    # Specify y_range, or automatically find out y_range with margin
+    y_range = (0, 1.0)
+    _curves = [cr[0]() for cr in curve_readers]
+    if not y_range:
+        min_y = min([min(c.min_y) for c in _curves])
+        max_y = max([max(c.max_y) for c in _curves])
+        y_margin = (max_y - min_y) * 0.05
+        y_range = (min_y - y_margin, max_y + y_margin)
+
     # Scale and align x-axis of SAC and DDPG on task "kickball"
-    plotter = CurvesPlotter([cr[0]() for cr in curve_readers],
-                            x_label=curve_readers[0][0].x_label,
-                            y_label=curve_readers[0][0].y_label,
-                            y_range=(0, 1.0),
-                            x_range=(0, 5000000))
+    plotter = CurvesPlotter(
+        _curves,
+        x_label=curve_readers[0][0].x_label,
+        y_label=curve_readers[0][0].y_label,
+        y_range=y_range,
+        x_range=(0, 5000000))
     plotter.plot(output_path="/tmp/kickball.pdf")
 
     # Now, to compare SAC with DDPG on navigation and kickball at the same time,
