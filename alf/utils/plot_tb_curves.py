@@ -708,17 +708,8 @@ def plot(env, her, train, curves):
         tasks = ["FetchPush", "FetchPickPlace", "FetchSlide"]
         if curves == "return":
             total_steps = 2000000
-            task_y_range = {t: (-50, 0) for t in tasks}
         else:
             total_steps = 1100
-            if curves == "value":
-                task_y_range = {t: (-30, 0) for t in tasks}
-                if her:
-                    task_y_range = {t: (-15, 0) for t in tasks}
-            elif curves == "gdgt":
-                task_y_range = {t: (0, 0.012) for t in tasks}
-            elif curves == "drgt":
-                task_y_range = {t: (0, 0.04) for t in tasks}
         cluster_str = "/tboardlog"
     elif env == "pioneer":
         critic_num = 1
@@ -729,92 +720,21 @@ def plot(env, her, train, curves):
                 "PioneerPush": 5000000,
                 "PioneerPushReach": 14000000
             }
-            task_y_range = {
-                "PioneerPush": (-100, 0),
-                "PioneerPushReach": (-200, 0)
-            }
         else:
             task_total_steps = {"PioneerPush": 1800, "PioneerPushReach": 5000}
-            if curves == "value":
-                task_y_range = {
-                    "PioneerPush": (-80, 0),
-                    "PioneerPushReach": (-100, 0)
-                }
-            else:  # drgt
-                task_y_range = {t: (0, 0.1) for t in tasks}
         cluster_str = ""
     elif env in ["atari", "atarirn"]:
         critic_num = 1
         tasks = SEVENTEEN_ATARI_GAMES
-        total_steps = 12000000
-        # task_total_steps = {
-        #     "Breakout": 12000000,
-        #     "Seaquest": 12000000,
-        #     "SpaceInvaders": 12000000,
-        #     "Atlantis": 12000000,
-        #     "Frostbite": 12000000,
-        #     "Qbert": 12000000
-        # }
         if curves == "return":
-            task_y_range = {
-                "Breakout": (0, 400),
-                "Seaquest": (0, 8000),
-                "SpaceInvaders": (0, 1200),
-                "Atlantis": (0, 300000),
-                "Frostbite": (0, 5000),
-                "Qbert": (0, 16000),
-            }
-            for t in ELEVEN_ATARI_GAMES:
-                task_y_range[t] = (0, 12000)
-            task_y_range["RoadRunner"] = (0, 50000)
-            task_y_range["MsPacman"] = (0, 4000)
-            task_y_range["IceHockey"] = (-20, 0)
-            task_y_range["FishingDerby"] = (-100, 20)
-            task_y_range["Enduro"] = (0, 1000)
-            task_y_range["BankHeist"] = (0, 2000)
-            task_y_range["Alien"] = (0, 2500)
+            total_steps = 12000000
         else:
             total_steps = 50000
-            # task_total_steps = {
-            #     "Breakout": 50000,
-            #     "Seaquest": 50000,
-            #     "SpaceInvaders": 50000,
-            #     "Atlantis": 50000,
-            #     "Frostbite": 50000,
-            #     "Qbert": 50000
-            # }
-            if curves == "value":
-                task_y_range = {
-                    "Breakout": (0, 50),
-                    "Seaquest": (0, 250),  # 12
-                    "SpaceInvaders": (0, 100),  # 8
-                    "Atlantis": (0, 6),  # 3000 for rawreward
-                    "Frostbite": (0, 28),  # 350
-                    "Qbert": (0, 24),  # 250
-                }
-                for t in ELEVEN_ATARI_GAMES:
-                    task_y_range[t] = (0, 100)
-            else:  # drgt
-                task_y_range = {t: (0, .3) for t in tasks}
         cluster_str = "/tboardlog"
     elif env == "atariac":
         critic_num = 1
         tasks = ["Breakout"]
         total_steps = 12000000
-        if curves == "return":
-            task_y_range = {
-                "Breakout": (0, 400),
-            }
-        elif curves == "discreturn":
-            task_y_range = {
-                "Breakout": (0, 8),
-            }
-        elif curves == "avgreward":
-            task_y_range = {
-                "Breakout": (0, 0.5),
-            }
-        else:
-            assert False, "unknown curves: " + curves
         cluster_str = "/tboardlog"
     else:
         assert False
@@ -830,7 +750,7 @@ def plot(env, her, train, curves):
             plot_interval = 50
 
     print(
-        f"total_steps: {total_steps or task_total_steps}, task_y_range: {task_y_range}, plot_interval: {plot_interval}"
+        f"total_steps: {total_steps or task_total_steps}, plot_interval: {plot_interval}"
     )
 
     def _run_name(m, t):
@@ -933,15 +853,19 @@ def plot(env, her, train, curves):
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
 
-    print("Plotting ", curves)
+    print("Plotting", curves)
     for i, t in enumerate(tasks):
+        _curves = [cr[i]() for cr in curve_readers]
+        min_y = min([min(c.min_y) for c in _curves])
+        max_y = max([max(c.max_y) for c in _curves])
+        y_margin = (max_y - min_y) * 0.05
         # Scale and align x-axis of methods on task1
-        plotter = CurvesPlotter([cr[i]() for cr in curve_readers],
-                                x_label=curve_readers[0][0].x_label,
-                                y_label=curve_readers[0][0].y_label,
-                                y_range=task_y_range[t],
-                                x_range=(0, total_steps
-                                         or task_total_steps[t]))
+        plotter = CurvesPlotter(
+            _curves,
+            x_label=curve_readers[0][0].x_label,
+            y_label=curve_readers[0][0].y_label,
+            y_range=(min_y - y_margin, max_y + y_margin),  # task_y_range[t],
+            x_range=(0, total_steps or task_total_steps[t]))
         plotter.plot(
             output_path=os.path.join(
                 _get_curve_path(t=t), "vs".join(methods) + "-" + curves + "-" +
