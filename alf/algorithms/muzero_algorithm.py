@@ -321,10 +321,16 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
                 mcts_state_field = 'state' + info_path[len('rollout_info'):]
-                r = torch.rand(
-                    root_inputs.step_type.shape[0]) < self._reanalyze_ratio
-                r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
-                    replay_buffer, env_ids[r], positions[r], mcts_state_field)
+                if self._reanalyze_ratio < 1:
+                    batch_size = root_inputs.step_type.shape[0]
+                    r = torch.randperm(
+                        batch_size) < batch_size * self._reanalyze_ratio
+                    r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
+                        replay_buffer, env_ids[r], positions[r],
+                        mcts_state_field)
+                else:
+                    candidate_actions, candidate_action_policy, values = self._reanalyze(
+                        replay_buffer, env_ids, positions, mcts_state_field)
 
             # [B]
             steps_to_episode_end = replay_buffer.steps_to_episode_end(
@@ -343,23 +349,24 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             beyond_episode_end = positions > episode_end_positions
             positions = torch.min(positions, episode_end_positions)
 
-            if self._td_steps >= 0:
-                values = self._calc_bootstrap_return(replay_buffer, env_ids,
-                                                     positions, value_field)
-            else:
-                values = self._calc_monte_carlo_return(replay_buffer, env_ids,
-                                                       positions, value_field)
+            if self._reanalyze_ratio < 1:
+                if self._td_steps >= 0:
+                    values = self._calc_bootstrap_return(
+                        replay_buffer, env_ids, positions, value_field)
+                else:
+                    values = self._calc_monte_carlo_return(
+                        replay_buffer, env_ids, positions, value_field)
 
-            candidate_actions = replay_buffer.get_field(
-                candidate_actions_field, env_ids, positions)
-            candidate_action_policy = replay_buffer.get_field(
-                candidate_action_policy_field, env_ids, positions)
+                candidate_actions = replay_buffer.get_field(
+                    candidate_actions_field, env_ids, positions)
+                candidate_action_policy = replay_buffer.get_field(
+                    candidate_action_policy_field, env_ids, positions)
 
-            if self._reanalyze_ratio > 0:
-                if candidate_actions != ():
-                    candidate_actions[r] = r_candidate_actions
-                candidate_action_policy[r] = r_candidate_action_policy
-                values[r] = r_values
+                if self._reanalyze_ratio > 0:
+                    if candidate_actions != ():
+                        candidate_actions[r] = r_candidate_actions
+                    candidate_action_policy[r] = r_candidate_action_policy
+                    values[r] = r_values
 
             game_overs = ()
             if self._train_game_over_function or self._train_reward_function:
@@ -606,6 +613,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             bootstrap_n = torch.minimum(bootstrap_n, steps_to_episode_end)
 
         if self._full_reanalyze:
+            # TODO: don't need to reanalyze all n1 + n2 steps because bootstrap_n
+            # can be smaller than n2
             exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
                                                       positions, n1 + n2, 0)
         else:

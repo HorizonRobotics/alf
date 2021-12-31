@@ -81,8 +81,10 @@ class _MCTSTrees(object):
         # reward for player 0
         self.reward = None
         if isinstance(model_output.reward, torch.Tensor):
+            # we use value.dtype because the reward.dtype from the intial_inference
+            # can be different from the reward.dtype from the recurrent_inference
             self.reward = torch.zeros(
-                parent_shape, dtype=model_output.reward.dtype)
+                parent_shape, dtype=model_output.value.dtype)
 
         self.action = None
         if isinstance(model_output.actions, torch.Tensor):
@@ -857,8 +859,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _ucb_score1(self, parent_visit_count, child_visit_count, prior,
                     value_score):
-        pb_c = torch.log((parent_visit_count + self._pb_c_base + 1.) /
-                         self._pb_c_base) + self._pb_c_init
+        pb_c = torch.log1p(
+            (parent_visit_count + 1) / self._pb_c_base) + self._pb_c_init
         pb_c = pb_c * torch.sqrt(parent_visit_count.to(
             torch.float32)) / (child_visit_count + 1.)
         prior_score = pb_c * prior
@@ -915,8 +917,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _calculate_policy(self, trees: _MCTSTrees, parents):
         parent_visit_count = trees.visit_count[parents].unsqueeze(-1)
-        c = torch.log((parent_visit_count + self._pb_c_base + 1.) /
-                      self._pb_c_base) + self._pb_c_init
+        c = torch.log1p(
+            (parent_visit_count + 1) / self._pb_c_base) + self._pb_c_init
         c = c / parent_visit_count.to(torch.float32).sqrt()
         prior = trees.prior[parents]
         value_score, child_visit_count = self._value_score(trees, parents)
@@ -969,6 +971,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             G_t = \sum_{s=t+1}^{T-1} \gamma^{s-t-1} r_s + gamma^{T-t-1} v
             vsum_t += c G_t
             vc_t += c
+
+        Args:
+            search_paths: [T, B] or [T, B, psims]
+            path_length: [B] or [B, psims]
+            values: [B] or [B, psims]
         """
         psims = self._num_parallel_sims
         B = trees.B.unsqueeze(0)
@@ -1013,21 +1020,31 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discounts = self._discount**(path_lengths.unsqueeze(0) - steps)
             discounted_return = values.unsqueeze(0) * discounts
 
+        # [T, B] or [T, B, psims]
         valid = depth < path_lengths
         value_sum_delta = count * discounted_return[valid]
+        nodes = (B.expand_as(search_paths)[valid], search_paths[valid])
         if not parallel:
-            nodes = (B.expand(T, -1)[valid], search_paths[valid])
             trees.visit_count[nodes] += count
             trees.value_sum[nodes] += value_sum_delta
         else:
-            nodes = (B.expand(T, -1, psims)[valid], search_paths[valid])
-            nodes_i = nodes[0] * trees.visit_count.shape[1] + nodes[1]
-            # using scatter_add_ to handle possible duplicated nodes correctly
-            trees.visit_count.view(-1).scatter_add_(
-                0, nodes_i,
-                torch.tensor([count],
-                             dtype=trees.visit_count.dtype).expand_as(nodes_i))
-            trees.value_sum.view(-1).scatter_add_(0, nodes_i, value_sum_delta)
+            # nodes_i = nodes[0] * trees.visit_count.shape[1] + nodes[1]
+            # # using scatter_add_ to handle possible duplicated nodes correctly
+            # trees.visit_count.view(-1).scatter_add_(
+            #     0, nodes_i,
+            #     torch.tensor([count],
+            #                  dtype=trees.visit_count.dtype).expand_as(nodes_i))
+            # trees.value_sum.view(-1).scatter_add_(0, nodes_i, value_sum_delta)
+            # The scatter_add_ above is not deterministic. If deterministic behavior
+            # is needed, replace the above code with the following:
+            depth = depth.squeeze(-1)
+            TB = trees.B.unsqueeze(0).expand(T, -1)
+            for i in range(psims):
+                # [T, B]
+                vld = valid[..., i]
+                nd = (TB[vld], search_paths[..., i][vld])
+                trees.visit_count[nd] += count
+                trees.value_sum[nd] += count * discounted_return[..., i][vld]
 
         trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
@@ -1118,7 +1135,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         nest.map_structure(_set_tree_state, trees.model_state,
                            model_output.state)
         if trees.reward is not None:
-            trees.reward[:, n] = model_output.reward
+            # model_output.reward.dtype may be different from initial_inference
+            trees.reward[:, n] = model_output.reward  #.to(trees.reward.dtype)
         if trees.action is not None:
             trees.action[:, n] = model_output.actions
         prior = model_output.action_probs
