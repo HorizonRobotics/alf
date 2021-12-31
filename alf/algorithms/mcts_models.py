@@ -24,7 +24,7 @@ from typing import Callable
 import alf
 from alf.data_structures import LossInfo, namedtuple
 from alf.networks import EncodingNetwork, StableNormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.utils import dist_utils, tensor_utils, summary_utils
+from alf.utils import common, dist_utils, tensor_utils, summary_utils
 from alf.utils.losses import element_wise_squared_loss, multi_quantile_huber_loss
 from alf.utils.schedulers import ConstantScheduler
 
@@ -32,6 +32,7 @@ ModelState = namedtuple(
     'ModelState',
     [
         'state',  # the actual latent state of the model
+        'pred_state',  # the state of the prediction model
         'step',  # the current unroll step of the model
     ],
     default_value=())
@@ -48,11 +49,11 @@ ModelOutput = namedtuple(
 
         # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action.
         # In the case when the candidate actions are sampled from the original action space,
-        # action_probs should bee normalized over the sampled candidate action set.
+        # action_probs should be normalized over the sampled candidate action set.
         # i.e. action_probs[i, :] should sum to 1
         'action_probs',
 
-        # [B, ...], latent state
+        # [B, ...], ModelState
         'state',
 
         # The following fields are used by calc_loss
@@ -182,17 +183,18 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             ModelOutput: the prediction
         """
         state = self._representation_net(observation)[0]
+        batch_size = state.shape[0]
+        pred_state = common.zero_tensor_from_nested_spec(
+            self._prediction_net.state_spec, batch_size)
         if not self._handle_bn:
-            model_output = self.prediction_model(state)
-            return model_output._replace(
-                state=ModelState(state=model_output.state))
+            return self.prediction_model(state, pred_state)
         else:
             self._prediction_net.set_batch_norm_current_step(0)
-            model_output = self.prediction_model(state)
+            model_output = self.prediction_model(state, pred_state)
             batch_size = model_output.value.shape[0]
             current_steps = torch.zeros(batch_size, dtype=torch.long)
             return model_output._replace(
-                state=ModelState(model_output.state, current_steps))
+                state=model_output.state._replace(step=current_steps))
 
     def recurrent_inference(self, state, action):
         """Generate prediction given state and action.
@@ -205,19 +207,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             ModelOutput: the prediction
         """
         if not self._handle_bn:
-            state = self._dynamics_net((state.state, action))[0]
-            model_output = self.prediction_model(state)
-            return model_output._replace(
-                state=ModelState(state=model_output.state))
+            dyn_state = self._dynamics_net((state.state, action))[0]
+            return self.prediction_model(dyn_state, state.pred_state)
         else:
-            state, current_steps = state
-            self._dynamics_net.set_batch_norm_current_step(current_steps)
-            new_state = self._dynamics_net((state, action))[0]
-            current_steps = current_steps + 1
+            self._dynamics_net.set_batch_norm_current_step(state.step)
+            dyn_state = self._dynamics_net((state.state, action))[0]
+            current_steps = state.step + 1
             self._prediction_net.set_batch_norm_current_step(current_steps)
-            model_output = self.prediction_model(new_state)
+            model_output = self.prediction_model(dyn_state, state.pred_state)
             return model_output._replace(
-                state=ModelState(model_output.state, current_steps))
+                state=model_output.state._replace(step=current_steps))
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -397,7 +396,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         """Calculate the loss given the predicted representation and target representation"""
         raise NotImplementedError
 
-    def prediction_model(self, state) -> ModelOutput:
+    def prediction_model(self, dyn_state, pred_state) -> ModelOutput:
+        """Calculate the prediction given the latent state of the dynamics model
+           and the state of the prediction model.
+        """
         raise NotImplementedError
 
 
@@ -655,11 +657,12 @@ class SimpleMCTSModel(MCTSModel):
         predicted_projected_repr = F.normalize(predicted_projected_repr, dim=1)
         return -(projected_target_repr * predicted_projected_repr).sum(dim=1)
 
-    def prediction_model(self, state):
+    def prediction_model(self, dyn_state, pred_state):
         # TODO: transform reward/value and use softmax to estimate the value and
         # reward as in appendix F.
-        value, reward, action_distribution, game_over_logit = self._prediction_net(
-            state)[0]
+        (value, reward, action_distribution,
+         game_over_logit), pred_state = self._prediction_net(
+             dyn_state, pred_state)
         value_quantiles = ()
         if value.ndim == 2:
             # assuming it is a quantile model
@@ -711,6 +714,6 @@ class SimpleMCTSModel(MCTSModel):
             game_over=game_over,
             actions=actions,
             action_probs=action_probs,
-            state=state,
+            state=ModelState(dyn_state, pred_state),
             action_distribution=action_distribution,
             game_over_logit=game_over_logit)

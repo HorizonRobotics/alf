@@ -277,10 +277,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 model_output.state.state.register_hook(
                     partial(_hook, name="s" + str(i + 1)))
             model_output = model_output._replace(
-                state=alf.nest.map_structure(
-                    lambda x: scale_gradient(
-                        x, self._recurrent_gradient_scaling_factor),
-                    model_output.state))
+                state=model_output.state._replace(
+                    state=alf.nest.map_structure(
+                        lambda x: scale_gradient(
+                            x, self._recurrent_gradient_scaling_factor),
+                        model_output.state.state)))
             model_outputs.append(
                 dist_utils.distributions_to_params(model_output))
 
