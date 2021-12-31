@@ -77,8 +77,7 @@ class DMCGYMWrapper(gym.core.Env):
                  height: int = 84,
                  width: int = 84,
                  camera_id: int = 0,
-                 episode_length: int = 1000,
-                 environment_kwargs: Optional[Dict[str, Any]] = None):
+                 control_timestep: Optional[float] = None):
         """A Gym env that wraps a ``dm_control`` environment.
 
         Args:
@@ -93,7 +92,11 @@ class DMCGYMWrapper(gym.core.Env):
             width: image observation width
             camera_id: which camera to render; a MuJoCo xml file can define
                 multiple cameras with different views
-            environment_kwargs: any argument accepted by ``dm_control.suite.load``.
+            control_timestep: the time duration between two agent actions. If
+                this is greater than the agent's primitive physics timestep, then
+                multiple physics simulation steps might be performed between two
+                actions. If None, the default control timstep defined by DM control
+                suite will be used.
         """
         self.metadata.update({'render.modes': ["rgb_array"]})
 
@@ -101,16 +104,20 @@ class DMCGYMWrapper(gym.core.Env):
         self._height = height
         self._width = width
         self._camera_id = camera_id
-        self._episode_length = episode_length
+
+        if control_timestep is not None:
+            environment_kwargs = {"control_timestep": control_timestep}
+        else:
+            environment_kwargs = None
 
         # create task
         self._env_fn = partial(
             suite.load,
             domain_name=domain_name,
             task_name=task_name,
-            task_kwargs={'time_limit': episode_length},
-            visualize_reward=visualize_reward,
-            environment_kwargs=environment_kwargs)
+            task_kwargs={"time_limit": float('inf')},
+            environment_kwargs=environment_kwargs,
+            visualize_reward=visualize_reward)
         self._env = self._env_fn()
 
         self._action_space = _dmc_spec_to_box([self._env.action_spec()])
@@ -155,7 +162,7 @@ class DMCGYMWrapper(gym.core.Env):
         # an env again.
         self._env = self._env_fn(task_kwargs={
             'random': seed,
-            'time_limit': self._episode_length
+            "time_limit": float('inf')
         })
 
     def step(self, action):

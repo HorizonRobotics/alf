@@ -33,6 +33,7 @@ def load(environment_name='cheetah:run',
          discount=1.0,
          visualize_reward=False,
          max_episode_steps=1000,
+         control_timestep=None,
          gym_env_wrappers=(),
          alf_env_wrappers=()):
     """ Load a MuJoCo environment.
@@ -53,7 +54,19 @@ def load(environment_name='cheetah:run',
         visualize_reward: if True, then the rendered frame will have
             a highlighted color when the agent achieves a reward.
         max_episode_steps (int): The maximum episode step in the environment.
-            Note that the episode length in the alf will be max_episode_steps/action_repeat.
+        control_timestep (float): the time duration between two agent actions. If
+            this is greater than the agent's primitive physics timestep, then
+            multiple physics simulation steps might be performed between two actions.
+            The difference between multi-physics steps and "action repeats"/FrameSkip
+            is that the intermediate physics step won't need to render an observation
+            (which might save time if rendering is costly). However, this also
+            means that unlike "action repeats"/FrameSkip which accumulates rewards
+            of several repeated steps, only a single-step reward is obtained after
+            all the physics simulation steps are done. The total number of
+            physics simulation steps in an episode is
+            ``control_timestep / physics_timestep * frame_skip * max_episode_steps``.
+            If None, the default control timstep defined by DM control suite will
+            be used.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
@@ -74,9 +87,7 @@ def load(environment_name='cheetah:run',
         task_name=task_name,
         visualize_reward=visualize_reward,
         from_pixels=from_pixels,
-        # The episode_length passed to DMCGYMWrapper is doubled because we want to
-        # make sure that the reset is triggered only in alf_wrappers.TimeLimit.
-        episode_length=max_episode_steps * 2,
+        control_timestep=control_timestep,
         height=image_size,
         width=image_size)
     return wrap_env(
