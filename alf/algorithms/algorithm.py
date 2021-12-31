@@ -163,6 +163,7 @@ class Algorithm(AlgorithmInterface):
         if config:
             self._rl_train_every_update_steps = config.rl_train_every_update_steps
             self._rl_train_after_update_steps = config.rl_train_after_update_steps
+        self._num_updates_per_train_iter = 0
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -1290,6 +1291,9 @@ class Algorithm(AlgorithmInterface):
                 ``True``, it will affect the counter only if
                 ``config.update_counter_every_mini_batch=True``.
         """
+        if self._replay_buffer is None:
+            return 0
+
         config: TrainerConfig = self._config
 
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
@@ -1312,17 +1316,19 @@ class Algorithm(AlgorithmInterface):
                 mini_batch_size = config.mini_batch_size
                 if mini_batch_size is None:
                     mini_batch_size = self._replay_buffer.num_environments
+                self._num_updates_per_train_iter += config.num_updates_per_train_iter
+                num_updates_per_train_iter = int(self._num_updates_per_train_iter)
+                self._num_updates_per_train_iter -= num_updates_per_train_iter
                 if config.whole_replay_buffer_training:
                     experience, batch_info = self._replay_buffer.gather_all(
                         ignore_earliest_frames=True)
-                    num_updates = config.num_updates_per_train_iter
+                    num_updates = num_updates_per_train_iter
                 else:
                     assert config.mini_batch_length is not None, (
                         "No mini_batch_length is specified for off-policy training"
                     )
                     experience, batch_info = self._replay_buffer.get_batch(
-                        batch_size=(mini_batch_size *
-                                    config.num_updates_per_train_iter),
+                        batch_size=mini_batch_size * num_updates_per_train_iter,
                         batch_length=config.mini_batch_length)
                     num_updates = 1
             return experience, batch_info, num_updates, mini_batch_size

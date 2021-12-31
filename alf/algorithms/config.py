@@ -105,9 +105,13 @@ class TrainerConfig(object):
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
                 for the definition of FrameSkip.
-            unroll_length (int):  number of time steps each environment proceeds per
+            unroll_length (float):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
+                If ``unroll_length`` is not an integer, the actual unroll_length
+                being used will fluctuate between ``floor(unroll_length)`` and
+                ``ceil(unroll_length)`` and the expectation will be equal to
+                ``unroll_length``.
             unroll_with_grad (bool): a bool flag indicating whether we require
                 grad during ``unroll()``. This flag is only used by
                 ``OffPolicyAlgorithm`` where unrolling with grads is usually
@@ -195,8 +199,12 @@ class TrainerConfig(object):
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
-            num_updates_per_train_iter (int): number of optimization steps for
-                one iteration. Only used by ``OffPolicyAlgorithm``.
+            num_updates_per_train_iter (int|float): number of optimization steps for
+                one iteration. Only used by ``OffPolicyAlgorithm``. If ``num_updates_per_train_iter``
+                is not an interger, the actual num_updates_per_train_iter will
+                fluctuate between floor(num_updates_per_train_iter) and
+                ceil(num_updates_per_train_iter) and the expectation will be equal
+                to ``num_updates_per_train_iter``.
             mini_batch_size (int): number of sequences for each minibatch. If None,
                 it's set to the replayer's ``batch_size``. Only used by
                 ``OffPolicyAlgorithm``.
