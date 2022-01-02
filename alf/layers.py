@@ -2306,10 +2306,14 @@ class ParamBatchNorm(nn.Module):
                  eps=1e-5,
                  momentum=0.1,
                  track_running_stats=True):
-        """A 1D BatchNorm layer that does not maintain learnable affine parameters,
-        but accepts both from users. If the given parameter (weight and bias)
-        tensor has an extra batch dimension (first dimension), it performs
-        parallel BN operation.
+        """A general Batch Normalization layer that does not maintain learnable 
+        affine parameters (weight and bias), but accepts both from users. 
+        If ``n_groups`` is greater than 1, it performs parallel Batch Normalization 
+        operation.
+
+        This layer maintains running estimates of ``mean`` and ``var`` if 
+        ``track_running_stats`` is set to ``True``, just like BatchNorm layers of
+        ``torch.nn``.
 
         Args:
             num_features (int): refer to nn.BatchNorm1d and nn.BatchNorm2d 
@@ -2521,15 +2525,6 @@ class ParamBatchNorm(nn.Module):
 
 @alf.configurable
 class ParamBatchNorm1d(ParamBatchNorm):
-    """A BatchNorm1d layer that does not maintain its own affine parameters, 
-    but accepts both from users. If the given parameter (weight and bias) 
-    tensor has an extra batch dimension (first dimension), it performs parallel 
-    Batch Normalization operation.
-
-    This layer maintains running estimate of ``mean`` and ``var`` if 
-    ``track_running_stats`` is set to ``True``, like ``torch.nn.BatchNorm1d``.
-    """
-
     def _preprocess_input(self, inputs):
         """Check inputs shape and preprocess for BatchNorm1d.
 
@@ -2574,15 +2569,6 @@ class ParamBatchNorm1d(ParamBatchNorm):
 
 @alf.configurable
 class ParamBatchNorm2d(ParamBatchNorm):
-    """A BatchNorm2d layer that does not maintain its own affine parameters, 
-    but accepts both from users. If the given parameter (weight and bias) 
-    tensor has an extra batch dimension (first dimension), it performs parallel 
-    Batch Normalization operation.
-
-    This layer maintains running estimate of ``mean`` and ``var`` if 
-    ``track_running_stats`` is set to ``True``, like ``torch.nn.BatchNorm2d``.
-    """
-
     def _preprocess_input(self, inputs):
         """Check inputs shape and preprocess for BatchNorm2d.
 
