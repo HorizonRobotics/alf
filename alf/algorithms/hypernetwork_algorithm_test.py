@@ -97,8 +97,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
-            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
+            last_use_bias=False,
             noise_dim=noise_dim,
             hidden_layers=hidden_layers,
             loss_type='regression',
@@ -244,8 +244,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
-            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
+            last_use_bias=False,
             noise_dim=noise_dim,
             hidden_layers=hidden_layers,
             loss_type='regression',
@@ -406,13 +406,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         outlier_test_loader = DataLoader(trainset, train_batch_size)
 
         conv_layer_params = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-        fc_layer_params = ((84, True), )
+        fc_layer_params = (84, )
         hidden_layers = (noise_dim, 256)
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=10,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
+            use_fc_bias=True,
             hidden_layers=hidden_layers,
             num_particles=num_particles,
             last_activation=math_ops.identity,

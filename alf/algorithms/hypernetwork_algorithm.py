@@ -63,13 +63,17 @@ class HyperNetwork(Algorithm):
                  data_creator_outlier=None,
                  input_tensor_spec=None,
                  output_dim=None,
-                 use_bias_for_last_layer=True,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
                  last_activation=alf.math.identity,
+                 last_use_bias=True,
+                 last_use_bn=False,
                  noise_dim=32,
                  hidden_layers=(64, 64),
+                 use_conv_bias=False,
+                 use_conv_bn=False,
+                 use_fc_bias=True,
                  use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
@@ -113,7 +117,6 @@ class HyperNetwork(Algorithm):
                 None. It must be provided if ``data_creator`` is not provided.
             output_dim (int): dimension of the output of the generated network.
                 It must be provided if ``data_creator`` is not provided.
-            use_bias_for_last_layer (bool): whether use bias for the last layer
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
@@ -124,9 +127,15 @@ class HyperNetwork(Algorithm):
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             last_activation (nn.functional): activation function of the last layer.
+            last_use_bias (bool): whether use bias for the last layer
+            last_use_bn (bool): whether use Batch Normalization for the last layer
             noise_dim (int): dimension of noise
             hidden_layers (tuple): size of hidden layers.
-            use_fc_bn (bool): whether use batnch normalization for fc layers.
+            use_conv_bias (bool|None): whether use bias for conv layers. If None, 
+                will use ``not use_bn`` for conv layers.
+            use_conv_bn (bool): whether use Batch Normalization for conv layers.
+            use_fc_bias (bool): whether use bias for fc layers.
+            use_fc_bn (bool): whether use Batch Normalization for fc layers.
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight for par_vi repulsive term. If
                 ``None`` and ``data_creator`` is provided, will be set as the ratio
@@ -220,14 +229,19 @@ class HyperNetwork(Algorithm):
             self._train_loader = None
             self._test_loader = None
 
-        last_layer_param = (output_dim, use_bias_for_last_layer)
-
+        last_layer_size = output_dim
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
+            use_conv_bias=use_conv_bias,
+            use_conv_bn=use_conv_bn,
+            use_fc_bias=use_fc_bias,
+            use_fc_bn=use_fc_bn,
             activation=activation,
-            last_layer_param=last_layer_param,
+            last_layer_size=last_layer_size,
+            last_use_bias=last_use_bias,
+            last_use_bn=last_use_bn,
             last_activation=last_activation)
 
         gen_output_dim = param_net.param_length
@@ -273,7 +287,7 @@ class HyperNetwork(Algorithm):
             self._function_extra_bs_sampler = function_extra_bs_sampler
             self._function_extra_bs_std = function_extra_bs_std
             critic_input_dim = (
-                function_bs + self._function_extra_bs) * last_layer_param[0]
+                function_bs + self._function_extra_bs) * last_layer_size
         else:
             critic_input_dim = gen_output_dim
 
