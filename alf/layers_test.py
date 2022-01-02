@@ -387,65 +387,79 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
 
     @parameterized.parameters(
-        dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
+        dict(batch_size=1, n=2, act=torch.relu, use_bias=True, use_bn=False),
+        dict(batch_size=3, n=2, act=torch.relu),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_bn=False),
     )
     def test_param_fc(self,
                       batch_size=1,
                       n=2,
                       act=math_ops.identity,
-                      use_bias=True):
+                      use_bias=True,
+                      use_bn=True):
+        """Note that ``batch_size=1`` is not supported by nn.BatchNorm1d. 
+        ParamFC supports using BatchNorm bias instead of bias, but alf.nn.FC
+        does not. """
         input_size = 4
         output_size = 5
         pfc = alf.layers.ParamFC(
-            input_size, output_size, activation=act, use_bias=use_bias)
+            input_size,
+            output_size,
+            activation=act,
+            use_bias=use_bias,
+            use_bn=use_bn,
+            n_groups=n)
         fc = alf.layers.FC(
-            input_size, output_size, activation=act, use_bias=use_bias)
+            input_size,
+            output_size,
+            activation=act,
+            use_bn=use_bn,
+            use_bias=use_bias)
 
         # test param length
         self.assertEqual(pfc.weight_length, fc.weight.nelement())
         if use_bias:
             self.assertEqual(pfc.bias_length, fc.bias.nelement())
-
-        # test non-parallel forward
-        fc.weight.data.copy_(pfc.weight[0])
-        if use_bias:
-            fc.bias.data.copy_(pfc.bias[0])
-        inputs = torch.randn(batch_size, input_size)
-        p_outs = pfc(inputs)
-        outs = fc(inputs)
-        self.assertLess((outs - p_outs).abs().max(), 1e-6)
+        if use_bn:
+            self.assertEqual(pfc._bn.param_length,
+                             fc._bn.weight.nelement() + fc._bn.bias.nelement())
 
         # test parallel forward
-        weight = torch.randn(n, pfc.weight_length)
-        pfc.set_weight(weight)
-        weight = weight.view(n, output_size, input_size)
-        if use_bias:
-            bias = torch.randn(n, pfc.bias_length)
-            pfc.set_bias(bias)
-
+        params = torch.randn(n, pfc.param_length)
+        pfc.set_parameters(params)
+        inputs = torch.randn(batch_size, input_size)
         n_inputs = inputs.unsqueeze(1).expand(batch_size, n, input_size)
         p_outs = pfc(inputs)
         p_n_outs = pfc(n_inputs)
         self.assertLess((p_outs - p_n_outs).abs().max(), 1e-6)
+        weight = pfc.weight
+        if use_bias:
+            bias = pfc.bias
+        if use_bn:
+            bn_weight = pfc._bn.weight.reshape(n, -1)
+            bn_bias = pfc._bn.bias.reshape(n, -1)
         for i in range(n):
             fc.weight.data.copy_(weight[i])
             if use_bias:
                 fc.bias.data.copy_(bias[i])
+            if use_bn:
+                fc._bn.weight.data.copy_(bn_weight[i])
+                fc._bn.bias.data.copy_(bn_bias[i])
             outs = fc(inputs)
             self.assertLess((outs - p_outs[:, i, :]).abs().max(), 1e-6)
 
     @parameterized.parameters(
-        dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=True),
+        dict(batch_size=1, n=2, act=torch.relu),
+        dict(batch_size=3, n=2, act=torch.relu),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_bn=False),
     )
     def test_param_conv2d(self,
                           batch_size=1,
                           n=2,
                           act=math_ops.identity,
-                          use_bias=True):
+                          use_bias=True,
+                          use_bn=True):
         in_channels = 4
         out_channels = 5
         kernel_size = 3
@@ -456,44 +470,47 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             out_channels,
             kernel_size,
             activation=act,
-            use_bias=use_bias)
+            use_bias=use_bias,
+            use_bn=use_bn,
+            n_groups=n)
         conv = alf.layers.Conv2D(
             in_channels,
             out_channels,
             kernel_size,
             activation=act,
-            use_bias=use_bias)
+            use_bias=use_bias,
+            use_bn=use_bn)
 
         # test param length
         self.assertEqual(pconv.weight_length, conv.weight.nelement())
         if use_bias:
             self.assertEqual(pconv.bias_length, conv.bias.nelement())
-
-        # test non-parallel forward
-        conv.weight.data.copy_(pconv.weight)
-        if use_bias:
-            conv.bias.data.copy_(pconv.bias)
-        image = torch.randn(batch_size, in_channels, height, width)
-        p_outs = pconv(image)
-        outs = conv(image)
-        self.assertLess((outs - p_outs).abs().max(), 1e-6)
+        if use_bn:
+            self.assertEqual(
+                pconv._bn.param_length,
+                conv._bn.weight.nelement() + conv._bn.bias.nelement())
 
         # test parallel forward
-        weight = torch.randn(n, pconv.weight_length)
-        pconv.set_weight(weight)
-        weight = weight.view(n, out_channels, in_channels, kernel_size,
-                             kernel_size)
-        if use_bias:
-            bias = torch.randn(n, pconv.bias_length)
-            pconv.set_bias(bias)
+        params = torch.randn(n, pconv.param_length)
+        pconv.set_parameters(params)
+        image = torch.randn(batch_size, in_channels, height, width)
         images = image.repeat(1, n, 1, 1)
         p_outs = pconv(image)
         p_n_outs = pconv(images)
         self.assertLess((p_outs - p_n_outs).abs().max(), 1e-6)
+        weight = pconv.weight.reshape(n, -1, *pconv.weight.shape[1:])
+        if use_bias:
+            bias = pconv.bias.reshape(n, -1)
+        if use_bn:
+            bn_weight = pconv._bn.weight.reshape(n, -1)
+            bn_bias = pconv._bn.bias.reshape(n, -1)
         for i in range(n):
             conv.weight.data.copy_(weight[i])
             if use_bias:
                 conv.bias.data.copy_(bias[i])
+            if use_bn:
+                conv._bn.weight.data.copy_(bn_weight[i])
+                conv._bn.bias.data.copy_(bn_bias[i])
             outs = conv(image)
             self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-5)
 
