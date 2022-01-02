@@ -58,7 +58,7 @@ class ParamConvNet(Network):
             activation (torch.nn.functional): activation for all the layers
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use Batch Normalization.
-            n_groups (int): number of parallel groups.
+            n_groups (int): number of parallel groups, must be specified if ``use_bn``
             kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
                 structure of shape ``(B, n, C, H, W)``; otherwise the output
@@ -200,7 +200,7 @@ class ParamNetwork(Network):
             use_conv_bn (bool): whether use Batch Normalization for conv layers.
             use_fc_bias (bool): whether use bias for fc layers.
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
-            n_groups (int): number of parallel groups.
+            n_groups (int): number of parallel groups, must be specified if ``use_bn``
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
             last_layer_size (int): an optional size of an additional layer

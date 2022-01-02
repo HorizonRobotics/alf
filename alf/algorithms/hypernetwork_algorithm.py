@@ -238,6 +238,7 @@ class HyperNetwork(Algorithm):
             use_conv_bn=use_conv_bn,
             use_fc_bias=use_fc_bias,
             use_fc_bn=use_fc_bn,
+            n_groups=num_particles,
             activation=activation,
             last_layer_size=last_layer_size,
             last_use_bias=last_use_bias,
