@@ -1760,7 +1760,7 @@ class ParamFC(nn.Module):
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
             use_bn (bool): whether to use Batch Normalization.
-            n_groups (int): number of parallel groups.
+            n_groups (int): number of parallel groups, must be specified if ``use_bn``
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -1992,7 +1992,7 @@ class ParamConv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use BatchNorm
-            n_groups (int): number of parallel groups.
+            n_groups (int): number of parallel groups, must be specified if ``use_bn``
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -2234,6 +2234,9 @@ class ParamConv2D(nn.Module):
 
 @alf.configurable
 class ParamBatchNorm(nn.Module):
+    """Base class for ParamBatchNorm, adapted from ``torch.nn.modules._BatchNorm``
+    """
+
     def __init__(self,
                  num_features,
                  n_groups,
@@ -2455,6 +2458,15 @@ class ParamBatchNorm(nn.Module):
 
 @alf.configurable
 class ParamBatchNorm1d(ParamBatchNorm):
+    """A BatchNorm1d layer that does not maintain its own affine parameters, 
+    but accepts both from users. If the given parameter (weight and bias) 
+    tensor has an extra batch dimension (first dimension), it performs parallel 
+    Batch Normalization operation.
+
+    This layer maintains running estimate of ``mean`` and ``var`` if 
+    ``track_running_stats`` is set to ``True``, like ``torch.nn.BatchNorm1d``.
+    """
+
     def _preprocess_input(self, inputs):
         """Check inputs shape and preprocess for BatchNorm1d.
 
@@ -2499,6 +2511,15 @@ class ParamBatchNorm1d(ParamBatchNorm):
 
 @alf.configurable
 class ParamBatchNorm2d(ParamBatchNorm):
+    """A BatchNorm2d layer that does not maintain its own affine parameters, 
+    but accepts both from users. If the given parameter (weight and bias) 
+    tensor has an extra batch dimension (first dimension), it performs parallel 
+    Batch Normalization operation.
+
+    This layer maintains running estimate of ``mean`` and ``var`` if 
+    ``track_running_stats`` is set to ``True``, like ``torch.nn.BatchNorm2d``.
+    """
+
     def _preprocess_input(self, inputs):
         """Check inputs shape and preprocess for BatchNorm2d.
 
