@@ -377,8 +377,9 @@ class Player(object):
             with_radar_sensor (bool): whether to use ``RadarSensor``.
             with_bev_sensor (bool): whether to use ``BEVSensor``.
             terminate_upon_infraction (str): whether to terminate the episode
-                based on the specified mode (collision", "redlight", "all"),
+                based on the specified mode ("collision", "redlight", "all", ""),
                 when the agent has the corresponding infractions.
+                If "", no infraction-based termination is activated.
             render_waypoints (bool): whether to render (interpolated) waypoints
                 in the generated video during rendering. Note that it is only
                 used for visualization and has no impacts on the perception data.
@@ -388,7 +389,8 @@ class Player(object):
         self._observation_sensors = {}
         self._render_waypoints = render_waypoints
 
-        assert terminate_upon_infraction in ('collision', 'redlight', 'all')
+        assert terminate_upon_infraction in ('collision', 'redlight', 'all',
+                                             '')
         self._terminate_upon_infraction = terminate_upon_infraction
 
         self._collision_sensor = CollisionSensor(actor)
