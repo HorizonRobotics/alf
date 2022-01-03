@@ -650,7 +650,11 @@ def plot(env, her, train, curves):
     print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
     SIX_ATARI_GAMES = [
-        "Atlantis", "Frostbite", "Qbert", "Breakout", "Seaquest",
+        "Frostbite",
+        "Qbert",
+        "Breakout",
+        "Seaquest",  # use these four games for dqn, td-lambda and retrace
+        "Atlantis",
         "SpaceInvaders"
     ]
     ELEVEN_ATARI_GAMES = [
@@ -664,11 +668,12 @@ def plot(env, her, train, curves):
     mstr_map = {
         "ac": "",
         "sac": "",  # baseline
+        "dqn": "",  # baseline
         "ddpg": "",  # baseline
         "her": "",  # baseline
         "td3": "",  # baseline
         "tdl": "-loss_at_TDLoss-tdlambda_0.95-batlen_3",
-        "retrace": "-loss_at_TDLoss-tdlambda_0.95-retrace-batlen_3",
+        "retrace": "-loss_at_TDLoss-tdlambda_0.95-batlen_3-retrace",
         "gdist": "-gdist",
         "lbtq": "-lbtq",
         "lbtqgdist": "-lbtq-gdist"
@@ -678,6 +683,7 @@ def plot(env, her, train, curves):
         "ddpg": "ddpg",
         "td3": "td3",
         "sac": "sac",
+        "dqn": "dqn",
         "her": "her",
         "tdl": "td-lambda",
         "retrace": "retrace",
@@ -695,7 +701,9 @@ def plot(env, her, train, curves):
         methods = ["lbtqgdist", "gdist", "her"]
     else:
         if env in ["atari", "atarirn"]:
-            methods = ["lbtq", "sac"]  # , "tdl", "retrace"
+            methods = ["lbtq", "sac"]
+            # methods = ["lbtq", "tdl", "retrace", "sac"]
+            # methods = ["lbtq", "dqn"]
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
         elif env == "fetch":
@@ -802,7 +810,9 @@ def plot(env, her, train, curves):
             assert not her
             if t in SIX_ATARI_GAMES:
                 n = "envn_%sNoFrameskip--v4-sd_3*" % t
-                n = n + ("/tboardlog/sacbreakout%s-" % mstr) + n
+                n = n + ("/tboardlog/sacbreakout%s-" %
+                         mstr) + n  # with sac baseline
+                # n = n + ("/tboardlog/dqnbreakout%s-" % mstr) + n  # with dqn baseline
             else:
                 n = "sacbreakout%s-envn_%sNoFrameskip--v4-sd_3" % (mstr, t)
         return n
@@ -885,9 +895,7 @@ if __name__ == "__main__":
         "fetch": [False, True],
         "pioneer": [True, ]
     }
-    train_curves = [("eval", "return", False), ("eval", "return", True),
-                    ("train", "value", False), ("train", "value", True),
-                    ("train", "drgt", False), ("train", "gdgt", True)]
+
     if env == "atariac":
         train_curves = [("eval", "return", False), ("eval", "discreturn",
                                                     False),
@@ -895,6 +903,13 @@ if __name__ == "__main__":
                         ("train", "discreturn", False),
                         ("train", "avgreward", False),
                         ("train", "return", False)]
+    else:
+        train_curves = [
+            ("eval", "return", False),
+            ("eval", "return", True),
+            # ("train", "value", False), ("train", "value", True),
+            # ("train", "drgt", False), ("train", "gdgt", True)
+        ]
     for train, curves, her in train_curves:
         # train is "train" or "eval"
         # curves is one of "drgt", "gdgt", "return", "value"
