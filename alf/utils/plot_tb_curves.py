@@ -904,12 +904,9 @@ if __name__ == "__main__":
                         ("train", "avgreward", False),
                         ("train", "return", False)]
     else:
-        train_curves = [
-            ("eval", "return", False),
-            ("eval", "return", True),
-            # ("train", "value", False), ("train", "value", True),
-            # ("train", "drgt", False), ("train", "gdgt", True)
-        ]
+        train_curves = [("eval", "return", False), ("eval", "return", True),
+                        ("train", "value", False), ("train", "value", True),
+                        ("train", "drgt", False), ("train", "gdgt", True)]
     for train, curves, her in train_curves:
         # train is "train" or "eval"
         # curves is one of "drgt", "gdgt", "return", "value"
