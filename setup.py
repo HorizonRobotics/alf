@@ -21,6 +21,8 @@ setup(
     python_requires='>=3.7.0',
     install_requires=[
         'atari_py==0.1.7',
+        # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
+        'box2d-py',
         'cpplint',
         'clang-format==9.0',
         'fasteners',
