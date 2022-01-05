@@ -548,7 +548,8 @@ class RLAlgorithm(Algorithm):
         alf.summary.increment_global_counter()
 
         with record_time("time/unroll"):
-            experience = self.unroll(self._config.unroll_length)
+            with torch.cuda.amp.autocast(self._config.enable_amp):
+                experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
         with record_time("time/train"):

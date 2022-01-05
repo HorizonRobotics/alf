@@ -137,9 +137,10 @@ def summarize_gradients(name_and_params, with_histogram=True):
             continue
         grad_values = var.grad
         if with_histogram:
-            alf.summary.histogram(
-                name='summarize_grads/' + var_name + '_gradient',
-                data=grad_values)
+            if torch.all(grad_values.isfinite()):
+                alf.summary.histogram(
+                    name='summarize_grads/' + var_name + '_gradient',
+                    data=grad_values)
         alf.summary.scalar(
             name='summarize_grads/' + var_name + '_gradient_norm',
             data=grad_values.norm())
