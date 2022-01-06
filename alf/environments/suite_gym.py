@@ -97,6 +97,9 @@ def wrap_env(gym_env,
         discount (float): Discount to use for the environment.
         max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
+            Note that a ``TimeLimit`` wrapper will be applied as the *last* Gym wrapper,
+            so if you also use the ``FrameSkip`` Gym wrapper, then the actual max length
+            of an episode will be ``skip*max_episode_steps``.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
         time_limit_wrapper (AlfEnvironmentBaseWrapper): Wrapper that accepts

@@ -281,6 +281,11 @@ class TrainPlayTest(alf.test.TestCase):
         if not suite_safety_gym.is_available():
             self.skipTest("Safety Gym is not available.")
 
+    def _skip_if_dmc_unavailable(self):
+        from alf.environments import suite_dmc
+        if not suite_dmc.is_available():
+            self.skipTest("DM control is not available.")
+
     def _test(self,
               conf_file,
               skip_checker=None,
@@ -629,6 +634,13 @@ class TrainPlayTest(alf.test.TestCase):
             self.assertGreater(returns[-1], -200)
 
         self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sac_fishswim(self):
+        self._test(
+            conf_file='sac_fishswim_conf.py',
+            skip_checker=self._skip_if_dmc_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_sarsa_ddpg_pendulum(self):
         self._test(
