@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Union
 import types
 
+import alf
 from alf.utils.common import warning_once
 
 
@@ -29,6 +31,7 @@ class _NormBase(nn.Module):
                  eps: float = 1e-5,
                  momentum: float = 0.1,
                  affine: bool = True,
+                 use_bias: bool = True,
                  track_running_stats: bool = True):
         super().__init__()
         self._num_features = num_features
@@ -38,7 +41,19 @@ class _NormBase(nn.Module):
         self._track_running_stats = track_running_stats
         if affine:
             self._weight = nn.Parameter(torch.Tensor(num_features))
+            use_bias = True
+        else:
+            self._weight = None
+        if use_bias:
+            if self._weight is None:
+                # pytorch has a bug which cannot handle the case that weihgt is
+                # None but bias is not. So we have to provide a fixed weight.
+                self._weight = nn.Parameter(
+                    torch.Tensor(num_features), requires_grad=False)
             self._bias = nn.Parameter(torch.Tensor(num_features))
+        else:
+            self._bias = None
+        self._use_bias = use_bias
         self._running_means = []
         self._running_vars = []
         self._num_batches_tracked = []
@@ -102,8 +117,9 @@ class _NormBase(nn.Module):
                 self._running_means[i].zero_()
                 self._running_vars[i].fill_(1)
                 self._num_batches_tracked[i].zero_()
-        if self._affine:
+        if self._weight is not None:
             nn.init.ones_(self._weight)
+        if self._bias is not None:
             nn.init.zeros_(self._bias)
 
     def forward(self, input: torch.Tensor):
@@ -161,9 +177,10 @@ class _NormBase(nn.Module):
             running_vars = running_vars.reshape(-1)
             weight = self._weight
             bias = self._bias
-            if self._affine:
-                weight = weight[None, :].expand(input.shape[:2])
-                bias = bias[None, :].expand(input.shape[:2])
+            if weight is not None:
+                weight = weight[None, :].expand(input.shape[:2]).reshape(-1)
+            if bias is not None:
+                bias = bias[None, :].expand(input.shape[:2]).reshape(-1)
             batch_size = input.shape[0]
             input = input.reshape(1, -1, *input.shape[2:])
             y = F.batch_norm(
@@ -181,6 +198,7 @@ class _NormBase(nn.Module):
             return y
 
 
+@alf.configurable
 class BatchNorm1d(_NormBase):
     r"""Batch Normalization over a 2D or 3D input.
 
@@ -217,6 +235,8 @@ class BatchNorm1d(_NormBase):
             (i.e. simple average). Default: 0.1
         affine: a boolean value that when set to ``True``, this module has
             learnable affine parameters. Default: ``True``
+        use_bias: whether to use bias. Note that if ``affine`` is True, this
+            argument is ignored and bias will be used.
         track_running_stats: a boolean value that when set to ``True``, this
             module tracks the running mean and variance, and when set to ``False``,
             this module does not track such statistics, and initializes statistics
@@ -235,6 +255,7 @@ class BatchNorm1d(_NormBase):
                 input.dim()))
 
 
+@alf.configurable
 class BatchNorm2d(_NormBase):
     r"""Applies Batch Normalization over a 4D input.
 
@@ -268,6 +289,8 @@ class BatchNorm2d(_NormBase):
             (i.e. simple average). Default: 0.1
         affine: a boolean value that when set to ``True``, this module has
             learnable affine parameters. Default: ``True``
+        use_bias: whether to use bias. Note that if ``affine`` is True, this
+            argument is ignored and bias will be used.
         track_running_stats: a boolean value that when set to ``True``, this
             module tracks the running mean and variance, and when set to ``False``,
             this module does not track such statistics, and initializes statistics

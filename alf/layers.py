@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union, Callable, Iterable, Tuple
+from typing import Callable, Dict, Iterable, Optional, Tuple, Union
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -324,7 +324,9 @@ class FC(nn.Module):
                  bn_ctor=nn.BatchNorm1d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
-                 bias_init_value=0.0):
+                 bias_init_value=0.0,
+                 weight_opt_args: Optional[Dict] = None,
+                 bias_opt_args: Optional[Dict] = None):
         """A fully connected layer that's also responsible for activation and
         customized weights initialization. An auto gain calculation might depend
         on the activation following the linear layer. Suggest using this wrapper
@@ -346,6 +348,8 @@ class FC(nn.Module):
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
+            weight_opt_args: optimizer arguments for weight
+            bias_opt_args: optimizer arguments for bias
         """
         # get the argument list with vals
         self._kwargs = copy.deepcopy(locals())
@@ -358,6 +362,8 @@ class FC(nn.Module):
         self._output_size = output_size
         self._activation = activation
         self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
+        # bias is useless if there is BN
+        use_bias = use_bias and not use_bn
         if use_bias:
             self._bias = nn.Parameter(torch.Tensor(output_size))
         else:
@@ -378,6 +384,10 @@ class FC(nn.Module):
         else:
             self._ln = None
         self.reset_parameters()
+        if weight_opt_args:
+            self._weight.opt_args = weight_opt_args
+        if bias_opt_args and self._bias is not None:
+            self._bias.opt_args = bias_opt_args
 
     @property
     def input_size(self):
@@ -425,8 +435,6 @@ class FC(nn.Module):
                 self._ln.bias.data.zero_()
             y = self._ln(y)
         if self._use_bn:
-            if not self._use_bias:
-                self._bn.bias.data.zero_()
             y = self._bn(y)
         return self._activation(y)
 
@@ -624,7 +632,9 @@ class ParallelFC(nn.Module):
                  bn_ctor=nn.BatchNorm1d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
-                 bias_init_value=0.0):
+                 bias_init_value=0.,
+                 weight_opt_args: Optional[Dict] = None,
+                 bias_opt_args: Optional[Dict] = None):
         """
         It is equivalent to ``n`` separate FC layers with the same
         ``input_size`` and ``output_size``.
@@ -646,6 +656,8 @@ class ParallelFC(nn.Module):
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
+            weight_opt_args: optimizer arguments for weight
+            bias_opt_args: optimizer arguments for bias
         """
         super().__init__()
         self._input_size = input_size
@@ -673,6 +685,10 @@ class ParallelFC(nn.Module):
         else:
             self._ln = None
         self.reset_parameters()
+        if weight_opt_args:
+            self._weight.opt_args = weight_opt_args
+        if bias_opt_args and self._bias is not None:
+            self._bias.opt_args = bias_opt_args
 
     def reset_parameters(self):
         for i in range(self._n):
@@ -1085,6 +1101,7 @@ class Conv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 weight_opt_args: Optional[Dict] = None,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1103,6 +1120,7 @@ class Conv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            weight_opt_args: optimizer arguments for weight (not for bias)
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
@@ -1139,6 +1157,8 @@ class Conv2D(nn.Module):
         else:
             self._bn = None
 
+        if weight_opt_args is not None:
+            self._conv2d.weight.opt_args = weight_opt_args
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -1344,6 +1364,7 @@ class ParallelConv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 weight_opt_args: Optional[Dict] = None,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1364,6 +1385,7 @@ class ParallelConv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            weight_opt_args: optimizer arguments for weight (not for bias)
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
@@ -1400,6 +1422,8 @@ class ParallelConv2D(nn.Module):
             self._bn = bn_ctor(n * out_channels)
         else:
             self._bn = None
+        if weight_opt_args is not None:
+            self._conv2d.weight.opt_args = weight_opt_args
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -2178,7 +2202,8 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
-@alf.configurable(whitelist=['with_batch_normalization', 'bn_ctor'])
+@alf.configurable(
+    whitelist=['with_batch_normalization', 'bn_ctor', 'weight_opt_args'])
 class ResidueBlock(nn.Module):
     """The ResidueBlock for ResNet.
 
@@ -2196,6 +2221,7 @@ class ResidueBlock(nn.Module):
                  stride: Union[int, Tuple[int, int]],
                  transpose: bool = False,
                  with_batch_normalization: bool = True,
+                 weight_opt_args: Optional[Dict] = None,
                  bn_ctor: Callable[[int], nn.Module] = nn.BatchNorm2d):
         """
         Args:
@@ -2210,6 +2236,7 @@ class ResidueBlock(nn.Module):
                 by ``stride``.
             with_batch_normalization: whether to include batch normalization.
                 Note that standard ResNet uses batch normalization.
+            weight_opt_args: optimizer arguments for weights (not for bias)
             bn_ctor: will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
         """
@@ -2232,6 +2259,10 @@ class ResidueBlock(nn.Module):
         nn.init.kaiming_normal_(conv1.weight.data)
         nn.init.kaiming_normal_(conv2.weight.data)
 
+        if weight_opt_args is not None:
+            conv1.weight.opt_args = weight_opt_args
+            conv2.weight.opt_args = weight_opt_args
+
         if stride != 1 or in_channels != channels:
             s = conv_fn(in_channels, channels, 1, stride, bias=bias)
             nn.init.kaiming_normal_(s.weight.data)
@@ -2241,6 +2272,8 @@ class ResidueBlock(nn.Module):
                 shortcut_layers = nn.Sequential(s, bn_ctor(channels))
             else:
                 shortcut_layers = s
+            if weight_opt_args is not None:
+                s.weight.opt_args = weight_opt_args
         else:
             shortcut_layers = None
 
