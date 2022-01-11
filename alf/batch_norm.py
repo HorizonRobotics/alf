@@ -366,3 +366,332 @@ def prepare_rnn_batch_norm(module: nn.Module) -> bool:
         set_batch_norm_current_step, module)
 
     return len(bns) > 0
+
+
+class ParamBatchNorm(nn.Module):
+    """Base class for ParamBatchNorm, adapted from ``torch.nn.modules._BatchNorm``
+    """
+
+    def __init__(self,
+                 num_features,
+                 n_groups,
+                 eps=1e-5,
+                 momentum=0.1,
+                 track_running_stats=True):
+        """A general Batch Normalization layer that does not maintain learnable 
+        affine parameters (weight and bias), but accepts both from users. 
+        If ``n_groups`` is greater than 1, it performs parallel Batch Normalization 
+        operation.
+
+        This layer maintains running estimates of ``mean`` and ``var`` if 
+        ``track_running_stats`` is set to ``True``, just like BatchNorm layers of
+        ``torch.nn``.
+
+        Args:
+            num_features (int): refer to nn.BatchNorm1d and nn.BatchNorm2d 
+            n_groups (int): number of parallel groups
+            eps (float): refer to nn.BatchNorm1d and nn.BatchNorm2d 
+            momentum (float): refer to nn.BatchNorm1d and nn.BatchNorm2d
+            track_running_stats (bool): refer to nn.BatchNorm1d and nn.BatchNorm2d
+        """
+        super().__init__()
+        self._num_features = num_features
+        self._n_groups = n_groups
+        self._eps = eps
+        self._momentum = momentum
+        self._track_running_stats = track_running_stats
+        self._set_weight(torch.ones(n_groups, self.weight_length))
+        self._set_bias(torch.zeros(n_groups, self.bias_length))
+        if track_running_stats:
+            self.register_buffer('running_mean',
+                                 torch.zeros(n_groups * num_features))
+            self.register_buffer('running_var',
+                                 torch.ones(n_groups * num_features))
+            self.register_buffer('num_batches_tracked',
+                                 torch.tensor(0, dtype=torch.long))
+        else:
+            self.register_parameter('running_mean', None)
+            self.register_parameter('running_var', None)
+            self.register_parameter('num_batches_tracked', None)
+        self.reset_parameters()
+        self._param_length = None
+
+    def reset_parameters(self) -> None:
+        self.reset_running_stats()
+
+    def reset_running_stats(self) -> None:
+        if self._track_running_stats:
+            # running_mean/running_var/num_batches... are registered at runtime depending
+            # if self._track_running_stats is on
+            self.running_mean.zero_()  # type: ignore[operator]
+            self.running_var.fill_(1)  # type: ignore[operator]
+            self.num_batches_tracked.zero_()  # type: ignore[operator]
+
+    @property
+    def weight(self):
+        """Get stored weight tensor or batch of weight tensors."""
+        return self._weight
+
+    @property
+    def bias(self):
+        """Get stored bias tensor or batch of bias tensors."""
+        return self._bias
+
+    @property
+    def num_features(self):
+        """Get the n_element of a single weight tensor. """
+        return self._num_features
+
+    @property
+    def weight_length(self):
+        """Get the n_element of a single weight tensor. """
+        return self._num_features
+
+    @property
+    def bias_length(self):
+        """Get the n_element of a single bias tensor. """
+        return self._num_features
+
+    @property
+    def param_length(self):
+        """Get total number of parameters for all layers. """
+        if self._param_length is None:
+            self._param_length = self.weight_length + self.bias_length
+        return self._param_length
+
+    def set_parameters(self, theta, reinitialize=False):
+        """Distribute parameters to corresponding parameters.
+
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
+                                        or ``[B, D] (groups=B)``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of
+                each layer.
+        """
+        if theta.ndim == 1:
+            theta = theta.unsqueeze(0)
+        assert (theta.ndim == 2 and theta.shape[0] == self._n_groups
+                and (theta.shape[1] == self.param_length)), (
+                    "Input theta has wrong shape %s. Expecting shape (%d, %d)"
+                    % (theta.shape, self._n_groups, self.param_length))
+
+        weight = theta[:, :self.weight_length]
+        self._set_weight(weight, reinitialize=reinitialize)
+        bias = theta[:, self.weight_length:]
+        self._set_bias(bias, reinitialize=reinitialize)
+
+    def _set_weight(self, weight, reinitialize=False):
+        """Store a weight tensor or batch of weight tensors.
+
+        Args:
+            weight (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of weight vector, should be self.weight_length
+            reinitialize (bool): whether to reinitialize self._weight
+        """
+        assert (weight.ndim == 2 and weight.shape[0] == self._n_groups
+                and (weight.shape[1] == self.weight_length)), (
+                    "Input weight has wrong shape %s. Expecting shape (%d, %d)"
+                    % (weight.shape, self._n_groups, self.weight_length))
+        if reinitialize:
+            weight = torch.ones(self._n_groups, self.weight_length)
+
+        self._weight = weight.reshape(-1)  # [n * weight_length]
+
+    def _set_bias(self, bias, reinitialize=False):
+        """Store a bias tensor or batch of bias tensors.
+
+        Args:
+            bias (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of bias vector, should be self.bias_length
+            reinitialize (bool): whether to reinitialize self._bias
+        """
+        assert (bias.ndim == 2 and bias.shape[0] == self._n_groups
+                and (bias.shape[1] == self.bias_length)), (
+                    "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
+                    (bias.shape, self._n_groups, self.bias_length))
+        if reinitialize:
+            bias = torch.zeros(self._n_groups, self.bias_length)
+
+        self._bias = bias.reshape(-1)  # [n * bias_length]
+
+    def _preprocess_input(self, inputs):
+        raise NotImplementedError
+
+    def forward(self, inputs, keep_group_dim=True):
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): refer to ``_preprocess_input`` of subclass
+                for detailed description.
+
+        Returns:
+            torch.Tensor: for BatchNorm1d, with shape ``[B, n, D]`` or ``[B, n*D]``,
+                for BatchNorm2d, with shape ``[B, n, C, H, W]`` or ``[B, n*C, H, W]``.
+        """
+        inputs = self._preprocess_input(inputs)
+
+        # exponential_average_factor is set to self.momentum
+        # (when it is available) only so that it gets updated
+        # in ONNX graph when this node is exported to ONNX.
+        if self._momentum is None:
+            exponential_average_factor = 0.0
+        else:
+            exponential_average_factor = self._momentum
+
+        if self.training and self._track_running_stats:
+            # TODO: if statement only here to tell the jit to skip emitting this when it is None
+            if self.num_batches_tracked is not None:  # type: ignore
+                self.num_batches_tracked = self.num_batches_tracked + 1  # type: ignore
+                if self._momentum is None:  # use cumulative moving average
+                    exponential_average_factor = 1.0 / float(
+                        self.num_batches_tracked)
+                else:  # use exponential moving average
+                    exponential_average_factor = self._momentum
+        r"""
+        Decide whether the mini-batch stats should be used for normalization rather than the buffers.
+        Mini-batch stats are used in training mode, and in eval mode when buffers are None.
+        """
+        if self.training:
+            bn_training = True
+        else:
+            bn_training = (self.running_mean is None) and (self.running_var is
+                                                           None)
+        r"""
+        Buffers are only updated if they are to be tracked and we are in training mode. Thus they only need to be
+        passed when the update should occur (i.e. in training mode when they are tracked), or when buffer stats are
+        used for normalization (i.e. in eval mode when buffers are not None).
+        """
+        assert self.running_mean is None or isinstance(self.running_mean,
+                                                       torch.Tensor)
+        assert self.running_var is None or isinstance(self.running_var,
+                                                      torch.Tensor)
+
+        res = F.batch_norm(
+            inputs,
+            # If buffers are not to be tracked, ensure that they won't be updated
+            self.running_mean
+            if not self.training or self._track_running_stats else None,
+            self.running_var
+            if not self.training or self._track_running_stats else None,
+            self.weight,
+            self.bias,
+            bn_training,
+            exponential_average_factor,
+            self._eps)
+
+        if self._n_groups > 1 and keep_group_dim:
+            res = res.reshape(inputs.shape[0], self._n_groups, -1,
+                              *inputs.shape[2:])  # [B, n, D]
+
+        return res
+
+
+class ParamBatchNorm1d(ParamBatchNorm):
+    def _preprocess_input(self, inputs):
+        """Check inputs shape and preprocess for BatchNorm1d.
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, D] (groups=1)``
+                or ``[B, n, D] (groups=n)``; for BatchNorm2d,
+                where the meaning of the symbols are:
+
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``D``: input dimension
+
+                When the shape of inputs is ``[B, D]``, all the n linear
+                operations will take inputs as the same shared inputs.
+                When the shape of inputs is ``[B, n, D]``, each linear operator
+                will have its own input data by slicing inputs.
+
+        Returns:
+            torch.Tensor: with shape ``[B, n*D]``
+        """
+        if inputs.ndim == 2:
+            # case 1: non-parallel inputs
+            assert inputs.shape[1] == self.num_features, (
+                "Input inputs has wrong shape %s. Expecting (B, %d)" %
+                (inputs.shape, self.num_features))
+            inputs = inputs.repeat(1, self._n_groups)  # [B, n*D]
+            # inputs = inputs.unsqueeze(0).expand(self._n_groups, *inputs.shape)
+        elif inputs.ndim == 3:
+            # case 2: parallel inputs
+            assert (
+                inputs.shape[1] == self._n_groups
+                and inputs.shape[2] == self.num_features), (
+                    "Input inputs has wrong shape %s. Expecting (B, %d, %d)" %
+                    (inputs.shape, self._n_groups, self.num_features))
+            # [B, n*D]
+            inputs = inputs.reshape(-1, self._n_groups * self.num_features)
+        else:
+            raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
+
+        return inputs
+
+
+class ParamBatchNorm2d(ParamBatchNorm):
+    def _preprocess_input(self, inputs):
+        """Check inputs shape and preprocess for BatchNorm2d.
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, C, H, W] (groups=1)``
+                                        or ``[B, n, C, H, W] (groups=n)``
+                where the meaning of the symbols are:
+
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+
+                When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
+                operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
+                will have its own input data by slicing img.
+
+        Returns:
+            torch.Tensor with shape ``[B, n*C, H, W]``
+        """
+        if self._n_groups == 1:
+            # non-parallel layer
+            assert (inputs.ndim == 4
+                    and inputs.shape[1] == self.num_features), (
+                        "Input img has wrong shape %s. Expecting (B, %d, H, W)"
+                        % (inputs.shape, self.num_features))
+        else:
+            # parallel layer
+            if inputs.ndim == 4:
+                if inputs.shape[1] == self.num_features:
+                    # case 1: non-parallel input
+                    inputs = inputs.repeat(1, self._n_groups, 1, 1)
+                else:
+                    # case 2: parallel input
+                    assert inputs.shape[
+                        1] == self._n_groups * self.num_features, (
+                            "Input img has wrong shape %s. Expecting (B, %d, H, W) or (B, %d, H, W)"
+                            % (inputs.shape, self.num_features,
+                               self._n_groups * self.num_features))
+            elif inputs.ndim == 5:
+                # case 3: parallel input with unmerged group dim
+                assert (
+                    inputs.shape[1] == self._n_groups
+                    and inputs.shape[2] == self.num_features
+                ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
+                    % (inputs.shape, self._n_groups, self.num_features))
+                # merge group and channel dim
+                inputs = inputs.reshape(inputs.shape[0],
+                                        inputs.shape[1] * inputs.shape[2],
+                                        *inputs.shape[3:])
+            else:
+                raise ValueError("Wrong img.ndim=%d" % inputs.ndim)
+
+        return inputs
