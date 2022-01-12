@@ -176,9 +176,10 @@ class TrainerConfig(object):
             debug_summaries (bool): A bool to gather debug summaries.
             profiling (bool): If True, use cProfile to profile the training. The
                 profile result will be written to ``root_dir``/py_train.INFO.
-            enable_amp: whether to use automatic mixed precision for inference.
-                This usually makes the algorithm run faster. However, the result
-                may be different (mostly likely due to random fluctuation).
+            enable_amp: whether to use automatic mixed precision for training.
+                This can makes the training faster if the algorithm is GPU intensive.
+                However, the result may be different (mostly likely due to random
+                fluctuation).
             code_snapshots (list[str]): an optional list of code files to write
                 to tensorboard text. Note: the code file path should be relative
                 to "<ALF_ROOT>/alf", e.g., "algorithms/agent.py". This can be

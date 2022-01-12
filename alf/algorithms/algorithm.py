@@ -142,6 +142,7 @@ class Algorithm(AlgorithmInterface):
         self._prioritized_sampling = None
 
         self._use_rollout_state = False
+        self._grad_scaler = None
         if config:
             self.use_rollout_state = config.use_rollout_state
             if config.temporally_independent_train_step is None:
@@ -149,8 +150,6 @@ class Algorithm(AlgorithmInterface):
                     alf.nest.flatten(self.train_state_spec)) == 0)
             if config.enable_amp and torch.cuda.is_available():
                 self._grad_scaler = torch.cuda.amp.GradScaler()
-            else:
-                self._grad_scaler = None
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
