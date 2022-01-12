@@ -215,7 +215,7 @@ class RLAlgorithm(Algorithm):
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
 
-            if config.whole_replay_buffer_training:
+            if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 # For whole replay buffer training, we would like to be sure
                 # that the replay buffer have enough samples in it to perform
                 # the training, which will most likely happen in the 2nd

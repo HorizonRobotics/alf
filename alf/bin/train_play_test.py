@@ -116,7 +116,7 @@ COMMON_TRAIN_CONF = [
     'TrainerConfig.summarize_grads_and_vars=False',
     'TrainerConfig.summarize_action_distributions=False',
     # train two iterations
-    'TrainerConfig.num_iterations=2',
+    'TrainerConfig.num_iterations=3',
     'TrainerConfig.num_env_steps=0',
     # only save checkpoint after train iteration finished
     'TrainerConfig.num_checkpoints=1',
