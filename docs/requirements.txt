@@ -16,8 +16,8 @@ git+git://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typ
 sphinxcontrib-napoleon==0.7
 --find-links https://download.pytorch.org/whl/torch_stable.html
 tensorboard==2.1.0
-torch==1.4.0+cpu
-torchvision==0.5.0+cpu
+torch==1.8.1+cpu
+torchvision==0.9.1+cpu
 cnest==1.0.4
 gym3==0.3.3
 procgen==0.10.4
