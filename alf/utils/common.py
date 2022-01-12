@@ -244,7 +244,8 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     if torch.any(reset_mask):
         return alf.nest.map_structure(
             lambda i_s, s: torch.where(
-                expand_dims_as(reset_mask, i_s), i_s, s), initial_state, state)
+                expand_dims_as(reset_mask, i_s), i_s.to(s.dtype), s),
+            initial_state, state)
     else:
         return state
 
@@ -828,6 +829,7 @@ def set_random_seed(seed):
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True)
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)

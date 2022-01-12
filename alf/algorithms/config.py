@@ -51,6 +51,7 @@ class TrainerConfig(object):
                  metric_min_buffer_size=10,
                  debug_summaries=False,
                  profiling=False,
+                 enable_amp=False,
                  code_snapshots=None,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
@@ -175,6 +176,10 @@ class TrainerConfig(object):
             debug_summaries (bool): A bool to gather debug summaries.
             profiling (bool): If True, use cProfile to profile the training. The
                 profile result will be written to ``root_dir``/py_train.INFO.
+            enable_amp: whether to use automatic mixed precision for training.
+                This can makes the training faster if the algorithm is GPU intensive.
+                However, the result may be different (mostly likely due to random
+                fluctuation).
             code_snapshots (list[str]): an optional list of code files to write
                 to tensorboard text. Note: the code file path should be relative
                 to "<ALF_ROOT>/alf", e.g., "algorithms/agent.py". This can be
@@ -249,6 +254,7 @@ class TrainerConfig(object):
         self.metric_min_buffer_size = metric_min_buffer_size
         self.debug_summaries = debug_summaries
         self.profiling = profiling
+        self.enable_amp = enable_amp
         self.code_snapshots = code_snapshots
         self.summarize_grads_and_vars = summarize_grads_and_vars
         self.summarize_action_distributions = summarize_action_distributions

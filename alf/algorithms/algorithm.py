@@ -142,11 +142,14 @@ class Algorithm(AlgorithmInterface):
         self._prioritized_sampling = None
 
         self._use_rollout_state = False
+        self._grad_scaler = None
         if config:
             self.use_rollout_state = config.use_rollout_state
             if config.temporally_independent_train_step is None:
                 config.temporally_independent_train_step = (len(
                     alf.nest.flatten(self.train_state_spec)) == 0)
+            if config.enable_amp and torch.cuda.is_available():
+                self._grad_scaler = torch.cuda.amp.GradScaler()
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
@@ -484,9 +487,9 @@ class Algorithm(AlgorithmInterface):
         for name, param in self.named_parameters():
             self._param_to_name[param] = name
 
-        return self._setup_optimizers_()[0]
+        return self._setup_optimizers_(self._param_to_name)[0]
 
-    def _setup_optimizers_(self):
+    def _setup_optimizers_(self, param_to_name):
         """Setup the param groups for optimizers.
 
         Returns:
@@ -528,9 +531,9 @@ class Algorithm(AlgorithmInterface):
                 continue
             assert id(child) != id(self), "Child should not be self"
             if isinstance(child, Algorithm):
-                params, child_handled = child._setup_optimizers_()
+                params, child_handled = child._setup_optimizers_(param_to_name)
                 for m in child_handled:
-                    assert m not in handled, duplicate_error % self.get_param_name(
+                    assert m not in handled, duplicate_error % param_to_name.get(
                         m)
                     handled[m] = 1
             elif isinstance(child, nn.Module):
@@ -544,7 +547,7 @@ class Algorithm(AlgorithmInterface):
                     self._module_to_optimizer[child] = default_optimizer
             else:
                 for m in params:
-                    assert m not in handled, duplicate_error % self.get_param_name(
+                    assert m not in handled, duplicate_error % param_to_name.get(
                         m)
                 params = _add_params_to_optimizer(params, optimizer)
                 handled.update((p, 1) for p in params)
@@ -1059,6 +1062,8 @@ class Algorithm(AlgorithmInterface):
         if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
             with record_time("time/backward"):
+                if self._grad_scaler is not None:
+                    loss = self._grad_scaler.scale(loss)
                 loss.backward()
 
         all_params = []
@@ -1071,7 +1076,16 @@ class Algorithm(AlgorithmInterface):
                 "' haven't been used for learning any parameters! Please check."
             )
             all_params.extend(params)
-            optimizer.step()
+            if self._grad_scaler is not None:
+                # For ALF optimizers, gradient clipping is performed inside
+                # optimizer.step, so we don't need to explicityly unscale grad
+                # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
+                self._grad_scaler.step(optimizer)
+            else:
+                optimizer.step()
+
+        if self._grad_scaler is not None:
+            self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
         return loss_info, all_params
@@ -1498,8 +1512,9 @@ class Algorithm(AlgorithmInterface):
         return train_info, loss_info
 
     def _update(self, experience, batch_info, weight):
-        train_info, loss_info = self._compute_train_info_and_loss_info(
-            experience)
+        with torch.cuda.amp.autocast(self._config.enable_amp):
+            train_info, loss_info = self._compute_train_info_and_loss_info(
+                experience)
 
         if loss_info.priority != ():
             priority = (
