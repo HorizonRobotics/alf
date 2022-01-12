@@ -14,9 +14,10 @@
 """Implementation of Agents for Carla.
 """
 
-from agents.navigation.basic_agent import BasicAgent
+import alf
 
 
+@alf.configurable
 class SimpleNavigationAgent(BasicAgent):
     """
     SimpleNavigationAgent is derived from BasicAgent, which is an agent that
@@ -26,7 +27,7 @@ class SimpleNavigationAgent(BasicAgent):
     TODO: Implemnet more advanced control logics.
     """
 
-    def __init__(self, vehicle, navigation_sensor, alf_world, target_speed=20):
+    def __init__(self, vehicle, navigation_sensor, alf_world, target_speed=10):
         """
         Args:
             vehicle (carla.Actor): the vehicle actor to apply the control onto
@@ -34,14 +35,13 @@ class SimpleNavigationAgent(BasicAgent):
                 will provide the navigation route for the agent to follow
             alf_world (World): an instance of World which keeps all the data
                 of the world.
-            target_speed (float): speed (in Km/h) at which the vehicle will move
+            target_speed (float): speed at which the vehicle will move (unit: m/s)
         """
-        super().__init__(vehicle)
+        super().__init__(vehicle, target_speed * 3.6)
 
         self._vehicle = vehicle
         self._navigation_sensor = navigation_sensor
         self._alf_world = alf_world
-        self._target_speed = target_speed
         self._global_planner = self._alf_world._global_route_planner
 
     def set_destination(self):
@@ -51,5 +51,7 @@ class SimpleNavigationAgent(BasicAgent):
         route. It then retrieves the route from the navigation sensor and set it
         as the global plan of the local planner.
         """
+        # clear the ``waypoint_buffer`` in ``local_planner``
+        self._local_planner._waypoint_buffer.clear()
         route_trace = self._navigation_sensor._route
         self._local_planner.set_global_plan(route_trace)

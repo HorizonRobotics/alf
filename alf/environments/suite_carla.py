@@ -61,7 +61,6 @@ import alf.data_structures as ds
 from alf.utils import common
 from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
-from .carla_env.carla_agents import SimpleNavigationAgent
 from .carla_sensors import (
     BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
     LaneInvasionSensor, NavigationSensor, RadarSensor, World,
@@ -440,6 +439,7 @@ class Player(object):
 
         self._data_collection_mode = data_collection_mode
         if self._data_collection_mode:
+            from .carla_env.carla_agents import SimpleNavigationAgent
             self._data_agent = SimpleNavigationAgent(actor, self._navigation,
                                                      alf_world)
 
