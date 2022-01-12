@@ -16,6 +16,12 @@
 
 import alf
 
+try:
+    from agents.navigation.basic_agent import BasicAgent
+except ImportError:
+    logging.fatal("Cannot import carla agents package. Please add "
+                  "$CARLA_ROOT/PythonAPI/carla to your PYTHONPATH")
+
 
 @alf.configurable
 class SimpleNavigationAgent(BasicAgent):
