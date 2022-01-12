@@ -485,6 +485,15 @@ class RLAlgorithm(Algorithm):
 
             self.observe_for_metrics(time_step.cpu())
 
+            # For typical cases, there is no impact since the action at the
+            # current time step is the same as the prev_action of the next
+            # time step. In some cases, for example, for data collection,
+            # this step is useful for updating the action to be saved into
+            # replay buffer with the actual action that is used (e.g. from
+            # an expert), which can be recordered in next_time_step.prev_action.
+            policy_step = policy_step._replace(
+                output=next_time_step.prev_action)
+
             exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
             t0 = time.time()

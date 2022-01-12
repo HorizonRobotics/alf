@@ -30,7 +30,7 @@ class SimpleNavigationAgent(BasicAgent):
     navigates the scene and respects traffic lights and other vehicles, but
     ignores stop signs.
     Here we adapt it to follow the navigation route from the navigation sensor.
-    TODO: Implemnet more advanced control logics.
+    TODO: Implement more advanced control logics.
     """
 
     def __init__(self, vehicle, navigation_sensor, alf_world, target_speed=10):
