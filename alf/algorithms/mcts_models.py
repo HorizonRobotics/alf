@@ -60,7 +60,8 @@ ModelOutput = namedtuple(
         'game_over_logit',
         'value_quantiles',
         'reward_quantiles',
-    ])
+    ],
+    default_value=())
 
 ModelTarget = namedtuple(
     'ModelTarget',
