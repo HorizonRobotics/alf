@@ -25,7 +25,7 @@ import alf
 from alf.data_structures import LossInfo, namedtuple
 from alf.networks import EncodingNetwork, StableNormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.utils import dist_utils, tensor_utils, summary_utils
-from alf.utils.losses import element_wise_squared_loss
+from alf.utils.losses import element_wise_squared_loss, multi_quantile_huber_loss
 from alf.utils.schedulers import ConstantScheduler
 
 ModelState = namedtuple(
@@ -55,11 +55,13 @@ ModelOutput = namedtuple(
         # [B, ...], latent state
         'state',
 
-        # used by calc_loss
+        # The following fields are used by calc_loss
         'action_distribution',
-        # used by calc_loss
-        'game_over_logit'
-    ])
+        'game_over_logit',
+        'value_quantiles',
+        'reward_quantiles',
+    ],
+    default_value=())
 
 ModelTarget = namedtuple(
     'ModelTarget',
@@ -230,8 +232,12 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         loss_scale = torch.ones((num_unroll_steps + 1, )) / num_unroll_steps
         loss_scale[0] = 1.0
 
-        value_loss = element_wise_squared_loss(target.value,
-                                               model_output.value)
+        if isinstance(model_output.value_quantiles, torch.Tensor):
+            value_loss = multi_quantile_huber_loss(
+                model_output.value_quantiles, target.value)
+        else:
+            value_loss = element_wise_squared_loss(target.value,
+                                                   model_output.value)
         value_loss = (loss_scale * value_loss).sum(dim=1)
         loss = self._value_loss_weight * value_loss
 
@@ -243,7 +249,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             else:
                 reward = model_output.reward
                 target_reward = target.reward
-            reward_loss = element_wise_squared_loss(reward, target_reward)
+            if isinstance(model_output.reward_quantiles, torch.Tensor):
+                if self._predict_reward_sum:
+                    reward_quantiles = model_output.reward_quantiles.cumsum(
+                        dim=1)
+                else:
+                    reward_quantiles = model_output.reward_quantiles
+                reward_loss = multi_quantile_huber_loss(
+                    reward_quantiles, target_reward)
+            else:
+                reward_loss = element_wise_squared_loss(reward, target_reward)
             reward_loss = (loss_scale * reward_loss).sum(dim=1)
             loss = loss + self._reward_loss_weight * reward_loss
 
@@ -328,7 +343,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                         "explained_variance_of_reward1",
                         tensor_utils.explained_variance(
                             reward[:, 1:], target_reward[:, 1:], dim=0).mean())
-
+                    summary_utils.add_mean_hist_summary(
+                        "predicted_reward", reward)
+                    summary_utils.add_mean_hist_summary(
+                        "target_reward", target_reward)
                 if self._train_game_over_function:
 
                     def _entropy(events):
@@ -419,6 +437,7 @@ class SimplePredictionNet(alf.networks.Network):
                  observation_spec,
                  action_spec,
                  trunk_net_ctor,
+                 num_quantiles=1,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=StableNormalProjectionNetwork,
                  initial_game_over_bias=0.0):
@@ -438,9 +457,9 @@ class SimplePredictionNet(alf.networks.Network):
         self._trunk_net = trunk_net_ctor(input_tensor_spec=observation_spec)
         dim = self._trunk_net.output_spec.shape[0]
         self._value_layer = alf.layers.FC(
-            dim, 1, kernel_initializer=torch.nn.init.zeros_)
+            dim, num_quantiles, kernel_initializer=torch.nn.init.zeros_)
         self._reward_layer = alf.layers.FC(
-            dim, 1, kernel_initializer=torch.nn.init.zeros_)
+            dim, num_quantiles, kernel_initializer=torch.nn.init.zeros_)
 
         if action_spec.is_continuous:
             self._action_net = continuous_projection_net_ctor(
@@ -641,6 +660,20 @@ class SimpleMCTSModel(MCTSModel):
         # reward as in appendix F.
         value, reward, action_distribution, game_over_logit = self._prediction_net(
             state)[0]
+        value_quantiles = ()
+        if value.ndim == 2:
+            # assuming it is a quantile model
+            if self.training:
+                value_quantiles = value
+            value = value.mean(dim=-1)
+
+        reward_quantiles = ()
+        if isinstance(reward, torch.Tensor) and reward.ndim == 2:
+            # assuming it is a quantile model
+            if self.training:
+                reward_quantiles = reward
+            reward = reward.mean(dim=-1)
+
         if self._sample_actions:
             # [num_sampled_actions, B, ...]
             actions = action_distribution.rsample(
@@ -672,7 +705,9 @@ class SimpleMCTSModel(MCTSModel):
 
         return ModelOutput(
             value=value,
+            value_quantiles=value_quantiles,
             reward=reward,
+            reward_quantiles=reward_quantiles,
             game_over=game_over,
             actions=actions,
             action_probs=action_probs,
