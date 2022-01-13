@@ -130,12 +130,7 @@ class Experience(
         namedtuple(
             "Experience",
             [
-                'step_type',
-                'reward',
-                'discount',
-                'observation',
-                'prev_action',
-                'env_id',
+                'time_step',
                 'action',
                 'rollout_info',  # AlgStep.info from rollout()
                 'state',  # state passed to rollout() to generate `action`
@@ -145,8 +140,10 @@ class Experience(
             ],
             default_value=())):
     """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
-    For the training purpose, it's augmented with several new attributes:
+    For the training purpose, it contains the following attributes:
 
+    - time_step (TimeStep): A ``TimeStep`` structure contains the data emitted
+        by an environment at each step of interaction.
     - action: A (nested) ``Tensor`` for action taken for the current time step.
     - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
     - state: State passed to ``rollout_step()`` to generate ``action``.
@@ -164,13 +161,37 @@ class Experience(
     """
 
     def is_first(self):
-        return self.step_type == StepType.FIRST
+        return self.time_step.is_first()
 
     def is_mid(self):
-        return self.step_type == StepType.MID
+        return self.time_step.is_mid()
 
     def is_last(self):
-        return self.step_type == StepType.LAST
+        return self.time_step.is_last()
+
+    @property
+    def step_type(self):
+        return self.time_step.step_type
+
+    @property
+    def reward(self):
+        return self.time_step.reward
+
+    @property
+    def discount(self):
+        return self.time_step.discount
+
+    @property
+    def observation(self):
+        return self.time_step.observation
+
+    @property
+    def prev_action(self):
+        return self.time_step.prev_action
+
+    @property
+    def env_id(self):
+        return self.time_step.env_id
 
 
 def add_batch_info(experience, batch_info, buffer=()):
@@ -416,26 +437,10 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
         Experience:
     """
     return Experience(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        prev_action=time_step.prev_action,
-        env_id=time_step.env_id,
+        time_step=time_step,
         action=alg_step.output,
         rollout_info=alg_step.info,
         state=state)
-
-
-def experience_to_time_step(exp: Experience):
-    """Make ``TimeStep`` from ``Experience``."""
-    return TimeStep(
-        step_type=exp.step_type,
-        reward=exp.reward,
-        discount=exp.discount,
-        observation=exp.observation,
-        prev_action=exp.prev_action,
-        env_id=exp.env_id)
 
 
 LossInfo = namedtuple(

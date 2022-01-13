@@ -26,7 +26,7 @@ import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, experience_to_time_step
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
@@ -1129,8 +1129,7 @@ class Algorithm(AlgorithmInterface):
         experience = experience._replace(rollout_info_field='rollout_info')
         loss_info = self.calc_loss(train_info)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
-        time_step = experience_to_time_step(experience)
-        self.after_update(time_step, train_info)
+        self.after_update(experience.time_step, train_info)
         self.summarize_train(experience, train_info, loss_info, params)
         return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
 
@@ -1244,18 +1243,11 @@ class Algorithm(AlgorithmInterface):
 
         experience = alf.data_structures.clear_batch_info(experience)
 
-        time_step = experience_to_time_step(experience)
         with summary_utils.record_time("time/preprocess_experience"):
             time_step, rollout_info = self.preprocess_experience(
-                time_step, experience.rollout_info, batch_info)
+                experience.time_step, experience.rollout_info, batch_info)
         experience = experience._replace(
-            step_type=time_step.step_type,
-            reward=time_step.reward,
-            discount=time_step.discount,
-            observation=time_step.observation,
-            prev_action=time_step.prev_action,
-            env_id=time_step.env_id,
-            rollout_info=rollout_info)
+            time_step=time_step, rollout_info=rollout_info)
         if self._processed_experience_spec is None:
             self._processed_experience_spec = dist_utils.extract_spec(
                 experience, from_dim=2)
@@ -1448,8 +1440,7 @@ class Algorithm(AlgorithmInterface):
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
                     "the state but will simply keep updating it.")
-            time_step = experience_to_time_step(exp)
-            policy_step = self.train_step(time_step, policy_state,
+            policy_step = self.train_step(exp.time_step, policy_state,
                                           exp.rollout_info)
             if self._train_info_spec is None:
                 self._train_info_spec = dist_utils.extract_spec(
@@ -1477,8 +1468,7 @@ class Algorithm(AlgorithmInterface):
 
         exp = dist_utils.params_to_distributions(
             exp, self.processed_experience_spec)
-        time_step = experience_to_time_step(exp)
-        policy_step = self.train_step(time_step, policy_state,
+        policy_step = self.train_step(exp.time_step, policy_state,
                                       exp.rollout_info)
 
         if self._train_info_spec is None:
@@ -1539,8 +1529,7 @@ class Algorithm(AlgorithmInterface):
             valid_masks = None
         loss_info, params = self.update_with_gradient(loss_info, valid_masks,
                                                       weight, batch_info)
-        time_step = experience_to_time_step(experience)
-        self.after_update(time_step, train_info)
+        self.after_update(experience.time_step, train_info)
 
         return experience, train_info, loss_info, params
 
