@@ -673,11 +673,7 @@ class ParamLayerNorm(nn.Module):
     """ParamLayerNorm, adapted from ``torch.nn.modules.LayerNorm``
     """
 
-    def __init__(self,
-                 n_groups: int,
-                 output_channels: int,
-                 eps: float = 1e-5,
-                 affine: bool = True):
+    def __init__(self, n_groups: int, output_channels: int, eps: float = 1e-5):
         """A general Layer Normalization layer that does not maintain learnable 
         affine parameters (weight and bias), but accepts both from users. 
         If ``n_groups`` is greater than 1, it performs parallel Layer Normalization 
@@ -688,13 +684,11 @@ class ParamLayerNorm(nn.Module):
             output_channels: output size for FC layers, output channel size
                 for conv layers.
             eps: refer to nn.GroupNorm
-            affine: refer to nn.GroupNorm
         """
         super().__init__()
         self._n_groups = n_groups
         self._output_channels = output_channels
         self._eps = eps
-        self._affine = affine
         self._set_weight(torch.ones(n_groups, self.weight_length))
         self._set_bias(torch.ones(n_groups, self.bias_length))
         self._param_length = None
