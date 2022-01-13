@@ -713,7 +713,7 @@ class ParamLayerNorm(nn.Module):
         self._output_channels = output_channels
         self._eps = eps
         self._set_weight(torch.ones(n_groups, self.weight_length))
-        self._set_bias(torch.ones(n_groups, self.bias_length))
+        self._set_bias(torch.zeros(n_groups, self.bias_length))
         self._param_length = None
 
     @property
