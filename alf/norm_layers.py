@@ -373,11 +373,11 @@ class ParamBatchNorm(nn.Module):
     """
 
     def __init__(self,
-                 num_features,
-                 n_groups,
-                 eps=1e-5,
-                 momentum=0.1,
-                 track_running_stats=True):
+                 num_features: int,
+                 n_groups: int,
+                 eps: float = 1e-5,
+                 momentum: float = 0.1,
+                 track_running_stats: bool = True):
         """A general Batch Normalization layer that does not maintain learnable 
         affine parameters (weight and bias), but accepts both from users. 
         If ``n_groups`` is greater than 1, it performs parallel Batch Normalization 
@@ -388,11 +388,11 @@ class ParamBatchNorm(nn.Module):
         ``torch.nn``.
 
         Args:
-            num_features (int): refer to nn.BatchNorm1d and nn.BatchNorm2d 
-            n_groups (int): number of parallel groups
-            eps (float): refer to nn.BatchNorm1d and nn.BatchNorm2d 
-            momentum (float): refer to nn.BatchNorm1d and nn.BatchNorm2d
-            track_running_stats (bool): refer to nn.BatchNorm1d and nn.BatchNorm2d
+            num_features: refer to nn.BatchNorm1d and nn.BatchNorm2d 
+            n_groups: number of parallel groups
+            eps: refer to nn.BatchNorm1d and nn.BatchNorm2d 
+            momentum: refer to nn.BatchNorm1d and nn.BatchNorm2d
+            track_running_stats: refer to nn.BatchNorm1d and nn.BatchNorm2d
         """
         super().__init__()
         self._num_features = num_features
@@ -459,19 +459,17 @@ class ParamBatchNorm(nn.Module):
             self._param_length = self.weight_length + self.bias_length
         return self._param_length
 
-    def set_parameters(self, theta, reinitialize=False):
+    def set_parameters(self, theta: torch.Tensor, reinitialize: bool = False):
         """Distribute parameters to corresponding parameters.
 
         Args:
-            theta (torch.Tensor): with shape ``[D] (groups=1)``
-                                        or ``[B, D] (groups=B)``
+            theta: with shape ``[D] (groups=1)`` or ``[B, D] (groups=B)``,
                 where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``D``: length of parameters, should be self.param_length
                 When the shape of inputs is ``[D]``, it will be unsqueezed
                 to ``[1, D]``.
-            reinitialize (bool): whether to reinitialize parameters of
-                each layer.
+            reinitialize: whether to reinitialize parameters of each layer.
         """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
@@ -485,15 +483,14 @@ class ParamBatchNorm(nn.Module):
         bias = theta[:, self.weight_length:]
         self._set_bias(bias, reinitialize=reinitialize)
 
-    def _set_weight(self, weight, reinitialize=False):
+    def _set_weight(self, weight: torch.Tensor, reinitialize: bool = False):
         """Store a weight tensor or batch of weight tensors.
 
         Args:
-            weight (torch.Tensor): with shape ``[B, D]``
-                where the mining of the symbols are:
+            weight: with shape ``[B, D]`` where the mining of the symbols are:
                 - ``B``: batch size
                 - ``D``: length of weight vector, should be self.weight_length
-            reinitialize (bool): whether to reinitialize self._weight
+            reinitialize: whether to reinitialize self._weight
         """
         assert (weight.ndim == 2 and weight.shape[0] == self._n_groups
                 and (weight.shape[1] == self.weight_length)), (
@@ -504,15 +501,14 @@ class ParamBatchNorm(nn.Module):
 
         self._weight = weight.reshape(-1)  # [n * weight_length]
 
-    def _set_bias(self, bias, reinitialize=False):
+    def _set_bias(self, bias: torch.Tensor, reinitialize: bool = False):
         """Store a bias tensor or batch of bias tensors.
 
         Args:
-            bias (torch.Tensor): with shape ``[B, D]``
-                where the mining of the symbols are:
+            bias: with shape ``[B, D]`` where the mining of the symbols are:
                 - ``B``: batch size
                 - ``D``: length of bias vector, should be self.bias_length
-            reinitialize (bool): whether to reinitialize self._bias
+            reinitialize: whether to reinitialize self._bias
         """
         assert (bias.ndim == 2 and bias.shape[0] == self._n_groups
                 and (bias.shape[1] == self.bias_length)), (
@@ -526,12 +522,12 @@ class ParamBatchNorm(nn.Module):
     def _preprocess_input(self, inputs):
         raise NotImplementedError
 
-    def forward(self, inputs, keep_group_dim=True):
+    def forward(self, inputs: torch.Tensor, keep_group_dim: bool = True):
         """Forward
 
         Args:
-            inputs (torch.Tensor): refer to ``_preprocess_input`` of subclass
-                for detailed description.
+            inputs: refer to ``_preprocess_input`` of subclass for detailed description.
+            keep_group_dim: whether to keep group dimension or not.
 
         Returns:
             torch.Tensor: for BatchNorm1d, with shape ``[B, n, D]`` or ``[B, n*D]``,
@@ -590,18 +586,17 @@ class ParamBatchNorm(nn.Module):
 
         if self._n_groups > 1 and keep_group_dim:
             res = res.reshape(inputs.shape[0], self._n_groups, -1,
-                              *inputs.shape[2:])  # [B, n, D]
+                              *inputs.shape[2:])  # [B, n, ...]
 
         return res
 
 
 class ParamBatchNorm1d(ParamBatchNorm):
-    def _preprocess_input(self, inputs):
+    def _preprocess_input(self, inputs: torch.Tensor):
         """Check inputs shape and preprocess for BatchNorm1d.
 
         Args:
-            inputs (torch.Tensor): with shape ``[B, D] (groups=1)``
-                or ``[B, n, D] (groups=n)``; for BatchNorm2d,
+            inputs: with shape ``[B, D] (groups=1)`` or ``[B, n, D] (groups=n)``,
                 where the meaning of the symbols are:
 
                 - ``B``: batch size
@@ -639,12 +634,12 @@ class ParamBatchNorm1d(ParamBatchNorm):
 
 
 class ParamBatchNorm2d(ParamBatchNorm):
-    def _preprocess_input(self, inputs):
+    def _preprocess_input(self, inputs: torch.Tensor):
         """Check inputs shape and preprocess for BatchNorm2d.
 
         Args:
-            inputs (torch.Tensor): with shape ``[B, C, H, W] (groups=1)``
-                                        or ``[B, n, C, H, W] (groups=n)``
+            inputs: with shape ``[B, C, H, W] (groups=1)``
+                    or ``[B, n, C, H, W] (groups=n)``,
                 where the meaning of the symbols are:
 
                 - ``B``: batch size
@@ -687,6 +682,256 @@ class ParamBatchNorm2d(ParamBatchNorm):
                     and inputs.shape[2] == self.num_features
                 ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
                     % (inputs.shape, self._n_groups, self.num_features))
+                # merge group and channel dim
+                inputs = inputs.reshape(inputs.shape[0],
+                                        inputs.shape[1] * inputs.shape[2],
+                                        *inputs.shape[3:])
+            else:
+                raise ValueError("Wrong img.ndim=%d" % inputs.ndim)
+
+        return inputs
+
+
+class ParamLayerNorm(nn.Module):
+    """ParamLayerNorm, adapted from ``torch.nn.modules.LayerNorm``
+    """
+
+    def __init__(self,
+                 n_groups: int,
+                 output_channels: int,
+                 eps: float = 1e-5,
+                 affine: bool = True):
+        """A general Layer Normalization layer that does not maintain learnable 
+        affine parameters (weight and bias), but accepts both from users. 
+        If ``n_groups`` is greater than 1, it performs parallel Layer Normalization 
+        operation.
+
+        Args:
+            n_groups: number of parallel groups
+            output_channels: output size for FC layers, output channel size
+                for conv layers.
+            eps: refer to nn.GroupNorm
+            affine: refer to nn.GroupNorm
+        """
+        super().__init__()
+        self._n_groups = n_groups
+        self._output_channels = output_channels
+        self._eps = eps
+        self._affine = affine
+        self._set_weight(torch.ones(n_groups, self.weight_length))
+        self._set_bias(torch.ones(n_groups, self.bias_length))
+        self._param_length = None
+
+    @property
+    def weight(self):
+        """Get stored weight tensor or batch of weight tensors."""
+        return self._weight
+
+    @property
+    def bias(self):
+        """Get stored bias tensor or batch of bias tensors."""
+        return self._bias
+
+    @property
+    def output_channels(self):
+        """Get the n_element of a single weight tensor. """
+        return self._output_channels
+
+    @property
+    def weight_length(self):
+        """Get the n_element of a single weight tensor. """
+        return self._output_channels
+
+    @property
+    def bias_length(self):
+        """Get the n_element of a single bias tensor. """
+        return self._output_channels
+
+    @property
+    def param_length(self):
+        """Get total number of parameters for all layers. """
+        if self._param_length is None:
+            self._param_length = self.weight_length + self.bias_length
+        return self._param_length
+
+    def set_parameters(self, theta: torch.Tensor, reinitialize: bool = False):
+        """Distribute parameters to corresponding parameters.
+
+        Args:
+            theta: with shape ``[D] (groups=1)`` or ``[B, D] (groups=B)``,
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize: whether to reinitialize parameters of
+                each layer.
+        """
+        if theta.ndim == 1:
+            theta = theta.unsqueeze(0)
+        assert (theta.ndim == 2 and theta.shape[0] == self._n_groups
+                and (theta.shape[1] == self.param_length)), (
+                    "Input theta has wrong shape %s. Expecting shape (%d, %d)"
+                    % (theta.shape, self._n_groups, self.param_length))
+
+        weight = theta[:, :self.weight_length]
+        self._set_weight(weight, reinitialize=reinitialize)
+        bias = theta[:, self.weight_length:]
+        self._set_bias(bias, reinitialize=reinitialize)
+
+    def _set_weight(self, weight: torch.Tensor, reinitialize: bool = False):
+        """Store a weight tensor or batch of weight tensors.
+
+        Args:
+            weight: with shape ``[B, D]`` where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of weight vector, should be self.weight_length
+            reinitialize: whether to reinitialize self._weight
+        """
+        assert (weight.ndim == 2 and weight.shape[0] == self._n_groups
+                and (weight.shape[1] == self.weight_length)), (
+                    "Input weight has wrong shape %s. Expecting shape (%d, %d)"
+                    % (weight.shape, self._n_groups, self.weight_length))
+        if reinitialize:
+            weight = torch.ones(self._n_groups, self.weight_length)
+
+        self._weight = weight.reshape(-1)  # [n * weight_length]
+
+    def _set_bias(self, bias: torch.Tensor, reinitialize: bool = False):
+        """Store a bias tensor or batch of bias tensors.
+
+        Args:
+            bias: with shape ``[B, D]`` where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of bias vector, should be self.bias_length
+            reinitialize: whether to reinitialize self._bias
+        """
+        assert (bias.ndim == 2 and bias.shape[0] == self._n_groups
+                and (bias.shape[1] == self.bias_length)), (
+                    "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
+                    (bias.shape, self._n_groups, self.bias_length))
+        if reinitialize:
+            bias = torch.zeros(self._n_groups, self.bias_length)
+
+        self._bias = bias.reshape(-1)  # [n * bias_length]
+
+    def _preprocess_input(self, inputs):
+        raise NotImplementedError
+
+    def forward(self, inputs: torch.Tensor, keep_group_dim: bool = True):
+        """Forward
+
+        Args:
+            inputs: refer to ``_preprocess_input`` of subclass for detailed description.
+            keep_group_dim: whether to keep group dimension or not.
+
+        Returns:
+            torch.Tensor: for BatchNorm1d, with shape ``[B, n, D]`` or ``[B, n*D]``,
+                for BatchNorm2d, with shape ``[B, n, C, H, W]`` or ``[B, n*C, H, W]``.
+        """
+        inputs = self._preprocess_input(inputs)
+
+        res = F.group_norm(inputs, self._n_groups, self.weight, self.bias,
+                           self._eps)
+
+        if self._n_groups > 1 and keep_group_dim:
+            res = res.reshape(inputs.shape[0], self._n_groups, -1,
+                              *inputs.shape[2:])  # [B, n, ...]
+
+        return res
+
+
+class ParamLayerNorm1d(ParamLayerNorm):
+    def _preprocess_input(self, inputs: torch.Tensor):
+        """Check inputs shape and preprocess for LayerNorm1d.
+
+        Args:
+            inputs: with shape ``[B, D] (groups=1)`` or ``[B, n, D] (groups=n)``,
+                where the meaning of the symbols are:
+
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``D``: input dimension
+
+                When the shape of inputs is ``[B, D]``, all the n linear
+                operations will take inputs as the same shared inputs.
+                When the shape of inputs is ``[B, n, D]``, each linear operator
+                will have its own input data by slicing inputs.
+
+        Returns:
+            torch.Tensor: with shape ``[B, n*D]``
+        """
+        if inputs.ndim == 2:
+            # case 1: non-parallel inputs
+            assert inputs.shape[1] == self.output_channels, (
+                "Input inputs has wrong shape %s. Expecting (B, %d)" %
+                (inputs.shape, self.output_channels))
+            inputs = inputs.repeat(1, self._n_groups)  # [B, n*D]
+            # inputs = inputs.unsqueeze(0).expand(self._n_groups, *inputs.shape)
+        elif inputs.ndim == 3:
+            # case 2: parallel inputs
+            assert (
+                inputs.shape[1] == self._n_groups
+                and inputs.shape[2] == self.output_channels), (
+                    "Input inputs has wrong shape %s. Expecting (B, %d, %d)" %
+                    (inputs.shape, self._n_groups, self.output_channels))
+            # [B, n*D]
+            inputs = inputs.reshape(-1, self._n_groups * self.output_channels)
+        else:
+            raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
+
+        return inputs
+
+
+class ParamLayerNorm2d(ParamLayerNorm):
+    def _preprocess_input(self, inputs: torch.Tensor):
+        """Check inputs shape and preprocess for LayerNorm2d.
+
+        Args:
+            inputs: with shape ``[B, C, H, W] (groups=1)``
+                    or ``[B, n, C, H, W] (groups=n)``,
+                where the meaning of the symbols are:
+
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+
+                When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
+                operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
+                will have its own input data by slicing img.
+
+        Returns:
+            torch.Tensor with shape ``[B, n*C, H, W]``
+        """
+        if self._n_groups == 1:
+            # non-parallel layer
+            assert (inputs.ndim == 4
+                    and inputs.shape[1] == self.output_channels), (
+                        "Input img has wrong shape %s. Expecting (B, %d, H, W)"
+                        % (inputs.shape, self.output_channels))
+        else:
+            # parallel layer
+            if inputs.ndim == 4:
+                if inputs.shape[1] == self.output_channels:
+                    # case 1: non-parallel input
+                    inputs = inputs.repeat(1, self._n_groups, 1, 1)
+                else:
+                    # case 2: parallel input
+                    assert inputs.shape[
+                        1] == self._n_groups * self.output_channels, (
+                            "Input img has wrong shape %s. Expecting (B, %d, H, W) or (B, %d, H, W)"
+                            % (inputs.shape, self.output_channels,
+                               self._n_groups * self.output_channels))
+            elif inputs.ndim == 5:
+                # case 3: parallel input with unmerged group dim
+                assert (
+                    inputs.shape[1] == self._n_groups
+                    and inputs.shape[2] == self.output_channels
+                ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
+                    % (inputs.shape, self._n_groups, self.output_channels))
                 # merge group and channel dim
                 inputs = inputs.reshape(inputs.shape[0],
                                         inputs.shape[1] * inputs.shape[2],

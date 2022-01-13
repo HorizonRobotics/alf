@@ -68,13 +68,14 @@ class HyperNetwork(Algorithm):
                  activation=torch.relu_,
                  last_activation=alf.math.identity,
                  last_use_bias=True,
-                 last_use_bn=False,
+                 last_use_norm=None,
                  noise_dim=32,
                  hidden_layers=(64, 64),
                  use_conv_bias=False,
-                 use_conv_bn=False,
+                 use_conv_norm=None,
                  use_fc_bias=True,
-                 use_fc_bn=False,
+                 use_fc_norm=None,
+                 generator_use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
                  critic_hidden_layers=(100, 100),
@@ -128,14 +129,19 @@ class HyperNetwork(Algorithm):
                 the last layer.
             last_activation (nn.functional): activation function of the last layer.
             last_use_bias (bool): whether use bias for the last layer
-            last_use_bn (bool): whether use Batch Normalization for the last layer
+            last_use_norm (str): which normalization to apply to the additional layer, 
+                options are [``bn`, ``ln``]. Default: None, no normalization applied.
             noise_dim (int): dimension of noise
             hidden_layers (tuple): size of hidden layers.
             use_conv_bias (bool|None): whether use bias for conv layers. If None, 
                 will use ``not use_bn`` for conv layers.
-            use_conv_bn (bool): whether use Batch Normalization for conv layers.
+            use_conv_norm (str): which normalization to apply to conv layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
             use_fc_bias (bool): whether use bias for fc layers.
-            use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            use_fc_norm (str): which normalization to apply to fc layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
+            generator_use_fc_bn (bool): whether use batnch normalization for 
+                generator fc layers.
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight for par_vi repulsive term. If
                 ``None`` and ``data_creator`` is provided, will be set as the ratio
@@ -235,14 +241,14 @@ class HyperNetwork(Algorithm):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             use_conv_bias=use_conv_bias,
-            use_conv_bn=use_conv_bn,
+            use_conv_norm=use_conv_norm,
             use_fc_bias=use_fc_bias,
-            use_fc_bn=use_fc_bn,
+            use_fc_norm=use_fc_norm,
             n_groups=num_particles,
             activation=activation,
             last_layer_size=last_layer_size,
             last_use_bias=last_use_bias,
-            last_use_bn=last_use_bn,
+            last_use_norm=last_use_norm,
             last_activation=last_activation)
 
         gen_output_dim = param_net.param_length
@@ -258,7 +264,7 @@ class HyperNetwork(Algorithm):
             net = EncodingNetwork(
                 noise_spec,
                 fc_layer_params=hidden_layers,
-                use_fc_bn=use_fc_bn,
+                use_fc_bn=generator_use_fc_bn,
                 last_layer_size=gen_output_dim,
                 last_activation=math_ops.identity,
                 name="Generator")
@@ -319,7 +325,7 @@ class HyperNetwork(Algorithm):
 
         self._param_net = param_net
         self._num_particles = num_particles
-        self._use_fc_bn = use_fc_bn
+        self._generator_use_fc_bn = generator_use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
         self._functional_gradient = functional_gradient
@@ -602,11 +608,11 @@ class HyperNetwork(Algorithm):
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin testing")
-        if self._use_fc_bn:
+        if self._generator_use_fc_bn:
             self._generator.eval()
         params = self.sample_parameters(num_particles=num_particles)
         self._param_net.set_parameters(params)
-        if self._use_fc_bn:
+        if self._generator_use_fc_bn:
             self._generator.train()
         with record_time("time/test"):
             if self._loss_type == 'classification':
