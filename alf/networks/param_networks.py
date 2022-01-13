@@ -34,7 +34,7 @@ class ParamConvNet(Network):
                  same_padding=False,
                  activation=torch.relu_,
                  use_bias=False,
-                 use_bn=False,
+                 use_norm=None,
                  n_groups=None,
                  kernel_initializer=None,
                  flatten_output=False,
@@ -56,9 +56,12 @@ class ParamConvNet(Network):
                 corresponds to TF's ``valid`` padding mode (the user can still
                 provide custom paddings though)
             activation (torch.nn.functional): activation for all the layers
-            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
-            use_bn (bool): whether use Batch Normalization.
-            n_groups (int): number of parallel groups, must be specified if ``use_bn``
+            use_bias (bool|None): whether use bias. If None, will use_bias if
+                ``use_norm`` is None.
+            use_norm (str): which normalization to apply, options are
+                [``bn`, ``ln``]. Default: None, no normalization applied.
+            n_groups (int): number of parallel groups, must be specified if 
+                ``use_norm``
             kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
                 structure of shape ``(B, n, C, H, W)``; otherwise the output
@@ -75,7 +78,7 @@ class ParamConvNet(Network):
         assert len(conv_layer_params) > 0
 
         if use_bias is None:
-            use_bias = not use_bn
+            use_bias = use_norm is None
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
@@ -105,7 +108,7 @@ class ParamConvNet(Network):
                     pooling_kernel=pooling_kernel,
                     padding=padding,
                     use_bias=use_bias,
-                    use_bn=use_bn,
+                    use_norm=use_norm,
                     n_groups=n_groups,
                     kernel_initializer=kernel_initializer))
             input_channels = filters
@@ -169,16 +172,16 @@ class ParamNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  use_conv_bias=False,
-                 use_conv_bn=False,
+                 use_conv_norm=None,
                  use_fc_bias=True,
-                 use_fc_bn=False,
+                 use_fc_norm=None,
                  n_groups=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  last_layer_size=None,
                  last_activation=None,
                  last_use_bias=True,
-                 last_use_bn=False,
+                 last_use_norm=None,
                  name="ParamNetwork"):
         """A network with Fc and conv2D layers that does not maintain its own
         network parameters, but accepts them from users. If the given parameter
@@ -196,10 +199,12 @@ class ParamNetwork(Network):
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             use_conv_bias (bool|None): whether use bias for conv layers. If None, 
-                will use ``not use_bn`` for conv layers.
-            use_conv_bn (bool): whether use Batch Normalization for conv layers.
+                will use conv_bias if ``use_norm`` is None.
+            use_conv_norm (str): which normalization to apply to conv layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
             use_fc_bias (bool): whether use bias for fc layers.
-            use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            use_fc_norm (str): which normalization to apply to fc layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
             n_groups (int): number of parallel groups, must be specified if ``use_bn``
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
@@ -211,8 +216,8 @@ class ParamNetwork(Network):
                 ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
             last_use_bias (bool): whether use bias for the additional layer.
-            last_use_bn (bool): whether use Batch Normalization for the 
-                additional layer.
+            last_use_norm (str): which normalization to apply to the additional layer, 
+                options are [``bn`, ``ln``]. Default: None, no normalization applied.
             name (str):
         """
 
@@ -239,7 +244,7 @@ class ParamNetwork(Network):
                 conv_layer_params,
                 activation=activation,
                 use_bias=use_conv_bias,
-                use_bn=use_conv_bn,
+                use_norm=use_conv_norm,
                 n_groups=n_groups,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
@@ -264,7 +269,7 @@ class ParamNetwork(Network):
                     size,
                     activation=activation,
                     use_bias=use_fc_bias,
-                    use_bn=use_fc_bn,
+                    use_norm=use_fc_norm,
                     n_groups=n_groups,
                     kernel_initializer=kernel_initializer))
             input_size = size
@@ -278,7 +283,7 @@ class ParamNetwork(Network):
                     last_layer_size,
                     activation=last_activation,
                     use_bias=last_use_bias,
-                    use_bn=last_use_bn,
+                    use_norm=last_use_norm,
                     n_groups=n_groups,
                     kernel_initializer=kernel_initializer))
             input_size = last_layer_size

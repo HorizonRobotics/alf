@@ -387,33 +387,44 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
 
     @parameterized.parameters(
-        dict(batch_size=1, n=2, act=torch.relu, use_bias=True, use_bn=False),
-        dict(batch_size=3, n=2, act=torch.relu),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_bn=False),
+        dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='bn'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='ln'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
     )
     def test_param_fc(self,
                       batch_size=1,
                       n=2,
                       act=math_ops.identity,
                       use_bias=True,
-                      use_bn=True):
+                      use_norm=None):
         """Note that ``batch_size=1`` is not supported by nn.BatchNorm1d. 
         ParamFC supports using BatchNorm bias instead of bias, but alf.nn.FC
         does not. """
         input_size = 4
         output_size = 5
+        if use_norm == 'bn':
+            use_bn = True
+            use_ln = False
+        elif use_norm == 'ln':
+            use_bn = False
+            use_ln = True
+        else:
+            use_bn = False
+            use_ln = False
         pfc = alf.layers.ParamFC(
             input_size,
             output_size,
             activation=act,
             use_bias=use_bias,
-            use_bn=use_bn,
+            use_norm=use_norm,
             n_groups=n)
         fc = alf.layers.FC(
             input_size,
             output_size,
             activation=act,
             use_bn=use_bn,
+            use_ln=use_ln,
             use_bias=use_bias)
 
         # test param length
@@ -421,8 +432,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         if use_bias:
             self.assertEqual(pfc.bias_length, fc.bias.nelement())
         if use_bn:
-            self.assertEqual(pfc._bn.param_length,
+            self.assertEqual(pfc._norm.param_length,
                              fc._bn.weight.nelement() + fc._bn.bias.nelement())
+        if use_ln:
+            self.assertEqual(pfc._norm.param_length,
+                             fc._ln.weight.nelement() + fc._ln.bias.nelement())
 
         # test parallel forward
         params = torch.randn(n, pfc.param_length)
@@ -435,43 +449,56 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         weight = pfc.weight
         if use_bias:
             bias = pfc.bias
-        if use_bn:
-            bn_weight = pfc._bn.weight.reshape(n, -1)
-            bn_bias = pfc._bn.bias.reshape(n, -1)
+        if use_norm is not None:
+            norm_weight = pfc._norm.weight.reshape(n, -1)
+            norm_bias = pfc._norm.bias.reshape(n, -1)
         for i in range(n):
             fc.weight.data.copy_(weight[i])
             if use_bias:
                 fc.bias.data.copy_(bias[i])
             if use_bn:
-                fc._bn.weight.data.copy_(bn_weight[i])
-                fc._bn.bias.data.copy_(bn_bias[i])
+                fc._bn.weight.data.copy_(norm_weight[i])
+                fc._bn.bias.data.copy_(norm_bias[i])
+            if use_ln:
+                fc._ln.weight.data.copy_(norm_weight[i])
+                fc._ln.bias.data.copy_(norm_bias[i])
             outs = fc(inputs)
             self.assertLess((outs - p_outs[:, i, :]).abs().max(), 1e-6)
 
     @parameterized.parameters(
-        dict(batch_size=1, n=2, act=torch.relu),
-        dict(batch_size=3, n=2, act=torch.relu),
+        dict(batch_size=1, n=2, act=torch.relu, use_bias=True, use_norm='bn'),
+        dict(batch_size=1, n=2, act=torch.relu, use_bias=True, use_norm='ln'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='bn'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='ln'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_norm='bn'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_norm='ln'),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_bn=False),
     )
     def test_param_conv2d(self,
                           batch_size=1,
                           n=2,
                           act=math_ops.identity,
                           use_bias=True,
-                          use_bn=True):
+                          use_norm=None):
+        """Note that layer_norm is not currently supported by alf.nn.Conv2D. 
+        ParamConv2D supports both BatchNorm2d and LayerNorm2d. 
+        """
         in_channels = 4
         out_channels = 5
         kernel_size = 3
         height = 11
         width = 11
+        if use_norm == 'bn':
+            use_bn = True
+        else:
+            use_bn = False
         pconv = alf.layers.ParamConv2D(
             in_channels,
             out_channels,
             kernel_size,
             activation=act,
             use_bias=use_bias,
-            use_bn=use_bn,
+            use_norm=use_norm,
             n_groups=n)
         conv = alf.layers.Conv2D(
             in_channels,
@@ -487,7 +514,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(pconv.bias_length, conv.bias.nelement())
         if use_bn:
             self.assertEqual(
-                pconv._bn.param_length,
+                pconv._norm.param_length,
                 conv._bn.weight.nelement() + conv._bn.bias.nelement())
 
         # test parallel forward
@@ -501,18 +528,20 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         weight = pconv.weight.reshape(n, -1, *pconv.weight.shape[1:])
         if use_bias:
             bias = pconv.bias.reshape(n, -1)
-        if use_bn:
-            bn_weight = pconv._bn.weight.reshape(n, -1)
-            bn_bias = pconv._bn.bias.reshape(n, -1)
+        if use_norm is not None:
+            norm_weight = pconv._norm.weight.reshape(n, -1)
+            norm_bias = pconv._norm.bias.reshape(n, -1)
         for i in range(n):
             conv.weight.data.copy_(weight[i])
             if use_bias:
                 conv.bias.data.copy_(bias[i])
             if use_bn:
-                conv._bn.weight.data.copy_(bn_weight[i])
-                conv._bn.bias.data.copy_(bn_bias[i])
+                conv._bn.weight.data.copy_(norm_weight[i])
+                conv._bn.bias.data.copy_(norm_bias[i])
             outs = conv(image)
-            self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-5)
+            if use_norm != 'ln':
+                self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(),
+                                1e-5)
 
     @parameterized.parameters(
         ("rbf", 8, 8, 0.1),

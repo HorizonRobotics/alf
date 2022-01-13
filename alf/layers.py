@@ -31,8 +31,9 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
 from alf.utils.tensor_utils import BatchSquash
-from .batch_norm import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
-from .batch_norm import ParamBatchNorm1d, ParamBatchNorm2d
+from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
+from .norm_layers import ParamBatchNorm1d, ParamBatchNorm2d
+from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -1745,7 +1746,7 @@ class ParamFC(nn.Module):
                  output_size,
                  activation=torch.relu_,
                  use_bias=True,
-                 use_bn=False,
+                 use_norm=None,
                  n_groups=None,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1760,12 +1761,13 @@ class ParamFC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
-            use_bn (bool): whether to use Batch Normalization.
+            use_norm (str): which normalization to apply, options are
+                [``bn`, ``ln``]. Default: None, no normalization applied.
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                not ``use_bn``. If ``use_bn``, ``n_groups`` must be specified at
-                initialization and will be fixed, all input parameters will have to 
-                be consistent with it.
+                ``use_norm`` is None. If ``use_norm`` is not None, ``n_groups`` must 
+                be specified at initialization and will be fixed, all input parameters 
+                will have to be consistent with it.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -1780,7 +1782,7 @@ class ParamFC(nn.Module):
         self._output_size = output_size
         self._activation = activation
         self._use_bias = use_bias
-        self._use_bn = use_bn
+        self._use_norm = use_norm
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
@@ -1791,10 +1793,15 @@ class ParamFC(nn.Module):
         else:
             self._bias_length = 0
             self._bias = None
-        if use_bn:
+        if use_norm is not None:
             assert n_groups is not None, (
-                "n_groups has to be specified if use_bn")
-            self._bn = ParamBatchNorm1d(output_size, n_groups)
+                "n_groups has to be specified if use_norm")
+            if use_norm == 'bn':
+                self._norm = ParamBatchNorm1d(output_size, n_groups)
+            elif use_norm == 'ln':
+                self._norm = ParamLayerNorm1d(n_groups, output_size)
+            else:
+                raise ValueError("Only bn and ln are supported for use_norm")
             self._n_groups = n_groups
         else:
             n_groups = 1
@@ -1828,8 +1835,8 @@ class ParamFC(nn.Module):
             length = self.weight_length
             if self._use_bias:
                 length += self.bias_length
-            if self._use_bn:
-                length += self._bn.param_length
+            if self._use_norm is not None:
+                length += self._norm.param_length
             self._param_length = length
         return self._param_length
 
@@ -1852,7 +1859,7 @@ class ParamFC(nn.Module):
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
             "Input theta has wrong shape %s. Expecting shape (, %d)" %
             (theta.shape, self.param_length))
-        if self._use_bn:
+        if self._use_norm is not None:
             assert theta.shape[0] == self._n_groups, (
                 "the input has wrong n_groups. Expecting n_groups %d" %
                 self._n_groups)
@@ -1865,9 +1872,9 @@ class ParamFC(nn.Module):
             bias = theta[:, pos:pos + self.bias_length]
             self._set_bias(bias, reinitialize=reinitialize)
             pos = pos + self.bias_length
-        if self._use_bn:
-            bn_theta = theta[:, pos:]
-            self._bn.set_parameters(bn_theta, reinitialize=reinitialize)
+        if self._use_norm is not None:
+            norm_theta = theta[:, pos:]
+            self._norm.set_parameters(norm_theta, reinitialize=reinitialize)
 
     def _set_weight(self, weight, reinitialize=False):
         """Store a weight tensor or batch of weight tensors.
@@ -1958,8 +1965,8 @@ class ParamFC(nn.Module):
         else:
             res = torch.bmm(inputs, self._weight.transpose(1, 2))
         res = res.transpose(0, 1)  # [B, n, D]
-        if self._use_bn:
-            res = self._bn(res)
+        if self._use_norm is not None:
+            res = self._norm(res)
         else:
             res = res.squeeze(1)  # [B, D] if n=1
 
@@ -1977,7 +1984,7 @@ class ParamConv2D(nn.Module):
                  pooling_kernel=None,
                  padding=0,
                  use_bias=False,
-                 use_bn=False,
+                 use_norm=None,
                  n_groups=None,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1996,12 +2003,13 @@ class ParamConv2D(nn.Module):
             pooling_kernel (int or tuple):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
-            use_bn (bool): whether use BatchNorm
+            use_norm (str): which normalization to apply, options are
+                [``bn`, ``ln``]. Default: None, no normalization applied.
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                not ``use_bn``. If ``use_bn``, ``n_groups`` must be specified at
-                initialization and will be fixed, all input parameters will have to 
-                be consistent with it.
+                ``use_norm`` is None. If ``use_norm`` is not None, ``n_groups`` must 
+                be specified at initialization and will be fixed, all input parameters 
+                will have to be consistent with it.
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -2022,8 +2030,9 @@ class ParamConv2D(nn.Module):
         self._padding = padding
         self._use_bias = use_bias
         if use_bias is None:
-            use_bias = not use_bn
-        self._use_bn = use_bn
+            use_bias = use_norm is None
+        self._use_norm = use_norm
+        self._n_groups = n_groups
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
@@ -2034,10 +2043,15 @@ class ParamConv2D(nn.Module):
         else:
             self._bias_length = 0
             self._bias = None
-        if use_bn:
+        if use_norm is not None:
             assert n_groups is not None, (
-                "n_groups has to be specified if use_bn")
-            self._bn = ParamBatchNorm2d(out_channels, n_groups)
+                "n_groups has to be specified if use_norm")
+            if use_norm == 'bn':
+                self._norm = ParamBatchNorm2d(out_channels, n_groups)
+            elif use_norm == 'ln':
+                self._norm = ParamLayerNorm2d(n_groups, out_channels)
+            else:
+                raise ValueError("Only bn and ln are supported for use_norm")
             self._n_groups = n_groups
         else:
             n_groups = 1
@@ -2071,8 +2085,8 @@ class ParamConv2D(nn.Module):
             length = self.weight_length
             if self._use_bias:
                 length += self.bias_length
-            if self._use_bn:
-                length += self._bn.param_length
+            if self._use_norm is not None:
+                length += self._norm.param_length
             self._param_length = length
         return self._param_length
 
@@ -2095,7 +2109,7 @@ class ParamConv2D(nn.Module):
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
             "Input theta has wrong shape %s. Expecting shape (, %d)" %
             (theta.shape, self.param_length))
-        if self._use_bn:
+        if self._use_norm is not None:
             assert theta.shape[0] == self._n_groups, (
                 "the input has wrong n_groups. Expecting n_groups %d" %
                 self._n_groups)
@@ -2108,9 +2122,9 @@ class ParamConv2D(nn.Module):
             bias = theta[:, pos:pos + self.bias_length]
             self._set_bias(bias, reinitialize=reinitialize)
             pos = pos + self.bias_length
-        if self._use_bn:
-            bn_theta = theta[:, pos:]
-            self._bn.set_parameters(bn_theta, reinitialize=reinitialize)
+        if self._use_norm is not None:
+            norm_theta = theta[:, pos:]
+            self._norm.set_parameters(norm_theta, reinitialize=reinitialize)
 
     def _set_weight(self, weight, reinitialize=False):
         """Store a weight tensor or batch of weight tensors.
@@ -2226,8 +2240,8 @@ class ParamConv2D(nn.Module):
             stride=self._strides,
             padding=self._padding,
             groups=self._n_groups)
-        if self._use_bn:
-            res = self._bn(res, keep_group_dim=False)
+        if self._use_norm is not None:
+            res = self._norm(res, keep_group_dim=False)
         res = self._activation(res)
 
         if self._pooling_kernel is not None:

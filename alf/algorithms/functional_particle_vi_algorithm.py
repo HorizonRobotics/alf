@@ -80,13 +80,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  use_conv_bias=False,
-                 use_conv_bn=False,
+                 use_conv_norm=None,
                  use_fc_bias=True,
-                 use_fc_bn=False,
+                 use_fc_norm=None,
                  activation=torch.relu_,
                  last_activation=math_ops.identity,
                  last_use_bias=True,
-                 last_use_bn=False,
+                 last_use_norm=None,
                  num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
@@ -131,9 +131,11 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 ``use_bias`` is optional.
             use_conv_bias (bool|None): whether use bias for conv layers. If None, 
                 will use ``not use_bn`` for conv layers.
-            use_conv_bn (bool): whether use Batch Normalization for conv layers.
+            use_conv_norm (str): which normalization to apply to conv layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
             use_fc_bias (bool): whether use bias for fc layers.
-            use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            use_fc_norm (str): which normalization to apply to fc layers, options 
+                are [``bn`, ``ln``]. Default: None, no normalization applied.
             activation (Callable): activation used for all the layers but
                 the last layer.
             last_activation (Callable): activation function of the
@@ -141,7 +143,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
             last_use_bias (bool): whether use bias for the last layer
-            last_use_bn (bool): whether use Batch Normalization for the last layer
+            last_use_norm (str): which normalization to apply to the last layer, 
+                options are [``bn`, ``ln``]. Default: None, no normalization applied.
 
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi.
@@ -219,15 +222,15 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=fc_layer_params,
                 use_conv_bias=use_conv_bias,
-                use_conv_bn=use_conv_bn,
+                use_conv_norm=use_conv_norm,
                 use_fc_bias=use_fc_bias,
-                use_fc_bn=use_fc_bn,
+                use_fc_norm=use_fc_norm,
                 n_groups=num_particles,
                 activation=activation,
                 last_layer_size=last_layer_size,
                 last_activation=last_activation,
                 last_use_bias=last_use_bias,
-                last_use_bn=last_use_bn)
+                last_use_norm=last_use_norm)
 
         particle_dim = param_net.param_length
 

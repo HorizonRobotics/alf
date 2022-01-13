@@ -23,13 +23,14 @@ from alf.utils import math_ops
 
 
 class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, True), (3, False, True, True),
-                              (3, False, True, True, True))
+    @parameterized.parameters(
+        (1, True), (3, False, True, 'bn'), (3, False, True, 'ln'),
+        (3, False, True, 'bn', True), (3, False, True, 'ln', True))
     def test_param_convnet(self,
                            batch_size=1,
                            same_padding=False,
                            use_bias=True,
-                           use_bn=False,
+                           use_norm=None,
                            flatten_output=False):
         replica = 2
         input_spec = TensorSpec((3, 32, 32), torch.float32)
@@ -38,7 +39,7 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
             input_size=input_spec.shape[1:],
             conv_layer_params=((16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1, 2)),
             use_bias=use_bias,
-            use_bn=use_bn,
+            use_norm=use_norm,
             n_groups=replica,
             same_padding=same_padding,
             activation=torch.tanh,
@@ -46,7 +47,7 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLen(network._conv_layers, 2)
 
         # test non-parallel forward
-        if not use_bn:
+        if use_norm is None:
             image = input_spec.zeros(outer_dims=(batch_size, ))
             output, _ = network(image)
             if same_padding:
@@ -76,8 +77,8 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(output_shape[1:], network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()))
 
-    @parameterized.parameters((1, ), (3, ), (3, True))
-    def test_param_network(self, batch_size=1, use_bn=False):
+    @parameterized.parameters((1, ), (3, ), (3, 'bn'), (3, 'ln'))
+    def test_param_network(self, batch_size=1, use_norm=None):
         input_spec = TensorSpec((3, 32, 32), torch.float32)
         conv_layer_params = ((16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1, 2))
         fc_layer_params = (128, )
@@ -88,17 +89,18 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
             input_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            use_conv_bn=use_bn,
+            use_conv_norm=use_norm,
             use_fc_bias=True,
-            use_fc_bn=use_bn,
+            use_fc_norm=use_norm,
             n_groups=replica,
             last_layer_size=last_layer_size,
             last_use_bias=True,
+            last_use_norm=use_norm,
             last_activation=last_activation)
         self.assertLen(network._fc_layers, 2)
 
         # test non-parallel forward
-        if not use_bn:
+        if use_norm is None:
             image = input_spec.zeros(outer_dims=(batch_size, ))
             output, _ = network(image)
             output_shape = (batch_size, last_layer_size)
