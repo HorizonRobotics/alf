@@ -17,7 +17,10 @@ import unittest
 import numpy as np
 import torch
 
-from alf.data_structures import AlgStep, StepType, TimeStep
+import alf
+from alf.nest import flatten, map_structure
+from alf.data_structures import AlgStep, StepType, TimeStep, Experience
+from alf.experience_replayers.replay_buffer_test import get_exp_batch
 
 
 class AlgStepTest(unittest.TestCase):
@@ -70,6 +73,21 @@ class TimeStepTest(unittest.TestCase):
         self.assertEqual(observation, time_step.observation)
         self.assertEqual(prev_action, time_step.prev_action)
         self.assertEqual(env_id, time_step.env_id)
+
+
+class ExperienceTest(alf.test.TestCase):
+    def test_map_structure_on_experience(self):
+        exp = get_exp_batch([0, 4, 7], 10, t=1, x=0.5)
+        func = lambda x: x + 1
+        res = map_structure(func, exp)
+
+        map_structure(lambda x, y: self.assertTensorClose(func(x), y), exp,
+                      res)
+
+        flat_exp = flatten(exp)
+        flat_res = map_structure(func, flat_exp)
+        map_structure(lambda x, y: self.assertTensorClose(x, y), flatten(res),
+                      flat_res)
 
 
 if __name__ == '__main__':
