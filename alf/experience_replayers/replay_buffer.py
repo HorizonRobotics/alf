@@ -297,7 +297,7 @@ class ReplayBuffer(RingBuffer):
     def get_batch(self, batch_size, batch_length):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
-        Note: The environments where the sampels are from are ordered in the
+        Note: The environments where the samples are from are ordered in the
             returned batch.
 
         Args:

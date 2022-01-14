@@ -193,6 +193,29 @@ class Experience(
     def env_id(self):
         return self.time_step.env_id
 
+    def get_time_step_field(self, field):
+        """Get the value of the experience.time_step specified by ``field``.
+        Args:
+            field (str): indicate the field to be updated
+        Returns:
+            The value of the field corresponding to ``field``.
+        """
+        return nest.get_field(self, field='time_step.' + field)
+
+    def update_time_step_field(self, field, new_value):
+        """Update the value of the experience.time_step specified by ``field``.
+        Args:
+            field (str): indicate the field to be updated
+            new_value (any): the new value for the field
+        Returns:
+            Experience: a structure the same as the original experience except
+            that the field ``field`` in the time_step is replaced by ``new_value``.
+        """
+
+        assert field in ('reward', 'observation')
+        return nest.set_field(
+            self, field='time_step.' + field, new_value=new_value)
+
 
 def add_batch_info(experience, batch_info, buffer=()):
     """Add batch_info and rollout_info_field string to experience.

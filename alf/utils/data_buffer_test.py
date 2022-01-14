@@ -22,16 +22,13 @@ import torch
 from absl.testing import parameterized
 
 import alf
+from alf.data_structures import Experience
 from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = alf.data_structures.namedtuple(
-    "DataItem", [
-        "env_id", "x", "o", "reward", "step_type", "batch_info",
-        "replay_buffer", "rollout_info_field"
-    ],
-    default_value=())
+TimestepItem = namedtuple('TimestepItem',
+                          ['step_type', 'o', 'reward', 'env_id', 'x'])
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
@@ -52,15 +49,17 @@ def get_batch(env_ids, dim, t, x):
         torch.abs(a - g) < .05,
         torch.zeros(batch_size, dtype=torch.float32, device="cpu"),
         -torch.ones(batch_size, dtype=torch.float32, device="cpu"))
-    return DataItem(
-        env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
-        x=ox,
-        step_type=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
-        o=dict({
-            "a": a,
-            "g": g
-        }),
-        reward=r)
+    return Experience(
+        time_step=TimestepItem(
+            env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
+            x=ox,
+            step_type=t *
+            torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+            o=dict({
+                "a": a,
+                "g": g
+            }),
+            reward=r))
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -71,15 +70,16 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
     def __init__(self, *args):
         super().__init__(*args)
         alf.set_default_device("cpu")  # spawn forking is required to use cuda.
-        self.data_spec = DataItem(
-            env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
-            x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
-            step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
-            o=dict({
-                "a": alf.TensorSpec(shape=(), dtype=torch.float32),
-                "g": alf.TensorSpec(shape=(), dtype=torch.float32)
-            }),
-            reward=alf.TensorSpec(shape=(), dtype=torch.float32))
+        self.data_spec = Experience(
+            time_step=TimestepItem(
+                env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+                x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+                step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
+                o=dict({
+                    "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                    "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+                }),
+                reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
     @parameterized.named_parameters([
         ('test_sync', False),
@@ -106,7 +106,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         for t in range(2, 10):
             batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             # test that the created batch has gradients
-            self.assertTrue(batch1.x.requires_grad)
+            self.assertTrue(batch1.get_time_step_field("x").requires_grad)
             ring_buffer.enqueue(batch1, batch1.env_id)
         if not allow_multiprocess:
             # dequeue: blocking mode only available under allow_multiprocess
@@ -120,7 +120,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
         self.assertEqual(batch.step_type, torch.tensor([6] * 5))
         # test that RingBuffer detaches gradients of inputs
-        self.assertFalse(batch.x.requires_grad)
+        self.assertFalse(batch.get_time_step_field("x").requires_grad)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
         self.assertEqual(batch.step_type, torch.tensor([7] * 5))
         batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))

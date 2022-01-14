@@ -245,6 +245,8 @@ class RingBuffer(nn.Module):
 
             current_pos = self._current_pos[env_ids]
             indices = env_ids * self._max_length + self.circular(current_pos)
+
+            alf.nest.assert_same_structure(self._flattened_buffer, batch)
             alf.nest.map_structure(
                 lambda buf, bat: buf.__setitem__(indices, bat.detach()),
                 self._flattened_buffer, batch)

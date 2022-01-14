@@ -20,7 +20,7 @@ from absl.testing import parameterized
 import alf
 from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
-from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
+from alf.utils.data_buffer_test import get_batch, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
@@ -45,8 +45,8 @@ class ReplayBufferTest(RingBufferTest):
         transform = HindsightExperienceTransformer(
             self.data_spec,
             her_proportion=0.8,
-            achieved_goal_field="o.a",
-            desired_goal_field="o.g")
+            achieved_goal_field="time_step.o.a",
+            desired_goal_field="time_step.o.g")
 
         steps = [
             [
@@ -104,7 +104,7 @@ class ReplayBufferTest(RingBufferTest):
                         torch.tensor([10, 9])))
 
         # Save original exp for later testing.
-        g_orig = replay_buffer._buffer.o["g"].clone()
+        g_orig = replay_buffer._buffer.get_time_step_field("o.g").clone()
         r_orig = replay_buffer._buffer.reward.clone()
 
         # HER selects indices [0, 2, 3, 4] to relabel, from all 5:
@@ -124,15 +124,17 @@ class ReplayBufferTest(RingBufferTest):
         res = res._replace(batch_info=info)
         res = transform.transform_experience(res)
 
-        self.assertEqual(list(res.o["g"].shape), [5, 2])
+        self.assertEqual(list(res.get_time_step_field("o.g").shape), [5, 2])
 
         # Test relabeling doesn't change original experience
         self.assertTrue(torch.allclose(r_orig, replay_buffer._buffer.reward))
-        self.assertTrue(torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
+        self.assertTrue(
+            torch.allclose(g_orig,
+                           replay_buffer._buffer.get_time_step_field("o.g")))
 
         # test relabeled goals
         g = torch.tensor([0.7, 0., .2, 1.4, .6]).unsqueeze(1).expand(5, 2)
-        self.assertTrue(torch.allclose(res.o["g"], g))
+        self.assertTrue(torch.allclose(res.get_time_step_field("o.g"), g))
 
         # test relabeled rewards
         r = torch.tensor([[-1., 0.], [-1., -1.], [-1., 0.], [-1., 0.],
@@ -246,7 +248,7 @@ class ReplayBufferTest(RingBufferTest):
         batch, _ = replay_buffer.gather_all()
         self.assertEqual(list(batch.step_type.shape), [8, 1])
         # test that RingBuffer detaches gradients of inputs
-        self.assertFalse(batch.x.requires_grad)
+        self.assertFalse(batch.get_time_step_field("x").requires_grad)
 
         self.assertRaises(AssertionError, replay_buffer.get_batch, 8, 2)
         replay_buffer.get_batch(13, 1)[0]
@@ -257,10 +259,12 @@ class ReplayBufferTest(RingBufferTest):
         bat1 = alf.nest.map_structure(lambda bat: bat[batch1.env_id], batch)
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat1.env_id, batch1.env_id)
-        self.assertEqual(bat1.x, batch1.x)
+        self.assertEqual(
+            bat1.get_time_step_field("x"), batch1.get_time_step_field("x"))
         self.assertEqual(bat1.step_type, batch1.step_type)
         self.assertEqual(bat2.env_id, batch2.env_id)
-        self.assertEqual(bat2.x, batch2.x)
+        self.assertEqual(
+            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
         self.assertEqual(bat2.step_type, batch2.step_type)
 
         for t in range(1, 10):
@@ -281,9 +285,11 @@ class ReplayBufferTest(RingBufferTest):
         bat3 = alf.nest.map_structure(lambda bat: bat[batch3.env_id], batch)
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat3.env_id, batch3.env_id)
-        self.assertEqual(bat3.x, batch3.x)
+        self.assertEqual(
+            bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
         self.assertEqual(bat2.env_id, batch2.env_id)
-        self.assertEqual(bat2.x, batch2.x)
+        self.assertEqual(
+            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
 
         batch = replay_buffer.get_batch(8, 2)[0]
         t2 = []
@@ -296,9 +302,11 @@ class ReplayBufferTest(RingBufferTest):
                                           batch_t)
             t2.append(bat2.step_type)
             self.assertEqual(bat3.env_id, batch3.env_id)
-            self.assertEqual(bat3.x, batch3.x)
+            self.assertEqual(
+                bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
             self.assertEqual(bat2.env_id, batch2.env_id)
-            self.assertEqual(bat2.x, batch2.x)
+            self.assertEqual(
+                bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
             t3.append(bat3.step_type)
 
         # Test time consistency
