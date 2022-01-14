@@ -18,10 +18,9 @@ import torch
 import alf
 from alf.data_structures import Experience, namedtuple, StepType
 from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
-from alf.experience_replayers.replay_buffer_test import ReplayBufferTest
+from alf.experience_replayers.replay_buffer_test import get_exp_batch, ReplayBufferTest
 from alf.algorithms.data_transformer import FrameStacker, ImageScaleTransformer, HindsightExperienceTransformer
 from alf.utils import common
-from alf.utils.data_buffer_test import get_batch
 
 TimestepItem = namedtuple(
     'TimestepItem', ['step_type', 'observation', 'reward', 'env_id'],
@@ -226,7 +225,7 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
         max_length = 100
         torch.manual_seed(0)
 
-        from alf.utils.data_buffer_test import TimestepItem
+        from alf.experience_replayers.replay_buffer_test import TimestepItem
 
         data_spec = Experience(
             time_step=TimestepItem(
@@ -259,10 +258,10 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
             num_envs, max_steps, end_prob=end_prob)
         for t in range(max_steps):
             for b in range(num_envs):
-                batch = get_batch([b],
-                                  self.dim,
-                                  t=steps[b * max_steps + t],
-                                  x=1. / max_steps * t + b)
+                batch = get_exp_batch([b],
+                                      self.dim,
+                                      t=steps[b * max_steps + t],
+                                      x=1. / max_steps * t + b)
                 replay_buffer.add_batch(batch, batch.env_id)
             if t > 1:
                 sample_steps = min(t, max_length)

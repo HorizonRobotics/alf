@@ -383,7 +383,7 @@ class SimpleDataTransformer(DataTransformer):
         Note that for TimeStep, the shapes are [B, ...].
 
         Args:
-            timestep (TimeStep): data to be transformed
+            timestep: data to be transformed
         Returns:
             transformed TimeStep
         """
@@ -395,7 +395,7 @@ class SimpleDataTransformer(DataTransformer):
         For Experience, the shapes are [B, T, ...]
 
         Args:
-            experience (Experience): data to be transformed
+            experience: data to be transformed
         Returns:
             transformed Experience
         """
@@ -406,9 +406,9 @@ class SimpleDataTransformer(DataTransformer):
         """Transform TimeStep.
         Note that this function is used by both ``transform_timestep``
         and ``transform_experience``.
-
         Args:
-            timestep (TimeStep): data to be transformed
+            timestep (TimeStep): data to be transformed. The shape is
+            [B, ...] or [B, T, ...].
         Returns:
             transformed TimeStep
         """
@@ -585,7 +585,6 @@ class RewardTransformer(SimpleDataTransformer):
 
     def _transform(self, timestep):
         return timestep._replace(reward=self.forward(timestep.reward))
-        return
 
 
 @alf.configurable
