@@ -313,7 +313,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             known_value_bounds (tuple|None): known bound of the values.
             unexpanded_value_score (float|str): The value score for an unexpanded
                 child. If 'max'/'min'/'mean', will use the maximum/minimum/mean
-                of the value scores of the expanded siblings. If 'none', when
+                of the value scores of the expanded siblings. If 'mean_with_parent',
+                will use the mean of the value scores of the expanded siblings and
+                its parent (this is used in ELF OpenGo and EfficientZero). If 'none', when
                 exploration policy is used, will keep the policy for the unexpanded
                 children same as prior; when exporation is not used, 'none' behaves
                 same as 'min'.
@@ -370,9 +372,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 "=True for expand_all_children or expand_all_root_children.")
 
         if isinstance(unexpanded_value_score, str):
-            assert unexpanded_value_score in ('max', 'min', 'mean', 'none'), (
-                "Unsupported unexpanded_value_score=%s" %
-                unexpanded_value_score)
+            assert unexpanded_value_score in (
+                'max', 'min', 'mean', 'mean_with_parent',
+                'none'), ("Unsupported unexpanded_value_score=%s" %
+                          unexpanded_value_score)
         self._unexpanded_value_score = unexpanded_value_score
         self._act_with_exploration_policy = act_with_exploration_policy
         self._search_with_exploration_policy = search_with_exploration_policy
@@ -896,6 +899,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             value_score[unexpanded] = 0.
             n = (~unexpanded).sum(dim=1, keepdim=True) + 1e-30
             mean_value_score = value_score.sum(dim=1, keepdim=True) / n
+            value_score = torch.where(unexpanded, mean_value_score,
+                                      value_score)
+        elif self._unexpanded_value_score == 'mean_with_parent':
+            pvalue_score = trees.calc_value(parents)
+            pvalue_score = trees.normalize_value(pvalue_score, parents[0])
+            value_score[unexpanded] = 0.
+            n = (~unexpanded).sum(dim=1, keepdim=True)
+            mean_value_score = (pvalue_score.unsqueeze(1) + value_score.sum(
+                dim=1, keepdim=True)) / (n + 1)
             value_score = torch.where(unexpanded, mean_value_score,
                                       value_score)
 
