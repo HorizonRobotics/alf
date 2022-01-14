@@ -1560,22 +1560,31 @@ class ConvTranspose2D(nn.Module):
             padding=padding,
             output_padding=output_padding,
             bias=use_bias)
-        if kernel_initializer is None:
-            variance_scaling_init(
-                self._conv_trans2d.weight.data,
-                gain=kernel_init_gain,
-                nonlinearity=self._activation,
-                transposed=True)
-        else:
-            kernel_initializer(self._conv_trans2d.weight.data)
 
-        if use_bias:
-            nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
-
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
         if use_bn:
             self._bn = bn_ctor(out_channels)
         else:
             self._bn = None
+
+    def reset_parameters(self):
+        """Initialize the parameters."""
+        if self._kernel_initializer is None:
+            variance_scaling_init(
+                self._conv_trans2d.weight.data,
+                gain=self._kernel_init_gain,
+                nonlinearity=self._activation,
+                transposed=True)
+        else:
+            self._kernel_initializer(self._conv_trans2d.weight.data)
+        if self._use_bias:
+            nn.init.constant_(self._conv_trans2d.bias.data,
+                              self._bias_init_value)
+        if self._bn is not None:
+            self._bn.reset_parameters()
 
     def forward(self, img):
         y = self._conv_trans2d(img)
@@ -2273,7 +2282,7 @@ class BottleneckBlock(nn.Module):
        Note: v1_5 is the ResNet-B in the above paper.
     2. Squeeze-and-Excitation (SE) in `Squeeze-and-Excitation Networks
        <https://openaccess.thecvf.com/content_cvpr_2018/papers/Hu_Squeeze-and-Excitation_Networks_CVPR_2018_paper.pdf>`_
-       SE is also shown to be uesfule in
+       SE is also shown to be useful in
        `Revisiting ResNets: Improved Training and Scaling Strategies <https://arxiv.org/abs/2103.07579>`_
     """
 
@@ -2852,12 +2861,20 @@ class Scale(ElementwiseLayerBase):
 
 
 class ScaleGradient(ElementwiseLayerBase):
-    def __init__(self, scale):
+    """Scales the gradient of input for the backward pass.
+
+    Args:
+        scale (float): a scalar factor to be multiplied to the gradient
+            of `tensor`.
+    """
+
+    def __init__(self, scale: float):
         super().__init__()
         self._scale = scale
 
     def forward(self, input):
-        return (1 - self._scale) * input.detach() + self._scale * input
+        # (1 - self._scale) * input.detach() + self._scale * input
+        return torch.lerp(input.detach(), input, self._scale)
 
 
 class Branch(nn.Module):
