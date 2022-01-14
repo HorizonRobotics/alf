@@ -408,9 +408,9 @@ class SimpleDataTransformer(DataTransformer):
         and ``transform_experience``.
 
         Args:
-            timestep_or_exp (TimeStep|Experience): data to be transformed
+            timestep (TimeStep): data to be transformed
         Returns:
-            transformed TimeStep of Experience
+            transformed TimeStep
         """
         raise NotImplementedError()
 

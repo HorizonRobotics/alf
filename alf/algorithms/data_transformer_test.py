@@ -296,7 +296,7 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                 # HER relabel experience
                 res, info = replay_buffer.get_batch(sample_steps, 2)
                 res = res._replace(batch_info=info)
-                # res = transform.transform_experience(res)
+                res = transform.transform_experience(res)
 
                 self.assertEqual(
                     list(res.get_time_step_field("o.g").shape),

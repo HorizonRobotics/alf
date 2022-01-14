@@ -195,10 +195,13 @@ class Experience(
 
     def get_time_step_field(self, field):
         """Get the value of the experience.time_step specified by ``field``.
+        Since we have exposed the common time_step fields as properties of
+        ``Experience``, this function can be used when the field if not
+        covered by the exposed properties.
         Args:
-            field (str): indicate the field to be updated
+            field (str): indicate the field to be retrieved in time_step.
         Returns:
-            The value of the field corresponding to ``field``.
+            The value of the field in time_step corresponding to ``field``.
         """
         return nest.get_field(self, field='time_step.' + field)
 
@@ -211,8 +214,6 @@ class Experience(
             Experience: a structure the same as the original experience except
             that the field ``field`` in the time_step is replaced by ``new_value``.
         """
-
-        assert field in ('reward', 'observation')
         return nest.set_field(
             self, field='time_step.' + field, new_value=new_value)
 
