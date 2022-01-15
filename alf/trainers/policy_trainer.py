@@ -412,8 +412,8 @@ class RLTrainer(Trainer):
         if self._eval_env:
             self._eval_env.reset()
 
-        begin_iter_num = int(self._trainer_progress._iter_num)
-        iter_num = begin_iter_num
+        iter_num = int(self._trainer_progress._iter_num)
+        training_setting_summarized = False
 
         checkpoint_interval = math.ceil(
             (self._num_iterations
@@ -440,8 +440,9 @@ class RLTrainer(Trainer):
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
-            if iter_num == begin_iter_num:
+            if not training_setting_summarized and train_steps > 0:
                 self._summarize_training_setting()
+                training_setting_summarized = True
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
