@@ -492,16 +492,11 @@ class RLAlgorithm(Algorithm):
             store_exp_time += time.time() - t0
 
             exp_for_training = Experience(
+                time_step=transformed_time_step,
                 action=action,
-                reward=transformed_time_step.reward,
-                discount=transformed_time_step.discount,
-                step_type=transformed_time_step.step_type,
-                state=policy_state,
-                prev_action=transformed_time_step.prev_action,
-                observation=transformed_time_step.observation,
                 rollout_info=dist_utils.distributions_to_params(
                     policy_step.info),
-                env_id=transformed_time_step.env_id)
+                state=policy_state)
 
             experience_list.append(exp_for_training)
             original_reward_list.append(time_step.reward)

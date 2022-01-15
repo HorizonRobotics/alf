@@ -363,36 +363,54 @@ class FrameStacker(DataTransformer):
         for i, field in enumerate(self._fields):
             observation = alf.nest.transform_nest(observation, field,
                                                   partial(_stack_frame, i=i))
-        return experience._replace(observation=observation)
+        return experience.update_time_step_field('observation', observation)
 
 
 class SimpleDataTransformer(DataTransformer):
     """Base class for simple data transformers.
 
     For simple data transformers, there is no state for ``transform_timestep`` and
-    ``transform_timestep`` and ``transform_experience`` use same function
-    ``_transform`` to do the transformation
+    ``transform_experience``. And ``transform_experience`` use the same function
+    ``_transform`` to do the transformation of the ``time_step`` field of the
+    experience.
     """
 
     def __init__(self, transformed_observation_spec):
         super().__init__(transformed_observation_spec, state_spec=())
 
     def transform_timestep(self, timestep: TimeStep, state):
+        """Transform TimeStep.
+        Note that for TimeStep, the shapes are [B, ...].
+
+        Args:
+            timestep: data to be transformed
+        Returns:
+            transformed TimeStep
+        """
         return self._transform(timestep), ()
 
     def transform_experience(self, experience: Experience):
-        return self._transform(experience)
+        """Transform Experience.
 
-    def _transform(self, timestep_or_exp):
-        """Transform TimeStep or Experience.
-
-        Note that for TimeStep, the shapes are [B, ...].
         For Experience, the shapes are [B, T, ...]
 
         Args:
-            timestep_or_exp (TimeStep|Experience): data to be transformed
+            experience: data to be transformed
         Returns:
-            transformed TimeStep of Experience
+            transformed Experience
+        """
+        transformed_time_step = self._transform(experience.time_step)
+        return experience._replace(time_step=transformed_time_step)
+
+    def _transform(self, timestep):
+        """Transform TimeStep.
+        Note that this function is used by both ``transform_timestep``
+        and ``transform_experience``.
+        Args:
+            timestep (TimeStep): data to be transformed. The shape is
+            [B, ...] or [B, T, ...].
+        Returns:
+            transformed TimeStep
         """
         raise NotImplementedError()
 
@@ -408,8 +426,8 @@ class IdentityDataTransformer(SimpleDataTransformer):
         """
         super().__init__(observation_spec)
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp
+    def _transform(self, timestep):
+        return timestep
 
 
 @alf.configurable
@@ -444,7 +462,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
 
         super().__init__(new_observation_spec)
 
-    def _transform(self, timestep_or_exp):
+    def _transform(self, timestep):
         def _transform_image(obs):
             assert isinstance(obs,
                               torch.Tensor), str(type(obs)) + ' is not Tensor'
@@ -454,11 +472,11 @@ class ImageScaleTransformer(SimpleDataTransformer):
                 obs.add_(self._min)
             return obs
 
-        observation = timestep_or_exp.observation
+        observation = timestep.observation
         for field in self._fields:
             observation = alf.nest.transform_nest(observation, field,
                                                   _transform_image)
-        return timestep_or_exp._replace(observation=observation)
+        return timestep._replace(observation=observation)
 
 
 @alf.configurable
@@ -532,11 +550,11 @@ class ObservationNormalizer(SimpleDataTransformer):
         else:
             raise ValueError("Unsupported mode: " + mode)
 
-    def _transform(self, timestep_or_exp):
+    def _transform(self, timestep):
         """Normalize a given observation. If during unroll, then first update
         the normalizer. The normalizer won't be updated in other circumstances.
         """
-        observation = timestep_or_exp.observation
+        observation = timestep.observation
         if self._fields is None:
             obs = observation
         else:
@@ -551,7 +569,7 @@ class ObservationNormalizer(SimpleDataTransformer):
         else:
             for f, o in obs.items():
                 observation = alf.nest.set_field(observation, f, o)
-        return timestep_or_exp._replace(observation=observation)
+        return timestep._replace(observation=observation)
 
 
 class RewardTransformer(SimpleDataTransformer):
@@ -565,9 +583,8 @@ class RewardTransformer(SimpleDataTransformer):
         """
         super().__init__(observation_spec)
 
-    def _transform(self, timestep_or_exp):
-        return timestep_or_exp._replace(
-            reward=self.forward(timestep_or_exp.reward))
+    def _transform(self, timestep):
+        return timestep._replace(reward=self.forward(timestep.reward))
 
 
 @alf.configurable
@@ -718,8 +735,8 @@ class HindsightExperienceTransformer(DataTransformer):
     def __init__(self,
                  transformed_observation_spec,
                  her_proportion=0.8,
-                 achieved_goal_field="observation.achieved_goal",
-                 desired_goal_field="observation.desired_goal",
+                 achieved_goal_field="time_step.observation.achieved_goal",
+                 desired_goal_field="time_step.observation.desired_goal",
                  reward_fn=l2_dist_close_reward_fn):
         """
         Args:
@@ -746,7 +763,7 @@ class HindsightExperienceTransformer(DataTransformer):
 
     def transform_experience(self, experience: Experience):
         """Hindsight relabel experience
-        Note: The environments where the sampels are from are ordered in the
+        Note: The environments where the samples are from are ordered in the
             returned batch.
 
         Args:
@@ -765,8 +782,8 @@ class HindsightExperienceTransformer(DataTransformer):
         buffer = info.replay_buffer
         assert buffer != (), "Hindsight requires replay_buffer to be populated"
         accessed_fields = [
-            "batch_info", "reward", "step_type", self._desired_goal_field,
-            self._achieved_goal_field
+            "batch_info", "time_step.reward", "time_step.step_type",
+            self._desired_goal_field, self._achieved_goal_field
         ]
         with alf.device(buffer.device):
             experience = alf.nest.transform_nest(
@@ -849,7 +866,9 @@ class HindsightExperienceTransformer(DataTransformer):
 
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabed_goal)
-        result = result._replace(reward=relabeled_rewards)
+
+        result = result.update_time_step_field('reward', relabeled_rewards)
+
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
                 result = alf.nest.transform_nest(
