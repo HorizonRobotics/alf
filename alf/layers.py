@@ -1120,6 +1120,7 @@ class Conv2D(nn.Module):
                  use_bias=None,
                  use_bn=False,
                  weight_opt_args: Optional[Dict] = None,
+                 use_ln=False,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1139,6 +1140,7 @@ class Conv2D(nn.Module):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             weight_opt_args: optimizer arguments for weight (not for bias)
+            use_ln (bool): whether use layer normalization
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
@@ -1174,6 +1176,10 @@ class Conv2D(nn.Module):
             self._bn = bn_ctor(out_channels)
         else:
             self._bn = None
+        if use_ln:
+            self._ln = nn.GroupNorm(1, out_channels)
+        else:
+            self._ln = None
 
         if weight_opt_args is not None:
             self._conv2d.weight.opt_args = weight_opt_args
@@ -1192,9 +1198,13 @@ class Conv2D(nn.Module):
             nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
         if self._bn is not None:
             self._bn.reset_parameters()
+        if self._ln is not None:
+            self._ln.reset_parameters()
 
     def forward(self, img):
         y = self._conv2d(img)
+        if self._ln is not None:
+            y = self._ln(y)
         if self._bn is not None:
             y = self._bn(y)
         return self._activation(y)
@@ -1383,6 +1393,7 @@ class ParallelConv2D(nn.Module):
                  use_bias=None,
                  use_bn=False,
                  weight_opt_args: Optional[Dict] = None,
+                 use_ln=False,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -1404,6 +1415,7 @@ class ParallelConv2D(nn.Module):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             weight_opt_args: optimizer arguments for weight (not for bias)
+            use_ln (bool): whether use layer normalization
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
             kernel_initializer (Callable): initializer for the conv layer kernel.
@@ -1442,6 +1454,10 @@ class ParallelConv2D(nn.Module):
             self._bn = None
         if weight_opt_args is not None:
             self._conv2d.weight.opt_args = weight_opt_args
+        if use_ln:
+            self._ln = nn.GroupNorm(n, n * out_channels)
+        else:
+            self._ln = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -1462,6 +1478,8 @@ class ParallelConv2D(nn.Module):
 
         if self._bn:
             self._bn.reset_parameters()
+        if self._ln is not None:
+            self._ln.reset_parameters()
 
     def forward(self, img):
         """Forward
@@ -1514,6 +1532,8 @@ class ParallelConv2D(nn.Module):
 
         res = self._conv2d(img)
 
+        if self._ln is not None:
+            res = self._ln(res)
         if self._bn is not None:
             res = self._bn(res)
 
