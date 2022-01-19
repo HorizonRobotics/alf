@@ -490,8 +490,13 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         width = 11
         if use_norm == 'bn':
             use_bn = True
+            use_ln = False
+        elif use_norm == 'ln':
+            use_bn = False
+            use_ln = True
         else:
             use_bn = False
+            use_ln = False
         pconv = alf.layers.ParamConv2D(
             in_channels,
             out_channels,
@@ -506,7 +511,8 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             kernel_size,
             activation=act,
             use_bias=use_bias,
-            use_bn=use_bn)
+            use_bn=use_bn,
+            use_ln=use_ln)
 
         # test param length
         self.assertEqual(pconv.weight_length, conv.weight.nelement())
@@ -516,6 +522,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(
                 pconv._norm.param_length,
                 conv._bn.weight.nelement() + conv._bn.bias.nelement())
+        if use_ln:
+            self.assertEqual(
+                pconv._norm.param_length,
+                conv._ln.weight.nelement() + conv._ln.bias.nelement())
 
         # test parallel forward
         params = torch.randn(n, pconv.param_length)
@@ -538,10 +548,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             if use_bn:
                 conv._bn.weight.data.copy_(norm_weight[i])
                 conv._bn.bias.data.copy_(norm_bias[i])
+            if use_ln:
+                conv._ln.weight.data.copy_(norm_weight[i])
+                conv._ln.bias.data.copy_(norm_bias[i])
             outs = conv(image)
-            if use_norm != 'ln':
-                self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(),
-                                1e-5)
+            self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-5)
 
     @parameterized.parameters(
         ("rbf", 8, 8, 0.1),
