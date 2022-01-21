@@ -19,13 +19,12 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import torch.distributions as td
-from typing import Callable
+from typing import Callable, Optional
 
 import alf
 from alf.data_structures import LossInfo, namedtuple
 from alf.networks import EncodingNetwork, StableNormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.utils import common, dist_utils, tensor_utils, summary_utils
-from alf.utils.losses import element_wise_squared_loss, multi_quantile_huber_loss
+from alf.utils import common, dist_utils, losses, summary_utils, tensor_utils
 from alf.utils.schedulers import ConstantScheduler
 
 ModelState = namedtuple(
@@ -34,6 +33,7 @@ ModelState = namedtuple(
         'state',  # the actual latent state of the model
         'pred_state',  # the state of the prediction model
         'step',  # the current unroll step of the model
+        'prev_reward_sum',  # the reward sum from previous steps
     ],
     default_value=())
 
@@ -59,8 +59,14 @@ ModelOutput = namedtuple(
         # The following fields are used by calc_loss
         'action_distribution',
         'game_over_logit',
-        'value_quantiles',
-        'reward_quantiles',
+
+        # [B,] for scalar prediction. [B, n] for quantile prediction (n quantiles)
+        # or categorical prediction (n categories of value)
+        'value_pred',
+
+        # [B,] for scalar prediction. [B, n] for quantile prediction (n quantiles)
+        # or categorical prediction (n categories of value)
+        'reward_pred',
     ],
     default_value=())
 
@@ -97,25 +103,28 @@ ModelTarget = namedtuple(
 class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     """The interface for the model used by MCTSAlgorithm."""
 
-    def __init__(self,
-                 num_unroll_steps,
-                 representation_net,
-                 dynamics_net,
-                 prediction_net,
-                 train_reward_function,
-                 train_game_over_function,
-                 train_repr_prediction=False,
-                 predict_reward_sum=False,
-                 value_loss_weight=1.0,
-                 reward_loss_weight=1.0,
-                 policy_loss_weight=1.0,
-                 game_over_loss_weight=1.0,
-                 repr_prediction_loss_weight=1.0,
-                 initial_alpha=0.0,
-                 target_entropy=None,
-                 alpha_adjust_rate=0.001,
-                 debug_summaries=False,
-                 name="MCTSModel"):
+    def __init__(
+            self,
+            num_unroll_steps,
+            representation_net,
+            dynamics_net,
+            prediction_net,
+            train_reward_function,
+            train_game_over_function,
+            train_repr_prediction=False,
+            predict_reward_sum=False,
+            value_loss_weight=1.0,
+            reward_loss_weight=1.0,
+            policy_loss_weight=1.0,
+            game_over_loss_weight=1.0,
+            repr_prediction_loss_weight=1.0,
+            initial_alpha=0.0,
+            reward_loss: losses.ScalarPredictionLoss = losses.SquareLoss(),
+            value_loss: losses.ScalarPredictionLoss = losses.SquareLoss(),
+            target_entropy=None,
+            alpha_adjust_rate=0.001,
+            debug_summaries=False,
+            name="MCTSModel"):
         """
         Args:
             representation_net (Network): the network for generating initial
@@ -124,6 +133,16 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             dynamics_net (Network): the network for generating the next latent
                 representation given the current latent representation and action.
                 It is called as ``dynamics_net((current_latent_representation, action))``
+            prediction_net (Network): the network for predicting value, reward
+                and action. It is called as ``prediction_net(dyn_state, pred_state)``
+                and output a tuple of four Tensors:
+                - value_pred: the prediction for value. The way it is interpreted
+                  depends on ``value_loss``.
+                - reward_pred (Optional): the prediction for reward. The way it
+                  is interpreted depends on ``reward_loss``.
+                - action_distribution: The distribution of the actions of the
+                  predicted policy.
+                - game_over_logit (Optional): The predicted logits for game over.
             train_reward_function (bool): whether to predict reward
             train_game_over_function (bool): whether to predict game over
             train_repr_prediction (bool): whether to train to predict future
@@ -139,6 +158,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             repr_prediction_loss_weight (float): the weight for the loss of
                 predicting latent representation.
             initial_alpha (float): initial value for the weight of entropy regulariation
+            reward_loss: the loss function for reward prediction.
+            value_loss: the loss function for value prediction.
             target_entropy (float): if provided, will adjust alpha automatically
                 so that the entropy is not smaller than this.
             alpha_adjust_rate (float): the speed to adjust alpha
@@ -168,6 +189,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._policy_loss_weight = policy_loss_weight
         self._game_over_loss_weight = game_over_loss_weight
         self._repr_prediction_loss_weight = repr_prediction_loss_weight
+        self._reward_loss = reward_loss
+        self._value_loss = value_loss
 
         found1 = alf.layers.prepare_rnn_batch_norm(self._dynamics_net)
         found2 = alf.layers.prepare_rnn_batch_norm(self._prediction_net)
@@ -186,11 +209,19 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         batch_size = state.shape[0]
         pred_state = common.zero_tensor_from_nested_spec(
             self._prediction_net.state_spec, batch_size)
+        if self._predict_reward_sum:
+            prev_reward_sum = torch.zeros(batch_size)
+        else:
+            prev_reward_sum = ()
+        model_state = ModelState(
+            state=state,
+            pred_state=pred_state,
+            prev_reward_sum=prev_reward_sum)
         if not self._handle_bn:
-            return self.prediction_model(state, pred_state)
+            return self._predict(model_state)
         else:
             self._prediction_net.set_batch_norm_current_step(0)
-            model_output = self.prediction_model(state, pred_state)
+            model_output = self._predict(model_state)
             batch_size = model_output.value.shape[0]
             current_steps = torch.zeros(batch_size, dtype=torch.long)
             return model_output._replace(
@@ -208,15 +239,35 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         """
         if not self._handle_bn:
             dyn_state = self._dynamics_net((state.state, action))[0]
-            return self.prediction_model(dyn_state, state.pred_state)
+            return self._predict(state._replace(state=dyn_state))
         else:
             self._dynamics_net.set_batch_norm_current_step(state.step)
             dyn_state = self._dynamics_net((state.state, action))[0]
             current_steps = state.step + 1
             self._prediction_net.set_batch_norm_current_step(current_steps)
-            model_output = self.prediction_model(dyn_state, state.pred_state)
+            model_output = self._predict(state._replace(state=dyn_state))
             return model_output._replace(
                 state=model_output.state._replace(step=current_steps))
+
+    def _predict(self, state: ModelState):
+        model_output = self.prediction_model(state.state, state.pred_state)
+        value_pred = model_output.value_pred
+        value = self._value_loss.calc_expectation(value_pred)
+        reward_pred = model_output.reward_pred
+        if isinstance(reward_pred, torch.Tensor):
+            reward = self._reward_loss.calc_expectation(reward_pred)
+            if self._predict_reward_sum:
+                # reward is assumed to predict the sum of reward over time steps
+                prev_reward_sum = reward
+                reward = reward - state.prev_reward_sum
+                model_output = model_output._replace(
+                    state=model_output.state._replace(
+                        prev_reward_sum=prev_reward_sum))
+        else:
+            reward = ()
+        if not self.training:
+            model_output = model_output._replace(value_pred=(), reward_pred=())
+        return model_output._replace(value=value, reward=reward)
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -231,12 +282,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         loss_scale = torch.ones((num_unroll_steps + 1, )) / num_unroll_steps
         loss_scale[0] = 1.0
 
-        if isinstance(model_output.value_quantiles, torch.Tensor):
-            value_loss = multi_quantile_huber_loss(
-                model_output.value_quantiles, target.value)
-        else:
-            value_loss = element_wise_squared_loss(target.value,
-                                                   model_output.value)
+        value_loss = self._value_loss(model_output.value_pred, target.value)
         value_loss = (loss_scale * value_loss).sum(dim=1)
         loss = self._value_loss_weight * value_loss
 
@@ -248,16 +294,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             else:
                 reward = model_output.reward
                 target_reward = target.reward
-            if isinstance(model_output.reward_quantiles, torch.Tensor):
-                if self._predict_reward_sum:
-                    reward_quantiles = model_output.reward_quantiles.cumsum(
-                        dim=1)
-                else:
-                    reward_quantiles = model_output.reward_quantiles
-                reward_loss = multi_quantile_huber_loss(
-                    reward_quantiles, target_reward)
-            else:
-                reward_loss = element_wise_squared_loss(reward, target_reward)
+            reward_loss = self._reward_loss(model_output.reward_pred,
+                                            target_reward)
             reward_loss = (loss_scale * reward_loss).sum(dim=1)
             loss = loss + self._reward_loss_weight * reward_loss
 
@@ -393,12 +431,23 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 game_over=game_over_loss))
 
     def calc_repr_prediction_loss(self, repr, target_repr):
-        """Calculate the loss given the predicted representation and target representation"""
+        """Calculate the loss given the predicted representation and target representation."""
         raise NotImplementedError
 
     def prediction_model(self, dyn_state, pred_state) -> ModelOutput:
         """Calculate the prediction given the latent state of the dynamics model
            and the state of the prediction model.
+
+        Returns:
+            ModelOutput: the following fields need to be provided
+            - value_pred:
+            - reward_pred: provide if need to predict reward
+            - game_over: provide if need to predict game over
+            - actions: provide if actions are sampled
+            - action_probs
+            - state (ModelState): dyn_state, pred_state
+            - action_distribution:
+            - game_over_logit: provide if need to predict game over
         """
         raise NotImplementedError
 
@@ -650,32 +699,28 @@ class SimpleMCTSModel(MCTSModel):
                 "SimpleMCTSModel/repr_grad", repr, clone=True)
         with torch.no_grad():
             projected_target_repr = self._repr_projection_net(target_repr)[0]
-            projected_target_repr = F.normalize(
+            norm_projected_target_repr = F.normalize(
                 projected_target_repr.detach(), dim=1)
         projected_repr = self._repr_projection_net(repr)[0]
         predicted_projected_repr = self._repr_prediction_net(projected_repr)[0]
-        predicted_projected_repr = F.normalize(predicted_projected_repr, dim=1)
-        return -(projected_target_repr * predicted_projected_repr).sum(dim=1)
+        norm_predicted_projected_repr = F.normalize(
+            predicted_projected_repr, dim=1)
+        cos = (norm_projected_target_repr * norm_predicted_projected_repr).sum(
+            dim=1)
+        if alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                summary_utils.add_mean_hist_summary("repr_cos", cos)
+                summary_utils.add_mean_hist_summary(
+                    "predicted_projected_repr_norm",
+                    predicted_projected_repr.norm(dim=1))
+            repr = summary_utils.summarize_tensor_gradients(
+                "SimpleMCTSModel/repr_grad", repr, clone=True)
+        return 1 - cos
 
     def prediction_model(self, dyn_state, pred_state):
-        # TODO: transform reward/value and use softmax to estimate the value and
-        # reward as in appendix F.
-        (value, reward, action_distribution,
+        (value_pred, reward_pred, action_distribution,
          game_over_logit), pred_state = self._prediction_net(
              dyn_state, pred_state)
-        value_quantiles = ()
-        if value.ndim == 2:
-            # assuming it is a quantile model
-            if self.training:
-                value_quantiles = value
-            value = value.mean(dim=-1)
-
-        reward_quantiles = ()
-        if isinstance(reward, torch.Tensor) and reward.ndim == 2:
-            # assuming it is a quantile model
-            if self.training:
-                reward_quantiles = reward
-            reward = reward.mean(dim=-1)
 
         if self._sample_actions:
             # [num_sampled_actions, B, ...]
@@ -707,10 +752,8 @@ class SimpleMCTSModel(MCTSModel):
             game_over = game_over_logit > self._game_over_logit_thresh
 
         return ModelOutput(
-            value=value,
-            value_quantiles=value_quantiles,
-            reward=reward,
-            reward_quantiles=reward_quantiles,
+            value_pred=value_pred,
+            reward_pred=reward_pred,
             game_over=game_over,
             actions=actions,
             action_probs=action_probs,

@@ -15,8 +15,10 @@
 
 import torch
 import torch.nn.functional as F
+from typing import Optional
 
 import alf
+from alf.utils.math_ops import InvertibleTransform
 
 
 @alf.configurable
@@ -102,3 +104,371 @@ def multi_quantile_huber_loss(quantiles: torch.Tensor,
         loss = c * torch.where(d_abs < delta,
                                (0.5 / delta) * d**2, d_abs - 0.5 * delta)
     return loss.mean(dim=(-2, -1))
+
+
+class ScalarPredictionLoss(object):
+    def __call__(self, pred: torch.Tensor, target: torch.Tensor):
+        """Calculate the loss given ``pred`` and ``target``.
+
+        Args:
+            pred: raw prediction
+            target: target value
+        Returns:
+            loss with the same shape as target
+        """
+        raise NotImplementedError()
+
+    def calc_expectation(self, pred: torch.Tensor):
+        """Calculate the expected predition in the untransfomred domain from ``pred``.
+        """
+        raise NotImplementedError()
+
+    def initialize_bias(self, bias: torch.Tensor):
+        """Initialize the bias of the last FC layer for the prediction properly.
+
+        Args:
+            bias: the bias parameter to be initialized.
+        """
+        with torch.no_grad():
+            bias.zero_()
+
+
+class SquareLoss(ScalarPredictionLoss):
+    """Square loss for predicting scalar target.
+
+    Args:
+        transform: the transformation applied to target. If it is provided, the
+            the regression target will be transformed.
+    """
+
+    def __init__(self, transform: Optional[InvertibleTransform] = None):
+        super().__init__()
+        self._transform = transform
+
+    def __call__(self, pred: torch.Tensor, target: torch.Tensor):
+        """Calculate the loss.
+
+        Args:
+            pred: shape is [B]
+            target: the shape is [B]
+        Returns:
+            loss with the same shape as target
+        """
+        assert pred.shape == target.shape
+
+        if self._transform is not None:
+            target = self._transform.transform(target)
+        return (pred - target)**2
+
+    def calc_expectation(self, pred: torch.Tensor):
+        """Calculate the expected predition in the untransfomred domain from ``pred``.
+
+        Args:
+            pred: raw model prediction
+        """
+        if self._transform is not None:
+            pred = self._transform.inverse_transform(pred)
+        return pred
+
+
+def _get_indexer(shape):
+    ndim = len(shape)
+    ones = [1] * ndim
+    B = tuple(
+        torch.arange(d).reshape(d, *ones[i + 1:]) for i, d in enumerate(shape))
+    return B
+
+
+class _DiscreteRegressionLossBase(ScalarPredictionLoss):
+    """The base class for DiscreteRegressionLoss and OrderedDiscreteRegresionLoss."""
+
+    def __init__(self,
+                 transform: Optional[InvertibleTransform] = None,
+                 inverse_after_mean=False):
+        super().__init__()
+        self._transform = transform
+        if self._transform is not None:
+            self._inverse_after_mean = inverse_after_mean
+        else:
+            self._inverse_after_mean = True
+        self._support = None
+
+    def _calc_support(self, n):
+        if self._support is not None and self._support.shape[0] == n:
+            return self._support
+        upper_bound = n // 2
+        lower_bound = -((n - 1) // 2)
+        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float32)
+        if self._transform is not None and not self._inverse_after_mean:
+            x = self._transform.inverse_transform(x)
+        self._support = x
+        return x
+
+    def _calc_bin(self, logits, target):
+        assert logits.shape[:-1] == target.shape
+        n = logits.shape[-1]
+        lower_bound = -((n - 1) // 2)
+        upper_bound = n // 2
+        original_target = target
+        if self._transform is not None:
+            target = self._transform.transform(target)
+        target = target.clamp(min=lower_bound, max=upper_bound)
+        low = target.floor()
+        high = low + 1
+        bin1 = low.to(torch.int64) - lower_bound
+        bin2 = (bin1 + 1).clamp(max=n - 1)
+        if self._inverse_after_mean:
+            w2 = target - low
+        else:
+            low = self._transform.inverse_transform(low)
+            high = self._transform.inverse_transform(high)
+            w2 = (original_target - low) / (high - low)
+        return bin1, bin2, w2
+
+
+class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
+    r"""A loss for predicting the distribution of a scalar.
+
+    The target is assumed to be in the range ``[-(n-1)//2, n//2]``, where ``n=logits.shape[-1]``.
+    The logits are used to calculate the probabilities of being one of the ``n``
+    values. If a target value y is not an integer, it is treated as having
+    prabability mass of :math:`y- \lfloor y \rfloor` at :math:`\lfloor y \rfloor + 1`
+    and probability mass of :math:`1 + \lfloor y \rfloor - y` at :math:`\lfloor y \rfloor`.
+    Then cross entropy loss is applied.
+
+    More specifically, the ``logits`` passed to ``calc_loss`` represents the following:
+    P = softmax(logits) and P[i] means the probability that the (transformed)
+    ``target`` is equal to ``i - (n-1)//2``
+
+    Note: ``DescreteRegressionLoss(SqrtLinearTransform(0.001), inverse_after_mean=True)``
+        is the loss used by MuZero paper.
+
+    Args:
+        transform: the transformation applied to target. If it is provided, the
+            the regression target will be transformed.
+        inverse_after_mean: when calculating the expected prediction, whether to
+            do the inverse transformation after calculating the the expectation
+            in the transformed space. Note that using ``inverse_after_mean=True``
+            will make the expectation biased in general. This is because
+            :math:`f^{-1}(E(x)) \le E(f^{-1}(x))` (Jensen inequality) if
+            :math:`f^{-1}` is convex. In our case, :math:`f^{-1}` is convex for
+            :math:`x \ge 0`.
+    """
+
+    def __call__(self, logits: torch.Tensor, target: torch.Tensor):
+        """Caculate the loss.
+
+        Args:
+            logits: shape is [B, n]
+            target: the shape is [B]
+        Returns:
+            loss with the same shape as target
+        """
+        bin1, bin2, w2 = self._calc_bin(logits, target)
+        w1 = 1 - w2
+        nlp = -F.log_softmax(logits, dim=-1)
+        B = _get_indexer(logits.shape[:-1])
+        loss = w1 * nlp[B + (bin1, )] + w2 * nlp[B + (bin2, )]
+        return loss
+
+    def calc_expectation(self, logits):
+        """Calculate the expected predition in the untransfomred domain from ``pred``.
+
+        Args:
+            pred: raw model prediction
+        """
+        support = self._calc_support(logits.shape[-1])
+        ret = torch.mv(logits.softmax(dim=-1), support)
+        if self._inverse_after_mean and self._transform is not None:
+            ret = self._transform.inverse_transform(ret)
+        return ret
+
+    def initialize_bias(self, bias: torch.Tensor):
+        """Initialize the bias of the last FC layer for the prediction properly.
+
+        This function set the bias so that the initial distribution of the prediction
+        in the original domain of target is approximatedly Cauchy: :math:`p(x) \propto \frac{1}{1+x^2}`
+
+        Args:
+            bias: the bias parameter to be initialized.
+        """
+        assert bias.ndim == 1
+        n = bias.shape[0]
+        upper_bound = n // 2
+        lower_bound = -((n - 1) // 2)
+        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float32)
+        x1 = x - 0.5
+        x2 = x + 0.5
+        if self._transform is not None:
+            x = self._transform.inverse_transform(x)
+            x1 = self._transform.inverse_transform(x1)
+            x2 = self._transform.inverse_transform(x2)
+        probs = (x2 - x1) / (x**2 + 1)
+        probs = probs / probs.sum()
+        with torch.no_grad():
+            bias.copy_(probs.log())
+
+
+class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
+    r"""A loss for predicting the distribution of a scalar.
+
+    The target is assumed to be in the range ``[-(n-1)//2, n//2]``, where ``n=logits.shape[-1]``.
+    The logits are used to calculate the probabilities of being greater than or
+    equal to each of these ``n`` values. If a target value y is not an integer,
+    it is treated as having prabability mass of :math:`y- \lfloor y \rfloor` at
+    :math:`\lfloor y \rfloor + 1`  and probability mass of :math:`1 + \lfloor y \rfloor - y`
+    at :math:`\lfloor y \rfloor`. Then binary cross entropy loss is applied.
+
+    More specifically, the ``logits`` passed to ``calc_loss`` represents the following:
+    P = sigmoid(logits) and  P[i] means the probability that the (transformed)
+    ``target`` is greater than or equal to  ``i - (n-1)//2``
+
+    Args:
+        transform: the transformation applied to target. If it is provided, the
+            the regression target will be transformed.
+        inverse_after_mean: when calculating the expected prediction, whether to
+            do the inverse transformation after calculating the the expectation
+            in the transformed space. Note that using ``inverse_after_mean=True``
+            will make the expectation biased in general. This is because
+            :math:`f^{-1}(E(x)) \le E(f^{-1}(x))` (Jensen inequality) if
+            :math:`f^{-1}` is convex. In our case, :math:`f^{-1}` is convex for
+            :math:`x \ge 0`.
+    """
+
+    def __call__(self, logits: torch.Tensor, target: torch.Tensor):
+        """Caculate the loss.
+
+        Args:
+            logits: shape is [B, n]
+            target: the shape is [B]
+        Returns:
+            loss with the same shape as target
+        """
+        n = logits.shape[-1]
+        bin1, bin2, w2 = self._calc_bin(logits, target)
+        w = F.one_hot(bin1, num_classes=n).to(logits.dtype)
+        w = 1 - w.cumsum(dim=-1)
+        B = _get_indexer(target.shape)
+        w[B + (bin2, )] = w2
+        w[B + (bin1, )] = 1
+        loss = F.binary_cross_entropy_with_logits(
+            logits, w, reduction='none').sum(dim=-1)
+        return loss
+
+    def calc_expectation(self, logits: torch.Tensor):
+        """Calculate the expected predition in the untransfomred domain from ``pred``.
+
+        Args:
+            pred: raw model prediction
+        """
+        n = logits.shape[-1]
+        lower_bound = -((n - 1) // 2)
+        logits = logits.cummin(dim=-1).values
+        probs = logits.sigmoid()
+        if self._inverse_after_mean:
+            pred = probs.sum(dim=-1) + (lower_bound - 1)
+            if self._transform is not None:
+                pred = self._transform.inverse_transform(pred)
+        else:
+            probs = torch.cat(
+                [probs[..., :-1] - probs[..., 1:], probs[..., -1:]], dim=-1)
+            support = self._calc_support(logits.shape[-1])
+            pred = torch.mv(probs, support)
+        return pred
+
+    def initialize_bias(self, bias: torch.Tensor):
+        """Initialize the bias of the last FC layer for the prediction properly.
+
+        This function set the bias so that the initial distribution of the prediction
+        in the original domain of target is approximatedly Cauchy: :math:`p(x) \propto \frac{1}{1+x^2}`
+
+        Args:
+            bias: the bias parameter to be initialized.
+        """
+        assert bias.ndim == 1
+        n = bias.shape[0]
+        upper_bound = n // 2
+        lower_bound = -((n - 1) // 2)
+        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float32)
+        x1 = x - 0.5
+        x2 = x + 0.5
+        if self._transform is not None:
+            x = self._transform.inverse_transform(x)
+            x1 = self._transform.inverse_transform(x1)
+            x2 = self._transform.inverse_transform(x2)
+        probs = (x2 - x1) / (x**2 + 1)
+        probs = probs / probs.sum()
+        probs = probs.cumsum(dim=0)
+        probs = torch.cat([torch.tensor([1e-6]), probs[:-1]], dim=0)
+        with torch.no_grad():
+            bias.copy_(((1 - probs) / probs).log())
+
+
+class QuantileRegressionLoss(ScalarPredictionLoss):
+    """Multi-quantile Huber loss
+
+    The loss for simultaneous multiple quantile regression. The number of quantiles
+    n is ``quantiles.shape[-1]``. ``quantiles[..., k]`` is the quantile value
+    estimation for quantile :math:`(k + 0.5) / n`. For each prediction, there
+    can be one or multiple target values.
+
+    This loss is described in the following paper:
+
+    `Dabney et. al. Distributional Reinforcement Learning with Quantile Regression
+    <https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/viewFile/17184/16590>`_
+
+    Args:
+        transform: the transformation applied to target. If it is provided, the
+            the regression target will be transformed.
+        inverse_after_mean: when calculating the expected prediction, whether to
+            do the inverse transformation after calculating the the expectation
+            in the transformed space. Note that using ``inverse_after_mean=True``
+            will make the expectation biased in general. This is because
+            :math:`f^{-1}(E(x)) \le E(f^{-1}(x))` (Jensen inequality) if
+            :math:`f^{-1}` is convex. In our case, :math:`f^{-1}` is convex for
+            :math:`x \ge 0`.
+        delta: the smoothness parameter for huber loss (larger means smoother).
+            Note that the quantile estimation with delta > 0 is biased. You should
+            use a small value for ``delta`` if you want the quantile estimation
+            to be less biased (so that the mean of the quantile will be close
+            to mean of the samples).
+    """
+
+    def __init__(self,
+                 transform: Optional[InvertibleTransform] = None,
+                 inverse_after_mean: bool = False,
+                 delta: float = 0.0):
+        super().__init__()
+        self._transform = transform
+        self._delta = delta
+        self._inverse_after_mean = inverse_after_mean
+
+    def __call__(self, quantiles: torch.Tensor, target: torch.Tensor):
+        """Calculate the loss.
+
+        Args:
+            quantiles: batch_shape + [num_quantiles,]
+            target: batch_shape or batch_shape + [num_targets, ]
+        Returns:
+            loss whose shape is batch_shape
+        """
+        assert quantiles.shape[:-1] == target.shape
+        if self._transform is not None:
+            target = self._transform.transform(target)
+        return multi_quantile_huber_loss(quantiles, target, delta=self._delta)
+
+    def calc_expectation(self, quantiles: torch.Tensor):
+        """Calculate the expected predition in the untransfomred domain from ``pred``.
+
+        Args:
+            quantiles: predicted quantile values in the transformed space.
+        """
+        if self._transform is not None:
+            if self._inverse_after_mean:
+                return self._transform.inverse_transform(
+                    quantiles.mean(dim=-1))
+            else:
+                return self._transform.inverse_transform(quantiles).mean(
+                    dim=-1)
+        else:
+            return quantiles.mean(dim=-1)
