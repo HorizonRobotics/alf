@@ -132,6 +132,7 @@ class RLAlgorithm(Algorithm):
                  predict_state_spec=None,
                  rollout_state_spec=None,
                  is_on_policy=None,
+                 is_offline=None,
                  reward_weights=None,
                  env=None,
                  config: TrainerConfig = None,
@@ -153,6 +154,7 @@ class RLAlgorithm(Algorithm):
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``rollout_state_spec``.
             is_on_policy (None|bool): whether the algorithm is on-policy or not.
+            is_offline (None|bool): whether the algorithm is offline RL or not.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. If not None, the weighted sum of rewards is
                 the reward for training. Otherwise, the sum of rewards is used.
@@ -169,11 +171,17 @@ class RLAlgorithm(Algorithm):
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
         """
+
+        assert not is_offline or not is_on_policy, (
+            "is_offline and is_on_policy "
+            "are mutually exclusive")
+
         super(RLAlgorithm, self).__init__(
             train_state_spec=train_state_spec,
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
             is_on_policy=is_on_policy,
+            is_offline=is_offline,
             optimizer=optimizer,
             config=config,
             debug_summaries=debug_summaries,
@@ -535,6 +543,8 @@ class RLAlgorithm(Algorithm):
 
         if self.on_policy:
             return self._train_iter_on_policy()
+        elif self.offline:
+            return self._train_iter_offline()
         else:
             return self._train_iter_off_policy()
 
@@ -580,4 +590,24 @@ class RLAlgorithm(Algorithm):
             self.after_train_iter(experience, train_info)
 
         # For now, we only return the steps of the primary algorithm's training
+        return steps
+
+    def _train_iter_offline(self):
+        """User may override this for their own offline training procedure."""
+        config: TrainerConfig = self._config
+
+        if not config.update_counter_every_mini_batch:
+            alf.summary.increment_global_counter()
+
+        # need to construct the replay buffer directly without unroll
+        # which calls observe for replay
+        # TODO: construct replay buffer directly from
+        if self._replay_buffer is None:
+            experience = self.unroll(config.unroll_length)
+
+        self.summarize_metrics()
+
+        self.train()
+        steps = self.train_from_replay_buffer(update_global_counter=True)
+
         return steps

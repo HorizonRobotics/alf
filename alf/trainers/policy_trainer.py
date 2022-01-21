@@ -521,6 +521,262 @@ class RLTrainer(Trainer):
         self._algorithm.train()
 
 
+class OfflineRLTrainer(Trainer):
+    """Trainer for reinforcement learning. """
+
+    def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
+        """
+
+        Args:
+            config (TrainerConfig): configuration used to construct this trainer
+            ddp_rank (int): process (and also device) ID of the process, if the
+                process participates in a DDP process group to run distributed
+                data parallel training. A value of -1 indicates regular single
+                process training.
+        """
+        super().__init__(config, ddp_rank)
+
+        assert config.num_env_steps == 0, ("there is no environmental "
+                                           "interactions in offline case")
+        self._num_env_steps = 0  # no env interaction and use num_iteration
+
+        assert config.num_iterations > 0, "should set config.num_iterations > 0"
+        self._num_iterations = config.num_iterations
+
+        assert config.offline_buffer_dir is not None, "need to specify offline_buffer_dir"
+        self._offline_buffer_dir = config.offline_buffer_dir
+
+        self._trainer_progress.set_termination_criterion(
+            self._num_iterations, self._num_env_steps)
+
+        self._num_eval_episodes = config.num_eval_episodes
+        alf.summary.should_summarize_output(config.summarize_output)
+
+        # env and eval_env can be the same since env is only used for
+        # providing specs
+        env = alf.get_env()
+
+        logging.info(
+            "observation_spec=%s" % pprint.pformat(env.observation_spec()))
+        logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
+        data_transformer = create_data_transformer(
+            config.data_transformer_ctor, env.observation_spec())
+        self._config.data_transformer = data_transformer
+
+        # keep compatibility with previous gin based config
+        common.set_global_env(env)
+        observation_spec = data_transformer.transformed_observation_spec
+        common.set_transformed_observation_spec(observation_spec)
+
+        self._algorithm = self._algorithm_ctor(
+            observation_spec=observation_spec,
+            action_spec=env.action_spec(),
+            reward_spec=env.reward_spec(),
+            env=env,
+            config=self._config,
+            debug_summaries=self._debug_summaries)
+        # TODO: assert alg is an instance of OfflineRL algorithm
+
+        self._algorithm.set_path('')
+        if ddp_rank >= 0:
+            if not self._algorithm.on_policy:
+                raise RuntimeError(
+                    'Mutli-GPU with DDP does not support off-policy training yet'
+                )
+            # Activate the DDP training
+            self._algorithm.activate_ddp(ddp_rank)
+
+        self._eval_env = None
+        # Create a thread env to expose subprocess gin/alf configurations
+        # which otherwise will be marked as "inoperative". Only created when
+        # ``TrainerConfig.no_thread_env_for_conf=False``.
+        self._thread_env = None
+
+        # See ``alf/docs/notes/knowledge_base.rst```
+        # (ParallelAlfEnvironment and ThreadEnvironment) for details.
+        if config.no_thread_env_for_conf:
+            if self._evaluate:
+                self._eval_env = create_environment(
+                    num_parallel_environments=1, seed=self._random_seed)
+        else:
+            if self._evaluate or isinstance(
+                    env, alf.environments.parallel_environment.
+                    ParallelAlfEnvironment):
+                self._thread_env = create_environment(
+                    nonparallel=True, seed=self._random_seed)
+            if self._evaluate:
+                self._eval_env = self._thread_env
+
+        self._eval_metrics = None
+        self._eval_summary_writer = None
+        if self._evaluate:
+            self._eval_metrics = [
+                alf.metrics.AverageReturnMetric(
+                    buffer_size=self._num_eval_episodes,
+                    reward_shape=self._eval_env.reward_spec().shape),
+                alf.metrics.AverageEpisodeLengthMetric(
+                    buffer_size=self._num_eval_episodes),
+                alf.metrics.AverageEnvInfoMetric(
+                    example_env_info=self._eval_env.reset().env_info,
+                    batch_size=self._eval_env.batch_size,
+                    buffer_size=self._num_eval_episodes),
+                alf.metrics.AverageDiscountedReturnMetric(
+                    buffer_size=self._num_eval_episodes,
+                    reward_shape=self._eval_env.reward_spec().shape),
+            ]
+            self._eval_summary_writer = alf.summary.create_summary_writer(
+                self._eval_dir,
+                flush_secs=config.summaries_flush_secs,
+                max_queue=10)
+
+    def _close_envs(self):
+        """Close all envs to release their resources."""
+        alf.close_env()
+        if self._eval_env is not None:
+            self._eval_env.close()
+        if (self._thread_env is not None
+                and self._thread_env is not self._eval_env):
+            self._thread_env.close()
+
+    def _train(self):
+        if self._eval_env:
+            self._eval_env.reset()
+
+        begin_iter_num = int(self._trainer_progress._iter_num)
+        begin_iter_num = 0
+        iter_num = begin_iter_num
+
+        checkpoint_interval = math.ceil(
+            (self._num_iterations
+             or self._num_env_steps) / self._num_checkpoints)
+
+        time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
+
+        while True:
+            t0 = time.time()
+            with record_time("time/train_iter"):
+                train_steps = self._algorithm.train_iter()
+            t = time.time() - t0
+            logging.log_every_n_seconds(
+                logging.INFO,
+                '%s%s -> %s: %s time=%.3f throughput=%0.2f' %
+                ('' if self._rank == -1 else f'[rank {self._rank:02d}] ',
+                 common.get_conf_file(),
+                 os.path.basename(self._root_dir.strip('/')), iter_num, t,
+                 int(train_steps) / t),
+                n_seconds=1)
+
+            if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
+                self._eval()
+            if iter_num == begin_iter_num:
+                self._summarize_training_setting()
+
+            # check termination
+            # env_steps_metric is not useful in offline case
+            # env_steps_metric = self._algorithm.get_step_metrics()[1]
+            # total_time_steps = env_steps_metric.result()
+            iter_num += 1
+
+            self._trainer_progress.update(iter_num, None)
+
+            if (self._num_iterations and iter_num >= self._num_iterations):
+                # Evaluate before exiting so that the eval curve shown in TB
+                # will align with the final iter/env_step.
+                if self._evaluate:
+                    self._eval()
+                break
+
+            if self._num_iterations and (iter_num >= time_to_checkpoint):
+                self._save_checkpoint()
+                time_to_checkpoint += checkpoint_interval
+            elif self._checkpoint_requested:
+                logging.info("Saving checkpoint upon request...")
+                self._save_checkpoint()
+                self._checkpoint_requested = False
+
+            if self._debug_requested:
+                self._debug_requested = False
+                import pdb
+                pdb.set_trace()
+
+    def _close(self):
+        """Closing operations after training. """
+        self._close_envs()
+
+    def _restore_checkpoint(self):
+        # only recover the replay buffer for offrl case
+        # TODO: only load data buffer
+        map_location = None
+        if not torch.cuda.is_available():
+            map_location = torch.device('cpu')
+        replay_buffer_checkpoint = torch.load(
+            self._offline_buffer_dir, map_location=map_location)
+
+        # train iter once to construct the replay buffer
+        # TODO: replace this with explicit buffer construction
+        self._algorithm.train_iter()
+        self._algorithm._exp_replayer.load_state_dict(
+            replay_buffer_checkpoint['algorithm'])
+        logging.info("Checkpoint '{}' is loaded successfully.".format(
+            self._offline_buffer_dir))
+
+        for name, buf in self._algorithm._exp_replayer._buffer._buffers.items(
+        ):
+            key_in_checkpoint = "_replay_buffer._buffer." + name
+            buf.data.copy_(
+                replay_buffer_checkpoint['algorithm'][key_in_checkpoint])
+
+        # checkpoint is as normal
+        checkpointer = Checkpointer(
+            ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
+            algorithm=self._algorithm,
+            metrics=nn.ModuleList(self._algorithm.get_metrics()),
+            trainer_progress=self._trainer_progress)
+
+        super()._restore_checkpoint(checkpointer)
+
+    @common.mark_eval
+    def _eval(self):
+        self._algorithm.eval()
+        time_step = common.get_initial_time_step(self._eval_env)
+        policy_state = self._algorithm.get_initial_predict_state(
+            self._eval_env.batch_size)
+        trans_state = self._algorithm.get_initial_transform_state(
+            self._eval_env.batch_size)
+        episodes = 0
+        while episodes < self._num_eval_episodes:
+            time_step, policy_step, trans_state = _step(
+                algorithm=self._algorithm,
+                env=self._eval_env,
+                time_step=time_step,
+                policy_state=policy_state,
+                trans_state=trans_state,
+                metrics=self._eval_metrics)
+            policy_state = policy_step.state
+
+            if time_step.is_last():
+                episodes += 1
+
+        writer = self._eval_summary_writer
+
+        common.log_metrics(self._eval_metrics)
+        self._algorithm.train()
+
+        prefix = 'offline_eval'
+
+        def _gen_summary(name, res):
+            tag = os.path.join(prefix, name)
+            writer.add_scalar(tag, res, alf.summary.get_global_counter())
+
+        for metric in self._eval_metrics:
+            name = metric.name
+            result = metric.result()
+            if not (isinstance(result, dict)
+                    or alf.nest.is_namedtuple(result)):
+                result = {name: result}
+            alf.nest.py_map_structure_with_path(_gen_summary, result)
+
+
 class SLTrainer(Trainer):
     """Trainer for supervised learning. """
 

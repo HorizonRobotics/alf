@@ -128,6 +128,9 @@ def _train(root_dir, rank=0, world_size=1):
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
         trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank)
+    elif trainer_conf.ml_type == 'offrl':
+        ddp_rank = rank if world_size > 1 else -1
+        trainer = policy_trainer.OfflineRLTrainer(trainer_conf, ddp_rank)
     elif trainer_conf.ml_type == 'sl':
         # NOTE: SLTrainer does not support distributed training yet
         if world_size > 1:

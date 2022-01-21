@@ -65,6 +65,7 @@ class Algorithm(AlgorithmInterface):
                  rollout_state_spec=None,
                  predict_state_spec=None,
                  is_on_policy=None,
+                 is_offline=None,
                  optimizer=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
@@ -89,7 +90,8 @@ class Algorithm(AlgorithmInterface):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
-            is_on_policy (None|bool):
+            is_on_policy (None|bool): whether the algorithm is on-policy or not.
+            is_offline (None|bool): whether the algorithm is offline RL or not.
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             config (TrainerConfig): config for training. ``config`` only needs to
@@ -161,6 +163,7 @@ class Algorithm(AlgorithmInterface):
         if optimizer:
             self._optimizers.append(optimizer)
         self._is_on_policy = is_on_policy
+        self._is_offline = is_offline
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -175,6 +178,10 @@ class Algorithm(AlgorithmInterface):
     @property
     def on_policy(self):
         return self._is_on_policy
+
+    @property
+    def offline(self):
+        return self._is_offline
 
     def set_on_policy(self, is_on_policy):
         if self.on_policy is not None:
