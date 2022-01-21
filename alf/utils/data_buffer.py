@@ -119,10 +119,16 @@ class RingBuffer(nn.Module):
 
         buffer_id = [0]
 
-        def _create_buffer(tensor_spec):
+        def _create_buffer(spec_path, tensor_spec):
             buf = tensor_spec.zeros((num_environments, max_length))
-            self.register_buffer("_buffer%s" % buffer_id[0], buf)
-            buffer_id[0] += 1
+            if spec_path != '':
+                # buffer name cannot contain '.', which is used as the separator
+                # by ``py_map_structure_with_path`` in the generated path
+                spec_name = spec_path.replace('.', '_')
+                self.register_buffer(spec_name, buf)
+            else:
+                self.register_buffer("_buffer%s" % buffer_id[0], buf)
+                buffer_id[0] += 1
             return buf
 
         with alf.device(self._device):
@@ -136,7 +142,9 @@ class RingBuffer(nn.Module):
             self.register_buffer(
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
-            self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
+
+            self._buffer = alf.nest.py_map_structure_with_path(
+                _create_buffer, data_spec)
             self._flattened_buffer = alf.nest.map_structure(
                 lambda x: x.view(-1, *x.shape[2:]), self._buffer)
 
