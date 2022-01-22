@@ -122,9 +122,9 @@ class RingBuffer(nn.Module):
         def _create_buffer(spec_path, tensor_spec):
             buf = tensor_spec.zeros((num_environments, max_length))
             if spec_path != '':
-                # buffer name cannot contain '.', which is used as the separator
+                # buffer name cannot contain '.', which is used as the delimiter
                 # by ``py_map_structure_with_path`` in the generated path
-                spec_name = spec_path.replace('.', '_')
+                spec_name = spec_path.replace('.', '|')
                 self.register_buffer(spec_name, buf)
             else:
                 self.register_buffer("_buffer%s" % buffer_id[0], buf)
