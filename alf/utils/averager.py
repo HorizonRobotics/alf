@@ -286,7 +286,7 @@ class ScalarAdaptiveAverager(AdaptiveAverager):
 
         Args:
             speed (float): speed of updating mean and variance.
-            dtype (tf.dtype): dtype of the scalar
+            dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
         super().__init__(

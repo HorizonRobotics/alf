@@ -1,3 +1,5 @@
+# Warning: Directly converted from the TF version, this gin file was NOT TESTED.
+
 # You need to install following packages
 # pip3 install atari-py opencv-python
 
@@ -31,8 +33,7 @@ action_spec=@get_action_spec()
 
 CONV_LAYER_PARAMS=((32, 8, 4), (64, 4, 2), (64, 3, 1))
 
-tf.nn.leaky_relu.alpha=0.01
-ACT=@tf.nn.relu
+ACT=@torch.relu_
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec

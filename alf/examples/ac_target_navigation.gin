@@ -1,7 +1,6 @@
-include 'ac_simple_navigation.gin'
+# Warning: Directly converted from the TF version, this gin file was NOT TESTED.
 
-CHANNEL_ORDER='channels_last'
-FrameStacker.channel_order=%CHANNEL_ORDER
+include 'ac_simple_navigation.gin'
 
 batch_size=30
 create_environment.num_parallel_environments=%batch_size
@@ -15,28 +14,27 @@ GoalTask.polar_coord=False
 
 FrameStacker.fields=['image']  # must be a subset of input observations
 ImageScaleTransformer.fields=['image']
-
-tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
+ImageChannelFirst.fields=['image']
 
 ActorDistributionRnnNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.init_means_output_factor=1e-10
 NormalProjectionNetwork.std_bias_initializer_value=0.0
 
-ActorDistributionRnnNetwork.activation_fn=@tf.nn.elu
+ActorDistributionRnnNetwork.activation_fn=@torch.nn.functional.elu_
 ActorDistributionRnnNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 ActorDistributionRnnNetwork.lstm_size=(128, 128)
 
-ValueRnnNetwork.activation_fn=@tf.nn.elu
+ValueRnnNetwork.activation_fn=@torch.nn.functional.elu_
 ValueRnnNetwork.lstm_size=(128, 128)
 
 ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.init_means_output_factor=1e-10
 NormalProjectionNetwork.std_bias_initializer_value=0.0
 
-ActorDistributionNetwork.activation_fn=@tf.nn.elu
+ActorDistributionNetwork.activation_fn=@torch.nn.functional.elu_
 ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
-ValueNetwork.activation_fn=@tf.nn.elu
+ValueNetwork.activation_fn=@torch.nn.functional.elu_
 
 ac/Adam.learning_rate=2e-4
 
@@ -49,16 +47,16 @@ num_sentence_tiles=800
 import alf.networks.target_navigation
 
 target_navigation.get_actor_network.conv_layer_params=%conv_layer_params
-target_navigation.get_actor_network.activation_fn=@tf.keras.activations.softsign
-target_navigation.get_actor_network.kernel_initializer=@tf.keras.initializers.GlorotUniform()
+target_navigation.get_actor_network.activation_fn=@alf.math.softsign
+target_navigation.get_actor_network.kernel_initializer=@torch.nn.init.xavier_normal_
 target_navigation.get_actor_network.num_embedding_dims=%num_embedding_dims
 target_navigation.get_actor_network.fc_layer_params=%fc_layer_params
 target_navigation.get_actor_network.num_state_tiles=%num_state_tiles
 target_navigation.get_actor_network.num_sentence_tiles=%num_sentence_tiles
 
 target_navigation.get_value_network.conv_layer_params=%conv_layer_params
-target_navigation.get_value_network.activation_fn=@tf.keras.activations.softsign
-target_navigation.get_value_network.kernel_initializer=@tf.keras.initializers.GlorotUniform()
+target_navigation.get_value_network.activation_fn=@alf.math.softsign
+target_navigation.get_value_network.kernel_initializer=@torch.nn.init.xavier_normal_
 target_navigation.get_value_network.num_embedding_dims=%num_embedding_dims
 target_navigation.get_value_network.fc_layer_params=%fc_layer_params
 target_navigation.get_value_network.num_state_tiles=%num_state_tiles

@@ -31,7 +31,7 @@ def action_importance_ratio(action_distribution,
                             rollout_log_prob=None):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
 
-        Caller has to save tf.name_scope() and pass scope to this function.
+        Caller has to save alf.summary.scope() and pass scope to this function.
 
         Args:
             action_distribution (nested td.distribution): Distribution over
@@ -39,8 +39,8 @@ def action_importance_ratio(action_distribution,
             rollout_action_distribution (nested td.distribution): distribution
                 over actions from behavior policy, used to sample actions for
                 the rollout.
-            action (nested tf.distribution): possibly batched action tuple
-                taken during rollout.
+            action (nested tensor): possibly batched action tuple taken during
+                rollout.
             clipping_mode (str): mode for clipping the importance ratio:
 
                 * 'double_sided': clips the range of importance ratio into
@@ -51,16 +51,16 @@ def action_importance_ratio(action_distribution,
                   which is used by VTraceLoss, where c_bar or rho_bar =
                   1+importance_ratio_clipping.
 
-            scope (name scope manager): returned by alf.summary.scope(), set
+            scope (name scope manager): returned by ``alf.summary.scope()``, set
                 outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
             log_prob_clipping (float): If >0, clipping log probs to the range
                 (-log_prob_clipping, log_prob_clipping) to prevent inf / NaN
                 values.
-            check_numerics (bool):  If true, adds tf.debugging.check_numerics to
-                help find NaN / Inf values. For debugging only.
-            debug_summaries (bool): If true, output summary metrics to tf.
+            check_numerics (bool):  If true, adds checks to help find
+                ``NaN``/``Inf`` values. For debugging only.
+            debug_summaries (bool): If true, output summary metrics to tensorboard.
             rollout_log_prob (nested tensor): the log probability of the action
 
 

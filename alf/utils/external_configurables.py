@@ -43,3 +43,6 @@ gin.external_configurable(torch.nn.MSELoss, 'torch.nn.MSELoss')
 gin.external_configurable(torch.nn.BCELoss, 'torch.nn.BCELoss')
 gin.external_configurable(torch.nn.CrossEntropyLoss,
                           'torch.nn.CrossEntropyLoss')
+
+gin.external_configurable(torch.nn.init.xavier_normal_,
+                          'torch.nn.init.xavier_normal_')

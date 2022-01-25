@@ -237,7 +237,7 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Args:
         state (nested Tensor): the current batched states
         initial_state (nested Tensor): batched intitial states
-        reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=tf.bool``
+        reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=torch.bool``
     Returns:
         nested Tensor
     """
