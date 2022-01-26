@@ -13,3 +13,5 @@
 # limitations under the License.
 
 from .geometry import FieldOfView
+from .sensors import VectorizedObservation
+from .environments import VectorizedTopDownEnv
