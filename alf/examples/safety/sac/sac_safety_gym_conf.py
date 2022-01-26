@@ -18,17 +18,14 @@ import math
 import torch
 
 import alf
-from alf.algorithms.data_transformer import (
-    RewardNormalizer, ObservationNormalizer, FrameStacker,
-    ImageScaleTransformer)
+from alf.algorithms.data_transformer import RewardNormalizer, FrameStacker
 # Needs to install safety gym first:
 # https://github.com/openai/safety-gym
 from alf.environments import suite_safety_gym
-from alf.environments.gym_wrappers import FrameGrayScale
 from alf.algorithms.lagrangian_reward_weight_algorithm import LagrangianRewardWeightAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.networks import BetaProjectionNetwork
-from alf.networks import ActorDistributionNetwork, CriticNetwork, EncodingNetwork, QNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.utils import math_ops
 from alf.nest.utils import NestSum, NestConcat
 from alf.algorithms.td_loss import TDLoss

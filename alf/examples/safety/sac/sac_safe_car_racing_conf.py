@@ -21,22 +21,17 @@ import gym
 import numpy as np
 
 import alf
-from alf.algorithms.data_transformer import (
-    RewardNormalizer, ObservationNormalizer, ImageScaleTransformer,
-    FrameStacker)
+from alf.algorithms.data_transformer import RewardNormalizer, ImageScaleTransformer
 
 import alf.environments.safe_car_racing
-from alf.environments.gym_wrappers import FrameGrayScale, FrameSkip
-from alf.environments.alf_wrappers import RewardObservationWrapper
+from alf.environments.gym_wrappers import FrameGrayScale
 from alf.algorithms.lagrangian_reward_weight_algorithm import LagrangianRewardWeightAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
-from alf.algorithms.merlin_algorithm import ResnetEncodingNetwork
 from alf.networks import BetaProjectionNetwork
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.algorithms.td_loss import TDLoss
 from alf.algorithms.encoding_algorithm import EncodingAlgorithm
 from alf.utils import math_ops
-from alf.examples.networks import impala_cnn_encoder
 
 from alf.examples import sac_conf
 
@@ -97,7 +92,6 @@ latent_size = 256
 alf.config(
     "TrainerConfig",
     data_transformer_ctor=[
-        #partial(FrameStacker, stack_size=4, fields=['observation']),
         partial(ImageScaleTransformer, min=0., max=1., fields=['rgb']),
         partial(RewardNormalizer, clip_value=10.)
     ])
@@ -142,18 +136,6 @@ encoder_cls = partial(
                 activation=torch.relu_,
                 last_activation=math_ops.identity,
                 last_layer_size=latent_size),
-        #'rgb': ResnetEncodingNetwork(
-        #          input_tensor_spec=obs_spec['rgb'],
-        #          output_size=latent_size,
-        #          output_activation=math_ops.identity,
-        #          use_fc_bn=False),
-        #'rgb': impala_cnn_encoder.create(
-        #      input_tensor_spec=obs_spec['rgb'],
-        #      cnn_channel_list=(16, 32, 32),
-        #      num_blocks_per_stack=2,
-        #      output_activation=math_ops.identity,
-        #      output_size=latent_size
-        #),
         'car':
             torch.nn.Sequential(
                 alf.layers.FC(obs_spec['car'].numel, latent_size))
