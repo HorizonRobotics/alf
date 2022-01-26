@@ -973,8 +973,11 @@ if __name__ == "__main__":
                         ("train", "avgreward", False),
                         ("train", "return", False)]
     else:
-        train_curves = [  #("eval", "return", False), ("eval", "return", True),
-            #("train", "value", False), ("train", "value", True),
+        train_curves = [
+            ("eval", "return", False),
+            ("eval", "return", True),
+            ("train", "value", False),
+            ("train", "value", True),
             ("train", "drgt", False),
             ("train", "gdgt", True),
             ("train", "bstgt", False),
