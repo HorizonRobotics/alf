@@ -31,13 +31,11 @@ class EstimatedEntropyTest(parameterized.TestCase, alf.test.TestCase):
     def assertArrayAlmostEqual(self, x, y, eps):
         self.assertLess((x - y).abs().max(), eps)
 
-    @parameterized.parameters(False, True)
-    def test_estimated_entropy(self, assume_reparametrization):
-        logging.info("assume_reparametrization=%s" % assume_reparametrization)
+    def test_estimated_entropy(self):
         num_samples = 5000000
-        batch_shape = (2, 4)
-        para1 = torch.randn(*batch_shape).abs()
-        para2 = torch.randn(*batch_shape).abs()
+        batch_shape = (2, 1)
+        para1 = torch.rand(*batch_shape)
+        para2 = torch.rand(*batch_shape)
 
         dist_ctors = [td.Normal, td.Beta]
         for ctor in dist_ctors:
