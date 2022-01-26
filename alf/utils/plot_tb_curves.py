@@ -362,6 +362,25 @@ class IterationsSuccessReader(MeanCurveReader):
         return "Success Rate"
 
 
+class IterationsLBBootstrapGTReader(MeanCurveReader):
+    """Create a mean curve reader that reads Success rates."""
+
+    def __init__(self, critic_num, *args, **kwargs):
+        self._critic_num = critic_num
+        super().__init__(*args, **kwargs)
+
+    def _get_metric_name(self):
+        return f"critic_loss{self._critic_num}/max_1_to_n_future_return_gt_td"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "lb-DR Return Greater Rate"
+
+
 class IterationsLBDRGTReader(MeanCurveReader):
     """Create a mean curve reader that reads Success rates."""
 
@@ -649,14 +668,13 @@ def plot(env, her, train, curves):
     """Plotting examples."""
     print(f"Plotting {train} {curves} curves for {env} tasks (her: {her})")
 
-    SIX_ATARI_GAMES = [
+    FOUR_ATARI_GAMES = [
         "Frostbite",
         "Qbert",
         "Breakout",
         "Seaquest",  # use these four games for dqn, td-lambda and retrace
-        "Atlantis",
-        "SpaceInvaders"
     ]
+    SIX_ATARI_GAMES = FOUR_ATARI_GAMES + ["Atlantis", "SpaceInvaders"]
     ELEVEN_ATARI_GAMES = [
         "Enduro", "Riverraid", "Alien", "BankHeist", "Centipede",
         "FishingDerby", "IceHockey", "MsPacman", "RoadRunner", "TimePilot",
@@ -674,6 +692,12 @@ def plot(env, her, train, curves):
         "td3": "",  # baseline
         "tdl": "-loss_at_TDLoss-tdlambda_0.95-batlen_3",
         "retrace": "-loss_at_TDLoss-tdlambda_0.95-batlen_3-retrace",
+        "opttight3": "-lbbts-btslambda_4-loss_at_TDLoss-tdlambda_1-batlen_3",
+        "opttight4": "-lbbts-btslambda_4-loss_at_TDLoss-tdlambda_1-batlen_4",
+        "lbtq_b3": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_3",
+        "lbtq_b4": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_4",
+        "lbtq_b8": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_8",
+        "lbtq_b12": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_12",
         "gdist": "-gdist",
         "lbtq": "-lbtq",
         "lbtqgdist": "-lbtq-gdist"
@@ -687,6 +711,12 @@ def plot(env, her, train, curves):
         "her": "her",
         "tdl": "td-lambda",
         "retrace": "retrace",
+        "opttight3": "opt-tighten-3step",
+        "opttight4": "opt-tighten-4step",
+        "lbtq_b3": "lb-3step-bootstrap (ours)",
+        "lbtq_b4": "lb-4step-bootstrap (ours)",
+        "lbtq_b8": "lb-8step-bootstrap (ours)",
+        "lbtq_b12": "lb-12step-bootstrap (ours)",
         "lbtq": "lb-DR (ours)",
         "gdist": "lb-GD (ours)",
         "lbtqgdist": "lb-DR+GD (ours)"
@@ -706,8 +736,13 @@ def plot(env, her, train, curves):
             # methods = ["lbtq", "dqn"]
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
+        elif env == "atari_b":
+            methods = ["lbtq_b4", "opttight4", "tdl", "retrace", "sac"]
         elif env == "fetch":
             methods = ["lbtq", "ddpg"]  # , "tdl"
+        elif env == "fetch_b":
+            methods = ["ddpg", "lbtq_b3", "opttight3", "tdl"]
+            # methods = ["ddpg", "lbtq_b3", "lbtq_b8", "lbtq_b12"]
         else:
             methods = ["lbtq", "td3"]
 
@@ -719,6 +754,13 @@ def plot(env, her, train, curves):
         else:
             total_steps = 1100
         cluster_str = "/tboardlog"
+    elif env == "fetch_b":
+        critic_num = 0
+        tasks = ["FetchPush", "FetchPickPlace"]
+        if curves == "return":
+            total_steps = 5000000
+        else:
+            total_steps = 2680
     elif env == "pioneer":
         critic_num = 1
         tasks = ["PioneerPush", "PioneerPushReach"]
@@ -744,15 +786,22 @@ def plot(env, her, train, curves):
         tasks = ["Breakout"]
         total_steps = 12000000
         cluster_str = "/tboardlog"
+    elif env == "atari_b":
+        critic_num = 1
+        tasks = FOUR_ATARI_GAMES
+        if curves == "return":
+            total_steps = 12000000
+        else:
+            total_steps = 50000
     else:
         assert False
 
     if curves == "return":
         plot_interval = 40 * 50
     else:
-        if env == "fetch":
+        if env in ["fetch", "fetch_b"]:
             plot_interval = 10
-        elif env in ["atari", "atarirn", "atariac"]:
+        elif env in ["atari", "atarirn", "atariac", "atari_b"]:
             plot_interval = 200
         elif env == "pioneer":
             plot_interval = 50
@@ -770,6 +819,8 @@ def plot(env, her, train, curves):
                 rblen = "-rblen_10000"
             n = "%s%s%s-sparserwd-posrwd_0-succsince_0%s-sd_" % (
                 bstr, t.lower(), mstr, rblen)
+        elif env == "fetch_b":
+            n = "ddpgfetch*/tboardlog/ddpg%s%s-sd_" % (t.lower(), mstr)
         elif env == "pioneer":
             n = "%s%s%s-curri_0-randrange_1-lr_0.001-crirep_2-herk_0.5-endsucc-sparserwd-posrwd_0-mdimr_0-hitpenal_0-randagentpp-it_5000" % (
                 bstr, task_map[t], mstr)
@@ -806,7 +857,7 @@ def plot(env, her, train, curves):
                 n = "sacbreakout%s%s-evit_1000-evepi_100-sd_3" % (mstr, upit)
             if m == "ac":
                 n = "acbreakout-envstps_12000000-evepi_100-sd_3"
-        elif env == "atari":
+        elif env in ["atari", "atari_b"]:
             assert not her
             if t in SIX_ATARI_GAMES:
                 n = "envn_%sNoFrameskip--v4-sd_3*" % t
@@ -824,6 +875,9 @@ def plot(env, her, train, curves):
         "gdgt":
             lambda *args, **kwargs: IterationsLBGDGTReader(
                 critic_num, *args, **kwargs),
+        "bstgt":
+            lambda *args, **kwargs: IterationsLBBootstrapGTReader(
+                critic_num, *args, **kwargs),
         "value":
             lambda *args, **kwargs: IterationsValuesReader(
                 critic_num, *args, **kwargs),
@@ -837,12 +891,22 @@ def plot(env, her, train, curves):
 
     def curve_in_method(curves, m):
         return curves in ["value", "return", "discreturn", "avgreward"
-                          ] or (curves, m) in [("drgt", "lbtq"),
-                                               ("gdgt", "gdist"),
-                                               ("gdgt", "lbtqgdist")]
+                          ] or (curves, m) in [
+                              ("drgt", "lbtq"),
+                              ("gdgt", "gdist"),
+                              ("gdgt", "lbtqgdist"),
+                              ("bstgt", "opttight3"),
+                              ("bstgt", "opttight4"),
+                              ("bstgt", "lbtq_b3"),
+                              ("bstgt", "lbtq_b4"),
+                              ("bstgt", "lbtq_b8"),
+                              ("bstgt", "lbtq_b12"),
+                          ]
 
-    def _get_curve_path(dir="", m=None, t=None):
+    def get_curve_path(dir="", m=None, t=None):
         _env = env
+        if env == "atari_b":
+            _env = "atari"
         p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
         if dir == "":
             print(f"Writing to {p} for task {t}")
@@ -853,8 +917,9 @@ def plot(env, her, train, curves):
     curve_readers = [[
         reader_cls(
             glob.glob(
-                _get_curve_path(
-                    "%s*%s/%s" % (_run_name(m, t), "" if t in SIX_ATARI_GAMES
+                get_curve_path(
+                    "%s*%s/%s" % (_run_name(m, t), "" if
+                                  (t in SIX_ATARI_GAMES or env == "fetch_b")
                                   else cluster_str, train),
                     t=t,
                     m=m)),
@@ -866,6 +931,8 @@ def plot(env, her, train, curves):
     print("Plotting", curves)
     for i, t in enumerate(tasks):
         _curves = [cr[i]() for cr in curve_readers]
+        if not _curves:
+            break
         min_y = min([min(c.min_y) for c in _curves])
         max_y = max([max(c.max_y) for c in _curves])
         y_margin = (max_y - min_y) * 0.05
@@ -878,21 +945,23 @@ def plot(env, her, train, curves):
             x_range=(0, total_steps or task_total_steps[t]))
         plotter.plot(
             output_path=os.path.join(
-                _get_curve_path(t=t), "vs".join(methods) + "-" + curves + "-" +
+                get_curve_path(t=t), "vs".join(methods) + "-" + curves + "-" +
                 t + "-" + train + ".pdf"))
 
 
 if __name__ == "__main__":
     import sys
     if len(sys.argv) <= 1:
-        env = "pioneer"  # one of "pioneer", "atari", "atariac", "atarirn", "fetch"
+        env = "pioneer"  # one of "pioneer", "atari", "atariac", "atarirn", "atari_b", "fetch", "fetch_b"
     else:
         env = sys.argv[1]
     env_her = {
         "atari": [False, ],
+        "atari_b": [False, ],
         "atarirn": [False, ],
         "atariac": [False, ],
         "fetch": [False, True],
+        "fetch_b": [False],
         "pioneer": [True, ]
     }
 
@@ -904,9 +973,12 @@ if __name__ == "__main__":
                         ("train", "avgreward", False),
                         ("train", "return", False)]
     else:
-        train_curves = [("eval", "return", False), ("eval", "return", True),
-                        ("train", "value", False), ("train", "value", True),
-                        ("train", "drgt", False), ("train", "gdgt", True)]
+        train_curves = [  #("eval", "return", False), ("eval", "return", True),
+            #("train", "value", False), ("train", "value", True),
+            ("train", "drgt", False),
+            ("train", "gdgt", True),
+            ("train", "bstgt", False),
+        ]
     for train, curves, her in train_curves:
         # train is "train" or "eval"
         # curves is one of "drgt", "gdgt", "return", "value"
