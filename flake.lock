@@ -9,11 +9,11 @@
         "utils": "utils"
       },
       "locked": {
-        "lastModified": 1635208657,
-        "narHash": "sha256-grL7u4LQADbXzELwPwtpQZHIr4KW4ftgatCzepdNjhA=",
+        "lastModified": 1639518535,
+        "narHash": "sha256-gkVszJhfMXKlv1gWNUr3kEHPmLWXn95FUq0liaA6JxY=",
         "owner": "HorizonRobotics",
         "repo": "alf-nix-devenv",
-        "rev": "0b35df419b8cd7578f99f9001e08de18ceb8d167",
+        "rev": "d7d9d65f3cfca9740fa21b4853b32768e967ba19",
         "type": "github"
       },
       "original": {
@@ -34,11 +34,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1635208422,
-        "narHash": "sha256-mFK7srIjvq2NpX/LL//95tL+ixPX2O0n7BA7i7xSrqg=",
+        "lastModified": 1639517410,
+        "narHash": "sha256-X1AK/Otja1uQJZo7Xil4WWflxFfnsfs+n0sMkzkVZVA=",
         "owner": "nixvital",
         "repo": "ml-pkgs",
-        "rev": "c578bffaf2a63ce7887d9989cf7662ed5c0f8034",
+        "rev": "719e6f48e292f1a8694b1d36b45276f98a0122f4",
         "type": "github"
       },
       "original": {
