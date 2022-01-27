@@ -698,6 +698,8 @@ def plot(env, her, train, curves):
         "lbtq_b4": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_4",
         "lbtq_b8": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_8",
         "lbtq_b12": "-lbbts-loss_at_TDLoss-tdlambda_1-batlen_12",
+        "lbtq_b8_o": "-lbbts-btsnonly-loss_at_TDLoss-tdlambda_1-batlen_8",
+        "lbtq_b12_o": "-lbbts-btsnonly-loss_at_TDLoss-tdlambda_1-batlen_12",
         "gdist": "-gdist",
         "lbtq": "-lbtq",
         "lbtqgdist": "-lbtq-gdist"
@@ -711,12 +713,14 @@ def plot(env, her, train, curves):
         "her": "her",
         "tdl": "td-lambda",
         "retrace": "retrace",
-        "opttight3": "opt-tighten-3step",
-        "opttight4": "opt-tighten-4step",
-        "lbtq_b3": "lb-3step-bootstrap (ours)",
-        "lbtq_b4": "lb-4step-bootstrap (ours)",
-        "lbtq_b8": "lb-8step-bootstrap (ours)",
-        "lbtq_b12": "lb-12step-bootstrap (ours)",
+        "opttight3": "opt-tighten-2step",
+        "opttight4": "opt-tighten-3step",
+        "lbtq_b3": "lb-b-2step (ours)",
+        "lbtq_b4": "lb-b-3step (ours)",
+        "lbtq_b8": "lb-b-7step (ours)",
+        "lbtq_b12": "lb-b-11step (ours)",
+        "lbtq_b8_o": "lb-b-7step-only (ours)",
+        "lbtq_b12_o": "lb-b-11step-only (ours)",
         "lbtq": "lb-DR (ours)",
         "gdist": "lb-GD (ours)",
         "lbtqgdist": "lb-DR+GD (ours)"
@@ -737,12 +741,13 @@ def plot(env, her, train, curves):
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
         elif env == "atari_b":
-            methods = ["lbtq_b4", "opttight4", "tdl", "retrace", "sac"]
+            methods = ["lbtq_b4", "tdl", "retrace", "sac"]  # , "opttight4"
         elif env == "fetch":
             methods = ["lbtq", "ddpg"]  # , "tdl"
         elif env == "fetch_b":
-            methods = ["ddpg", "lbtq_b3", "opttight3", "tdl"]
-            # methods = ["ddpg", "lbtq_b3", "lbtq_b8", "lbtq_b12"]
+            methods = ["lbtq_b3", "opttight3", "tdl", "ddpg"]
+            # methods = ["lbtq_b3", "lbtq_b8", "lbtq_b12", "ddpg"]
+            # methods = ["lbtq_b8", "lbtq_b12", "lbtq_b8_o", "lbtq_b12_o", "ddpg"]
         else:
             methods = ["lbtq", "td3"]
 
