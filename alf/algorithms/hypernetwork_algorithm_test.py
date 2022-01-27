@@ -292,17 +292,17 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             if noise_dim == input_size:
                 learned_cov = weight @ weight.t()
             else:
+                lam = algorithm._generator.get_lambda()
                 w1 = weight[:noise_dim, :]
                 w2 = weight[noise_dim:, :]
-                cov_11 = w1 @ w1.t() + w1 + w1.t()  # [k, k]
-                cov_12 = w1 @ w2.t() + w2.t()  # [k, d-k]
-                cov_21 = w2 @ w1.t() + w2  # [d-k, k]
+                cov_11 = w1 @ w1.t() + lam * w1 + lam * w1.t()  # [k, k]
+                cov_12 = w1 @ w2.t() + lam * w2.t()  # [k, d-k]
+                cov_21 = w2 @ w1.t() + lam * w2  # [d-k, k]
                 cov_22 = w2 @ w2.t()  # [d-k, d-k]
                 cov_1 = torch.cat([cov_11, cov_12], dim=1)  # [k, d]
                 cov_2 = torch.cat([cov_21, cov_22], dim=1)  # [k, d]
                 cov = torch.cat([cov_1, cov_2], dim=0)  # [d, d]
-                learned_cov = cov + algorithm._generator.get_lambda(
-                ) * torch.eye(input_size)
+                learned_cov = cov + lam * lam * torch.eye(input_size)
 
             print("norm of generator weight: {}".format(weight.norm()))
             print("norm of learned_cov: {}".format(learned_cov.norm()))
@@ -356,17 +356,17 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         if noise_dim == input_size:
             learned_cov = weight @ weight.t()
         else:
+            lam = algorithm._generator.get_lambda()
             w1 = weight[:noise_dim, :]
             w2 = weight[noise_dim:, :]
-            cov_11 = w1 @ w1.t() + w1 + w1.t()  # [k, k]
-            cov_12 = w1 @ w2.t() + w2.t()  # [k, d-k]
-            cov_21 = w2 @ w1.t() + w2  # [d-k, k]
+            cov_11 = w1 @ w1.t() + lam * w1 + lam * w1.t()  # [k, k]
+            cov_12 = w1 @ w2.t() + lam * w2.t()  # [k, d-k]
+            cov_21 = w2 @ w1.t() + lam * w2  # [d-k, k]
             cov_22 = w2 @ w2.t()  # [d-k, d-k]
             cov_1 = torch.cat([cov_11, cov_12], dim=1)  # [k, d]
             cov_2 = torch.cat([cov_21, cov_22], dim=1)  # [k, d]
             cov = torch.cat([cov_1, cov_2], dim=0)  # [d, d]
-            learned_cov = cov + algorithm._generator.get_lambda() * torch.eye(
-                input_size)
+            learned_cov = cov + lam * lam * torch.eye(input_size)
 
         cov_err = torch.norm(learned_cov - true_cov)
         cov_err = cov_err / torch.norm(true_cov)
