@@ -18,6 +18,7 @@ from collections import namedtuple
 import math
 import torch
 import torch.distributions as td
+from functools import partial
 
 import alf
 from alf.utils import math_ops
@@ -27,21 +28,24 @@ ActionDistribution = namedtuple('ActionDistribution', ['a', 'b'])
 
 
 class EstimatedEntropyTest(parameterized.TestCase, alf.test.TestCase):
-    def setUp(self):
-        self.skipTest("estimate_entropy is not implemented yet")
-
     def assertArrayAlmostEqual(self, x, y, eps):
-        self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
+        self.assertLess((x - y).abs().max(), eps)
 
-    @parameterized.parameters(False, True)
-    def test_estimated_entropy(self, assume_reparametrization):
-        logging.info("assume_reparametrization=%s" % assume_reparametrization)
-        num_samples = 1000000
-        seed_stream = tfp.util.SeedStream(
-            seed=1, salt='test_estimated_entropy')
-        batch_shape = (2, )
-        loc = tf.random.normal(shape=batch_shape, seed=seed_stream())
-        scale = tf.abs(tf.random.normal(shape=batch_shape, seed=seed_stream()))
+    def test_estimated_entropy(self):
+        num_samples = 5000000
+        batch_shape = (2, 1)
+        para1 = torch.rand(*batch_shape)
+        para2 = torch.rand(*batch_shape)
+
+        dist_ctors = [td.Normal, td.Beta]
+        for ctor in dist_ctors:
+            dist = td.Independent(
+                ctor(para1, para2), reinterpreted_batch_ndims=1)
+            exact_entropy = dist.entropy()
+            estimated_entropy, _ = dist_utils.estimated_entropy(
+                dist, num_samples=num_samples)
+            self.assertArrayAlmostEqual(
+                exact_entropy, estimated_entropy, eps=1e-2)
 
 
 class DistributionSpecTest(alf.test.TestCase):
