@@ -865,10 +865,11 @@ def plot(env, her, train, curves):
         elif env in ["atari", "atari_b"]:
             assert not her
             if t in SIX_ATARI_GAMES:
-                n = "envn_%sNoFrameskip--v4-sd_3*" % t
-                n = n + ("/tboardlog/sacbreakout%s-" %
-                         mstr) + n  # with sac baseline
-                # n = n + ("/tboardlog/dqnbreakout%s-" % mstr) + n  # with dqn baseline
+                n = (
+                    "*envn_%sNoFrameskip--v4-sd_3*/tboardlog/sacbreakout%s-envn_%sNoFrameskip--v4-sd_3*"
+                    % (t, mstr, t))  # with sac baseline
+                # n = ("*envn_%sNoFrameskip--v4-sd_3*/tboardlog/dqnbreakout%s-envn_%sNoFrameskip--v4-sd_3*" %
+                #      (t, mstr, t))  # with dqn baseline
             else:
                 n = "sacbreakout%s-envn_%sNoFrameskip--v4-sd_3" % (mstr, t)
         return n
