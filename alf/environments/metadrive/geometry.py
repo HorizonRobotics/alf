@@ -30,7 +30,7 @@ except ImportError:
 class CategoryEncoder(object):
     """A category encoder can 
        
-    1. Converts integer categories into their corresponding one-hot encoding.
+    1. Convert integer categories into their corresponding one-hot encoding.
     2. Translate the type of driving scenario objects into its integer category.
 
     """
@@ -40,10 +40,26 @@ class CategoryEncoder(object):
         self._one_hots = np.identity(self._num_types, dtype=np.float32)
 
     @property
-    def size(self):
+    def size(self) -> int:
+        """Get the number of categories.
+
+        Returns:
+            An integer representing the total number of categories.
+        """
         return self._num_types
 
     def encode_line_type(self, line_type: LineType) -> int:
+        """Translate the line type into its corresponding category index.
+
+        Args:
+            line_type: the line type specifying the category of the
+                line, e.g. broken line, continuous line.
+
+        Returns:
+            An integer within [0, self.size - 1] denoting the index of
+            the category corresponding to the line type.
+
+        """
         if line_type == LineType.BROKEN:
             return 1
         elif line_type == LineType.CONTINUOUS:
@@ -52,9 +68,27 @@ class CategoryEncoder(object):
             return 3
 
     def encode_navigation(self) -> int:
+        """Get the category index of the navigation.
+
+        Returns:
+            An integer within [0, self.size - 1] denoting the index of
+            the category representing the navigation category.
+
+        """
         return 0
 
-    def get_codes(self, indices: np.ndarray) -> int:
+    def get_codes(self, indices: np.ndarray) -> np.ndarray:
+        """Convert category indices to the onehot encoding vectors.
+
+        Args:
+            indices: A tensor of category indices.
+
+        Returns:
+            A tensor with one extra dimension compared to the input, with each
+            integer in the input replaced by its corresponding onehot encoding
+            vector.
+
+        """
         return self._one_hots[indices]
 
 
@@ -116,6 +150,10 @@ class Polyline(NamedTuple):
                 to divided the target curve into polylines. See method docstring
                 for details. Unit in meters.
 
+        Returns:
+            A Polyline instance containing a batch of polylines extracted from
+            the input lane.
+
         """
         polyline_length = segment_resolution * polyline_size
 
@@ -133,7 +171,7 @@ class Polyline(NamedTuple):
                            dtype=np.float32),
             category=np.full((num_polylines, ), category, dtype=np.int32))
 
-        # Here s is the distance of the sampled point along the curve, from the
+        # Here is the distance of the sampled point along the curve, from the
         # starting point of the curve.
         s = 0.0
         sample_point = lane.position(s, lateral * lane.width_at(s))
@@ -198,10 +236,16 @@ class Polyline(NamedTuple):
                 its corresponding one-hot encoding. When not provided, category
                 one-hot encoding WILL NOT be appended to the polyline feature.
 
+        Returns:
+            A tensor as the feature representation of the polylines in the instance.
         """
         size = self.point.shape[0] if self.batched else None
 
         assert (size is None) == (required_batch_size is None)
+        if required_batch_size is not None:
+            assert size <= required_batch_size, (
+                f'batch size ({size}) should not exceed '
+                f'required_batch_size ({required_batch_size})')
 
         # S = polyline size
         S = self.point.shape[-2] - 1
