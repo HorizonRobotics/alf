@@ -741,7 +741,7 @@ def plot(env, her, train, curves):
         elif env == "atariac":
             methods = ["lbtq", "sac", "ac"]
         elif env == "atari_b":
-            methods = ["lbtq_b4", "tdl", "retrace", "sac"]  # , "opttight4"
+            methods = ["lbtq_b4", "opttight4", "tdl", "retrace", "sac"]
         elif env == "fetch":
             methods = ["lbtq", "ddpg"]  # , "tdl"
         elif env == "fetch_b":
@@ -751,6 +751,7 @@ def plot(env, her, train, curves):
         else:
             methods = ["lbtq", "td3"]
 
+    task_start_step = 0
     if env == "fetch":
         critic_num = 0
         tasks = ["FetchPush", "FetchPickPlace", "FetchSlide"]
@@ -781,16 +782,19 @@ def plot(env, her, train, curves):
     elif env in ["atari", "atarirn"]:
         critic_num = 1
         tasks = SEVENTEEN_ATARI_GAMES
+        if "dqn" in methods or "tdl" in methods:
+            tasks = FOUR_ATARI_GAMES
         if curves == "return":
             total_steps = 12000000
         else:
+            task_start_step = 1000
             total_steps = 50000
         cluster_str = "/tboardlog"
-    elif env == "atariac":
-        critic_num = 1
-        tasks = ["Breakout"]
-        total_steps = 12000000
-        cluster_str = "/tboardlog"
+    # elif env == "atariac":
+    #     critic_num = 1
+    #     tasks = ["Breakout"]
+    #     total_steps = 12000000
+    #     cluster_str = "/tboardlog"
     elif env == "atari_b":
         critic_num = 1
         tasks = FOUR_ATARI_GAMES
@@ -798,6 +802,7 @@ def plot(env, her, train, curves):
             total_steps = 12000000
         else:
             total_steps = 50000
+            task_start_step = 1000
     else:
         assert False
 
@@ -812,7 +817,7 @@ def plot(env, her, train, curves):
             plot_interval = 50
 
     print(
-        f"total_steps: {total_steps or task_total_steps}, plot_interval: {plot_interval}"
+        f"steps: {task_start_step} to {total_steps or task_total_steps}, plot_interval: {plot_interval}"
     )
 
     def _run_name(m, t):
@@ -847,29 +852,29 @@ def plot(env, her, train, curves):
             n = "sacbreakout%s%s-envn_%sNoFrameskip--v4%s%s-sd_4" % (
                 mstr, rn, t, lr, upit)
 
-        elif env in ["atariac"]:  # "atari",
-            assert not her
-            if mstr == "-lbtq":
-                if t in ["Breakout", "Seaquest", "SpaceInvaders"]:
-                    mstr = "r-lbtq"
-                upit = "-upit_8-batsz_250"
-            else:
-                upit = "-upit_4-batsz_500"
-            n = "sacbreakout%s-envn_%sNoFrameskip--v4%s-evit_1000-evepi_100-sd_3" % (
-                mstr, t, upit)
-            if m in ["tdl", "retrace"]:
-                assert t == "Breakout"
-                n = "sacbreakout%s%s-evit_1000-evepi_100-sd_3" % (mstr, upit)
-            if m == "ac":
-                n = "acbreakout-envstps_12000000-evepi_100-sd_3"
+        # elif env in ["atariac"]:  # "atari",
+        #     assert not her
+        #     if mstr == "-lbtq":
+        #         if t in ["Breakout", "Seaquest", "SpaceInvaders"]:
+        #             mstr = "r-lbtq"
+        #         upit = "-upit_8-batsz_250"
+        #     else:
+        #         upit = "-upit_4-batsz_500"
+        #     n = "sacbreakout%s-envn_%sNoFrameskip--v4%s-evit_1000-evepi_100-sd_3" % (
+        #         mstr, t, upit)
+        #     if m in ["tdl", "retrace"]:
+        #         assert t == "Breakout"
+        #         n = "sacbreakout%s%s-evit_1000-evepi_100-sd_3" % (mstr, upit)
+        #     if m == "ac":
+        #         n = "acbreakout-envstps_12000000-evepi_100-sd_3"
         elif env in ["atari", "atari_b"]:
             assert not her
             if t in SIX_ATARI_GAMES:
-                n = (
-                    "*envn_%sNoFrameskip--v4-sd_3*/tboardlog/sacbreakout%s-envn_%sNoFrameskip--v4-sd_3*"
-                    % (t, mstr, t))  # with sac baseline
-                # n = ("*envn_%sNoFrameskip--v4-sd_3*/tboardlog/dqnbreakout%s-envn_%sNoFrameskip--v4-sd_3*" %
-                #      (t, mstr, t))  # with dqn baseline
+                prefix = "sac"
+                if "dqn" in methods:
+                    prefix = "dqn"  # with dqn baseline
+                n = ("*/tboardlog/%sbreakout%s-envn_%sNoFrameskip--v4-sd_3" %
+                     (prefix, mstr, t))
             else:
                 n = "sacbreakout%s-envn_%sNoFrameskip--v4-sd_3" % (mstr, t)
         return n
@@ -929,7 +934,8 @@ def plot(env, her, train, curves):
                                   else cluster_str, train),
                     t=t,
                     m=m)),
-            np.arange(0, total_steps or task_total_steps[t], plot_interval),
+            np.arange(task_start_step, total_steps or task_total_steps[t],
+                      plot_interval),
             name="%s" % (method_tag[m]),
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
@@ -945,6 +951,7 @@ def plot(env, her, train, curves):
         # Scale and align x-axis of methods on task1
         plotter = CurvesPlotter(
             _curves,
+            linestyle=['-', '-.', (0, (5, 1)), (0, (5, 5)), ':'],
             x_label=curve_readers[0][0].x_label,
             y_label=curve_readers[0][0].y_label,
             y_range=(min_y - y_margin, max_y + y_margin),  # task_y_range[t],
@@ -958,9 +965,14 @@ def plot(env, her, train, curves):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) <= 1:
-        env = "pioneer"  # one of "pioneer", "atari", "atariac", "atarirn", "atari_b", "fetch", "fetch_b"
+        env = "pioneer"
     else:
         env = sys.argv[1]
+        assert env in [
+            "pioneer", "atari", "atariac", "atarirn", "atari_b", "fetch",
+            "fetch_b"
+        ]
+
     env_her = {
         "atari": [False, ],
         "atari_b": [False, ],
