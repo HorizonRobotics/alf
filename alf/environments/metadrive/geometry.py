@@ -240,17 +240,16 @@ class Polyline(NamedTuple):
             center: A 2D point denoting the origin of the new coordinate frame.
             orientation: orientation (x-axis direction) of the new coordinate in radian.
 
+        Returns:
+
+            A NEW Polyline instance where all the polylines within are transformed.
         """
         # Construct the 2D rotation matrix.
         cos = np.cos(orientation)
         sin = np.sin(orientation)
         rotation = np.array([[cos, -sin], [sin, cos]])
 
-        if self.batched:
-            transformed = np.einsum('ijk,kl->ijl', (self.point - center),
-                                    rotation)
-        else:
-            transformed = np.matmul(self.point - center, rotation)
+        transformed = np.matmul(self.point - center, rotation)
 
         return Polyline(point=transformed, category=self.category)
 
@@ -260,13 +259,16 @@ class Polyline(NamedTuple):
         car's position and heading, and filtered out the polylines that are not
         within the field of view.
 
-        Returns a new Polyline instance as the result. The update is not inplace.
-
         Args:
 
             position: the position of the car serving as the observer.
             heading: heading of the car serving as the observer.
             fov: the field of view of the car defining the area that are visible.
+
+        Returns:
+
+            A NEW Polyline instance where only the polylines within the
+            specified FOV are kept.
 
         """
         transformed = self.transformed(position, heading)

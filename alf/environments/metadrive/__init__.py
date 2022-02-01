@@ -13,5 +13,3 @@
 # limitations under the License.
 
 from .geometry import FieldOfView
-
-__all__ = ['FieldOfView']
