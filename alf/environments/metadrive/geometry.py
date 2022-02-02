@@ -56,7 +56,22 @@ class FieldOfView(object):
     def bbox(self):
         return self._bbox
 
-    def test(self, points: np.ndarray):
+    def within(self, points: np.ndarray) -> np.ndarray:
+        """Returns for each of the input points, whether they are within the
+        field of view or not.
+
+        Args:
+
+            points: A n-d tensor with shape of [..., 2] describing a
+                batch of input 2D points.
+
+        Returns:
+            
+            A (n-1)-d tensor with shape ``points.shape[:-1]``. Each
+            cell in the result is True (the point is within the FOV)
+            or False (the point is not within the FOV).
+
+        """
         assert points.shape[-1] == 2
         return np.all(
             np.logical_and(points >= self._bbox[0], points <= self._bbox[2]),
@@ -279,7 +294,7 @@ class Polyline(NamedTuple):
         """
         transformed = self.transformed(position, heading)
 
-        within_bbox = fov.test(transformed.point)  # Shape is [B, S]
+        within_bbox = fov.within(transformed.point)  # Shape is [B, S]
         within_bbox = np.any(within_bbox, axis=1)  # Shape is now [B,]
 
         return Polyline(
