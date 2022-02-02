@@ -73,6 +73,7 @@ class CriticNetwork(EncodingNetwork):
                  action_input_processors=None,
                  action_preprocessing_combiner=None,
                  action_fc_layer_params=None,
+                 observation_action_combiner=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
@@ -102,6 +103,8 @@ class CriticNetwork(EncodingNetwork):
                 to combine complex action inputs.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
+            observation_action_combiner (NestCombiner): combiner class for fusing
+                the observation and action. If None, ``NestConcat`` will be used.
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes FC layers after merging observations and
                 actions.
@@ -156,11 +159,14 @@ class CriticNetwork(EncodingNetwork):
         last_kernel_initializer = functools.partial(
             torch.nn.init.uniform_, a=-0.003, b=0.003)
 
+        if observation_action_combiner is None:
+            observation_action_combiner = alf.layers.NestConcat(dim=-1)
+
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             output_tensor_spec=output_tensor_spec,
             input_preprocessors=(obs_encoder, action_encoder),
-            preprocessing_combiner=alf.layers.NestConcat(dim=-1),
+            preprocessing_combiner=observation_action_combiner,
             fc_layer_params=joint_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,

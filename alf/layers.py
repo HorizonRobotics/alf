@@ -25,7 +25,7 @@ from typing import Union, Callable, Iterable, Tuple
 import alf
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import (get_nested_field, get_outer_rank, NestConcat,
-                            NestMultiply, NestSum)
+                            NestMultiply, NestOuterProduct, NestSum)
 from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
