@@ -31,6 +31,7 @@ import alf
 from alf.tensor_specs import TensorSpec
 from .geometry import FieldOfView, Polyline
 from .map_perception import MapPolylinePerception
+from .agent_perception import AgentPerception
 
 
 @alf.configurable
@@ -57,7 +58,8 @@ class VectorizedObservation(ObservationBase):
                  segment_resolution: float = 2.0,
                  polyline_size: int = 4,
                  polyline_limit: int = 64,
-                 history_window_size: int = 8):
+                 history_window_size: int = 8,
+                 agent_limit: int = 16):
         """Construct a VectorizedObservation instance.
 
         Args:
@@ -82,6 +84,7 @@ class VectorizedObservation(ObservationBase):
                 fill the vacancies.
             history_window_size: The past positions of the most recent this number of
                 frames will be recorded and used for the ego history feature.
+            agent_limit: the maximum number of agents appears in the agent feature.
 
         """
         super().__init__(vehicle_config)
@@ -90,6 +93,11 @@ class VectorizedObservation(ObservationBase):
             segment_resolution=segment_resolution,
             polyline_size=polyline_size,
             polyline_limit=polyline_limit)
+
+        self._agent_perception = AgentPerception(
+            fov=fov,
+            history_window_size=history_window_size,
+            agent_limit=agent_limit)
 
         self._position_history = Polyline(
             point=np.zeros((history_window_size, 2), dtype=np.float32))
@@ -118,7 +126,8 @@ class VectorizedObservation(ObservationBase):
                 TensorSpec(
                     shape=((self._position_history.point.shape[0] - 1) * 6, ),
                     dtype=torch.float32),
-            # TODO(breakds): Add 'agents'.
+            'agents':
+                self._agent_perception.observation_spec
         }
 
     def observe(self, vehicle: BaseVehicle):
@@ -145,8 +154,9 @@ class VectorizedObservation(ObservationBase):
                                              vehicle.heading_theta),
             'ego':
                 self._position_history.transformed(
-                    vehicle.position, vehicle.heading_theta).to_feature()
-            # TODO(breakds): Add 'agents'.
+                    vehicle.position, vehicle.heading_theta).to_feature(),
+            'agents':
+                self._agent_perception.observe(),
         }
 
     def reset(self, env, vehicle=None):
@@ -154,5 +164,6 @@ class VectorizedObservation(ObservationBase):
         # MapPolylinePerception object.
         self._map_perception.reset(env.current_map.road_network,
                                    vehicle.navigation)
+        self._agent_perception.reset(env.engine, vehicle)
         # Initialize the vehicle history buffer.
         self._position_history.point[:, :] = vehicle.position
