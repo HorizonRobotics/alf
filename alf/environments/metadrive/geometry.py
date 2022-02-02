@@ -56,6 +56,12 @@ class FieldOfView(object):
     def bbox(self):
         return self._bbox
 
+    def test(self, points: np.ndarray):
+        assert points.shape[-1] == 2
+        return np.all(
+            np.logical_and(points >= self._bbox[0], points <= self._bbox[2]),
+            axis=-1)
+
 
 class CategoryEncoder(object):
     """A category encoder can 
@@ -273,10 +279,7 @@ class Polyline(NamedTuple):
         """
         transformed = self.transformed(position, heading)
 
-        within_bbox = np.all(
-            np.logical_and(transformed.point >= fov.bbox[0],
-                           transformed.point <= fov.bbox[2]),
-            axis=2)  # Shape is [B, S]
+        within_bbox = fov.test(transformed.point)  # Shape is [B, S]
         within_bbox = np.any(within_bbox, axis=1)  # Shape is now [B,]
 
         return Polyline(
