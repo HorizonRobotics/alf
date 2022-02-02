@@ -743,19 +743,23 @@ def plot(env, her, train, curves):
         elif env == "atari_b":
             methods = ["lbtq_b4", "opttight4", "tdl", "retrace", "sac"]
         elif env == "fetch":
-            methods = ["lbtq", "ddpg"]  # , "tdl"
+            methods = ["lbtq", "ddpg"]
+            # methods = ["lbtq", "tdl", "ddpg"]
         elif env == "fetch_b":
             methods = ["lbtq_b3", "opttight3", "tdl", "ddpg"]
             # methods = ["lbtq_b3", "lbtq_b8", "lbtq_b12", "ddpg"]
             # methods = ["lbtq_b8", "lbtq_b12", "lbtq_b8_o", "lbtq_b12_o", "ddpg"]
-        else:
+        else:  # pioneer
             methods = ["lbtq", "td3"]
 
     task_start_step = 0
     if env == "fetch":
         critic_num = 0
         tasks = ["FetchPush", "FetchPickPlace", "FetchSlide"]
+        if "tdl" in methods:
+            tasks = ["FetchPush", "FetchPickPlace"]
         if curves == "return":
+            task_start_step = 72000
             total_steps = 2000000
         else:
             total_steps = 1100
@@ -785,6 +789,7 @@ def plot(env, her, train, curves):
         if "dqn" in methods or "tdl" in methods:
             tasks = FOUR_ATARI_GAMES
         if curves == "return":
+            task_start_step = 120000
             total_steps = 12000000
         else:
             task_start_step = 1000
@@ -799,10 +804,11 @@ def plot(env, her, train, curves):
         critic_num = 1
         tasks = FOUR_ATARI_GAMES
         if curves == "return":
+            task_start_step = 120000
             total_steps = 12000000
         else:
-            total_steps = 50000
             task_start_step = 1000
+            total_steps = 50000
     else:
         assert False
 
