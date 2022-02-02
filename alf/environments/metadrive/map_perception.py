@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from typing import Tuple, Optional, NamedTuple
-import functools
 
 import torch
 import numpy as np
@@ -154,19 +153,9 @@ class MapPolylinePerception(object):
         # instance corresponds to a batch of polylines. Here we flatten it so
         # that it becomes a big batch of polylines within one single Polyline
         # instance, which gets stored in self._polylines.
-        num_polylines = functools.reduce(lambda s, pl: s + pl.point.shape[0],
-                                         polylines, 0)
         self._polylines = Polyline(
-            point=np.zeros((num_polylines, self._polyline_size + 1, 2),
-                           dtype=np.float32),
-            category=np.zeros((num_polylines, ), dtype=np.int32))
-
-        i = 0
-        for pl in polylines:
-            end = i + pl.point.shape[0]
-            self._polylines.point[i:end] = pl.point
-            self._polylines.category[i:end] = pl.category
-            i = end
+            point=np.concatenate([pl.point for pl in polylines], axis=0),
+            category=np.concatenate([pl.category for pl in polylines], axis=0))
 
     def observe(self, position: tuple, heading: float) -> np.ndarray:
         """Called upon every observation to get a rotated and cropped view of the map
