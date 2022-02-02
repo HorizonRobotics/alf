@@ -234,8 +234,14 @@ class NestOuterProduct(NestCombiner):
         self._padding = padding
 
     def _combine_flat(self, tensors):
-        batch_shapes = tensors[0].shape[:self._batch_dims]
-        B = int(np.prod(batch_shapes))
+        batch_shape = tensors[0].shape[:self._batch_dims]
+
+        for t in tensors:
+            assert batch_shape == t.shape[:self._batch_dims], (
+                "Different batch shapes %s vs. %s" %
+                (batch_shape, t.shape[:self._batch_dims]))
+
+        B = int(np.prod(batch_shape))
 
         tensors = [t.reshape(B, -1) for t in tensors]
         if self._padding:
@@ -247,7 +253,7 @@ class NestOuterProduct(NestCombiner):
         out = reduce(
             lambda x, y: torch.einsum('bn,bm->bnm', x, y).reshape(B, -1),
             tensors)
-        out = out.reshape(*batch_shapes, -1)
+        out = out.reshape(*batch_shape, -1)
         return self._activation(out)
 
     def make_parallel(self, n):

@@ -356,6 +356,10 @@ class TestNestOuterProduct(parameterized.TestCase, alf.test.TestCase):
             self.assertTensorEqual(ret,
                                    torch.tensor([[3, 4, 6, 8], [3, 4, 6, 8]]))
 
+        tensors = [torch.zeros([2, 3]), torch.zeros([3, 2])]
+        self.assertRaises(AssertionError, NestOuterProduct(batch_dims=2),
+                          tensors)
+
     @parameterized.parameters((False, ), (True, ))
     def test_nest_outer_product_specs(self, padding):
         ntuple = NTuple(
