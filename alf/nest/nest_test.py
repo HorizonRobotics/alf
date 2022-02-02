@@ -333,24 +333,38 @@ class TestNestMultiply(alf.test.TestCase):
         self.assertEqual(ret, TensorSpec((2, 4)))
 
 
-class TestNestOuterProduct(alf.test.TestCase):
-    def test_nest_outer_product(self):
+class TestNestOuterProduct(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((False, ), (True, ))
+    def test_nest_outer_product(self, padding):
         ntuple = NTuple(
             a=dict(x=torch.zeros(2, 3, 4, 5), y=torch.ones((2, 3))),
             b=torch.ones((2, 3, 10)))
         ret = NestOuterProduct(batch_dims=2)(ntuple)
         self.assertTensorEqual(ret, torch.zeros((2, 3, 4 * 5 * 1 * 10)))
 
-        tensors = [torch.tensor([1, 2]), torch.tensor([3, 4])]
-        ret = NestOuterProduct(batch_dims=0)(tensors)
-        self.assertTensorEqual(ret, torch.tensor([3, 4, 6, 8]))
+        tensors = [
+            torch.tensor([[1, 2], [1, 2]]),
+            torch.tensor([[3, 4], [3, 4]])
+        ]
+        ret = NestOuterProduct(batch_dims=1, padding=padding)(tensors)
+        if padding:
+            self.assertTensorEqual(
+                ret,
+                torch.tensor([[3, 4, 1, 6, 8, 2, 3, 4, 1],
+                              [3, 4, 1, 6, 8, 2, 3, 4, 1]]))
+        else:
+            self.assertTensorEqual(ret,
+                                   torch.tensor([[3, 4, 6, 8], [3, 4, 6, 8]]))
 
-    def test_nest_outer_product_specs(self):
+    @parameterized.parameters((False, ), (True, ))
+    def test_nest_outer_product_specs(self, padding):
         ntuple = NTuple(
             a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
             b=TensorSpec((4, )))
-        ret = NestOuterProduct(batch_dims=0)(ntuple)
-        self.assertEqual(ret, TensorSpec((32, )))
+        ret = NestOuterProduct(batch_dims=0, padding=padding)(ntuple)
+        self.assertEqual(
+            ret,
+            TensorSpec(((1 + padding) * (2 * 4 + padding) * (4 + padding), )))
 
 
 class TestPruneNestLike(parameterized.TestCase, alf.test.TestCase):

@@ -90,7 +90,7 @@ class NestConcat(NestCombiner):
         concatenating them along a specified axis. If nest_mask is None,
         then all the tensors from the nest will be selected.
         It assumes that all the selected tensors have the same tensor spec.
-        Can be used as a preprocessing combiner of a ``PreprocessorNetwork``.
+        Can be used as a preprocessing combiner of a network.
 
         Note that batch dimension is not considered for concat. This means that
         dim=0 means the first dimension after batch dimension.
@@ -141,7 +141,7 @@ class NestSum(NestCombiner):
     def __init__(self, average=False, activation=None, name="NestSum"):
         """Add all tensors in a nest together. It assumes that all tensors have
         the same tensor shape. Can be used as a preprocessing combiner of
-        a ``PreprocessorNetwork``.
+        a network.
 
         Args:
             average (bool): If True, the tensors are averaged instead of summed.
@@ -170,7 +170,7 @@ class NestMultiply(NestCombiner):
     def __init__(self, activation=None, name="NestMultiply"):
         """Element-wise multiply all tensors in a nest. It assumes that all
         tensors have the same shape. Can be used as a preprocessing combiner of
-        a ``PreprocessorNetwork``.
+        a network.
 
         Args:
             activation (Callable): optional activation function applied after
@@ -195,9 +195,10 @@ class NestOuterProduct(NestCombiner):
     def __init__(self,
                  activation: Callable = None,
                  batch_dims: int = 1,
+                 padding: bool = False,
                  name: str = "NestOuterProduct"):
         """Perform outer-product operations across a nested structure. Can be used
-        as a preprocessing combiner of a ``PreprocessorNetwork``.
+        as a preprocessing combiner of a network.
 
         Sometimes combining tensors using outer product might be more expressive
         than concatenating, e.g., when one tensor is one-hot. See the discussions in
@@ -206,6 +207,10 @@ class NestOuterProduct(NestCombiner):
 
             "STOCHASTIC NEURAL NETWORKS FOR HIERARCHICAL REINFORCEMENT LEARNING",
             Florensa, et al., ICLR 2017, https://arxiv.org/pdf/1704.03012.pdf.
+
+        In this implementation, we also support padding 1s to the tensors before
+        doing the outer product, essentially combining outer product and
+        concatenation together in one combiner.
 
         .. warning::
 
@@ -217,25 +222,37 @@ class NestOuterProduct(NestCombiner):
             batch_dims: number of batch dims. Default to 1. If the total input dim
                 is ``N``, then the last ``N-batch_dims`` will be flattened for
                 outer product.
+            padding: if True, each tensor will be padded by 1 before performing
+                outer product. When this flag is enabled, essentially it has
+                the effect of concatenation of all tensors in the output tensor.
             name: name of the combiner
         """
         super(NestOuterProduct, self).__init__(name, batch_dims=batch_dims)
         if activation is None:
             activation = lambda x: x
         self._activation = activation
+        self._padding = padding
 
     def _combine_flat(self, tensors):
         batch_shapes = tensors[0].shape[:self._batch_dims]
         B = int(np.prod(batch_shapes))
+
+        tensors = [t.reshape(B, -1) for t in tensors]
+        if self._padding:
+            tensors = [
+                torch.cat([t, torch.ones((B, 1), dtype=t.dtype)], dim=1)
+                for t in tensors
+            ]
+
         out = reduce(
-            lambda x, y: torch.einsum('bn,bm->bnm', x.reshape(B, -1),
-                                      y.reshape(B, -1)), tensors)
+            lambda x, y: torch.einsum('bn,bm->bnm', x, y).reshape(B, -1),
+            tensors)
         out = out.reshape(*batch_shapes, -1)
         return self._activation(out)
 
     def make_parallel(self, n):
         return NestOuterProduct(self._activation, self._batch_dims + 1,
-                                "parallel_" + self._name)
+                                self._padding, "parallel_" + self._name)
 
 
 def stack_nests(nests, dim=0):
