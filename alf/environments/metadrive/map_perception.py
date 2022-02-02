@@ -158,5 +158,5 @@ class MapPolylinePerception(object):
 
         # 3. Fill in the features
         return polylines.to_feature(
-            feature_batch_size=self._polyline_limit,
+            required_batch_size=self._polyline_limit,
             category_encoder=self._category_encoder)
