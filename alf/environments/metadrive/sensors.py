@@ -19,16 +19,19 @@ import numpy as np
 import gym
 
 try:
+    import pygame
     import metadrive
     from metadrive.obs.observation_base import ObservationBase
+    from metadrive.obs.top_down_obs_multi_channel import TopDownMultiChannel
     from metadrive.component.vehicle.base_vehicle import BaseVehicle
 except ImportError:
     from unittest.mock import Mock
     # create 'metadrive' as a mock to not break python argument type hints
     metadrive = Mock()
+    pygame = Mock()
 
 import alf
-from alf.tensor_specs import TensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from .geometry import FieldOfView, Polyline
 from .map_perception import MapPolylinePerception
 from .agent_perception import AgentPerception
@@ -85,7 +88,6 @@ class VectorizedObservation(ObservationBase):
             history_window_size: The past positions of the most recent this number of
                 frames will be recorded and used for the ego history feature.
             agent_limit: the maximum number of agents appears in the agent feature.
-
         """
         super().__init__(vehicle_config)
         self._map_perception = MapPolylinePerception(
@@ -167,3 +169,83 @@ class VectorizedObservation(ObservationBase):
         self._agent_perception.reset(env.engine, vehicle)
         # Initialize the vehicle history buffer.
         self._position_history.point[:, :] = vehicle.position
+
+
+@alf.configurable
+class BirdEyeObservation(TopDownMultiChannel):
+    """This implements a MetaDrive Observation that produces BEV, together
+    with historical velocities.
+
+    The implementation is simply adding velocity alongside the original BEV
+    produced by MetaDrive's TopDownMultiChannel.
+
+    Note that the velocity histories are not encoded as images. The model will
+    have the flexibility to choose to how to encode it.
+
+    """
+
+    def __init__(self,
+                 env_config: metadrive.utils.Config,
+                 velocity_steps: int = 1,
+                 velocity_normalization: float = 100.0):
+        """Construct a BirdEyeObservation instance.
+
+        Args:
+            
+            env_config: MetaDrive's environment configuration.
+            velocity_steps: The number of historical steps for the velocity.
+            velocity_normalization: The velocities (in m/s) will be normalizaed
+                by this factor before producing the feature.
+
+        """
+        super().__init__(
+            env_config["vehicle_config"],
+            env_config["use_render"],
+            env_config["rgb_clip"],
+            frame_stack=env_config["frame_stack"],
+            post_stack=env_config["post_stack"],
+            frame_skip=env_config["frame_skip"],
+            resolution=(env_config["resolution_size"],
+                        env_config["resolution_size"]),
+            max_distance=env_config["distance"])
+
+        self._velocity_steps = velocity_steps
+        self._velocity_normalization = velocity_normalization
+        self._velocity_history = np.zeros(
+            self._velocity_steps, dtype=np.float32)
+
+    @property
+    def observation_spec(self):
+        return {
+            'bev':
+                BoundedTensorSpec(
+                    shape=self.observation_space.shape,
+                    dtype=torch.float32,
+                    minimum=0.0,
+                    maximum=1.0),
+            'vel':
+                BoundedTensorSpec(
+                    shape=(self._velocity_steps, ),
+                    dtype=torch.float32,
+                    minimum=0.0,
+                    maximum=30.0)
+        }
+
+    def observe(self, vehicle: BaseVehicle):
+        """The main API to generate the feature given the current ego car status.
+
+        Args:
+
+            vehicle: The MetaDrive vehicle object is the container for all the ego
+                car related information.
+
+        """
+        img = super().observe(vehicle)
+
+        self._velocity_history[:-1] = self._velocity_history[1:]
+        self._velocity_history[-1] = vehicle.speed * 1000.0 / 3600.0
+
+        return {
+            'img': np.transpose(img, (2, 0, 1)),
+            'vel': self._velocity_history / self._velocity_normalization
+        }

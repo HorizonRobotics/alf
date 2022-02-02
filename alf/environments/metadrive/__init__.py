@@ -14,4 +14,4 @@
 
 from .geometry import FieldOfView
 from .sensors import VectorizedObservation
-from .environments import VectorizedTopDownEnv
+from .environments import VectorizedTopDownEnv, BirdEyeTopDownEnv
