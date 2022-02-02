@@ -50,6 +50,27 @@ class MapPolylinePerception(object):
                  segment_resolution: float = 1.0,
                  polyline_size: int = 1,
                  polyline_limit: int = 256):
+        """Construct a MapPolylinePerception instance.
+
+        Args:
+            fov: Defines the field of view with respect to the ego car. Map object
+                and agents outside of the field of view will not appear in the
+                observation. Usually the bigger the field of view, the more expensive
+                the computation of the obsrevation (and the training) will be.
+            segment_resolution: The length of each line segment in the polylines
+                during sampling. The smaller the value, the more segments and
+                polylines. As a result, it also implies more expensive training.
+            polyline_size: Specify the number of segments in one polyline. Putting
+                more segments in a polyline can reduce the number of polylines for
+                each observation.
+            polyline_limit: Specify the maximum number of polylines in the
+                observation for map and navigation. If the actual number of polylines
+                goes beyond this limit, farthest polylines (from the ego car) will be
+                filtered out until the limit is satisfied. If the actual number of
+                polylines is below this limit, zero padding will be employed to bring
+                fill the vacancies.
+
+        """
         self._fov = fov
         self._segment_resolution = segment_resolution
         self._polyline_size = polyline_size
@@ -77,6 +98,11 @@ class MapPolylinePerception(object):
 
     def reset(self, road_network, navigation):
         """Initialize by creating the polylines for all the map objects and navigation.
+
+        Args:
+            road_network: The road network (map) of the current MetaDrive
+                environment.
+            navigation: The navigatiton of the current MetaDrive environment.
 
         """
         polylines = []
@@ -142,12 +168,25 @@ class MapPolylinePerception(object):
             self._polylines.category[i:end] = pl.category
             i = end
 
-    def observe(self, position, heading) -> np.ndarray:
+    def observe(self, position: tuple, heading: float) -> np.ndarray:
         """Called upon every observation to get a rotated and cropped view of the map
         objects and navigation. Returns the feature vector of the observation.
 
         The position and heading of the observer car needs to be provided to
         define the coordinate frame of the resulting features.
+
+        Args:
+
+            position: A 2D vector denoting the current world frame position of
+                the ego car.
+            heading: A radian denoting the current world frame heading of the
+                ego car.
+
+        Returns:
+
+            A feature tensor of shape [polyline_limit, feature_size], where
+            feature size is determined by the number of segments in each
+            polyline (polyline_size).
 
         """
         # 1. Filter the polylines to keep only the ones that are within FOV
