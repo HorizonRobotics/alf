@@ -20,7 +20,8 @@ from typing import Callable
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from . import adam_tf, adamw
+from . import adam_tf, adamw, nero_plus
+from .utils import get_opt_arg
 
 
 def _rbf_func(x):
@@ -189,10 +190,11 @@ def wrap_optimizer(cls):
         for param_group in self.param_groups:
             params.extend(param_group["params"])
 
-        for param in params:
-            if getattr(param, 'fixed_norm',
-                       False) and param not in self._norms:
-                self._norms[param] = param.norm()
+        if not isinstance(self, NeroPlus):
+            for param in params:
+                if (get_opt_arg(param, 'fixed_norm', False)
+                        and param not in self._norms):
+                    self._norms[param] = param.norm()
 
         if self._gradient_clipping is not None:
             grads = alf.nest.map_structure(lambda p: p.grad, params)
@@ -211,9 +213,12 @@ def wrap_optimizer(cls):
 
         super(NewCls, self).step(closure=closure)
 
-        for param in params:
-            if param.grad is not None and getattr(param, 'fixed_norm', False):
-                param.data.mul_(self._norms[param] / (param.norm() + 1e-30))
+        if not isinstance(self, NeroPlus):
+            for param in params:
+                if param.grad is not None and get_opt_arg(
+                        param, 'fixed_norm', False):
+                    param.data.mul_(
+                        self._norms[param] / (param.norm() + 1e-30))
 
     @common.add_method(NewCls)
     def _parvi_step(self):
@@ -318,3 +323,5 @@ AdamW = alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW))
 SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
 
 AdamTF = alf.configurable('AdamTF')(wrap_optimizer(adam_tf.AdamTF))
+
+NeroPlus = alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus))
