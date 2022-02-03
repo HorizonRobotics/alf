@@ -216,10 +216,12 @@ class BirdEyeObservation(TopDownMultiChannel):
 
     @property
     def observation_spec(self):
+        h, w, c = self.observation_space.shape
+
         return {
             'bev':
                 BoundedTensorSpec(
-                    shape=self.observation_space.shape,
+                    shape=(c, h, w),
                     dtype=torch.float32,
                     minimum=0.0,
                     maximum=1.0),
@@ -246,6 +248,6 @@ class BirdEyeObservation(TopDownMultiChannel):
         self._velocity_history[-1] = vehicle.speed * 1000.0 / 3600.0
 
         return {
-            'img': np.transpose(img, (2, 0, 1)),
+            'bev': np.transpose(img, (2, 0, 1)),
             'vel': self._velocity_history / self._velocity_normalization
         }
