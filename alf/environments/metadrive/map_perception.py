@@ -179,7 +179,8 @@ class MapPolylinePerception(object):
 
         """
         # 1. Filter the polylines to keep only the ones that are within FOV
-        polylines = self._polylines.within_fov(position, heading, self._fov)
+        polylines = self._polylines.transformed_within_fov(
+            position, heading, self._fov)
 
         # 2. Filter the polylines to make the population below the limit
         polylines = polylines.keep_closest_n(self._polyline_limit)
