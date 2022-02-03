@@ -1136,7 +1136,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                            model_output.state)
         if trees.reward is not None:
             # model_output.reward.dtype may be different from initial_inference
-            trees.reward[:, n] = model_output.reward  #.to(trees.reward.dtype)
+            trees.reward[:, n] = model_output.reward.to(trees.reward.dtype)
         if trees.action is not None:
             trees.action[:, n] = model_output.actions
         prior = model_output.action_probs
