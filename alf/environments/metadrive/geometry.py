@@ -274,8 +274,8 @@ class Polyline(NamedTuple):
 
         return Polyline(point=transformed, category=self.category)
 
-    def within_fov(self, position: np.ndarray, heading: float,
-                   fov: FieldOfView) -> Polyline:
+    def transformed_within_fov(self, position: np.ndarray, heading: float,
+                               fov: FieldOfView) -> Polyline:
         """Transform the polylines into the car-body coordinate frame defined by the
         car's position and heading, and filtered out the polylines that are not
         within the field of view.
