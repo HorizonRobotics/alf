@@ -176,7 +176,7 @@ class AgentPerception(object):
             self._history_position.point[i, -1] = agent.position
             i += 1
 
-        # Transforme the position so that we can test whether it is in the field
+        # Transform the position so that we can test whether it is in the field
         # of view of the ego car. The test result is stored in self._visible.
         transformed_position = self._history_position.transformed(
             self._ego.position, self._ego.heading_theta)
