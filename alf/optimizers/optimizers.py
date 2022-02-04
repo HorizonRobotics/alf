@@ -105,6 +105,17 @@ def wrap_optimizer(cls):
                  name=None,
                  **kwargs):
         """
+        Some parameter specific optimization arguments can be set using
+        `opt_args' attributes of ``Parameter``. If it is set, it should be a
+        dictionary of optimization arguments. It can have the following
+        arguments:
+
+            fixed_norm (bool): if True, the Frobenius norm of the parameter will
+                be kept constant.
+            weight_decay (float): If set, a parameter specific weight decay will
+                be used instead of the default weight_decay. This is only
+                supported by ``AdamTF`` optimizer.
+
         Args:
             gradient_clipping (float): If not None, serve as a positive threshold
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
