@@ -27,6 +27,57 @@ except ImportError:
     metadrive = Mock()
 
 
+class FieldOfView(object):
+    """Describe the area with respect to the origin (0, 0) that are visible.
+
+    Under the hood the FieldOfView object is a rectangular bounding box.
+
+    """
+
+    def __init__(self,
+                 front: float = 60.0,
+                 rear: float = 40.0,
+                 lateral: float = 30.0):
+        """Construct a FieldOfView object by specifying the relative metrics. Note that
+        this is in car-body coordinate frame, where (1, 0) points to the car's
+        orientation direction.
+
+        Args:
+
+            front: Defines how far away are visible to the front of the car.
+            rear: Defines how far away are visible to the back of the car.
+            lateral: Defines how far away are visible to the left and right of the car.
+
+        """
+        self._bbox = np.array([[-rear, -lateral], [front, -lateral],
+                               [front, lateral], [-rear, lateral]])
+
+    @property
+    def bbox(self):
+        return self._bbox
+
+    def within(self, points: np.ndarray) -> np.ndarray:
+        """Returns for each of the input points, whether they are within the
+        field of view or not.
+
+        Args:
+
+            points: A n-d tensor with shape of [..., 2] describing a
+                batch of input 2D points.
+
+        Returns:
+            
+            A (n-1)-d tensor with shape ``points.shape[:-1]``. Each
+            cell in the result is True (the point is within the FOV)
+            or False (the point is not within the FOV).
+
+        """
+        assert points.shape[-1] == 2
+        return np.all(
+            np.logical_and(points >= self._bbox[0], points <= self._bbox[2]),
+            axis=-1)
+
+
 class CategoryEncoder(object):
     """A category encoder can 
        
@@ -200,6 +251,67 @@ class Polyline(NamedTuple):
 
         """
         return self.point.ndim == 3
+
+    def transformed(self, center: np.ndarray, orientation: float) -> Polyline:
+        """Returns a transformed (set of) polyline(s) so that the resulting points are
+        in the coordinate frame defined by the pose (center and the orientation).
+
+        Args:
+
+            center: A 2D point denoting the origin of the new coordinate frame.
+            orientation: orientation (x-axis direction) of the new coordinate in radian.
+
+        Returns:
+
+            A NEW Polyline instance where all the polylines within are transformed.
+        """
+        # Construct the 2D rotation matrix.
+        cos = np.cos(orientation)
+        sin = np.sin(orientation)
+        rotation = np.array([[cos, -sin], [sin, cos]])
+
+        transformed = np.matmul(self.point - center, rotation)
+
+        return Polyline(point=transformed, category=self.category)
+
+    def transformed_within_fov(self, position: np.ndarray, heading: float,
+                               fov: FieldOfView) -> Polyline:
+        """Transform the polylines into the car-body coordinate frame defined by the
+        car's position and heading, and filtered out the polylines that are not
+        within the field of view.
+
+        Args:
+
+            position: the position of the car serving as the observer.
+            heading: heading of the car serving as the observer.
+            fov: the field of view of the car defining the area that are visible.
+
+        Returns:
+
+            A NEW Polyline instance where only the polylines within the
+            specified FOV are kept.
+
+        """
+        transformed = self.transformed(position, heading)
+
+        within_bbox = fov.within(transformed.point)  # Shape is [B, S]
+        within_bbox = np.any(within_bbox, axis=1)  # Shape is now [B,]
+
+        return Polyline(
+            point=transformed.point[within_bbox],
+            category=self.category[within_bbox])
+
+    def keep_closest_n(self, n: int) -> Polyline:
+        """Filter the polylines so that only the closest ``n`` polylines are kept. The
+        distances are measured as L2 distance with respect to (0, 0).
+
+        """
+        if self.point.shape[0] > n:
+            distances = np.min(np.linalg.norm(self.point, axis=-1), axis=-1)
+            closest = np.argpartition(distances, n)[:n]
+            return Polyline(
+                point=self.point[closest], category=self.category[closest])
+        return self
 
     def to_feature(
             self,
