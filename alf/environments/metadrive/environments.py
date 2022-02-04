@@ -14,7 +14,6 @@
 
 import numpy as np
 import gym
-import torch
 
 from alf.tensor_specs import TensorSpec
 
