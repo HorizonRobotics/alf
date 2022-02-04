@@ -27,6 +27,8 @@ from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 import alf.data_structures as ds
 import alf.nest as nest
 
+from alf.environments.metadrive import VectorizedTopDownEnv, BirdEyeTopDownEnv
+
 try:
     import metadrive
     import pygame
@@ -51,10 +53,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
     You will need to have metadrive installed as a dependency to use this.
     """
 
-    def __init__(self,
-                 metadrive_env: metadrive.MetaDriveEnv,
-                 env_id: int = 0,
-                 image_channel_first: bool = True):
+    def __init__(self, metadrive_env: metadrive.MetaDriveEnv, env_id: int = 0):
         """Constructor of AlfMetaDriveWrapper.
         Args:
             metadrive_env: the original meta drive environment being wrapped.
@@ -62,25 +61,13 @@ class AlfMetaDriveWrapper(AlfEnvironment):
                 own before being wrapped.
             env_id: the ID of this environment when appear as part of a batched
                 environment.
-            image_channel_first: when set to True, the returned image-based
-                observation will have a shape of (channel, height, width). Note
-                that the raw observation from meta drive environment place
-                channel as the last dimension.
+
         """
 
         self._env = metadrive_env
         self._env_id = env_id
 
-        self._image_channel_first = image_channel_first
-        self._observation_spec = _space_to_spec(self._env.observation_space)
-
-        if self._image_channel_first:
-            w, h, c = self._observation_spec.shape
-            self._observation_spec = BoundedTensorSpec(
-                shape=(c, w, h),
-                dtype=self._observation_spec.dtype,
-                minimum=self._observation_spec.minimum,
-                maximum=self._observation_spec.maximum)
+        self._observation_spec = self._env.observation_spec
 
         self._action_spec = _space_to_spec(self._env.action_space)
         self._env_info_spec = {
@@ -100,9 +87,6 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         # Support video recording
         self.metadata = {'render.modes': ['rgb_array']}
 
-        # Stores some of the internal states for visualization purpose
-        self._current_observation = None
-        self._current_velocity = 0.0
         self._current_action = self._action_spec.zeros().cpu().numpy()
 
     @property
@@ -127,45 +111,8 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         if mode != 'rgb_array':
             return None
 
-        # Draw some internal states when being video-recorded.
-        font = pygame.font.SysFont('Arial.ttf', 20)
-
-        text = font.render(f'Lon: {self._current_action[1]:.3f}', True,
-                           (0, 0, 255))
-        frame.blit(text, (40, 40))
-
-        text = font.render(f'Lat: {self._current_action[0]:.3f}', True,
-                           (0, 0, 255))
-        frame.blit(text, (40, 70))
-
-        # Convert from km/h to m/s
-        speed = self._current_velocity * 1000.0 / 3600.0
-        text = font.render(f'Velocity: {speed:.3f} m/s', True, (52, 82, 235))
-        frame.blit(text, (40, 100))
-
-        # Draw the BEV observation
-        if self._current_observation is not None:
-            bevs = self._current_observation.swapaxes(0, 1) * 255.0
-            bevs = bevs.astype(int)
-
-            observation_surface = pygame.surfarray.make_surface(bevs[:, :, 0])
-            frame.blit(observation_surface, (900, 800))
-
-            observation_surface = pygame.surfarray.make_surface(bevs[:, :, 1])
-            frame.blit(observation_surface, (900, 700))
-
-            observation_surface = pygame.surfarray.make_surface(bevs[:, :, 2])
-            frame.blit(observation_surface, (900, 600))
-
-            observation_surface = pygame.surfarray.make_surface(bevs[:, :, 3])
-            frame.blit(observation_surface, (900, 500))
-
-            observation_surface = pygame.surfarray.make_surface(bevs[:, :, 4])
-            frame.blit(observation_surface, (900, 400))
-
         # Now canvas is a numpy H x W x C image (ndarray)
-        canvas = pygame.surfarray.array3d(frame).swapaxes(0, 1)
-        return canvas
+        return pygame.surfarray.array3d(frame).swapaxes(0, 1)
 
     def _acquire_next_frame(self, action):
         """Returns the TimeStep given the input action.
@@ -179,13 +126,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         """
         observation, reward, done, info = self._env.step(action)
 
-        self._current_observation = observation
-        self._current_velocity = info['velocity']
         self._current_action = action
-
-        if self._image_channel_first:
-            observation = nest.map_structure(lambda x: x.transpose(2, 0, 1),
-                                             observation)
 
         discount = [0.0 if done else 1.0]
 
@@ -246,7 +187,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
 @alf.configurable
 def load(
-        map_name: str = 'RandomMap',
+        env_name: str = 'Vectorized',
         env_id: int = 0,
         traffic_density: float = 0.1,
         start_seed: int = np.random.randint(10000),
@@ -258,9 +199,11 @@ def load(
         success_reward: float = 10.0):
     """Load the MetaDrive environment and wraps it with AlfMetaDriveWrapper.
     Args:
-        map_name: The type of map to be generated. Currently it only supports
-            'RandomMap' where maps are being generated randomly.
-        env_id (int): (optional) ID of the environment.
+
+        env_name: Used to specify whether the environment produces observation
+            in vectorized form or raster (Bird Eye View) form. The user is only
+            allowed to specify "Vectorized" or "BirdEye".
+        env_id: (optional) ID of the environment.
         traffic_density: number of traffic vehicles per 10 meter per lane.
         start_seed: random seed of the first map.
         scenario_num: specifies the range of the scenario seeds together with
@@ -287,33 +230,37 @@ def load(
             high speed is this weight * the speed in km/h.
         success_reward: the amount of reward will be given (at most 1 time per
             episode) when the ego car reaches the destination.
-    """
-    # TODO(breakds): Support other types of map such as predefined towns.
-    assert map_name in ['RandomMap'
-                        ], (f'"{map_name}" is not a valid MetaDrive map')
 
-    if map_name == 'RandomMap':
-        env = metadrive.TopDownMetaDrive(
-            config={
-                # This means that the environment is not required to
-                # render in 3D photo-realistic mode.
-                'use_render': False,
-                'traffic_density': traffic_density,
-                'environment_num': scenario_num,
-                'IDM_agent': False,
-                'random_agent_model': False,
-                'random_lane_width': False,
-                'random_lane_num': True,
-                'map': map_spec,
-                'decision_repeat': decision_repeat,
-                'start_seed': start_seed,
-                # Reward
-                'out_of_road_penalty': crash_penalty,
-                'crash_vehicle_penalty': crash_penalty,
-                'crash_object_penalty': crash_penalty,
-                'speed_reward': speed_reward_weight,
-                'success_reward': success_reward,
-            })
+    """
+    assert env_name in [
+        'BirdEye', 'Vectorized'
+    ], (f'"{env_name}" is not a valid ALF MetaDrive env name')
+
+    env_ctor = {
+        'Vectorized': VectorizedTopDownEnv,
+        'BirdEye': BirdEyeTopDownEnv,
+    }[env_name]
+
+    env = env_ctor(
+        config={
+            # This means that the environment is not required to
+            # render in 3D photo-realistic mode.
+            'use_render': False,
+            'traffic_density': traffic_density,
+            'environment_num': scenario_num,
+            'random_agent_model': False,
+            'random_lane_width': False,
+            'random_lane_num': True,
+            'map': map_spec,
+            'decision_repeat': decision_repeat,
+            'start_seed': start_seed,
+            # Reward
+            'out_of_road_penalty': crash_penalty,
+            'crash_vehicle_penalty': crash_penalty,
+            'crash_object_penalty': crash_penalty,
+            'speed_reward': speed_reward_weight,
+            'success_reward': success_reward,
+        })
 
     return AlfMetaDriveWrapper(env, env_id=env_id)
 

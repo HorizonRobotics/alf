@@ -21,11 +21,11 @@ from alf.environments import suite_metadrive
 alf.config(
     'create_environment',
     env_load_fn=suite_metadrive.load,
-    env_name='RandomMap',
     num_parallel_environments=12)
 
 alf.config(
     'suite_metadrive.load',
     scenario_num=5000,
     crash_penalty=50.0,
-    success_reward=200.0)
+    success_reward=200.0,
+    traffic_density=0.1)
