@@ -89,6 +89,7 @@ class AgentPerception(object):
         # Static Information
         self._num_agents = 0
         self._dimension = None
+        self._agent_to_index = None
 
         # Dynamic Buffers. Please refer to documenttation in reset() to
         # understand them if needed.
@@ -122,6 +123,8 @@ class AgentPerception(object):
         # will be used to denote the hitory window size.
         self._num_agents = len(self._engine.traffic_manager.vehicles) - 1
 
+        self._agent_to_index = {}
+
         # Shape is [A, 2]. The variable self._dimension stores the width and
         # length of each agents, which holds constant throughout the MetaDrive
         # environment's lifetime.
@@ -132,6 +135,7 @@ class AgentPerception(object):
             if agent is self._ego:
                 continue
             self._dimension[i] = (agent.LENGTH, agent.WIDTH)
+            self._agent_to_index[agent] = i
             i += 1
 
         # Shape is [A, H]. Stores whether the agent is visible (Ture for
@@ -167,11 +171,13 @@ class AgentPerception(object):
         self._history_heading[:, :-1] = self._history_heading[:, 1:]
         self._visible[:, :-1] = self._visible[:, 1:]
 
+        alive = np.zeros_like(self._visible[:, -1])
         # Insert the new positions and headings
-        i = 0
         for agent in self._engine.traffic_manager.vehicles:
             if agent is self._ego:
                 continue
+            i = self._agent_to_index[agent]
+            alive[i] = True
             self._history_heading[i, -1] = agent.heading_theta
             self._history_position.point[i, -1] = agent.position
             i += 1
@@ -183,6 +189,7 @@ class AgentPerception(object):
         transformed_heading = self._history_heading - self._ego.heading_theta
         self._visible[:, -1] = self._fov.within(
             transformed_position.point[:, -1])
+        self._visible[~alive, -1] = False
 
         # Shape is [B,]. Denote whether a car is picked to show in the final
         # feature tensor or not. The criterion is that the car has be visible in
