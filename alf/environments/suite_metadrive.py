@@ -87,7 +87,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         # Support video recording
         self.metadata = {'render.modes': ['rgb_array']}
 
-        self._current_action = self._action_spec.zeros().cpu().numpy()
+        self._current_observation = None
 
     @property
     def batched(self):
@@ -106,7 +106,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
     def render(self, mode):
         # The type of frame is pygame.Surface of 1000 x 1000
-        frame = self._env.render(mode='top_down')
+        frame = self._env.render(self._current_observation)
 
         if mode != 'rgb_array':
             return None
@@ -126,7 +126,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         """
         observation, reward, done, info = self._env.step(action)
 
-        self._current_action = action
+        self._current_observation = observation
 
         discount = [0.0 if done else 1.0]
 
