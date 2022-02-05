@@ -34,6 +34,8 @@ class CategoricalProjectionNetwork(Network):
                  input_size,
                  action_spec,
                  logits_init_output_factor=0.1,
+                 weight_opt_args=None,
+                 bias_opt_args=None,
                  name="CategoricalProjectionNetwork"):
         """Creates a categorical projection network that outputs a discrete
         distribution over a number of classes.
@@ -45,6 +47,8 @@ class CategoricalProjectionNetwork(Network):
             input_size (int): the input vector size
             action_spec (BounedTensorSpec): a tensor spec containing the information
                 of the output distribution.
+            weight_opt_args: optimizer arguments for weight
+            bias_opt_args: optimizer arguments for bias
             name (str):
         """
         super(CategoricalProjectionNetwork, self).__init__(
@@ -66,6 +70,8 @@ class CategoricalProjectionNetwork(Network):
         self._projection_layer = layers.FC(
             input_size,
             np.prod(output_shape),
+            weight_opt_args=weight_opt_args,
+            bias_opt_args=bias_opt_args,
             kernel_init_gain=logits_init_output_factor)
 
     def forward(self, inputs, state=()):

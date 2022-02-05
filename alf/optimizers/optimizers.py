@@ -105,6 +105,17 @@ def wrap_optimizer(cls):
                  name=None,
                  **kwargs):
         """
+        Some parameter specific optimization arguments can be set using
+        `opt_args' attributes of ``Parameter``. If it is set, it should be a
+        dictionary of optimization arguments. It can have the following
+        arguments:
+
+            fixed_norm (bool): if True, the Frobenius norm of the parameter will
+                be kept constant.
+            weight_decay (float): If set, a parameter specific weight decay will
+                be used instead of the default weight_decay. This is only
+                supported by ``AdamTF`` optimizer.
+
         Args:
             gradient_clipping (float): If not None, serve as a positive threshold
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
@@ -147,12 +158,18 @@ def wrap_optimizer(cls):
                 kwargs["lr"] = float(lr())
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
+        if gradient_clipping is not None:
+            self.defaults['gradient_clipping'] = gradient_clipping
+            self.defaults['clip_by_global_norm'] = clip_by_global_norm
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
         self._parvi = parvi
+        self._norms = {}  # norm of each parameter
         if parvi is not None:
             assert parvi in ['svgd', 'gfsf'
                              ], ("parvi method %s is not supported." % (parvi))
+            self.defaults['parvi'] = parvi
+            self.defaults['repulsive_weight'] = repulsive_weight
             self._repulsive_weight = repulsive_weight
         self.name = name
         if name is None:
@@ -168,10 +185,16 @@ def wrap_optimizer(cls):
             lr = float(self._lr_scheduler())
             for param_group in self.param_groups:
                 param_group['lr'] = lr
+        params = []
+        for param_group in self.param_groups:
+            params.extend(param_group["params"])
+
+        for param in params:
+            if getattr(param, 'fixed_norm',
+                       False) and param not in self._norms:
+                self._norms[param] = param.norm()
+
         if self._gradient_clipping is not None:
-            params = []
-            for param_group in self.param_groups:
-                params.extend(param_group["params"])
             grads = alf.nest.map_structure(lambda p: p.grad, params)
             if self._clip_by_global_norm:
                 _, global_norm = tensor_utils.clip_by_global_norm(
@@ -187,6 +210,10 @@ def wrap_optimizer(cls):
             self._parvi_step()
 
         super(NewCls, self).step(closure=closure)
+
+        for param in params:
+            if param.grad is not None and getattr(param, 'fixed_norm', False):
+                param.data.mul_(self._norms[param] / (param.norm() + 1e-30))
 
     @common.add_method(NewCls)
     def _parvi_step(self):

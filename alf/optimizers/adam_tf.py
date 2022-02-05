@@ -15,6 +15,7 @@
 import math
 import torch
 from torch.optim import Optimizer
+from .utils import get_opt_arg
 
 
 class AdamTF(Optimizer):
@@ -33,7 +34,9 @@ class AdamTF(Optimizer):
         eps (float, optional): term added to the denominator to improve
             numerical stability which corresponds to the
             epsilon_hat in the Adam paper (default: 1e-7).
-        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0).
+            This argument can be parameter specific, which means that if
+            Parameter.opt_args["weight_decay"] is not None, it will be used instead.
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
             (default: False).
@@ -129,8 +132,10 @@ class AdamTF(Optimizer):
                 bias_correction1 = 1 - beta1**state['step']
                 bias_correction2 = 1 - beta2**state['step']
 
-                if group['weight_decay'] != 0:
-                    grad = grad.add(p, alpha=group['weight_decay'])
+                weight_decay = get_opt_arg(p, 'weight_decay',
+                                           group['weight_decay'])
+                if weight_decay != 0:
+                    grad = grad.add(p, alpha=weight_decay)
 
                 # Decay the first and second moment running average coefficient
                 exp_avg.lerp_(grad, 1 - beta1)
