@@ -46,7 +46,7 @@ class _NormBase(nn.Module):
             self._weight = None
         if use_bias:
             if self._weight is None:
-                # pytorch has a bug which cannot handle the case that weihgt is
+                # pytorch has a bug which cannot handle the case that weight is
                 # None but bias is not. So we have to provide a fixed weight.
                 self._weight = nn.Parameter(
                     torch.Tensor(num_features), requires_grad=False)
