@@ -941,6 +941,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _sample_child(self, trees: _MCTSTrees, parents):
         """Get child by sampling from exploration policy."""
+        if torch.are_deterministic_algorithms_enabled and self._parallel:
+            # when using parallel expansions, there can be duplicated nodes in
+            # parents and will cause the assignment at the end of the function
+            # non-deterministic.
+            num_expansions = trees.visit_count.shape[1]
+            nodes_i = parents[0] * num_expansions + parents[1]
+            nodes_i = nodes_i.unique()
+            parents = (nodes_i // num_expansions, nodes_i % num_expansions)
+
         policy = self._calculate_policy(trees, parents)
         # We need replacement so that the promising children are searched more
         # often and value estimation is unbiased.
@@ -1028,23 +1037,27 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             trees.visit_count[nodes] += count
             trees.value_sum[nodes] += value_sum_delta
         else:
-            # nodes_i = nodes[0] * trees.visit_count.shape[1] + nodes[1]
-            # # using scatter_add_ to handle possible duplicated nodes correctly
-            # trees.visit_count.view(-1).scatter_add_(
-            #     0, nodes_i,
-            #     torch.tensor([count],
-            #                  dtype=trees.visit_count.dtype).expand_as(nodes_i))
-            # trees.value_sum.view(-1).scatter_add_(0, nodes_i, value_sum_delta)
-            # The scatter_add_ above is not deterministic. If deterministic behavior
-            # is needed, replace the above code with the following:
-            depth = depth.squeeze(-1)
-            TB = trees.B.unsqueeze(0).expand(T, -1)
-            for i in range(psims):
-                # [T, B]
-                vld = valid[..., i]
-                nd = (TB[vld], search_paths[..., i][vld])
-                trees.visit_count[nd] += count
-                trees.value_sum[nd] += count * discounted_return[..., i][vld]
+            if not torch.are_deterministic_algorithms_enabled:
+                # This branch is not deterministic because of the possible duplications
+                # in nodes_i.
+                nodes_i = nodes[0] * trees.visit_count.shape[1] + nodes[1]
+                trees.visit_count.view(-1).scatter_add_(
+                    0, nodes_i,
+                    torch.tensor(
+                        [count],
+                        dtype=trees.visit_count.dtype).expand_as(nodes_i))
+                trees.value_sum.view(-1).scatter_add_(0, nodes_i,
+                                                      value_sum_delta)
+            else:
+                depth = depth.squeeze(-1)
+                TB = trees.B.unsqueeze(0).expand(T, -1)
+                for i in range(psims):
+                    # [T, B]
+                    vld = valid[..., i]
+                    nd = (TB[vld], search_paths[..., i][vld])
+                    trees.visit_count[nd] += count
+                    trees.value_sum[
+                        nd] += count * discounted_return[..., i][vld]
 
         trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
