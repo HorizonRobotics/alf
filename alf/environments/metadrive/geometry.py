@@ -211,11 +211,10 @@ class Polyline(NamedTuple):
         # Trying to figure out how many polylines we can get from the target
         # curve, whose length is ``lane.length``. In the usual case when the
         # length is not perfectly divisible by the polyline's length, we will
-        # have to make it up by making the last polyline longer or shorter (in
-        # the shorter case, number of polylines is increased by 1).
-        num_polylines = int(lane.length / polyline_length)
-        if lane.length % polyline_length > 0.5:
-            num_polylines += 1
+        # have to adjust the segment length ``seg_len`` a bit so that we have an
+        # integer number of segments.
+        num_polylines = int(np.ceil(lane.length / polyline_length))
+        seg_len = lane.length / (num_polylines * polyline_size)
 
         result = Polyline(
             point=np.zeros((num_polylines, polyline_size + 1, 2),
@@ -228,14 +227,6 @@ class Polyline(NamedTuple):
         sample_point = lane.position(s, lateral * lane.width_at(s))
         for i in range(num_polylines):
             result.point[i, 0] = sample_point
-
-            # Normally it samples a point every ``segment_resolution`` meters.
-            # However for the last segment since it does not have the standard
-            # length, we will have to improvise.
-            if i == num_polylines - 1:
-                seg_len = (lane.length - s) / polyline_size
-            else:
-                seg_len = segment_resolution
 
             for j in range(polyline_size):
                 s += seg_len
