@@ -402,8 +402,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 exp = alf.data_structures.make_experience(
                     root_inputs, AlgStep(), state=())
                 exp = exp._replace(
-                    step_type=step_type,
-                    observation=observation,
+                    time_step=root_inputs._replace(
+                        step_type=step_type, observation=observation),
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
