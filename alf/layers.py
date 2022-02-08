@@ -2572,14 +2572,20 @@ class TransformerBlock(nn.Module):
             memory (Tensor): The shape is [B, N, d_model]
             query (Tensor): The shape [B, d_model] or [B, M, d_model]. If None,
                 will use memory as query
+
             mask (Tensor|None): A tensor for indicating which slot in ``memory``
-                will be used. Its shape can be [B, N] or [B, M, N]. If the shape
-                is [B, N], mask[b,n] indicates whether to use memory[b, n] for
-                calculating the attention result for ``query[b]``. If the shape is
-                [B, M, N], maks[b, m, n] indicates whether to use meory[b, n] for
-                calculating the attention result for ``query[b, m]``.
+                will NOT be used. Its shape can be [B, N] or [B, M, N]. If the
+                shape is [B, N], mask[b, n] = True indicates NOT using memory[b,
+                n] for calculating the attention result for ``query[b]``, while
+                mask[b, n] = False means using it. If the shape is [B, M, N],
+                maks[b, m, n] = True indicates NOT to use memory[b, n] for
+                calculating the attention result for ``query[b, m]``, while
+                mask[b, m, n] = False indicates using memory[b, n] to attend
+                ``query[b, m]``.
+
         Returns:
             Tensor: the shape is same as query.
+
         """
         need_squeeze = False
         if query is None:
