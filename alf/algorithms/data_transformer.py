@@ -363,7 +363,8 @@ class FrameStacker(DataTransformer):
         for i, field in enumerate(self._fields):
             observation = alf.nest.transform_nest(observation, field,
                                                   partial(_stack_frame, i=i))
-        return experience.update_time_step_field('observation', observation)
+        return experience._replace(
+            time_step=experience.time_step._replace(observation=observation))
 
 
 class SimpleDataTransformer(DataTransformer):
