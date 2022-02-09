@@ -608,6 +608,49 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             for j in range(n):
                 self.assertEqual(y[i, j], x[n - 1 + i - j, :])
 
+    def test_transformer_block_with_mask(self):
+        batch_size = 100
+        max_len = 32
+        actual_len = 20
+        d_model = 64
+
+        x = torch.randn((batch_size, max_len, d_model))
+
+        # We are going to create ``batch_size`` of batches, where each batch has
+        # a sequence of ``max_len``. However, for the purpose of this unit test,
+        # we are going to treat only a random ``actual_len`` elements in the
+        # sequence of each batch as actaul elements, where the rest ``max_len -
+        # actual_len`` elements are masked out.
+        #
+        # The index tuple B is created such that x[B] is a tensor of shape
+        # [batch_size, actual_len, d_model], which picks out the actual elements
+        # and ignores the masked elements.
+        B = (torch.arange(batch_size).unsqueeze(1),
+             torch.argsort(torch.rand(batch_size, max_len),
+                           dim=1)[:, :actual_len])
+
+        # mask[b, i] == True means the i-th element in the sequence of batch b
+        # is MASKED OUT. This is a bit counterintuitive and thus worth noting.
+        mask = torch.ones(batch_size, max_len, dtype=torch.bool)
+        mask[B] = False
+
+        tf = alf.layers.TransformerBlock(
+            d_model=d_model,
+            d_k=d_model,
+            d_v=d_model,
+            d_ff=d_model,
+            num_heads=3,
+            memory_size=max_len,
+            scale_attention_score=False,
+            positional_encoding='none')
+
+        # The following tests that feeding the full x with the mask is
+        # equivalent to feeding the masked x to the transformer block up to
+        # certain numerical error.
+        y_lean = tf(x[B])
+        y = tf(x, mask=mask)
+        self.assertTrue((torch.abs(y_lean - y[B]) < 2e-3).all())
+
     @parameterized.parameters(0, 1, 2, 3)
     def test_transformer_block(self, task_type=2):
         batch_size = 100
@@ -730,6 +773,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         iters = [200, 500, 600, 500][task_type]
         optimizer = torch.optim.Adam(list(model.parameters()), lr=1e-3)
         for i in range(iters):
+            print(i)
             optimizer.zero_grad()
             x, y = get_batch(batch_size)
             pred = model(x).squeeze(-1)
