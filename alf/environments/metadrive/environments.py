@@ -19,6 +19,7 @@ from alf.tensor_specs import TensorSpec
 
 try:
     import metadrive
+    from metadrive.obs.observation_base import ObservationBase
 except ImportError:
     from unittest.mock import Mock
     # create 'metadrive' as a mock to not break python argument type hints
@@ -51,7 +52,20 @@ class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
         })
         return config
 
-    def get_single_observation(self, _=None):
+    def get_single_observation(self, _=None) -> ObservationBase:
+        """Implements the get_single_observation for the base class MetaDriveEnv.
+
+        The base class is calling this function to acquire the sensor (typed
+        ObservationBase) that is used for generating observations. Unlike the
+        name may suggest, it is
+
+        1. actually only called once per environment
+        2. returning a sensor object instead of the actual observation
+
+        The sensor object is then used to produce the actual observation of each
+        frame.
+
+        """
         return VectorizedObservation(self.config["vehicle_config"])
 
     @property
