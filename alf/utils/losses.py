@@ -15,7 +15,7 @@
 
 import torch
 import torch.nn.functional as F
-from typing import Optional
+from typing import Optional, Tuple
 
 import alf
 from alf.utils.math_ops import InvertibleTransform
@@ -126,6 +126,13 @@ class ScalarPredictionLoss(object):
     def initialize_bias(self, bias: torch.Tensor):
         """Initialize the bias of the last FC layer for the prediction properly.
 
+        This function can be passed to FC as bias_initializer.
+
+        For some losses (e.g. OrderedDiscreteRegresion), initializing bias to
+        zero can have very bad initial predictions. So we provide an interface
+        for doing loss specific intializations. Note that the weight of the last
+        FC should be initialized to zero in general.
+
         Args:
             bias: the bias parameter to be initialized.
         """
@@ -171,7 +178,22 @@ class SquareLoss(ScalarPredictionLoss):
         return pred
 
 
-def _get_indexer(shape):
+def _get_indexer(shape: Tuple[int]):
+    """Return a tuple of Tensors which can be used to index a Tensor.
+
+    The purpose of this function can be better illustrated by an example.
+    Suppose ``shape`` is ``[n0, n1, n2]``. Then shape of the three returned
+    Tensors will be: [n0, 1, 1], [n1, 1], [n2]. And each of them has elements
+    ranging from 0 to n0-1, n1-1 and n2-1 respectively. The returned tuple ``B``
+    can be combined with another int64 Tensor ``I`` of shape ``[n0, n1, n2]``
+    to access the element of a Tensor ``X`` with shape``[n0, n1, n2, n]`` as
+    ``Y=X[B + (I,)]`` so that ``Y[i,j,k] = X[i, j, k, I[i,j,k]]``
+
+    Args:
+        shape: The shape of the tensor to be accessed exclusing the last dimension.
+    Returns:
+        the tuple of index for accessing the tensor.
+    """
     ndim = len(shape)
     ones = [1] * ndim
     B = tuple(
@@ -193,7 +215,7 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
             self._inverse_after_mean = True
         self._support = None
 
-    def _calc_support(self, n):
+    def _calc_support(self, n: int):
         if self._support is not None and self._support.shape[0] == n:
             return self._support
         upper_bound = n // 2
@@ -205,6 +227,15 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
         return x
 
     def _calc_bin(self, logits, target):
+        """Discretize ``target`` such that:
+
+        bin1 <= transform(target) - lower_bound < bin2
+        and w2 is the weight assign to bin2. Hence 1 - w1 is the weight assigned
+        to bin1.
+        If inverse_after_mean is False,  w2 is chosen so that the expectation
+        will be equal to target.
+        If inverse_after_mean is True, w2 is simply ``transform(target) - lower_bound - bin1``
+        """
         assert logits.shape[:-1] == target.shape
         n = logits.shape[-1]
         lower_bound = -((n - 1) // 2)

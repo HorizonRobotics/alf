@@ -426,7 +426,7 @@ alf.config(
     num_parallel_sims=2,
     root_dirichlet_alpha=0.3,
     root_exploration_fraction=0.,
-    pb_c_init=0.5,
+    pb_c_init=0.75,
     pb_c_base=19652,
     is_two_player_game=False,
     visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress(
