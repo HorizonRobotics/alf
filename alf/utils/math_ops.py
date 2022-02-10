@@ -381,3 +381,76 @@ def normalize_min_max(x: torch.Tensor):
     min = x.reshape(batch_size, -1).min(dim=1)[0].reshape(shape)
     max = x.reshape(batch_size, -1).max(dim=1)[0].reshape(shape)
     return (x - min) / (max - min + 1e-10)
+
+
+class InvertibleTransform(object):
+    """Base class for InvertibleTransform."""
+
+    def transform(self, x):
+        raise NotImplementedError
+
+    def inverse_transform(self, y):
+        raise NotImplementedError
+
+
+class SqrtLinearTransform(InvertibleTransform):
+    """The transformation used by MuZero.
+
+    .. math::
+
+        y=sign(x) (\sqrt{|x| +1} - 1) + \epsilon x
+
+    Args:
+        eps: :math:`\epsilon` in the above formula
+    """
+
+    def __init__(self, eps: float = 1e-3):
+        self._eps = eps
+
+    def transform(self, x):
+        return x.sign() * ((x.abs() + 1).sqrt() - 1) + self._eps * x
+
+    def inverse_transform(self, y):
+        a = (1 + 4 * self._eps * (y.abs() + (1 + self._eps))).sqrt() - 1
+        return y.sign() * ((a / (2 * self._eps))**2 - 1)
+
+
+class Sqrt1pTransform(InvertibleTransform):
+    """The transformation used by MuZero.
+
+    .. math::
+
+        y=sign(x) (\sqrt{|x| +1} - 1)
+
+    """
+
+    def transform(self, x):
+        return x.sign() * ((x.abs() + 1).sqrt() - 1)
+
+    def inverse_transform(self, y):
+        # y.sign() * ((y.abs() + 1) ** 2 - 1)
+        # = y.sign() * (y^2 + 2|y| + 1 - 1)
+        # = y.sign() * (y^2 + 2|y|)
+        # = |y|y + 2y = (|y| + 2) y
+        return (y.abs() + 2) * y
+
+
+class Log1pTransform(InvertibleTransform):
+    r"""Implementing the following transformation:
+
+    .. math::
+
+        y=\alpha sign(x)\log(1+|x|)
+
+    Args:
+        alpha: :math:`\alpha` in the above formula
+    """
+
+    def __init__(self, alpha: float = 20):
+        self._alpha = alpha
+
+    def transform(self, x):
+        return self._alpha * x.sign() * torch.log1p(x.abs())
+
+    def inverse_transform(self, y):
+        return y.sign() * ((y / self._alpha).abs().exp() - 1)

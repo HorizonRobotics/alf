@@ -325,6 +325,7 @@ class FC(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0,
+                 bias_initializer=None,
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
         """A fully connected layer that's also responsible for activation and
@@ -332,6 +333,7 @@ class FC(nn.Module):
         on the activation following the linear layer. Suggest using this wrapper
         module instead of ``nn.Linear`` if you really care about weight std after
         init.
+
         Args:
             input_size (int): input size
             output_size (int): output size
@@ -347,7 +349,9 @@ class FC(nn.Module):
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
-            bias_init_value (float): a constant
+            bias_init_value (float): a constant for the initial bias value.
+                This is ignored if ``bias_initializer`` is provided.
+            bias_initializer (Callable):  initializer for the bias parameter.
             weight_opt_args: optimizer arguments for weight
             bias_opt_args: optimizer arguments for bias
         """
@@ -372,6 +376,7 @@ class FC(nn.Module):
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
+        self._bias_initializer = bias_initializer
         self._use_bias = use_bias
         self._use_bn = use_bn
         self._use_ln = use_ln
@@ -408,7 +413,10 @@ class FC(nn.Module):
             self._kernel_initializer(self._weight.data)
 
         if self._use_bias:
-            nn.init.constant_(self._bias.data, self._bias_init_value)
+            if self._bias_initializer is not None:
+                self._bias_initializer(self._bias.data)
+            else:
+                nn.init.constant_(self._bias.data, self._bias_init_value)
 
         if self._use_ln:
             self._ln.reset_parameters()
@@ -633,6 +641,7 @@ class ParallelFC(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.,
+                 bias_initializer=None,
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
         """
@@ -655,7 +664,9 @@ class ParallelFC(nn.Module):
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
-            bias_init_value (float): a constant
+            bias_init_value (float): a constant for the initial bias value.
+                This is ignored if ``bias_initializer`` is provided.
+            bias_initializer (Callable):  initializer for the bias parameter.
             weight_opt_args: optimizer arguments for weight
             bias_opt_args: optimizer arguments for bias
         """
@@ -673,6 +684,7 @@ class ParallelFC(nn.Module):
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
+        self._bias_initializer = bias_initializer
         self._use_bias = use_bias
         self._use_bn = use_bn
         self._use_ln = use_ln
@@ -701,7 +713,11 @@ class ParallelFC(nn.Module):
                 self._kernel_initializer(self._weight.data[i])
 
         if self._use_bias:
-            nn.init.constant_(self._bias.data, self._bias_init_value)
+            if self._bias_initializer is not None:
+                for i in range(self._n):
+                    self._bias_initializer(self._bias.data[i])
+            else:
+                nn.init.constant_(self._bias.data, self._bias_init_value)
 
         if self._use_ln:
             self._ln.reset_parameters()
