@@ -130,7 +130,7 @@ class MapPolylinePerception(object):
                             continue
                         category = self._category_encoder.encode_line_type(
                             lane.line_types[side])
-                        offset = -0.5 if side == 0 else 0.5
+                        offset = side - 0.5
                         polylines.append(
                             Polyline.from_lane(lane, offset, category,
                                                self._segment_resolution,
