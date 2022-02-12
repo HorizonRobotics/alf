@@ -19,12 +19,22 @@ import gin
 import inspect
 from inspect import Parameter
 import os
+import pprint
 
 __all__ = [
-    'config', 'config1', 'configurable', 'define_config',
-    'get_all_config_names', 'get_config_value', 'get_handled_pre_configs',
-    'get_inoperative_configs', 'get_operative_configs', 'pre_config',
-    'reset_configs', 'validate_pre_configs'
+    'config',
+    'config1',
+    'configurable',
+    'define_config',
+    'get_all_config_names',
+    'get_config_value',
+    'get_handled_pre_configs',
+    'get_inoperative_configs',
+    'get_operative_configs',
+    'pre_config',
+    'reset_configs',
+    'validate_pre_configs',
+    'repr_wrapper',
 ]
 
 
@@ -594,6 +604,76 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
             orig_name, whitelist=whitelist, blacklist=blacklist)(fn_or_cls)
     else:
         return fn_or_cls
+
+
+def repr_wrapper(cls):
+    """A wrapper for automatically generating readable repr for an object.
+
+    The presentation shows the arguments used to construct of object.
+    It does not include the default arguments, nor the class members.
+
+    To use it, simply use it to decorate an class.
+
+    Example:
+
+    .. code-block:: python
+
+        @repr_wrapper
+        class MyClass(object):
+            def __init__(self, a, b, c=100, d=200):
+                pass
+
+        a = MyClass(1, 2)
+        assert repr(a) == "MyClass(1, 2)"
+        a = MyClass(3, 5, d=300)
+        assert repr(a) == "MyClass(1, 2, d=300)"
+
+    """
+    assert inspect.isclass(cls)
+    signature = inspect.signature(cls)
+    construction_fn = _find_class_construction_fn(cls)
+    has_self = construction_fn.__name__ != '__new__'
+    fn = _ensure_wrappability(construction_fn)
+    defaults = {}
+    for name, param in signature.parameters.items():
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL,
+                          inspect.Parameter.VAR_KEYWORD):
+            continue
+        if param.default is not inspect.Parameter.empty:
+            defaults[name] = param.default
+
+    setattr(cls, '__repr__', lambda self: self._repr_wrapper_str_)
+
+    @functools.wraps(fn)
+    def _wrapper(*args, **kwargs):
+        ret = fn(*args, **kwargs)
+        if has_self:
+            self = args[0]
+        else:
+            self = ret
+
+        s = []
+        for val in args[has_self:]:
+            s.append(pprint.pformat(val))
+        for k, val in kwargs.items():
+            if k not in defaults or val != defaults[k]:
+                s.append(k + '=' + pprint.pformat(val))
+        l = sum(map(len, s))
+        multiline = l > 80 or any(map(lambda x: '\n' in x, s))
+        if multiline:
+            s = ['  ' + x for x in s]
+            self._repr_wrapper_str_ = '%s(\n%s)' % (cls.__qualname__,
+                                                    "\n".join(s))
+        else:
+            self._repr_wrapper_str_ = '%s(%s)' % (cls.__qualname__,
+                                                  ", ".join(s))
+        return ret
+
+    decorated_fn = _wrapper
+    if construction_fn.__name__ == '__new__':
+        decorated_fn = staticmethod(decorated_fn)
+    setattr(cls, construction_fn.__name__, decorated_fn)
+    return cls
 
 
 def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
