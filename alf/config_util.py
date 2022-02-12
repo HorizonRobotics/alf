@@ -609,6 +609,9 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
 def repr_wrapper(cls):
     """A wrapper for automatically generating readable repr for an object.
 
+    The presentation shows the arguments used to construct of object.
+    It does not include the default arguments, nor the class members.
+
     To use it, simply use it to decorate an class.
 
     Example:
