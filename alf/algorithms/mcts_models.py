@@ -147,11 +147,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             train_game_over_function (bool): whether to predict game over
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
-            predict_reward_sum (bool): If True, the loss for reward is the mean
-                square error between the sum of predicted reward over unroll
-                steps and the sum of actual reward over unroll steps. If False,
-                the loss for reward is the mean square error between the predicted
-                reward and the actual reward.
+            predict_reward_sum (bool): If True, the loss for reward is between the
+                predicted reward and the sum of actual  reward over unroll steps.
+                If False, the loss for reward is the mean square error between the
+                predicted reward and the actual reward.
             value_loss_weight (float): the weight for value prediction loss.
             reward_loss_weight (float): the weight for reward prediction loss
             policy_loss_weight (float): the weight for policy prediction loss
