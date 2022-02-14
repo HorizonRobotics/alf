@@ -706,14 +706,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         nodes = trees.root_indices
         i = ()
         if self._parallel:
-            B = B.unsqueeze(-1)
-            nodes = trees.root_indices.unsqueeze(-1).expand(-1, psims)
             # If the p-th search path of the b-th tree is at node n, it will be
             # extended by the child indicated by best_child_index[b, n, i[p]].
-            # We only need to caculate i if not search_with_exploration_policy.
-            # See the doc string of MCTSAlgorithm for more detail.
             if self._search_with_exploration_policy:
                 i = (torch.arange(psims), )
+            B = B.unsqueeze(-1)
+            nodes = trees.root_indices.unsqueeze(-1).expand(-1, psims)
             if self._is_two_player_game:
                 to_plays = to_plays.unsqueeze(-1).expand_as(nodes)
         # [B] or [B, psims]
