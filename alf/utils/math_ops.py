@@ -393,6 +393,7 @@ class InvertibleTransform(object):
         raise NotImplementedError
 
 
+@alf.repr_wrapper
 class SqrtLinearTransform(InvertibleTransform):
     """The transformation used by MuZero.
 
@@ -415,6 +416,7 @@ class SqrtLinearTransform(InvertibleTransform):
         return y.sign() * ((a / (2 * self._eps))**2 - 1)
 
 
+@alf.repr_wrapper
 class Sqrt1pTransform(InvertibleTransform):
     """The transformation used by MuZero.
 
@@ -435,6 +437,7 @@ class Sqrt1pTransform(InvertibleTransform):
         return (y.abs() + 2) * y
 
 
+@alf.repr_wrapper
 class Log1pTransform(InvertibleTransform):
     r"""Implementing the following transformation:
 
