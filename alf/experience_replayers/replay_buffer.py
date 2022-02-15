@@ -102,12 +102,19 @@ class ReplayBuffer(RingBuffer):
             record_episodic_return (bool): If True, computes and stores episodic return for
                 every step in the episode upon episode completion.  The field
                 ``discounted_return'' stores the information.  When episodes are
-                incomplete, all steps get the ``default_return''.  Assumes
-                ``keep_episodic_info'' to be True.
+                incomplete, all steps get the ``default_return''.
+                NOTE:
+                1) Reward transformations like ``RewardClipping.minmax=(-1, 1)'' set in
+                    ``TrainerConfig.data_transformer_ctor'' have to be set manually for
+                    the ReplayBuffer to be consistent:
+                    ``ReplayBuffer.reward_clip=(-1,1)''.
+                2) Discount ``gamma'' needs to be set consistent with ``TDLoss.gamma''.
+                3) Assumes ``keep_episodic_info'' to be True.
             default_return (float): The default values of ``discounted_return''
                 when the episode has not ended.  It should be a very small value for
                 value target lower bounding.
             gamma (float): The value of discount used to compute ``discounted_return''.
+                Usually consistent with ``TDLoss.gamma''.
             reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
