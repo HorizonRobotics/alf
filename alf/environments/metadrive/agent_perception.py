@@ -91,7 +91,7 @@ class AgentPerception(object):
         self._dimension = None
         self._agent_to_index = None
 
-        # Dynamic Buffers. Please refer to documenttation in reset() to
+        # Dynamic Buffers. Please refer to documentation in reset() to
         # understand them if needed.
         self._visible = None  # 1 = visble, 0 = invisible
         self._history_position = None
