@@ -26,8 +26,8 @@ from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
 from typing import List
 
-TimestepItem = namedtuple('TimestepItem',
-                          ['step_type', 'o', 'reward', 'env_id', 'x'])
+TimestepItem = namedtuple(
+    'TimestepItem', ['step_type', 'o', 'reward', 'env_id', 'discount', 'x'])
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
@@ -36,12 +36,15 @@ def get_exp_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
     x = torch.as_tensor(x, dtype=torch.float32, device="cpu")
     t = torch.as_tensor(t, dtype=torch.int32, device="cpu")
-    ox = (x * torch.arange(
-        batch_size, dtype=torch.float32, requires_grad=True,
-        device="cpu").unsqueeze(1) * torch.arange(
-            dim, dtype=torch.float32, requires_grad=True,
-            device="cpu").unsqueeze(0))
-    a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+    if batch_size > 1 and x.ndim > 0 and batch_size == x.shape[0]:
+        a = x
+    else:
+        a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+    if batch_size > 1 and t.ndim > 0 and batch_size == t.shape[0]:
+        pass
+    else:
+        t = t * torch.ones(batch_size, dtype=torch.int32, device="cpu")
+    ox = a.unsqueeze(1).clone().requires_grad_(True)
     g = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
     # reward function adapted from ReplayBuffer: default_reward_fn
     r = torch.where(
@@ -58,6 +61,10 @@ def get_exp_batch(env_ids, dim, t, x):
                 "a": a,
                 "g": g
             }),
+            discount=torch.tensor(
+                t != alf.data_structures.StepType.LAST,
+                dtype=torch.float32,
+                device="cpu"),
             reward=r))
 
 
@@ -81,6 +88,7 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
                     "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                     "g": alf.TensorSpec(shape=(), dtype=torch.float32)
                 }),
+                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
                 reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
     def test_replay_with_hindsight_relabel(self):
@@ -127,10 +135,10 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         ]
         # insert data that will be overwritten later
         for t in range(8):
-            batch = get_batch([0, 1],
-                              self.dim,
-                              t=[steps[0][t], steps[1][t]],
-                              x=[0.1 * t, 0.1 * t + 1])
+            batch = get_exp_batch([0, 1],
+                                  self.dim,
+                                  t=[steps[0][t], steps[1][t]],
+                                  x=[0.1 * t, 0.1 * t + 1])
             replay_buffer.add_batch(batch, batch.env_id)
         # reward tensor:
         # [[ 0., -1., -1., -1., -1., -1., -1., -1.],

@@ -323,10 +323,12 @@ class ReplayBuffer(RingBuffer):
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
                 epi_last, = torch.where(step_types == ds.StepType.LAST)
-                # Backfill episodic returns for episodes which ended
-                self._compute_store_episodic_return(env_ids[epi_last])
-                # Populate default values for steps which did not end, and also LAST steps
-                self._set_default_return(env_ids)
+                if self._keep_episodic_info and self._record_episodic_return:
+                    # Backfill episodic returns for episodes which ended
+                    self._compute_store_episodic_return(
+                        env_ids[epi_last], batch.discount[epi_last])
+                    # Populate default values for steps which did not end, and also LAST steps
+                    self._set_default_return(env_ids)
 
     @atomic
     @torch.no_grad()
