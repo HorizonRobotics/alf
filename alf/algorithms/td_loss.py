@@ -146,6 +146,16 @@ class TDLoss(nn.Module):
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
 
+        disc_ret = info.batch_info.discounted_return
+        if disc_ret != ():
+            with alf.summary.scope(self._name):
+                episode_ended = disc_ret > self._default_return
+                alf.summary.scalar("episodic_discounted_return_all",
+                                   torch.mean(disc_ret[episode_ended]))
+                alf.summary.scalar(
+                    "value_episode_ended_all",
+                    torch.mean(value[:-1][:, episode_ended[0, :]]))
+
         return returns
 
     def forward(self, info: namedtuple, value: torch.Tensor,

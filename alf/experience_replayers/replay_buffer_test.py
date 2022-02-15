@@ -92,6 +92,7 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             num_environments=2,
             max_length=self.max_length,
             keep_episodic_info=True,
+            record_episodic_return=True,
             with_replacement=True)
 
         transform = HindsightExperienceTransformer(
@@ -125,13 +126,35 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             ]
         ]
         # insert data that will be overwritten later
-        for b, t in list(itertools.product(range(2), range(8))):
-            batch = get_exp_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
+        for t in range(8):
+            batch = get_batch([0, 1],
+                              self.dim,
+                              t=[steps[0][t], steps[1][t]],
+                              x=[0.1 * t, 0.1 * t + 1])
             replay_buffer.add_batch(batch, batch.env_id)
+        # reward tensor:
+        # [[ 0., -1., -1., -1., -1., -1., -1., -1.],
+        #  [-1., -1., -1., -1., -1., -1., -1., -1.]]
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([[
+                    -1.99, -1., -1000., -2.9701, -1.99, -1., -1000., -1000.
+                ], [-1., -1000., -2.9701, -1.99, -1., -1000., -1000.,
+                    -1000.]]), replay_buffer._episodic_discounted_return))
         # insert data
         for b, t in list(itertools.product(range(2), range(9))):
             batch = get_exp_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
             replay_buffer.add_batch(batch, batch.env_id)
+        # reward tensor:
+        # [[-1., -1., -1., -1., -1., -1., -1., -1.],
+        #  [-1., -1., -1., -1., -1., -1., -1., -1.]]
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([[
+                    -1000., -1., -1000., -2.9701, -1.99, -1., -1000., -1000.
+                ], [
+                    -1000., -1000., -2.9701, -1.99, -1., -1000., -1000., -1000.
+                ]]), replay_buffer._episodic_discounted_return))
 
         # Test padding
         idx = torch.tensor([[7, 0, 0, 6, 3, 3, 3, 0], [6, 0, 5, 2, 2, 2, 0,
