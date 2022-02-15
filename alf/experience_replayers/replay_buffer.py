@@ -329,11 +329,12 @@ class ReplayBuffer(RingBuffer):
                 self._indexed_pos[(env_ids[epi_first],
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
-                epi_last, = torch.where(step_types == ds.StepType.LAST)
                 if self._keep_episodic_info and self._record_episodic_return:
+                    epi_last, = torch.where(step_types == ds.StepType.LAST)
                     # Backfill episodic returns for episodes which ended
-                    self._compute_store_episodic_return(
-                        env_ids[epi_last], batch.discount[epi_last])
+                    if epi_last.nelement() > 0:
+                        self._compute_store_episodic_return(
+                            env_ids[epi_last], batch.discount[epi_last])
                     # Populate default values for steps which did not end, and also LAST steps
                     self._set_default_return(env_ids)
 
@@ -402,6 +403,11 @@ class ReplayBuffer(RingBuffer):
                     "replayer/" + self._name + ".original_reward_mean",
                     torch.mean(result.reward[:-1]))
 
+        if self._keep_episodic_info and self._record_episodic_return:
+            # info elements have shape [B], and needs to be device-converted.
+            # Taking first timestep's return, to lowerbound training value.
+            disc_ret = self._episodic_discounted_return[(env_ids, idx[:, 0])]
+            info = info._replace(discounted_return=disc_ret)
         if alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=self)

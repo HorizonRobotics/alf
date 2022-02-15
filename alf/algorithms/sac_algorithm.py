@@ -56,7 +56,7 @@ SacActorInfo = namedtuple(
 SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi"
+        "actor", "critic", "alpha", "log_pi", "batch_info"
     ],
     default_value=())
 
@@ -781,7 +781,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor=actor_loss,
             critic=critic_info,
             alpha=alpha_loss,
-            log_pi=log_pi)
+            log_pi=log_pi,
+            batch_info=rollout_info.batch_info)
         return AlgStep(action, state, info)
 
     def after_update(self, root_inputs, info: SacInfo):
@@ -882,6 +883,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
             loss=critic_loss,
             priority=priority,
             extra=critic_loss / float(self._num_critic_replicas))
+
+    def preprocess_experience(self, exp, rollout_info, batch_info):
+        """Add batch_info into rollout_info.
+        """
+        batch_info = batch_info._replace(
+            replay_buffer=(), importance_weights=())
+        batch_info = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
+        return exp, rollout_info._replace(batch_info=batch_info)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks']
