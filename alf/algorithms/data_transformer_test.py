@@ -236,6 +236,7 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                     "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                     "g": alf.TensorSpec(shape=(), dtype=torch.float32)
                 }),
+                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
                 reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
         replay_buffer = ReplayBuffer(
