@@ -635,6 +635,14 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
 
+    def test_sac_pendulum_latent_actor(self):
+        def _test_func(returns, lengths):
+            self.assertGreater(returns[-1], -200)
+
+        self._test(
+            conf_file='sac_pendulum_latent_actor_conf.py',
+            test_perf_func=_test_func)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_fishswim(self):
         self._test(

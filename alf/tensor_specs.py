@@ -15,6 +15,7 @@
 
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
+from typing import Tuple
 
 import numpy as np
 
@@ -219,6 +220,21 @@ class TensorSpec(object):
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
         return torch.randn(*shape, dtype=self._dtype)
+
+    def rand(self, outer_dims: Tuple[int] = None):
+        """Create a tensor filled with random numbers in :math:`[0,1]`.
+
+        Args:
+            outer_dims: an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            torch.Tensor: a tensor of ``self._dtype``.
+        """
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return torch.rand(*shape, dtype=self._dtype)
 
 
 @alf.configurable
