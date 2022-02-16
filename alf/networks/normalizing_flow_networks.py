@@ -179,7 +179,7 @@ class realNVPNetwork(NormalizingFlowNetwork):
 
     Our implementation also allows specifying other binary masks. We additionally
     support a random binary mask and an evenly distributed mask. The reason is that
-    we can always re-arange the 0s and 1s and swap the rows of the Jacobian to
+    we can always re-arrange the 0s and 1s and swap the rows of the Jacobian to
     make it triangular. Because we always take the absolute of Jacobian determinant,
     row swapping will not change the result of ``log_abs_det_jacobian()``.
 

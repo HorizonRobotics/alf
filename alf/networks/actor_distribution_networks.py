@@ -309,6 +309,8 @@ class LatentActorDistributionNetwork(Network):
                  Callable = UnitNormalActorDistributionNetwork,
                  normalizing_flow_network_ctor: Callable = realNVPNetwork,
                  conditional_flow: bool = True,
+                 scale_distribution=False,
+                 dist_squashing_transform=alf.utils.dist_utils.StableTanh(),
                  name: str = "LatentActorDistributionNetwork"):
         """
         Args:
@@ -324,6 +326,13 @@ class LatentActorDistributionNetwork(Network):
             conditional_flow: whether to make the normalizing flow network use
                 inputs to condition its transformations. Only valid for normalizing
                 flow nets that support this option.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                ``action_spec``. Note that this is different from ``mean_transform``
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. Default to
+                ``dist_utils.StableTanh()``
             name: name of the network
         """
         super().__init__(input_tensor_spec, name=name)
@@ -334,6 +343,19 @@ class LatentActorDistributionNetwork(Network):
             conditional_input_tensor_spec=(input_tensor_spec
                                            if conditional_flow else None))
         self._conditional_flow = conditional_flow
+        self._scale_distribution = scale_distribution
+
+        if scale_distribution:
+            assert isinstance(action_spec, BoundedTensorSpec), \
+                ("When squashing the mean or scaling the distribution, bounds "
+                 + "are required for the action spec!")
+            means, magnitudes = alf.utils.spec_utils.spec_means_and_magnitudes(
+                action_spec)
+            self._squash_transforms = [
+                dist_squashing_transform,
+                alf.utils.dist_utils.AffineTransform(
+                    loc=means, scale=magnitudes)
+            ]
 
     def forward(self, inputs, state=()):
         distribution, state = self._prior_actor_network(inputs, state)
@@ -342,4 +364,7 @@ class LatentActorDistributionNetwork(Network):
         nf_transform = self._nf_network.make_invertible_transform(inputs)
         transformed_dist = td.TransformedDistribution(distribution,
                                                       [nf_transform])
+        if self._scale_distribution:
+            transformed_dist = td.TransformedDistribution(
+                transformed_dist, self._squash_transforms)
         return transformed_dist, state

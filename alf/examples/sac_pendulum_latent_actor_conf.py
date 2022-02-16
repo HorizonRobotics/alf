@@ -34,7 +34,8 @@ alf.config(
         LatentActorDistributionNetwork,
         prior_actor_distribution_network_ctor=
         UnitNormalActorDistributionNetwork,
-        normalizing_flow_network_ctor=realNVPNetwork),
+        normalizing_flow_network_ctor=realNVPNetwork,
+        scale_distribution=True),
     target_update_tau=0.005)
 
 alf.config(
