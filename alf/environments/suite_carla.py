@@ -671,7 +671,7 @@ class Player(object):
         if updated_speed_limit is not None:
             self._speed_limit = updated_speed_limit
 
-    def _get_actor_speed(self):
+    def _get_agent_speed(self):
         v = self._actor.get_velocity()
         speed = np.linalg.norm(np.array([v.x, v.y, v.z], dtype=np.float))
         return speed
@@ -686,7 +686,7 @@ class Player(object):
                 - the amount of the actor's speed over the speed limit otherwise
         """
 
-        speed = self._get_actor_speed()
+        speed = self._get_agent_speed()
 
         if self._speed_limit is None or speed < self._speed_limit:
             return 0.
@@ -753,14 +753,27 @@ class Player(object):
         # -------- Infraction 2: running red light --------
         red_light_id = self._alf_world.is_running_red_light(self._actor)
         if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
-            logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
-                                                          current_frame))
+            speed = self._get_agent_speed()
+            logging.info("actor=%d frame=%d RED_LIGHT speed %2.1f" %
+                         (self._actor.id, current_frame, speed))
             reward_vector[Player.REWARD_RED_LIGHT] = 1.
             info['red_light'] = np.float32(1.0)
+            if self._terminate_upon_infraction != "redlight":
+                reward -= min(
+                    self._max_red_light_penalty,
+                    Player.PENALTY_RATE_RED_LIGHT * max(
+                        0., self._episode_reward))
 
-            reward -= min(
-                self._max_red_light_penalty,
-                Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
+            elif self._terminate_upon_infraction != "redlight":
+                # to encourage stop at red-light, can set max_red_light_penalty
+                # to a large value (e.g. 1000) and set terminate_upon_infraction
+                # to "redlight"
+                reward -= self._max_red_light_penalty
+                # reward proportional to 1 - speed / capped_speed for encourating
+                # stopping at redlight
+                red_light_reward = (
+                    1 - min(speed / 5, 1)) * 0.5 * self._max_red_light_penalty
+                reward += red_light_reward
 
         self._prev_violated_red_light_id = red_light_id
 
