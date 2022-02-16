@@ -33,7 +33,8 @@ class SimpleNavigationAgent(BasicAgent):
     TODO: Implement more advanced control logics.
     """
 
-    def __init__(self, vehicle, navigation_sensor, alf_world, target_speed=10):
+    def __init__(self, vehicle, navigation_sensor, alf_world,
+                 target_speed=5.6):
         """
         Args:
             vehicle (carla.Actor): the vehicle actor to apply the control onto
