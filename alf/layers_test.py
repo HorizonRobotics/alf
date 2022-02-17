@@ -388,7 +388,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(
         dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='bn'),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_norm='bn'),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_norm='ln'),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
     )
@@ -399,8 +399,8 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                       use_bias=True,
                       use_norm=None):
         """Note that ``batch_size=1`` is not supported by nn.BatchNorm1d. 
-        ParamFC supports using BatchNorm bias instead of bias, but alf.nn.FC
-        does not. """
+        Also, ParamFC allows using BatchNorm bias instead of bias, 
+        but alf.nn.FC does not. """
         input_size = 4
         output_size = 5
         if use_norm == 'bn':
