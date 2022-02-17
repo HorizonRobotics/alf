@@ -763,8 +763,7 @@ class Player(object):
                     self._max_red_light_penalty,
                     Player.PENALTY_RATE_RED_LIGHT * max(
                         0., self._episode_reward))
-
-            elif self._terminate_upon_infraction != "redlight":
+            else:
                 # to encourage stop at red-light, can set max_red_light_penalty
                 # to a large value (e.g. 1000) and set terminate_upon_infraction
                 # to "redlight"
