@@ -211,8 +211,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         is the vector consisting of the first k componnets of z. For standard
         Gaussian input z, the output :math:`f(z)` follows a Gaussian distribution 
         :math:`N(b, \tilde{W}\tilde{W}^T + A)`, 
-        where :math:`\tilde{W}=\begin{bmatrix} W_1+I_k \\ W_2 \end{bmatrix}`
-        and :math:`A=\begin{bmatrix} 0_k & \\ & I_{d-k} \end{bmatrix}`,
+        where :math:`\tilde{W}=\begin{bmatrix} W_1+\lambda I_k \\ W_2 \end{bmatrix}`
+        and :math:`A=\begin{bmatrix} 0_k & \\ & \lambda^2 I_{d-k} \end{bmatrix}`,
         :math:`W_1` is the submatrix consisting of the first k rows of W and
         :math:`W_2` is the submatrix consisting of the last d-k rows of W.
         :math:`N(b, \tilde{W}\tilde{W}^T + A)` should match the posterior
