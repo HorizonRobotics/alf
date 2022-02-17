@@ -415,6 +415,16 @@ class Agent(RLAlgorithm):
 
         exp, rl_info = self._rl_algorithm.preprocess_experience(
             exp, rollout_info.rl, batch_info)
+
+        # Add batch_info into rollout_info.
+        if hasattr(rl_info, "batch_info"):
+            batch_info = batch_info._replace(
+                replay_buffer=(), importance_weights=())
+            batch_info = alf.nest.map_structure(
+                lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]),
+                batch_info)
+            rl_info = rl_info._replace(batch_info=batch_info)
+
         return exp, rollout_info._replace(rl=rl_info)
 
     def summarize_rollout(self, experience):

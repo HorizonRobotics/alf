@@ -360,15 +360,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
-    def preprocess_experience(self, exp, rollout_info, batch_info):
-        """Add batch_info into rollout_info.
-        """
-        batch_info = batch_info._replace(
-            replay_buffer=(), importance_weights=())
-        batch_info = alf.nest.map_structure(
-            lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
-        return exp, rollout_info._replace(batch_info=batch_info)
-
     def after_update(self, root_inputs, info: DdpgInfo):
         self._update_target()
 

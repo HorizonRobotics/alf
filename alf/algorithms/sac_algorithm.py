@@ -884,14 +884,5 @@ class SacAlgorithm(OffPolicyAlgorithm):
             priority=priority,
             extra=critic_loss / float(self._num_critic_replicas))
 
-    def preprocess_experience(self, exp, rollout_info, batch_info):
-        """Add batch_info into rollout_info.
-        """
-        batch_info = batch_info._replace(
-            replay_buffer=(), importance_weights=())
-        batch_info = alf.nest.map_structure(
-            lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
-        return exp, rollout_info._replace(batch_info=batch_info)
-
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks']
