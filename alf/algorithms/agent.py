@@ -416,8 +416,9 @@ class Agent(RLAlgorithm):
         exp, rl_info = self._rl_algorithm.preprocess_experience(
             exp, rollout_info.rl, batch_info)
 
-        # Add batch_info into rollout_info.
-        if hasattr(rl_info, "batch_info"):
+        # Add batch_info into rollout_info to populate discounted_return.
+        if hasattr(rl_info,
+                   "batch_info") and batch_info.discounted_return != ():
             batch_info = batch_info._replace(
                 replay_buffer=(), importance_weights=())
             batch_info = alf.nest.map_structure(
