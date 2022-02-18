@@ -1389,22 +1389,6 @@ class Algorithm(AlgorithmInterface):
             experience, self.experience_spec, batch_info, mini_batch_length,
             self._replay_buffer, whole_replay_buffer_training)
 
-        if self._processed_experience_spec is None:
-            self._processed_experience_spec = dist_utils.extract_spec(
-                experience, from_dim=2)
-
-        # TODO(breakds): Create a cleaner and more readable function to prepare
-        # experience that better handles the similar and distinct part of
-        # "whole_replay_buffer_training or not", including correctly set
-        #
-        # 1. shape of experience
-        # 2. mini_batch_length
-        # 3. mini_batch_size
-        # 4. batch_info
-        #
-        # So that we do not have to explicitly (and more importantly implicitly)
-        # condition on whole_replay_buffer_training in a lot of isolated places.
-
         if whole_replay_buffer_training:
             # Special treatment for whole_replay_buffer_training.
 
@@ -1503,6 +1487,115 @@ class Algorithm(AlgorithmInterface):
 
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
+
+    @common.mark_replay
+    def _prepare_experience_data(self,
+                                 experience,
+                                 experience_spec,
+                                 batch_info,
+                                 mini_batch_length,
+                                 exp_replayer,
+                                 whole_replay_buffer_training=False):
+        # Apply transformation and enrichment to the experience.
+        experience = dist_utils.params_to_distributions(
+            experience, self.experience_spec)
+        experience = alf.data_structures.add_batch_info(
+            experience, batch_info, self._replay_buffer)
+        experience = self.transform_experience(experience)
+
+        # TODO(breakds): Create a cleaner and more readable function to prepare
+        # experience that better handles the similar and distinct part of
+        # "whole_replay_buffer_training or not", including correctly set
+        #
+        # 1. shape of experience
+        # 2. mini_batch_length
+        # 3. mini_batch_size
+        # 4. batch_info
+        #
+        # So that we do not have to explicitly (and more importantly implicitly)
+        # condition on whole_replay_buffer_training in a lot of isolated places.
+
+        # using potentially updated batch_info after data_transformers
+        if experience.batch_info != ():
+            batch_info = experience.batch_info
+
+        experience = alf.data_structures.clear_batch_info(experience)
+
+        with summary_utils.record_time("time/preprocess_experience"):
+            time_step, rollout_info = self.preprocess_experience(
+                experience.time_step, experience.rollout_info, batch_info)
+        experience = experience._replace(
+            time_step=time_step, rollout_info=rollout_info)
+        if self._processed_experience_spec is None:
+            self._processed_experience_spec = dist_utils.extract_spec(
+                experience, from_dim=2)
+        experience = dist_utils.distributions_to_params(experience)
+
+        length = alf.nest.get_nest_size(experience, dim=1)
+        mini_batch_length = (mini_batch_length or length)
+        if not whole_replay_buffer_training:
+            assert mini_batch_length == length, (
+                "mini_batch_length (%s) is "
+                "different from length (%s). Not supported." %
+                (mini_batch_length, length))
+
+        if mini_batch_length > length:
+            common.warning_once(
+                "mini_batch_length=%s is set to a smaller length=%s" %
+                (mini_batch_length, length))
+            mini_batch_length = length
+        elif length % mini_batch_length:
+            common.warning_once(
+                "length=%s not a multiple of mini_batch_length=%s" %
+                (length, mini_batch_length))
+            length = length // mini_batch_length * mini_batch_length
+            experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
+                                                experience)
+            common.warning_once(
+                "Experience length has been cut to %s" % length)
+
+        if len(alf.nest.flatten(self.train_state_spec)) > 0:
+            if not self._use_rollout_state:
+                # If not using rollout states, then we will assume zero initial
+                # training states. To have a proper state warm up,
+                # mini_batch_length should be greater than 1. Otherwise the states
+                # are always 0s.
+                if mini_batch_length == 1:
+                    logging.fatal(
+                        "Should use TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer when minibatch_length==1, "
+                        "otherwise the initial states are always zeros!")
+                else:
+                    # In this case, a state warm up is recommended. For example,
+                    # having mini_batch_length>1 and discarding first several
+                    # steps when computing losses. For a warm up, make sure to
+                    # leave a mini_batch_length > 1 if any recurrent model is to
+                    # be trained.
+                    common.warning_once(
+                        "Consider using TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer.")
+            elif mini_batch_length == 1:
+                # If using rollout states and mini_batch_length=1, there will be
+                # no gradient flowing in any recurrent matrix. Only the output
+                # layers on top of the recurrent output will be trained.
+                common.warning_once(
+                    "Using rollout states but with mini_batch_length=1. In "
+                    "this case, any recurrent model can't be properly trained!"
+                )
+            else:
+                # If using rollout states with mini_batch_length>1. In theory,
+                # any recurrent model can be properly trained. With a greater
+                # mini_batch_length, the temporal correlation can be better
+                # captured.
+                pass
+
+        experience = alf.nest.map_structure(
+            lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
+            experience)
+
+        batch_size = alf.nest.get_nest_batch_size(experience)
+
+        return experience, batch_info, length, mini_batch_length, batch_size
 
     def _collect_train_info_sequentially(self, experience):
         batch_size = alf.nest.get_nest_size(experience, dim=1)
@@ -1646,83 +1739,6 @@ class Algorithm(AlgorithmInterface):
             lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
         # info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
-
-    @common.mark_replay
-    def _prepare_experience_data(self,
-                                 experience,
-                                 experience_spec,
-                                 batch_info,
-                                 mini_batch_length,
-                                 exp_replayer,
-                                 whole_replay_buffer_training=False):
-        experience = dist_utils.distributions_to_params(experience)
-        experience = self.transform_experience(experience)
-
-        length = alf.nest.get_nest_size(experience, dim=1)
-        mini_batch_length = (mini_batch_length or length)
-        if not whole_replay_buffer_training:
-            assert mini_batch_length == length, (
-                "mini_batch_length (%s) is "
-                "different from length (%s). Not supported." %
-                (mini_batch_length, length))
-
-        if mini_batch_length > length:
-            common.warning_once(
-                "mini_batch_length=%s is set to a smaller length=%s" %
-                (mini_batch_length, length))
-            mini_batch_length = length
-        elif length % mini_batch_length:
-            common.warning_once(
-                "length=%s not a multiple of mini_batch_length=%s" %
-                (length, mini_batch_length))
-            length = length // mini_batch_length * mini_batch_length
-            experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
-                                                experience)
-            common.warning_once(
-                "Experience length has been cut to %s" % length)
-
-        if len(alf.nest.flatten(self.train_state_spec)) > 0:
-            if not self._use_rollout_state:
-                # If not using rollout states, then we will assume zero initial
-                # training states. To have a proper state warm up,
-                # mini_batch_length should be greater than 1. Otherwise the states
-                # are always 0s.
-                if mini_batch_length == 1:
-                    logging.fatal(
-                        "Should use TrainerConfig.use_rollout_state=True "
-                        "for training from a replay buffer when minibatch_length==1, "
-                        "otherwise the initial states are always zeros!")
-                else:
-                    # In this case, a state warm up is recommended. For example,
-                    # having mini_batch_length>1 and discarding first several
-                    # steps when computing losses. For a warm up, make sure to
-                    # leave a mini_batch_length > 1 if any recurrent model is to
-                    # be trained.
-                    common.warning_once(
-                        "Consider using TrainerConfig.use_rollout_state=True "
-                        "for training from a replay buffer.")
-            elif mini_batch_length == 1:
-                # If using rollout states and mini_batch_length=1, there will be
-                # no gradient flowing in any recurrent matrix. Only the output
-                # layers on top of the recurrent output will be trained.
-                common.warning_once(
-                    "Using rollout states but with mini_batch_length=1. In "
-                    "this case, any recurrent model can't be properly trained!"
-                )
-            else:
-                # If using rollout states with mini_batch_length>1. In theory,
-                # any recurrent model can be properly trained. With a greater
-                # mini_batch_length, the temporal correlation can be better
-                # captured.
-                pass
-
-        experience = alf.nest.map_structure(
-            lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
-            experience)
-
-        batch_size = alf.nest.get_nest_batch_size(experience)
-
-        return experience, batch_info, length, mini_batch_length, batch_size
 
     def _train_hybrid_experience(
             self, experience, batch_info, offline_experience,
