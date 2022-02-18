@@ -20,22 +20,26 @@ import numpy as np
 import torch
 
 import alf
-from alf.networks.normalizing_flow_networks import _realNVPTransform
-from alf.networks import realNVPNetwork, NetworkWrapper
+from alf.networks.normalizing_flow_networks import _RealNVPTransform
+from alf.networks import RealNVPNetwork, NetworkWrapper
 from alf.tensor_specs import TensorSpec
 
 
-class realNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
+class RealNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((4, 1.), (10, 0.5))
-    def test_realNVP_zero(self, D, prob):
+    def test_RealNVP_zero(self, D, prob):
         spec = TensorSpec((D, ))
         mask = torch.rand((D, )) > prob
         # scale=1, translation=0
         scale_trans_net = NetworkWrapper(lambda x: x * 0.,
                                          spec).make_parallel(2)
-        transform = _realNVPTransform(
-            scale_trans_net, mask, cache_size=0, scale_nonlinear=torch.exp)
-        x = torch.rand((1, D))
+        transform = _RealNVPTransform(
+            spec,
+            scale_trans_net,
+            mask,
+            cache_size=0,
+            scale_nonlinear=torch.exp)
+        x = spec.rand((1, ))
         y = transform(x)
         self.assertTensorClose(x, y)
         y_inv = transform.inv(y)
@@ -43,56 +47,62 @@ class realNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters((alf.math.identity, ), (torch.relu_),
                               (alf.math.square))
-    def test_realNVP_elementwise_zero(self, elementwise_func):
+    def test_RealNVP_elementwise_zero(self, elementwise_func):
         """If the scale and translation networks are both elementwise functions that
-        map 0 to 0, then realNVPTransform with torch.exp is always an identical
+        map 0 to 0, then RealNVPTransform with torch.exp is always an identical
         transformation.
         """
         spec = TensorSpec((100, ))
         mask = torch.rand((100, )) > 0.5
         scale_trans_net = NetworkWrapper(elementwise_func,
                                          spec).make_parallel(2)
-        transform = _realNVPTransform(
-            scale_trans_net, mask, cache_size=0, scale_nonlinear=torch.exp)
+        transform = _RealNVPTransform(
+            spec,
+            scale_trans_net,
+            mask,
+            cache_size=0,
+            scale_nonlinear=torch.exp)
 
-        x = torch.rand((
-            1,
-            100,
-        )).to(torch.float32)
+        x = spec.rand((1, ))
         y = transform(x)
         self.assertTensorClose(y, x)
         y_inv = transform.inv(y)
         self.assertTensorClose(y_inv, x)
 
-    def test_realNVP_transform(self):
-        spec = TensorSpec((4, ))
-        mask = torch.tensor([0, 0, 1, 1]).to(torch.bool)
+    def test_RealNVP_transform(self):
+        spec = TensorSpec((2, 2))
+        mask = torch.tensor([[0, 0], [1, 1]]).to(torch.bool)
         matrix = torch.tensor([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0],
                                [0, 0, 0, 1]]).to(torch.float32)
-        scale_trans_net = NetworkWrapper(lambda x: torch.matmul(x, matrix),
-                                         spec).make_parallel(2)
-        transform = _realNVPTransform(
-            scale_trans_net, mask, cache_size=0, scale_nonlinear=torch.exp)
+        scale_trans_net = NetworkWrapper(
+            lambda x: torch.matmul(x.reshape(-1, 4), matrix),
+            spec).make_parallel(2)
+        transform = _RealNVPTransform(
+            spec,
+            scale_trans_net,
+            mask,
+            cache_size=0,
+            scale_nonlinear=torch.exp)
 
-        x = torch.tensor([[1, 2, 3, 4]]).to(torch.float32)
+        x = torch.tensor([[[1, 2], [3, 4]]]).to(torch.float32)
         y = transform(x)
         # x * mask -> [0,0,3,4]
         # scale/trans -> [0,3,0,4]
         # (1-mask) * (exp(scale)*x+trans) -> [1*exp(0)+0,2*exp(3)+3,0,0]
-        expected_y = torch.tensor([[1, 3 + 2 * np.exp(3), 3, 4]])
+        expected_y = torch.tensor([[[1, 3 + 2 * np.exp(3)], [3, 4]]])
         self.assertTensorClose(y, expected_y, epsilon=1e-4)
         y_inv = transform.inv(y)
         self.assertTensorClose(y_inv, x)
 
         # test Jacobian
         j = transform.log_abs_det_jacobian(x, y)
-        expected_j = torch.tensor([[0, 3, 0, 0]])
+        expected_j = torch.tensor([[[0, 3], [0, 0]]])
         self.assertTensorClose(j, expected_j)
 
     @parameterized.parameters((10, 0, torch.exp),
                               (100, 1, alf.math.clipped_exp),
                               (500, 0, torch.nn.functional.softplus))
-    def test_realNVP_transform_jacobian_diagonal(self, D, cache_size,
+    def test_RealNVP_transform_jacobian_diagonal(self, D, cache_size,
                                                  scale_nonlinear):
         spec = TensorSpec((D, ))
         mask = torch.rand((D, )) > 0.5
@@ -105,21 +115,17 @@ class realNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
             last_activation=alf.math.identity)
         scale_trans_net = scale_trans_net.make_parallel(2)
 
-        z = torch.rand((
-            1,
-            D,
-        ))
-        transform = _realNVPTransform(
+        z = spec.rand((1, ))
+        transform = _RealNVPTransform(
+            spec,
             scale_trans_net,
             mask,
-            z,
+            z=z,
+            conditional_input_tensor_spec=spec,
             cache_size=cache_size,
             scale_nonlinear=scale_nonlinear)
 
-        x = torch.rand((
-            1,
-            D,
-        ))
+        x = spec.rand((1, ))
         y = transform(x)
         y_inv = transform.inv(y)
         self.assertTensorClose(x, y_inv, epsilon=1e-4)
@@ -132,8 +138,39 @@ class realNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
         j = transform.log_abs_det_jacobian(x, y)
         self.assertTensorClose(j, jacob_diag.log(), epsilon=1e-4)
 
+    @parameterized.parameters(((1, ), (10, )), ((1, 2), (10, 10)),
+                              ((3, 4, 5, 6), (5, 5, 5)))
+    def test_RealNVP_transform_outer_dims(self, outer_dims, input_shape):
+        x_spec = TensorSpec(input_shape)
+        z_spec = TensorSpec((10, 10))
 
-class realNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
+        scale_trans_net = alf.networks.EncodingNetwork(
+            input_tensor_spec=(x_spec, z_spec),
+            input_preprocessors=(alf.layers.Reshape(-1),
+                                 alf.layers.Reshape(-1)),
+            preprocessing_combiner=alf.nest.utils.NestConcat(),
+            last_layer_size=x_spec.numel,
+            last_activation=alf.math.identity).make_parallel(2)
+
+        x = x_spec.rand(outer_dims)
+        if len(outer_dims) > 2:
+            z = z_spec.rand(outer_dims[-2:])
+        else:
+            z = z_spec.rand(outer_dims[-1:])
+        mask = x_spec.zeros().to(torch.bool)
+
+        transform = _RealNVPTransform(
+            x_spec,
+            scale_trans_net,
+            mask,
+            conditional_input_tensor_spec=z_spec,
+            z=z)
+        y = transform(x)
+
+        self.assertEqual(y.shape, x.shape)
+
+
+class RealNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((
         10,
         None,
@@ -151,7 +188,7 @@ class realNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
         (10, 10),
         True,
     ), (100, 200, 40, 'distributed', 3, (50, 50), False))
-    def test_realNVPNetwork(self, input_size, conditional_input_size, sub_dim,
+    def test_RealNVPNetwork(self, input_size, conditional_input_size, sub_dim,
                             mask_mode, num_layers, fc_layers,
                             use_transform_cache):
 
@@ -160,7 +197,7 @@ class realNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
             conditional_spec = TensorSpec((conditional_input_size, ))
         else:
             conditional_spec = None
-        network = realNVPNetwork(
+        network = RealNVPNetwork(
             input_tensor_spec=spec,
             conditional_input_tensor_spec=conditional_spec,
             preprocessing_combiner=alf.nest.utils.NestConcat(),
@@ -213,7 +250,7 @@ class realNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
             conditional_spec = TensorSpec((conditional_input_size, ))
         else:
             conditional_spec = None
-        network = realNVPNetwork(
+        network = RealNVPNetwork(
             input_tensor_spec=spec,
             conditional_input_tensor_spec=conditional_spec,
             preprocessing_combiner=alf.nest.utils.NestConcat(),

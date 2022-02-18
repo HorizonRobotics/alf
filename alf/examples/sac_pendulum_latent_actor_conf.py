@@ -19,13 +19,13 @@ from alf.nest.utils import NestConcat
 from alf.examples import sac_conf
 from alf.networks import UnitNormalActorDistributionNetwork
 from alf.networks import LatentActorDistributionNetwork
-from alf.networks import realNVPNetwork
+from alf.networks import RealNVPNetwork
 
 alf.config(
     "create_environment", env_name="Pendulum-v0", num_parallel_environments=1)
 
 alf.config("CriticNetwork", joint_fc_layer_params=(100, 100))
-alf.config("realNVPNetwork", fc_layer_params=(64, 64), num_layers=5)
+alf.config("RealNVPNetwork", fc_layer_params=(64, 64), num_layers=5)
 
 alf.config("Agent", optimizer=alf.optimizers.AdamTF(lr=5e-4))
 alf.config(
@@ -34,7 +34,7 @@ alf.config(
         LatentActorDistributionNetwork,
         prior_actor_distribution_network_ctor=
         UnitNormalActorDistributionNetwork,
-        normalizing_flow_network_ctor=realNVPNetwork,
+        normalizing_flow_network_ctor=RealNVPNetwork,
         scale_distribution=True),
     target_update_tau=0.005)
 

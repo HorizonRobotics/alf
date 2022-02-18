@@ -44,13 +44,13 @@ class NormalizingFlowNetwork(Network):
 
     def __init__(
             self,
-            input_tensor_spec: alf.nest.NestedTensorSpec,
+            input_tensor_spec: alf.tensor_specs.TensorSpec,
             conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
             use_transform_cache: bool = True,
             name: str = "NormalizingFlowNetwork"):
         """
         Args:
-            input_tensor_spec: a rank-1 tensor spec
+            input_tensor_spec: input tensor spec
             conditional_input_tensor_spec: a nested tensor spec
             use_transform_cache: whether use cached transform. When there
                 is a conditional input, different transforms might be created
@@ -61,6 +61,9 @@ class NormalizingFlowNetwork(Network):
                 when creating the transform.
             name: name of the network
         """
+        assert not alf.nest.is_nested(input_tensor_spec), (
+            f"Only unnested input spec is supported! Got {input_tensor_spec}")
+
         if conditional_input_tensor_spec is None:
             super().__init__(input_tensor_spec, name=name)
             self._conditional_inputs = False
@@ -72,16 +75,17 @@ class NormalizingFlowNetwork(Network):
         self._cached_transform = (None, None)
 
     @property
-    def use_conditional_inputs(self):
+    def use_conditional_inputs(self) -> bool:
         """
         Returns:
-            bool: Whether this normalizing flow uses inputs to condition the
+            Whether this normalizing flow uses inputs to condition the
                 transforms.
         """
         return self._conditional_inputs
 
     def make_invertible_transform(
-            self, conditional_inputs: alf.nest.NestedTensor = None):
+            self,
+            conditional_inputs: alf.nest.NestedTensor = None) -> td.Transform:
         r"""Express the network forward computation as an invertible PyTorch
         ``Transform``. This overall transformation can be a composed one chaining
         many transformation layers.
@@ -91,7 +95,7 @@ class NormalizingFlowNetwork(Network):
                 condition the mapping :math:`x \rightarrow y`.
 
         Returns:
-            torch.td.Transform: an invertible transform
+            an invertible transform
         """
         if not self._use_transform_cache:
             return self._make_invertible_transform(conditional_inputs)
@@ -115,8 +119,7 @@ class NormalizingFlowNetwork(Network):
 
         Args:
             xz: the input can be either an unnested tensor ``x`` or a tuple of
-                an unnested tensor and a nested tensor ``(x, z)``. In both cases,
-                currently we only support ``x`` to be a rank-1 tensor. ``z`` is
+                an unnested tensor and a nested tensor ``(x, z)``. ``z`` is
                 an optional conditional input that conditions the normalizing
                 flow mapping from ``x`` to ``y``.
             state: should be an empty tuple
@@ -137,8 +140,7 @@ class NormalizingFlowNetwork(Network):
 
         Args:
             yz: the input can be either an unnested tensor ``y`` or a tuple of
-                an unnested tensor and a nested tensor ``(y, z)``. In both cases,
-                currently we only support ``y`` to be a rank-1 tensor. ``z`` is
+                an unnested tensor and a nested tensor ``(y, z)``. ``z`` is
                 an optional conditional input that conditions the normalizing
                 flow inverse mapping from ``y`` to ``x``.
             state: should be an empty tuple
@@ -152,7 +154,7 @@ class NormalizingFlowNetwork(Network):
 
 
 @alf.configurable
-class realNVPNetwork(NormalizingFlowNetwork):
+class RealNVPNetwork(NormalizingFlowNetwork):
     r"""Real-valued non-volume preserving transformations.
 
     "DENSITY ESTIMATION USING REAL NVP", Dinh et al., ICLR 2017.
@@ -210,22 +212,22 @@ class realNVPNetwork(NormalizingFlowNetwork):
 
     def __init__(
             self,
-            input_tensor_spec: alf.nest.NestedTensorSpec,
+            input_tensor_spec: alf.tensor_specs.TensorSpec,
             conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
             input_preprocessors: alf.nest.Nest = None,
             preprocessing_combiner: alf.nest.utils.NestCombiner = None,
             conv_layer_params: Tuple[Tuple[int]] = None,
             fc_layer_params: Tuple[int] = None,
             activation: Callable = torch.tanh,
-            transform_scale_nonlinear: Callable = torch.exp,
+            transform_scale_nonlinear: Callable = torch.nn.functional.softplus,
             sub_dim: int = None,
             mask_mode: str = "contiguous",
             num_layers: int = 2,
             use_transform_cache: bool = True,
-            name: str = "realNVPNetwork"):
+            name: str = "RealNVPNetwork"):
         r"""
         Args:
-            input_tensor_spec: a rank-1 tensor spec
+            input_tensor_spec: input tensor spec
             conditional_input_tensor_spec: a nested tensor spec
             input_preprocessors: a nest of ``InputPreprocessor``, each of
                 which will be applied to the corresponding input. If not None,
@@ -247,7 +249,7 @@ class realNVPNetwork(NormalizingFlowNetwork):
             transform_scale_nonlinear: nonlinear function applied to the
                 scale network output. Its codomain should be :math:`[0,+\infty)`. Make
                 sure that the value of this function won't explode after several
-                realNVP transform layers.
+                RealNVP transform layers.
             sub_dim: the dimensionality to keep unchanged at odd layers. If None,
                 then half of the input is unchanged at a time. When it's 0, all
                 input dims will be changed by an affine transform independent of
@@ -269,16 +271,11 @@ class realNVPNetwork(NormalizingFlowNetwork):
                 the inverse result.
             name: name of the network
         """
-        super(realNVPNetwork, self).__init__(
+        super(RealNVPNetwork, self).__init__(
             input_tensor_spec,
             conditional_input_tensor_spec,
             use_transform_cache=use_transform_cache,
             name=name)
-        assert not alf.nest.is_nested(input_tensor_spec), (
-            f"Only unnested input spec is supported! Got {input_tensor_spec}")
-        assert input_tensor_spec.ndim == 1, (
-            f"Only rank-1 tensor spec is supported! Got {input_tensor_spec.ndim}"
-        )
 
         self._transform_scale_nonlinear = transform_scale_nonlinear
 
@@ -291,7 +288,8 @@ class realNVPNetwork(NormalizingFlowNetwork):
         if sub_dim == 0 or sub_dim == D:
             logging.warning("For certain layers, the transform is identity!!")
 
-        self._masks = self._generate_masks(D, sub_dim, mask_mode, num_layers)
+        self._masks = self._generate_masks(input_tensor_spec, sub_dim,
+                                           mask_mode, num_layers)
 
         if activation in (torch.relu, torch.relu_):
             logging.warning(
@@ -314,24 +312,25 @@ class realNVPNetwork(NormalizingFlowNetwork):
             networks.append(scale_trans_net.make_parallel(2))
         self._networks = nn.ModuleList(networks)
 
-    def _generate_masks(self, D, sub_dim, mask_mode, num_layers):
+    def _generate_masks(self, spec, sub_dim, mask_mode, num_layers):
         masks = []
         for i in range(num_layers):
             if i % 2 == 0:
-                new_mask = torch.zeros((D, ), dtype=torch.bool)
+                new_mask = spec.zeros().to(torch.bool).reshape(-1)
                 if mask_mode == "contiguous":
                     new_mask[:sub_dim] = 1
                 elif mask_mode == "distributed":
                     if sub_dim > 0:
-                        delta = D // sub_dim
+                        delta = spec.numel // sub_dim
                         idx = torch.arange(0, delta * sub_dim,
                                            delta).to(torch.int64)
                         new_mask[idx] = 1
                 else:
                     assert mask_mode == "random", (
                         f"Invalid mask mode {mask_mode}")
-                    idx = torch.randperm(D)[:sub_dim].to(torch.int64)
+                    idx = torch.randperm(spec.numel)[:sub_dim].to(torch.int64)
                     new_mask[idx] = 1
+                new_mask = new_mask.reshape(spec.shape)
                 masks.append(new_mask)
             else:  # flip
                 masks.append(~masks[i - 1])
@@ -339,70 +338,201 @@ class realNVPNetwork(NormalizingFlowNetwork):
 
     def _make_invertible_transform(self, conditional_inputs=None):
         transforms = []
+        if conditional_inputs is None:
+            specs = {
+                'input_tensor_spec': self._input_tensor_spec,
+                'conditional_input_tensor_spec': None
+            }
+        else:
+            specs = {
+                'input_tensor_spec': self._input_tensor_spec[0],
+                'conditional_input_tensor_spec': self._input_tensor_spec[1]
+            }
         for net, mask in zip(self._networks, self._masks):
             transforms.append(
-                _realNVPTransform(
-                    net,
-                    mask,
-                    conditional_inputs,
-                    scale_nonlinear=self._transform_scale_nonlinear))
+                _RealNVPTransform(
+                    scale_trans_net=net,
+                    mask=mask,
+                    z=conditional_inputs,
+                    scale_nonlinear=self._transform_scale_nonlinear,
+                    **specs))
         return td.transforms.ComposeTransform(transforms)
 
 
-class _realNVPTransform(td.Transform):
-    """This class implements each transformation layer of ``realNVPNetwork``. For
-    details, refer to the docstring of ``realNVPNetwork``.
+def _prepare_conditional_flow_inputs(
+        xy_spec: alf.tensor_specs.TensorSpec,
+        xy: torch.Tensor,
+        z_spec: alf.nest.NestedTensorSpec = None,
+        z: alf.nest.NestedTensor = None
+) -> Tuple[alf.nest.NestedTensor, alf.utils.tensor_utils.BatchSquash]:
+    """A general function for adjusting the shapes of inputs and conditional inputs
+    of a conditional flow, prepared for a forward of a network next. Some networks
+    assume only one batch dim, for example, when using ``alf.layers.Reshape()``.
+
+    The reason why we need to do this is because the flow transform can be called
+    with an arbitrary batch shape of ``x`` or ``y``, for example, with computing
+    a loss with time dimension, or sampling a particular shape from a distribution.
+
+    Args:
+        xy_spec: tensor spec of ``x`` (forward) or ``y`` (inverse)
+        xy:
+        z_spc: tensor spec of ``z`` (conditional input)
+        z:
+
+    Returns:
+        the prepared flow inputs and a ``BatchSquash`` object for unflattening
+            the obtained network output if needed (None if not).
+    """
+    xy_outer_rank = alf.nest.utils.get_outer_rank(xy, xy_spec)
+    xy_batch_shape = xy.shape[:xy_outer_rank]
+    ret, bs = xy, None
+
+    if xy_outer_rank > 1:
+        # If there are extra outer dims of inputs, first squash them into one.
+        bs = alf.utils.tensor_utils.BatchSquash(xy_outer_rank)
+        ret = bs.flatten(xy)
+
+    if z is not None:
+        z_outer_rank = alf.nest.utils.get_outer_rank(z, z_spec)
+        z_batch_shape = z.shape[:z_outer_rank]
+        assert z_batch_shape == xy_batch_shape[-z_outer_rank:], (
+            "xy batch shape is incompatible with z batch shape. "
+            f"{xy_batch_shape} vs. {z_batch_shape}")
+
+        if z_outer_rank > 1:
+            z = alf.utils.tensor_utils.BatchSquash(z_outer_rank).flatten(z)
+
+        B = alf.nest.get_nest_batch_size(z)
+        if B < ret.shape[0]:
+            # When the total outer dim of ``z`` is smaller than that of ``xy``,
+            # it means that multiple samples of ``xy`` correspond to one ``z``,
+            # so we need to repeat ``z``'s batch dim.
+            assert ret.shape[0] % B == 0, (
+                "The total batch dim of inputs must be a multiple of that "
+                f"of the conditional inputs! {ret.shape[0]} vs. {B}")
+            z = alf.nest.map_structure(
+                lambda e: e.repeat(ret.shape[0] // B, *((e.ndim - 1) * [1])),
+                z)
+        ret = (ret, z)
+
+    return ret, bs
+
+
+class _RealNVPTransform(td.Transform):
+    """This class implements each transformation layer of ``RealNVPNetwork``. For
+    details, refer to the docstring of ``RealNVPNetwork``.
     """
     domain = td.constraints.real
     codomain = td.constraints.real
     bijective = True
     sign = +1
 
-    def __init__(self,
-                 scale_trans_net: Network,
-                 mask,
-                 z=None,
-                 cache_size=1,
-                 scale_nonlinear=torch.exp):
+    def __init__(
+            self,
+            input_tensor_spec: alf.tensor_specs.TensorSpec,
+            scale_trans_net: EncodingNetwork,
+            mask: torch.Tensor,
+            conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
+            z: alf.nest.NestedTensor = None,
+            cache_size: int = 1,
+            scale_nonlinear: Callable = torch.exp):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of ``x`` or ``y``
+            scale_trans_net: an encoding network that computes the scale and
+                translation given ``x`` or ``y``, optionally conditioned on ``z``.
+            mask: a bool tensor indicates which part of ``x`` or ``y`` is preserved
+                after the transformation.
+            conditional_input_tensor_spec: tensor spec of ``z``
+            z: a nest of conditional inputs to ``scale_trans_net``
+            cache_size: the cache size of the transform
+            scale_nonlinear: the nonlinear function applied to the scale; should
+                be non-negative.
+        """
 
         super().__init__(cache_size=cache_size)
+        self._tensor_specs = (input_tensor_spec, conditional_input_tensor_spec)
         self._scale_trans_net = scale_trans_net
         self._b = mask
         self._scale_nonlinear = scale_nonlinear
         self._z = z
 
+    @property
+    def params(self):
+        """Let ALF know what parameters to store when extracting params from
+        a transformed distribution."""
+        return self._z
+
+    @params.setter
+    def params(self, z):
+        """Let ALF update the transform params when building a distribution."""
+        self._z = z
+
     def __eq__(self, other):
         return (isinstance(other, _realVNPTransform)
+                and self._tensor_specs == other._tensor_specs
                 and self._scale_trans_net is other._scale_trans_net
                 and self._z is other._z
                 and self._scale_nonlinear is other._scale_nonlinear
                 and torch.equal(self._b, other._b))
 
-    def _get_scale_trans(self, inputs):
-        inputs = inputs * self._b
-        if self._z is not None:
-            inputs = (inputs, self._z)
-        inputs = alf.layers.make_parallel_input(inputs, 2)
-        return self._scale_trans_net(inputs)[0]  # [B,2,D]
+    def _get_scale_trans(self, x_or_y):
+        """Compute the scale and translation for the transformation, where both
+        of them depend on a part of the inputs and optionally on the conditional
+        inputs (if not None).
+
+        For efficiency, we compute scale and translation with the same network
+        structure but different weights. This can be achieved by using a parallel
+        network.
+
+        One thing to note is that the inputs might have arbitrary outer dims in
+        a scenario where a sampled batch with some shape from a distribution is
+        being transformed. So we need to take special care of this.
+        """
+        xy_spec, z_spec = self._tensor_specs
+        inputs = x_or_y * self._b
+
+        inputs, bs = _prepare_conditional_flow_inputs(xy_spec, inputs, z_spec,
+                                                      self._z)
+
+        inputs = alf.layers.make_parallel_input(inputs, 2)  # [B,2,...]
+        scale_trans = self._scale_trans_net(inputs)[0]  # [B,2,D]
+        # reshape back to input tensor spec
+        scale_trans = scale_trans.reshape(-1, 2, *xy_spec.shape)  # [B,2,...]
+        scale, trans = scale_trans[:, 0, ...], scale_trans[:, 1, ...]
+
+        if bs is not None:
+            scale = bs.unflatten(scale)
+            trans = bs.unflatten(trans)
+
+        return scale, trans
 
     def _call(self, x):
-        scale_trans = self._get_scale_trans(x)
-        new_x = x * self._scale_nonlinear(
-            scale_trans[:, 0, ...]) + scale_trans[:, 1, ...]
+        """Only use elements of ``x`` selected by ``1-self._b`` for computing
+        the scale and translation. Those selected by ``self._b`` are unchanged.
+        """
+        scale, trans = self._get_scale_trans(x)
+        new_x = x * self._scale_nonlinear(scale) + trans
         y = x * self._b + new_x * (~self._b)
         return y
 
     def _inverse(self, y):
-        scale_trans = self._get_scale_trans(y)
-        new_y = (y - scale_trans[:, 1, ...]) / self._scale_nonlinear(
-            scale_trans[:, 0, ...])
+        """Only use elements of ``y`` selected by ``1-self._b`` for computing
+        the scale and translation. Those selected by ``self._b`` are unchanged.
+        """
+        scale, trans = self._get_scale_trans(y)
+        new_y = (y - trans) / self._scale_nonlinear(scale)
         x = y * self._b + new_y * (~self._b)
         return x
 
     def log_abs_det_jacobian(self, x, y):
-        scale_trans = self._get_scale_trans(x)
+        r"""The Jacobian is always a triangular matrix (or can be converted into by
+        row swapping). The diagonal elements are :math:`\mathbb{I}_d` and
+        :math:`\text{diag}(\exp(scale(x_{1:d};z)))`, where the first :math:`d` dims
+        are assumed to be selected by the mask ``self._b``.
+        """
+        scale, trans = self._get_scale_trans(x)
         if self._scale_nonlinear is torch.exp:
-            return scale_trans[:, 0, ...] * (~self._b)
+            return scale * (~self._b)
         else:
-            return self._scale_nonlinear(
-                scale_trans[:, 0, ...]).log() * (~self._b)
+            return self._scale_nonlinear(scale).log() * (~self._b)

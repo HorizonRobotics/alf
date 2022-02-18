@@ -21,7 +21,7 @@ import torch.nn as nn
 import alf
 import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
-from .normalizing_flow_networks import realNVPNetwork
+from .normalizing_flow_networks import RealNVPNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
@@ -300,6 +300,21 @@ class LatentActorDistributionNetwork(Network):
     """Generating an actor distribution by transforming a prior action distribution
     (e.g., standard Normal noise :math:`\mathcal{N}(0,1)`) with a normalizing
     flow network. The resulting distribution might have an arbitrary shape.
+
+    .. warning::
+
+        Like some invertible transform such as ``StableTanh``, the inverse computation
+        of a normalizing flow transform might cause numerical issues. Although there
+        is also a cache option in the transform class, this cache won't work
+        properly if the actions are sampled on a per-step basis but the log probs
+        are computed as a whole batch after accumulating actions & distributions
+        over ``unroll_length``, because the accumulation & stacking has changed
+        the transform's output object id. So ``LatentActorDistributionNetwork``
+        is best suitable for algorithms that compute log probs early in every
+        time step, like SAC. In contrast, AC and PPO might have numerical issues
+        because they compute log probs & entropy later in ``actor_critic_loss()``.
+        Additionally, PPO computes the prob of a rollout action given a training
+        distribution, which also has a similar issue.
     """
 
     def __init__(self,
@@ -307,7 +322,7 @@ class LatentActorDistributionNetwork(Network):
                  action_spec: alf.nest.NestedTensorSpec,
                  prior_actor_distribution_network_ctor:
                  Callable = UnitNormalActorDistributionNetwork,
-                 normalizing_flow_network_ctor: Callable = realNVPNetwork,
+                 normalizing_flow_network_ctor: Callable = RealNVPNetwork,
                  conditional_flow: bool = True,
                  scale_distribution=False,
                  dist_squashing_transform=alf.utils.dist_utils.StableTanh(),
@@ -362,9 +377,8 @@ class LatentActorDistributionNetwork(Network):
         if not self._conditional_flow:
             inputs = None
         nf_transform = self._nf_network.make_invertible_transform(inputs)
-        transformed_dist = td.TransformedDistribution(distribution,
-                                                      [nf_transform])
+        transforms = [nf_transform]
         if self._scale_distribution:
-            transformed_dist = td.TransformedDistribution(
-                transformed_dist, self._squash_transforms)
+            transforms = transforms + self._squash_transforms
+        transformed_dist = td.TransformedDistribution(distribution, transforms)
         return transformed_dist, state
