@@ -135,7 +135,6 @@ class RLAlgorithm(Algorithm):
                  reward_spec=TensorSpec(()),
                  predict_state_spec=None,
                  rollout_state_spec=None,
-                 untransformed_observation_spec=None,
                  is_on_policy=None,
                  reward_weights=None,
                  env=None,
@@ -157,8 +156,6 @@ class RLAlgorithm(Algorithm):
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assumed to be the same as
                 ``rollout_state_spec``.
-            untransformed_observation_spec (nested TensorSpec): representing the
-                untransformed observations.
             is_on_policy (None|bool): whether the algorithm is on-policy or not.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. If not None, the weighted sum of rewards is
@@ -188,7 +185,6 @@ class RLAlgorithm(Algorithm):
 
         self._env = env
         self._observation_spec = observation_spec
-        self._untransformed_observation_spec = untransformed_observation_spec
         self._action_spec = action_spec
         assert reward_spec.ndim <= 1, "reward_spec must be rank-0 or rank-1!"
         self._reward_spec = reward_spec
@@ -612,7 +608,16 @@ class RLAlgorithm(Algorithm):
         # For now, we only return the steps of the primary algorithm's training
         return steps
 
-    def _load_offline_replay_buffer(self):
+    def load_offline_replay_buffer(self, untransformed_observation_spec):
+        """Load replay buffer from a replay buffer checkpoint.
+        It will construct a replay buffer (``self._offline_replay_buffer``)
+        holding the data loaded from the checkpoint, which can be used for
+        model training, e.g. in the hybrid training pipeline or in other ways.
+
+        Args:
+            untransformed_observation_spec (nested TensorSpec): spec that
+                describes the strcuture of the utransformed observations.
+        """
 
         if self._offline_buffer_dir is None or self._offline_buffer_dir == "":
             # no offline buffer is provided
@@ -660,7 +665,7 @@ class RLAlgorithm(Algorithm):
                 step_type=step_type_spec,
                 reward=reward_spec,
                 discount=discount_spec,
-                observation=self._untransformed_observation_spec,
+                observation=untransformed_observation_spec,
                 prev_action=self._action_spec,
                 env_id=env_id_spec)
 
@@ -690,6 +695,7 @@ class RLAlgorithm(Algorithm):
                                        replay_buffer_checkpoint):
         """Initialize the experience replay buffer from a offline replay buffer
         checkpoint.
+        TODO: a non-sequential version.
 
         Args:
             sample_exp (nested Tensor):

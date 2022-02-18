@@ -352,13 +352,13 @@ class RLTrainer(Trainer):
             observation_spec=observation_spec,
             action_spec=env.action_spec(),
             reward_spec=env.reward_spec(),
-            untransformed_observation_spec=untransformed_observation_spec,
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
 
         # recover offline buffer
-        self._algorithm._load_offline_replay_buffer()
+        self._algorithm.load_offline_replay_buffer(
+            untransformed_observation_spec)
 
         self._algorithm.set_path('')
         if ddp_rank >= 0:
