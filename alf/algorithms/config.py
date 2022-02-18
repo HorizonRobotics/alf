@@ -66,6 +66,9 @@ class TrainerConfig(object):
                  priority_replay_alpha=0.7,
                  priority_replay_beta=0.4,
                  priority_replay_eps=1e-6,
+                 offline_buffer_dir=None,
+                 rl_train_after_update_steps=0,
+                 rl_train_every_update_steps=1,
                  clear_replay_buffer=True):
         """
         Args:
@@ -218,6 +221,24 @@ class TrainerConfig(object):
                 This is only useful if ``prioritized_sampling`` is enabled for
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
+            offline_buffer_dir (str): path to the offline replay buffer
+                checkpoint to be loaded.
+            rl_train_after_update_steps (int): only used in the hybrid training
+                mode. It is used as a starting criteria for the normal (non-offline)
+                part of the RL training, which only starts after so many number
+                of update steps.
+            rl_train_every_update_steps (int): only used in the hybrid training
+                mode. It is used to control the update frequency of the normal
+                (non-offline) part of the RL training. Together with
+                ``num_updates_per_train_iter``, we can have a more fine grained
+                control over the update frequencies of online and offline RL
+                training (currently assumes the training frequency of offline RL
+                is always higher or equal to the online RL part).
+                For example, we can set ``num_updates_per_train_iter = 2``, and
+                ``rl_train_every_update_steps = 1`` to have a train config that
+                executes offline RL training at a frequency that is two times
+                of the online RL training frequency.
+
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
@@ -270,3 +291,7 @@ class TrainerConfig(object):
         self.priority_replay_alpha = as_scheduler(priority_replay_alpha)
         self.priority_replay_beta = as_scheduler(priority_replay_beta)
         self.priority_replay_eps = priority_replay_eps
+        # offline options
+        self.offline_buffer_dir = offline_buffer_dir
+        self.rl_train_after_update_steps = rl_train_after_update_steps
+        self.rl_train_every_update_steps = rl_train_every_update_steps

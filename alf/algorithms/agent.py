@@ -50,6 +50,7 @@ class Agent(RLAlgorithm):
                  observation_spec,
                  action_spec,
                  reward_spec=TensorSpec(()),
+                 untransformed_observation_spec=None,
                  env=None,
                  config: TrainerConfig = None,
                  rl_algorithm_cls=ActorCriticAlgorithm,
@@ -177,6 +178,7 @@ class Agent(RLAlgorithm):
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
+            untransformed_observation_spec=untransformed_observation_spec,
             optimizer=optimizer,
             is_on_policy=rl_algorithm.on_policy,
             env=env,
@@ -344,6 +346,52 @@ class Agent(RLAlgorithm):
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
 
+    def train_step_offline(self, time_step: TimeStep, state, rollout_info,
+                           pre_train):
+        new_state = AgentState()
+        info = AgentInfo(rewards=rollout_info.rewards)
+        observation = time_step.observation
+
+        if self._representation_learner is not None:
+            repr_step = self._representation_learner.train_step_offline(
+                time_step, state.repr, rollout_info.repr)
+            new_state = new_state._replace(repr=repr_step.state)
+            info = info._replace(repr=repr_step.info)
+            observation = repr_step.output
+
+        if self._goal_generator is not None:
+            goal_step = self._goal_generator.train_step_offline(
+                time_step._replace(observation=observation),
+                state.goal_generator, rollout_info.goal_generator)
+            goal, goal_reward = goal_step.output
+            info = info._replace(goal_generator=goal_step.info)
+            new_state = new_state._replace(goal_generator=goal_step.state)
+            observation = [observation, goal]
+
+        if self._irm is not None:
+            irm_step = self._irm.train_step_offline(
+                time_step._replace(observation=observation), state=state.irm)
+            info = info._replace(irm=irm_step.info)
+            new_state = new_state._replace(irm=irm_step.state)
+
+        rl_step = self._rl_algorithm.train_step_offline(
+            time_step._replace(observation=observation), state.rl,
+            rollout_info.rl, pre_train)
+
+        new_state = new_state._replace(rl=rl_step.state)
+        info = info._replace(rl=rl_step.info)
+
+        if self._entropy_target_algorithm:
+            assert 'action_distribution' in rl_step.info._fields, (
+                "PolicyStep from rl_algorithm.train_step() does not contain "
+                "`action_distribution`, which is required by "
+                "`enforce_entropy_target`")
+            et_step = self._entropy_target_algorithm.train_step_offline(
+                (rl_step.info.action_distribution, time_step.step_type))
+            info = info._replace(entropy_target=et_step.info)
+
+        return AlgStep(output=rl_step.output, state=new_state, info=info)
+
     def _calc_overall_reward(self, extrinsic_reward, intrinsic_rewards):
         overall_reward = extrinsic_reward
         if self._extrinsic_reward_coef != 1:
@@ -368,6 +416,20 @@ class Agent(RLAlgorithm):
         ]
         algorithms = list(filter(lambda a: a is not None, algorithms))
         return self._agent_helper.accumulate_loss_info(algorithms, info)
+
+    def calc_loss_offline(self, info, pre_train):
+        """Calculate loss for the offline RL branch."""
+        if info.rewards != ():
+            for name, reward in info.rewards.items():
+                self.summarize_reward("reward_offline/%s" % name, reward)
+
+        algorithms = [
+            self._representation_learner, self._rl_algorithm, self._irm,
+            self._goal_generator, self._entropy_target_algorithm
+        ]
+        algorithms = list(filter(lambda a: a is not None, algorithms))
+        return self._agent_helper.accumulate_loss_info(algorithms, info, True,
+                                                       pre_train)
 
     def after_update(self, experience, train_info: AgentInfo):
         """Call ``after_update()`` of the RL algorithm and goal generator,

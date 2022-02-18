@@ -104,7 +104,11 @@ class AgentHelper(object):
             summarize_fn(os.path.join(summary_prefix, "overall"), reward)
         return reward
 
-    def accumulate_loss_info(self, algorithms, train_info):
+    def accumulate_loss_info(self,
+                             algorithms,
+                             train_info,
+                             offline=False,
+                             *offline_args):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -116,14 +120,20 @@ class AgentHelper(object):
             train_info (nested Tensor): information collected for training
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``train_step()`` or ``rollout_step()``.
-
+            offline (bool): whether the accumulation is done for offline RL part
+                or the online RL part.
+            offline_args: additional arguments for offline training
         Returns:
             LossInfo: the accumulated loss info.
         """
 
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
-            new_loss_info = algorithm.calc_loss(info)
+            if not offline:
+                new_loss_info = algorithm.calc_loss(info)
+            else:
+                new_loss_info = algorithm.calc_loss_offline(
+                    info, *offline_args)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})

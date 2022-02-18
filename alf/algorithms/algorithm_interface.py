@@ -41,7 +41,7 @@ class AlgorithmInterface(nn.Module):
        is used by the default ``train_from_unroll()`` and
        ``train_from_replay_buffer()`` implementations. You can override to
        implement your own ``update_with_gradient()``.
-    7. ``calc_loss()``: calculate loss based the ``info`` collected from
+    7. ``calc_loss()``: calculate loss based on the ``info`` collected from
        ``rollout_step()`` or ``train_step()``. It
        is used by the default implementations of ``train_from_unroll()`` and
        ``train_from_replay_buffer()``. If you want to use these two functions,
@@ -55,6 +55,17 @@ class AlgorithmInterface(nn.Module):
        training additional modules that have their own training logic (e.g.,
        on/off-policy, replay buffers, etc). Other things might also be possible
        as long as they should be done once every training iteration.
+
+    For algorithms that have additional offline training flows, they can be
+    implemented by using the following additional interface functions:
+    10. ``train_step_offline()``: only used by algorithms that has offline
+        training flows. The training data are sampled from a replay buffer
+        that is loaded from an offline replay buffer checkpoint.
+    11. ``calc_loss_offline()``: It calculates the loss based on the ``info``
+        collected from ``train_step_offline()``.
+
+    The offline training flows can be invoked by specifying a valid path to a
+    replay buffer for ``TrainerConfig.offline_buffer_dir``.
 
     .. note::
         A non-RL algorithm will not directly interact with an
@@ -313,5 +324,52 @@ class AlgorithmInterface(nn.Module):
                 quantity and child algorithms should disable the flag. When it's
                 ``True``, it will affect the counter only if
                 ``config.update_counter_every_mini_batch=True``.
+        """
+        raise NotImplementedError()
+
+    def train_step_offline(self, inputs, state, rollout_info, pre_train=False):
+        """Perform one step of offline training computation.
+
+        It is called to calculate output for every time step for a batch of
+        experience from offline replay buffer. It also needs to generate
+        necessary information for ``calc_loss_offline()``.
+
+        Args:
+            inputs (nested Tensor): inputs for train.
+            state (nested Tensor): consistent with ``train_state_spec``.
+            rollout_info (nested Tensor): info from ``rollout_step()``. It is
+                retrieved from replay buffer.
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
+        Returns:
+            AlgStep:
+            - output (nested Tensor): prediction result.
+            - state (nested Tensor): should match ``train_state_spec``.
+            - info (nested Tensor): information for training. It will temporally
+              batched and passed as ``info`` for calc_loss(). If this is
+              ``LossInfo``, ``calc_loss()`` in ``Algorithm`` can be used.
+              Otherwise, the user needs to override ``calc_loss()`` to
+              calculate loss or override ``update_with_gradient()`` to do
+              customized training.
+        """
+        raise NotImplementedError()
+
+    def calc_loss_offline(self, info, pre_train=False):
+        """Calculate the loss for one mini-batch.
+
+        Args:
+            info (nest): information collected for training. It is batched
+                from each ``AlgStep.info`` returned by ``rollout_step()``
+                (on-policy training) or ``train_step()`` (off-policy training).
+                The shape of the tensors in info is ``(T, B, ...)``, where T
+                is the mini-batch length and B is the mini-batch size.
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
+        Returns:
+            LossInfo: loss at each time step for each sample in the
+                batch. The shapes of the tensors in loss info should be
+                :math:`(T, B)`.
         """
         raise NotImplementedError()

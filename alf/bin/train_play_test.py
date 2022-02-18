@@ -663,6 +663,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='sarsa_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_hybrid_sac_pendulum(self):
+        self._test(
+            conf_file='./hybrid_rl/hybrid_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_taac_bipedal_walker(self):
         self._test(
             conf_file='taac_bipedal_walker_conf.py',

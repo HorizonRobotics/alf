@@ -27,13 +27,12 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
-from alf.experience_replayers.replay_buffer import BatchInfo
+from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from alf.utils.distributed import data_distributed_when
-from alf.experience_replayers.replay_buffer import ReplayBuffer
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
@@ -161,6 +160,10 @@ class Algorithm(AlgorithmInterface):
         if optimizer:
             self._optimizers.append(optimizer)
         self._is_on_policy = is_on_policy
+        if config:
+            self._rl_train_every_update_steps = config.rl_train_every_update_steps
+            self._rl_train_after_update_steps = config.rl_train_after_update_steps
+        self._count = 0
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -175,6 +178,11 @@ class Algorithm(AlgorithmInterface):
     @property
     def on_policy(self):
         return self._is_on_policy
+
+    @property
+    def has_offline(self):
+        # whether has offline data
+        return self._has_offline
 
     def set_on_policy(self, is_on_policy):
         if self.on_policy is not None:
@@ -366,9 +374,9 @@ class Algorithm(AlgorithmInterface):
                 ``rollout_step()`` (on-policy training) or ``train_step()``
                 (off-policy training). By default it's not summarized.
             loss_info (LossInfo): loss
-            params (list[Parameter]): list of parameters with gradients
+            params (list[Parameter]|None): list of parameters with gradients
         """
-        if self._config.summarize_grads_and_vars:
+        if self._config.summarize_grads_and_vars and params is not None:
             summary_utils.summarize_variables(params)
             summary_utils.summarize_gradients(params)
         if self._debug_summaries:
@@ -674,7 +682,7 @@ class Algorithm(AlgorithmInterface):
             TensorSpec: Spec for the experience returned by ``preprocess_experience()``.
         """
         assert self._processed_experience_spec is not None, (
-            "preprocess_experience() has not been used. processed_experience_spec"
+            "preprocess_experience() has not been used. processed_experience_spec "
             "is not available")
         return self._processed_experience_spec
 
@@ -1027,6 +1035,29 @@ class Algorithm(AlgorithmInterface):
             - loss_info (LossInfo): loss information.
             - params (list[(name, Parameter)]): list of parameters being updated.
         """
+
+        loss_info = self._aggregate_loss(loss_info, valid_masks, batch_info)
+
+        all_params = self._backward_and_gradient_update(loss_info, weight)
+
+        return loss_info, all_params
+
+    def _aggregate_loss(self, loss_info, valid_masks=None, batch_info=None):
+        """Computed aggregated loss.
+
+        Update parameters using the gradient with respect to ``loss_info``.
+
+        Args:
+            loss_info (LossInfo): loss with shape :math:`(T, B)` (except for
+                ``loss_info.scalar_loss``)
+            valid_masks (Tensor): masks indicating which samples are valid.
+                (``shape=(T, B), dtype=torch.float32``)
+            batch_info (BatchInfo): information about this batch returned by
+                ``ReplayBuffer.get_batch()``
+        Returns:
+            loss_info (LossInfo): loss information, with the aggregated loss
+                in the ``loss`` field (i.e. ``loss_info.loss``).
+        """
         masks = None
         if (batch_info is not None and batch_info.importance_weights != ()
                 and self._config.priority_replay):
@@ -1050,11 +1081,28 @@ class Algorithm(AlgorithmInterface):
             assert len(loss_info.scalar_loss.shape) == 0
             loss_info = loss_info._replace(
                 loss=add_ignore_empty(loss_info.loss, loss_info.scalar_loss))
+        return loss_info
 
+    def _backward_and_gradient_update(
+            self,
+            loss_info,
+            weight=1.0,
+    ):
+        """Do backward and gradient update to all the trainable parameters.
+
+        Args:
+            loss_info (LossInfo): loss with shape :math:`(T, B)` (except for
+                ``loss_info.scalar_loss``)
+            weight (float): weight for this batch. Loss will be multiplied with
+                this weight before calculating gradient.
+        Returns:
+            params (list[(name, Parameter)]): list of parameters being updated.
+        """
         unhandled = self._setup_optimizers()
         unhandled = [self._param_to_name[p] for p in unhandled]
         assert not unhandled, ("'%s' has some modules/parameters do not have "
                                "optimizer: %s" % (self.name, unhandled))
+
         optimizers = self.optimizers()
         for optimizer in optimizers:
             optimizer.zero_grad(set_to_none=True)
@@ -1088,7 +1136,7 @@ class Algorithm(AlgorithmInterface):
             self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
-        return loss_info, all_params
+        return all_params
 
     # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, info):
@@ -1108,6 +1156,68 @@ class Algorithm(AlgorithmInterface):
             " train_step() should be LossInfo. Otherwise you need override"
             " calc_loss() to generate LossInfo from info")
         return info
+
+    # offline related functions
+    def train_step_offline(self, inputs, state, rollout_info, pre_train=False):
+        """Perform one step of offline training computation.
+
+        It is called to calculate output for every time step for a batch of
+        experience from offline replay buffer. It also needs to generate
+        necessary information for ``calc_loss_offline()``.
+        By default, this function calls ``train_step`` as its default
+        implementation.
+
+        Args:
+            inputs (nested Tensor): inputs for train.
+            state (nested Tensor): consistent with ``train_state_spec``.
+            rollout_info (nested Tensor): info from ``rollout_step()``. It is
+                retrieved from replay buffer.
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
+        Returns:
+            AlgStep:
+            - output (nested Tensor): prediction result.
+            - state (nested Tensor): should match ``train_state_spec``.
+            - info (nested Tensor): information for training. It will temporally
+              batched and passed as ``info`` for calc_loss(). If this is
+              ``LossInfo``, ``calc_loss()`` in ``Algorithm`` can be used.
+              Otherwise, the user needs to override ``calc_loss()`` to
+              calculate loss or override ``update_with_gradient()`` to do
+              customized training.
+        """
+        try:
+            return self.train_step(inputs, state, rollout_info)
+        except:
+            # the default train_step does not compatible with the
+            # offline data, need to implement ``train_step_offline``
+            # in subclass
+            logging.exception('need to implement train_step_offline function')
+
+    def calc_loss_offline(self, info_offline, pre_train=False):
+        """Calculate the hybrid loss at each step for each sample.
+        By default, this function calls ``calc_loss`` as its default
+        implementation.
+
+        Args:
+            info_offline (nest): information collected for training from the
+                offline training branch. It is returned by
+                ``train_step_offline()`` (hybrid off-policy training).
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
+        Returns:
+            LossInfo: loss at each time step for each sample in the
+                batch. The shapes of the tensors in loss info should be
+                :math:`(T, B)`.
+        """
+        try:
+            return self.calc_loss(info_offline)
+        except:
+            # the default calc_loss does not compatible with the
+            # offline data, need to implement ``calc_loss_offline``
+            # in subclass
+            logging.exception('need to implement calc_loss_offline function')
 
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
@@ -1163,6 +1273,12 @@ class Algorithm(AlgorithmInterface):
           If ``mini_batch_length`` is None, then ``unroll_length`` will be used
           for this calculation.
 
+
+        If ``has_offline`` is True (e.g., by  specifying a valid replay
+        buffer path to ``offline_buffer_dir`` in the config), it will
+        enter the hybrid training mode, i.e., by sampling from both the
+        original replay buffer and the offline buffer for training.
+
         Args:
             update_global_counter (bool): controls whether this function changes
                 the global counter for summary. If there are multiple
@@ -1179,35 +1295,86 @@ class Algorithm(AlgorithmInterface):
 
         # TODO: If this function can be called asynchronously, and using
         # prioritized replay, then make sure replay and train below is atomic.
-        with record_time("time/replay"):
+        if not self.has_offline:
+            # TODO: If this function can be called asynchronously, and using
+            # prioritized replay, then make sure replay and train below is atomic.
+            with record_time("time/replay"):
+                mini_batch_size = config.mini_batch_size
+                if mini_batch_size is None:
+                    mini_batch_size = self._replay_buffer.num_environments
+                if config.whole_replay_buffer_training:
+                    experience, batch_info = self._replay_buffer.gather_all(
+                        ignore_earliest_frames=True)
+                    num_updates = config.num_updates_per_train_iter
+                else:
+                    assert config.mini_batch_length is not None, (
+                        "No mini_batch_length is specified for off-policy training"
+                    )
+                    experience, batch_info = self._replay_buffer.get_batch(
+                        batch_size=(mini_batch_size *
+                                    config.num_updates_per_train_iter),
+                        batch_length=config.mini_batch_length)
+                    num_updates = 1
+
+            with record_time("time/train"):
+                return self._train_experience(
+                    experience,
+                    batch_info,
+                    num_updates,
+                    mini_batch_size,
+                    config.mini_batch_length,
+                    (config.update_counter_every_mini_batch
+                     and update_global_counter),
+                    whole_replay_buffer_training=config.
+                    whole_replay_buffer_training)
+        else:
+            # hybrid training scheme
+            RL_train = False
+            if self._count == 0 or (
+                (self._count > self._rl_train_after_update_steps) and
+                (self._count % self._rl_train_every_update_steps == 0)):
+                RL_train = True
+
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:
-                mini_batch_size = self._replay_buffer.num_environments
-            if config.whole_replay_buffer_training:
-                experience, batch_info = self._replay_buffer.gather_all(
-                    ignore_earliest_frames=True)
-                num_updates = config.num_updates_per_train_iter
+                mini_batch_size = self._replay_buffer.batch_size
+
+            if RL_train:
+                with record_time("time/replay"):
+                    mini_batch_size = config.mini_batch_size
+                    if mini_batch_size is None:
+                        mini_batch_size = self._replay_buffer.num_environments
+
+                    assert not config.whole_replay_buffer_training, (
+                        "whole "
+                        "replay buffer training is not supported")
+
+                    assert config.mini_batch_length is not None, (
+                        "No mini_batch_length is specified for off-policy training"
+                    )
+                    experience, batch_info = self._replay_buffer.get_batch(
+                        batch_size=(mini_batch_size *
+                                    config.num_updates_per_train_iter),
+                        batch_length=config.mini_batch_length)
+                    num_updates = 1
             else:
-                assert config.mini_batch_length is not None, (
-                    "No mini_batch_length is specified for off-policy training"
-                )
-                experience, batch_info = self._replay_buffer.get_batch(
+                experience = None
+                batch_info = None
+                num_updates = 1
+
+            with record_time("time/replay"):
+                offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
                     batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
                     batch_length=config.mini_batch_length)
-                num_updates = 1
-
-        with record_time("time/train"):
-            return self._train_experience(
-                experience,
-                batch_info,
-                num_updates,
-                mini_batch_size,
-                config.mini_batch_length,
-                (config.update_counter_every_mini_batch
-                 and update_global_counter),
-                whole_replay_buffer_training=config.
-                whole_replay_buffer_training)
+            # train hybrid
+            with record_time("time/train"):
+                return self._train_hybrid_experience(
+                    experience, batch_info, offline_experience,
+                    offline_batch_info, num_updates, mini_batch_size,
+                    config.mini_batch_length,
+                    (config.update_counter_every_mini_batch
+                     and update_global_counter))
 
     def _train_experience(self,
                           experience,
@@ -1218,12 +1385,13 @@ class Algorithm(AlgorithmInterface):
                           update_counter_every_mini_batch,
                           whole_replay_buffer_training: bool = False):
         """Train using experience."""
-        # Apply transformation and enrichment to the experience.
-        experience = dist_utils.params_to_distributions(
-            experience, self.experience_spec)
-        experience = alf.data_structures.add_batch_info(
-            experience, batch_info, self._replay_buffer)
-        experience = self.transform_experience(experience)
+        experience, batch_info, length, mini_batch_length, batch_size = self._prepare_experience_data(
+            experience, self.experience_spec, batch_info, mini_batch_length,
+            self._replay_buffer, whole_replay_buffer_training)
+
+        if self._processed_experience_spec is None:
+            self._processed_experience_spec = dist_utils.extract_spec(
+                experience, from_dim=2)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
         # experience that better handles the similar and distinct part of
@@ -1236,86 +1404,6 @@ class Algorithm(AlgorithmInterface):
         #
         # So that we do not have to explicitly (and more importantly implicitly)
         # condition on whole_replay_buffer_training in a lot of isolated places.
-
-        # using potentially updated batch_info after data_transformers
-        if experience.batch_info != ():
-            batch_info = experience.batch_info
-
-        experience = alf.data_structures.clear_batch_info(experience)
-
-        with summary_utils.record_time("time/preprocess_experience"):
-            time_step, rollout_info = self.preprocess_experience(
-                experience.time_step, experience.rollout_info, batch_info)
-        experience = experience._replace(
-            time_step=time_step, rollout_info=rollout_info)
-        if self._processed_experience_spec is None:
-            self._processed_experience_spec = dist_utils.extract_spec(
-                experience, from_dim=2)
-        experience = dist_utils.distributions_to_params(experience)
-
-        length = alf.nest.get_nest_size(experience, dim=1)
-        mini_batch_length = (mini_batch_length or length)
-        if not whole_replay_buffer_training:
-            assert mini_batch_length == length, (
-                "mini_batch_length (%s) is "
-                "different from length (%s). Not supported." %
-                (mini_batch_length, length))
-
-        if mini_batch_length > length:
-            common.warning_once(
-                "mini_batch_length=%s is set to a smaller length=%s" %
-                (mini_batch_length, length))
-            mini_batch_length = length
-        elif length % mini_batch_length:
-            common.warning_once(
-                "length=%s not a multiple of mini_batch_length=%s" %
-                (length, mini_batch_length))
-            length = length // mini_batch_length * mini_batch_length
-            experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
-                                                experience)
-            common.warning_once(
-                "Experience length has been cut to %s" % length)
-
-        if len(alf.nest.flatten(self.train_state_spec)) > 0:
-            if not self._use_rollout_state:
-                # If not using rollout states, then we will assume zero initial
-                # training states. To have a proper state warm up,
-                # mini_batch_length should be greater than 1. Otherwise the states
-                # are always 0s.
-                if mini_batch_length == 1:
-                    logging.fatal(
-                        "Should use TrainerConfig.use_rollout_state=True "
-                        "for training from a replay buffer when minibatch_length==1, "
-                        "otherwise the initial states are always zeros!")
-                else:
-                    # In this case, a state warm up is recommended. For example,
-                    # having mini_batch_length>1 and discarding first several
-                    # steps when computing losses. For a warm up, make sure to
-                    # leave a mini_batch_length > 1 if any recurrent model is to
-                    # be trained.
-                    common.warning_once(
-                        "Consider using TrainerConfig.use_rollout_state=True "
-                        "for training from a replay buffer.")
-            elif mini_batch_length == 1:
-                # If using rollout states and mini_batch_length=1, there will be
-                # no gradient flowing in any recurrent matrix. Only the output
-                # layers on top of the recurrent output will be trained.
-                common.warning_once(
-                    "Using rollout states but with mini_batch_length=1. In "
-                    "this case, any recurrent model can't be properly trained!"
-                )
-            else:
-                # If using rollout states with mini_batch_length>1. In theory,
-                # any recurrent model can be properly trained. With a greater
-                # mini_batch_length, the temporal correlation can be better
-                # captured.
-                pass
-
-        experience = alf.nest.map_structure(
-            lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
-            experience)
-
-        batch_size = alf.nest.get_nest_batch_size(experience)
 
         if whole_replay_buffer_training:
             # Special treatment for whole_replay_buffer_training.
@@ -1532,6 +1620,291 @@ class Algorithm(AlgorithmInterface):
         self.after_update(experience.time_step, train_info)
 
         return experience, train_info, loss_info, params
+
+    def _collect_train_info_offline(self, experience, pre_train):
+        shape = alf.nest.get_nest_shape(experience)
+        length, batch_size = shape[:2]
+
+        exp = alf.nest.map_structure(lambda x: x.reshape(-1, *x.shape[2:]),
+                                     experience)
+
+        if self._use_rollout_state:
+            policy_state = exp.state
+        else:
+            size = alf.nest.get_nest_size(exp, dim=0)
+            policy_state = self.get_initial_train_state(size)
+
+        # exp = dist_utils.params_to_distributions(
+        #     exp, self.processed_experience_spec)
+        policy_step = self.train_step_offline(exp.time_step, policy_state,
+                                              exp.rollout_info, pre_train)
+
+        if self._train_info_spec is None:
+            self._train_info_spec = dist_utils.extract_spec(policy_step.info)
+        info = dist_utils.distributions_to_params(policy_step.info)
+        info = alf.nest.map_structure(
+            lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
+        # info = dist_utils.params_to_distributions(info, self.train_info_spec)
+        return info
+
+    @common.mark_replay
+    def _prepare_experience_data(self,
+                                 experience,
+                                 experience_spec,
+                                 batch_info,
+                                 mini_batch_length,
+                                 exp_replayer,
+                                 whole_replay_buffer_training=False):
+        experience = dist_utils.distributions_to_params(experience)
+        experience = self.transform_experience(experience)
+
+        length = alf.nest.get_nest_size(experience, dim=1)
+        mini_batch_length = (mini_batch_length or length)
+        if not whole_replay_buffer_training:
+            assert mini_batch_length == length, (
+                "mini_batch_length (%s) is "
+                "different from length (%s). Not supported." %
+                (mini_batch_length, length))
+
+        if mini_batch_length > length:
+            common.warning_once(
+                "mini_batch_length=%s is set to a smaller length=%s" %
+                (mini_batch_length, length))
+            mini_batch_length = length
+        elif length % mini_batch_length:
+            common.warning_once(
+                "length=%s not a multiple of mini_batch_length=%s" %
+                (length, mini_batch_length))
+            length = length // mini_batch_length * mini_batch_length
+            experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
+                                                experience)
+            common.warning_once(
+                "Experience length has been cut to %s" % length)
+
+        if len(alf.nest.flatten(self.train_state_spec)) > 0:
+            if not self._use_rollout_state:
+                # If not using rollout states, then we will assume zero initial
+                # training states. To have a proper state warm up,
+                # mini_batch_length should be greater than 1. Otherwise the states
+                # are always 0s.
+                if mini_batch_length == 1:
+                    logging.fatal(
+                        "Should use TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer when minibatch_length==1, "
+                        "otherwise the initial states are always zeros!")
+                else:
+                    # In this case, a state warm up is recommended. For example,
+                    # having mini_batch_length>1 and discarding first several
+                    # steps when computing losses. For a warm up, make sure to
+                    # leave a mini_batch_length > 1 if any recurrent model is to
+                    # be trained.
+                    common.warning_once(
+                        "Consider using TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer.")
+            elif mini_batch_length == 1:
+                # If using rollout states and mini_batch_length=1, there will be
+                # no gradient flowing in any recurrent matrix. Only the output
+                # layers on top of the recurrent output will be trained.
+                common.warning_once(
+                    "Using rollout states but with mini_batch_length=1. In "
+                    "this case, any recurrent model can't be properly trained!"
+                )
+            else:
+                # If using rollout states with mini_batch_length>1. In theory,
+                # any recurrent model can be properly trained. With a greater
+                # mini_batch_length, the temporal correlation can be better
+                # captured.
+                pass
+
+        experience = alf.nest.map_structure(
+            lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
+            experience)
+
+        batch_size = alf.nest.get_nest_batch_size(experience)
+
+        return experience, batch_info, length, mini_batch_length, batch_size
+
+    def _train_hybrid_experience(
+            self, experience, batch_info, offline_experience,
+            offline_batch_info, num_updates, mini_batch_size,
+            mini_batch_length, update_counter_every_mini_batch):
+        """Train using both experience (if available) and aux_experience.
+        We assume that experience can be None.
+        """
+
+        if experience is not None:
+            experience, batch_info, length, mini_batch_length, batch_size = self._prepare_experience_data(
+                experience, self.experience_spec, batch_info,
+                mini_batch_length, self._replay_buffer)
+
+            if self._processed_experience_spec is None:
+                self._processed_experience_spec = dist_utils.extract_spec(
+                    experience, from_dim=2)
+
+        # TODO: use a different mini_batch_length for aux
+        offline_experience, offline_batch_info, length, mini_batch_length, batch_size = self._prepare_experience_data(
+            offline_experience, self._offline_experience_spec,
+            offline_batch_info, mini_batch_length, self._offline_replay_buffer)
+
+        def _make_time_major(nest):
+            """Put the time dim to axis=0."""
+            return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
+
+        indices = None
+        for u in range(num_updates):
+            if mini_batch_size < batch_size:
+                # here we use the cpu version of torch.randperm(n) to generate
+                # the permuted indices, as the cuda version of torch.randperm(n)
+                # seems to have a bug when n is a large number, generating
+                # negative or very large values that cause out of bound kernel
+                # error: https://github.com/pytorch/pytorch/issues/59756
+                indices = alf.nest.utils.convert_device(
+                    torch.randperm(batch_size, device='cpu'))
+
+            for b in range(0, batch_size, mini_batch_size):
+                if update_counter_every_mini_batch:
+                    alf.summary.increment_global_counter()
+
+                is_last_mini_batch = (u == num_updates - 1
+                                      and b + mini_batch_size >= batch_size)
+                do_summary = (is_last_mini_batch
+                              or update_counter_every_mini_batch)
+                alf.summary.enable_summary(do_summary)
+
+                if indices is None:
+                    batch_indices = slice(b,
+                                          min(batch_size, b + mini_batch_size))
+                else:
+                    batch_indices = indices[b:min(batch_size, b +
+                                                  mini_batch_size)]
+
+                if experience is not None:
+                    batch = alf.nest.map_structure(lambda x: x[batch_indices],
+                                                   experience)
+                    if batch_info:
+                        binfo = alf.nest.map_structure(
+                            lambda x: x[batch_indices] if isinstance(
+                                x, torch.Tensor) else x, batch_info)
+                    else:
+                        binfo = None
+                    batch = _make_time_major(batch)
+                    batch = alf.nest.utils.convert_device(batch)
+                else:
+                    batch = None
+                    binfo = None
+
+                offline_batch = alf.nest.map_structure(
+                    lambda x: x[batch_indices], offline_experience)
+                if offline_batch_info:
+                    offline_binfo = alf.nest.map_structure(
+                        lambda x: x[batch_indices] if isinstance(
+                            x, torch.Tensor) else x, offline_batch_info)
+                else:
+                    offline_binfo = None
+                offline_batch = _make_time_major(offline_batch)
+                offline_batch = alf.nest.utils.convert_device(offline_batch)
+
+                (exp, train_info, loss_info, offline_exp, offline_train_info,
+                 offline_loss_info, params) = self._hybrid_update(
+                     batch,
+                     binfo,
+                     offline_batch,
+                     offline_binfo,
+                     weight=alf.nest.get_nest_size(offline_batch, 1) /
+                     mini_batch_size)
+                if do_summary:
+                    if exp:
+                        self.summarize_train(exp, train_info, loss_info,
+                                             params)
+                    # TODO: separate summarization
+                    self.summarize_train(offline_exp, offline_train_info,
+                                         offline_loss_info, None)
+
+        train_steps = 2 * batch_size * mini_batch_length * num_updates
+        return train_steps
+
+    def _hybrid_update(self, experience, batch_info, offline_experience,
+                       offline_batch_info, weight):
+        length = alf.nest.get_nest_size(offline_experience, dim=0)
+
+        if self._count == 0 or (
+            (self._count > self._rl_train_after_update_steps) and
+            (self._count % self._rl_train_every_update_steps == 0)):
+            # 1) RL training
+            RL_train = True
+            pre_train = False
+            if self._config.temporally_independent_train_step or length == 1:
+                train_info = self._collect_train_info_parallelly(experience)
+            else:
+                train_info = self._collect_train_info_sequentially(experience)
+
+            experience = dist_utils.params_to_distributions(
+                experience, self.processed_experience_spec)
+
+            loss_info = self.calc_loss(train_info)
+        else:
+            train_info = None
+            loss_info = None
+            RL_train = False
+            # some pre-training in the initial phase
+            pre_train = True
+
+        # 2) aux training
+        offline_train_info = self._collect_train_info_offline(
+            offline_experience, pre_train)
+
+        offline_loss_info = self.calc_loss_offline(offline_train_info,
+                                                   pre_train)
+
+        if loss_info is not None and loss_info.priority != ():
+            priority = (loss_info.priority**self._config.priority_replay_alpha
+                        + self._config.priority_replay_eps)
+            self._replay_buffer.update_priority(batch_info.env_ids,
+                                                batch_info.positions, priority)
+            if self._debug_summaries and alf.summary.should_record_summaries():
+                with alf.summary.scope("PriorityReplay"):
+                    summary_utils.add_mean_hist_summary(
+                        "new_priority", priority)
+                    summary_utils.add_mean_hist_summary(
+                        "old_importance_weight", batch_info.importance_weights)
+        else:
+            assert batch_info is None or batch_info.importance_weights == (), (
+                "Priority replay is enabled. But priority is not calculated.")
+
+        if self.is_rl():
+            valid_masks = (offline_experience.step_type != StepType.LAST).to(
+                torch.float32)
+        else:
+            valid_masks = None
+
+        offline_loss_info = self._aggregate_loss(
+            offline_loss_info, valid_masks, offline_batch_info)
+
+        if loss_info is not None:
+            if self.is_rl():
+                valid_masks = (experience.step_type != StepType.LAST).to(
+                    torch.float32)
+            else:
+                valid_masks = None
+            loss_info = self._aggregate_loss(loss_info, valid_masks,
+                                             batch_info)
+            # TODO: merge loss infos into one for summarization
+            loss_info = loss_info._replace(
+                loss=loss_info.loss + offline_loss_info.loss)
+
+        else:
+            loss_info = offline_loss_info
+
+        params = self._backward_and_gradient_update(loss_info, weight)
+
+        if RL_train:
+            # for now, there is no need to do a hybrid after update
+            self.after_update(experience.time_step, train_info)
+
+        self._count += 1
+
+        return experience, train_info, loss_info, offline_experience, \
+                offline_train_info, offline_loss_info, params
 
 
 class Loss(Algorithm):

@@ -481,3 +481,15 @@ LossInfo = namedtuple(
         "priority",
     ],
     default_value=())
+
+# some basic structures used by offline replay buffer
+# reconstruction
+Info = namedtuple("Info", [
+    'rl',
+    "rewards",
+    "repr",
+])
+
+RLInfo = namedtuple("RLInfo", [
+    "action",
+])
