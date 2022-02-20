@@ -96,7 +96,7 @@ class RealNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
 
         # test Jacobian
         j = transform.log_abs_det_jacobian(x, y)
-        expected_j = torch.tensor([[[0, 3], [0, 0]]])
+        expected_j = torch.tensor([[[0, 3], [0, 0]]]).reshape(1, -1).sum(-1)
         self.assertTensorClose(j, expected_j)
 
     @parameterized.parameters((10, 0, torch.exp),
@@ -136,7 +136,7 @@ class RealNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
         jacob_diag = torch.diagonal(jacob, 0)
         self.assertTrue(torch.all(jacob_diag > 0))
         j = transform.log_abs_det_jacobian(x, y)
-        self.assertTensorClose(j, jacob_diag.log(), epsilon=1e-4)
+        self.assertTensorClose(j, jacob_diag.log().sum(-1), epsilon=1e-4)
 
     @parameterized.parameters(((1, ), (10, )), ((1, 2), (10, 10)),
                               ((3, 4, 5, 6), (5, 5, 5)))
@@ -238,7 +238,8 @@ class RealNVPNetworkTest(parameterized.TestCase, alf.test.TestCase):
         jacob_det = torch.det(jacob)
         j = transform.log_abs_det_jacobian(x, y)  # [B,D]
         j = j.reshape(-1)
-        self.assertTensorClose(j.sum(), jacob_det.abs().log(), epsilon=1e-3)
+        self.assertTensorClose(
+            j.sum(), jacob_det.abs().log().sum(-1), epsilon=1e-3)
 
     @parameterized.parameters((True, 10), (True, None), (False, None),
                               (False, 10))

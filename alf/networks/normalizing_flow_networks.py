@@ -23,6 +23,8 @@ A normalizing flow network :math:`f: \mathbb{R}^N \rightarrow \mathbb{R}^N`
 
 from typing import Union, Callable, Tuple
 
+from functools import partial
+
 from absl import logging
 
 import torch
@@ -52,7 +54,7 @@ class NormalizingFlowNetwork(Network):
         Args:
             input_tensor_spec: input tensor spec
             conditional_input_tensor_spec: a nested tensor spec
-            use_transform_cache: whether use cached transform. When there
+            use_transform_cache: whether to cache transforms. When there
                 is a conditional input, different transforms might be created
                 depending on the conditonal inputs. When there is no conditional
                 input, the same transform will always be used.
@@ -124,7 +126,7 @@ class NormalizingFlowNetwork(Network):
                 flow mapping from ``x`` to ``y``.
             state: should be an empty tuple
         """
-        if self._conditional_inputs:
+        if self.use_conditional_inputs:
             x, z = xz
         else:
             x, z = xz, None
@@ -145,7 +147,7 @@ class NormalizingFlowNetwork(Network):
                 flow inverse mapping from ``y`` to ``x``.
             state: should be an empty tuple
         """
-        if self._conditional_inputs:
+        if self.use_conditional_inputs:
             y, z = yz
         else:
             y, z = yz, None
@@ -219,7 +221,8 @@ class RealNVPNetwork(NormalizingFlowNetwork):
             conv_layer_params: Tuple[Tuple[int]] = None,
             fc_layer_params: Tuple[int] = None,
             activation: Callable = torch.tanh,
-            transform_scale_nonlinear: Callable = torch.nn.functional.softplus,
+            transform_scale_nonlinear: Callable = partial(
+                clipped_exp, clip_value_min=-10, clip_value_max=2),
             sub_dim: int = None,
             mask_mode: str = "contiguous",
             num_layers: int = 2,
@@ -266,7 +269,7 @@ class RealNVPNetwork(NormalizingFlowNetwork):
                 mode of "random", every two layers will have a different randomized
                 mask.
             use_transform_cache: whether use cached transform. Note that
-                this only stores the transform itself; you also have to set
+                this only stores the transform itself; you also have to use
                 ``cache_size=1`` for the created transform to correctly cache
                 the inverse result.
             name: name of the network
@@ -338,25 +341,20 @@ class RealNVPNetwork(NormalizingFlowNetwork):
 
     def _make_invertible_transform(self, conditional_inputs=None):
         transforms = []
-        if conditional_inputs is None:
-            specs = {
-                'input_tensor_spec': self._input_tensor_spec,
-                'conditional_input_tensor_spec': None
-            }
+        if self.use_conditional_inputs:
+            i_spec, ci_spec = self._input_tensor_spec
         else:
-            specs = {
-                'input_tensor_spec': self._input_tensor_spec[0],
-                'conditional_input_tensor_spec': self._input_tensor_spec[1]
-            }
+            i_spec, ci_spec = self._input_tensor_spec, None
         for net, mask in zip(self._networks, self._masks):
             transforms.append(
                 _RealNVPTransform(
+                    input_tensor_spec=i_spec,
+                    conditional_input_tensor_spec=ci_spec,
                     scale_trans_net=net,
                     mask=mask,
                     z=conditional_inputs,
-                    scale_nonlinear=self._transform_scale_nonlinear,
-                    **specs))
-        return td.transforms.ComposeTransform(transforms)
+                    scale_nonlinear=self._transform_scale_nonlinear))
+        return td.ComposeTransform(transforms)
 
 
 def _prepare_conditional_flow_inputs(
@@ -370,13 +368,13 @@ def _prepare_conditional_flow_inputs(
     assume only one batch dim, for example, when using ``alf.layers.Reshape()``.
 
     The reason why we need to do this is because the flow transform can be called
-    with an arbitrary batch shape of ``x`` or ``y``, for example, with computing
+    with an arbitrary batch shape of ``x`` or ``y``, for example, when computing
     a loss with time dimension, or sampling a particular shape from a distribution.
 
     Args:
         xy_spec: tensor spec of ``x`` (forward) or ``y`` (inverse)
         xy:
-        z_spc: tensor spec of ``z`` (conditional input)
+        z_spec: tensor spec of ``z`` (conditional input)
         z:
 
     Returns:
@@ -407,9 +405,6 @@ def _prepare_conditional_flow_inputs(
             # When the total outer dim of ``z`` is smaller than that of ``xy``,
             # it means that multiple samples of ``xy`` correspond to one ``z``,
             # so we need to repeat ``z``'s batch dim.
-            assert ret.shape[0] % B == 0, (
-                "The total batch dim of inputs must be a multiple of that "
-                f"of the conditional inputs! {ret.shape[0]} vs. {B}")
             z = alf.nest.map_structure(
                 lambda e: e.repeat(ret.shape[0] // B, *((e.ndim - 1) * [1])),
                 z)
@@ -422,8 +417,8 @@ class _RealNVPTransform(td.Transform):
     """This class implements each transformation layer of ``RealNVPNetwork``. For
     details, refer to the docstring of ``RealNVPNetwork``.
     """
-    domain = td.constraints.real
-    codomain = td.constraints.real
+    domain: td.constraints.Constraint
+    codomain: td.constraints.Constraint
     bijective = True
     sign = +1
 
@@ -456,6 +451,10 @@ class _RealNVPTransform(td.Transform):
         self._b = mask
         self._scale_nonlinear = scale_nonlinear
         self._z = z
+        self.domain = td.constraints.independent(td.constraints.real,
+                                                 input_tensor_spec.ndim)
+        self.codomain = td.constraints.independent(td.constraints.real,
+                                                   input_tensor_spec.ndim)
 
     @property
     def params(self):
@@ -533,6 +532,9 @@ class _RealNVPTransform(td.Transform):
         """
         scale, trans = self._get_scale_trans(x)
         if self._scale_nonlinear is torch.exp:
-            return scale * (~self._b)
+            jacob_diag = scale * (~self._b)
         else:
-            return self._scale_nonlinear(scale).log() * (~self._b)
+            jacob_diag = self._scale_nonlinear(scale).log() * (~self._b)
+        dim = self.domain.event_dim
+        shape = jacob_diag.shape[:-dim] + (-1, )
+        return jacob_diag.reshape(shape).sum(-1)

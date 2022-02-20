@@ -50,6 +50,14 @@ def get_invertable(cls):
     return NewCls
 
 
+"""
+WARNING: If you need to train policy gradient with a ``TransformedDistribution``,
+then make sure to detach the sampled action when the transforms have trainable
+parameters.
+
+For detailed reasons, please refer to ``alf/docs/notes/compute_probs_of_transformed_dist.rst``.
+"""
+
 AbsTransform = get_invertable(td.AbsTransform)
 AffineTransform = get_invertable(td.AffineTransform)
 ExpTransform = get_invertable(td.ExpTransform)

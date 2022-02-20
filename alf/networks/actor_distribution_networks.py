@@ -304,17 +304,12 @@ class LatentActorDistributionNetwork(Network):
     .. warning::
 
         Like some invertible transform such as ``StableTanh``, the inverse computation
-        of a normalizing flow transform might cause numerical issues. Although there
-        is also a cache option in the transform class, this cache won't work
-        properly if the actions are sampled on a per-step basis but the log probs
-        are computed as a whole batch after accumulating actions & distributions
-        over ``unroll_length``, because the accumulation & stacking has changed
-        the transform's output object id. So ``LatentActorDistributionNetwork``
-        is best suitable for algorithms that compute log probs early in every
-        time step, like SAC. In contrast, AC and PPO might have numerical issues
-        because they compute log probs & entropy later in ``actor_critic_loss()``.
-        Additionally, PPO computes the prob of a rollout action given a training
-        distribution, which also has a similar issue.
+        of a normalizing flow transform might cause numerical issues.
+        For policy gradient methods like AC and PPO, transform caches are usually
+        invalidated because of detaching actions for PG loss. So
+        ``LatentActorDistributionNetwork`` is best suitable for non PG algorithms
+        like DDPG and SAC. See ``alf/docs/notes/compute_probs_of_transformed_dist.rst``
+        for details.
     """
 
     def __init__(self,
@@ -324,8 +319,9 @@ class LatentActorDistributionNetwork(Network):
                  Callable = UnitNormalActorDistributionNetwork,
                  normalizing_flow_network_ctor: Callable = RealNVPNetwork,
                  conditional_flow: bool = True,
-                 scale_distribution=False,
-                 dist_squashing_transform=alf.utils.dist_utils.StableTanh(),
+                 scale_distribution: bool = False,
+                 dist_squashing_transform: td.Transform = alf.utils.dist_utils.
+                 StableTanh(),
                  name: str = "LatentActorDistributionNetwork"):
         """
         Args:
@@ -341,11 +337,11 @@ class LatentActorDistributionNetwork(Network):
             conditional_flow: whether to make the normalizing flow network use
                 inputs to condition its transformations. Only valid for normalizing
                 flow nets that support this option.
-            scale_distribution (bool): Whether or not to scale the output
+            scale_distribution: Whether or not to scale the output
                 distribution to ensure that the output aciton fits within the
                 ``action_spec``. Note that this is different from ``mean_transform``
                 which merely squashes the mean to fit within the spec.
-            dist_squashing_transform (td.Transform):  A distribution Transform
+            dist_squashing_transform:  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to
                 ``dist_utils.StableTanh()``
             name: name of the network
