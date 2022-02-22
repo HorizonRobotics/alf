@@ -549,6 +549,7 @@ class Player(object):
         self._collision_loc = None  # the location of the car when it starts to have collision
 
         self._prev_violated_red_light_id = None
+        self._prev_encountered_red_light_id = None
 
         # The intermediate goal for sparse reward
         self._intermediate_goal_index = min(self._sparse_reward_index_interval,
@@ -721,7 +722,8 @@ class Player(object):
         info = OrderedDict(
             success=np.float32(0.0),
             collision=np.float32(0.0),
-            red_light=np.float32(0.0),
+            red_light_run=np.float32(0.0),
+            red_light_met=np.float32(0.0),
             overspeed=np.float32(0.0))
 
         #===========================Infractions=================================
@@ -751,10 +753,19 @@ class Player(object):
             reward_vector[Player.REWARD_COLLISION] = 1.
 
         # -------- Infraction 2: running red light --------
-        red_light_id = self._alf_world.is_running_red_light(self._actor)
+        red_light_id, encountered_red_light_id = \
+                        self._alf_world.is_running_red_light(self._actor)
+
+        if encountered_red_light_id is not None and encountered_red_light_id != self._prev_encountered_red_light_id:
+            logging.info("actor=%d frame=%d Encountering RED_LIGHT" %
+                         (self._actor.id, current_frame))
+            info['red_light_met'] = np.float32(1.0)
+
+        self._prev_encountered_red_light_id = encountered_red_light_id
+
         if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
             speed = self._get_agent_speed()
-            logging.info("actor=%d frame=%d RED_LIGHT speed %2.1f" %
+            logging.info("actor=%d frame=%d Running RED_LIGHT speed %2.1f" %
                          (self._actor.id, current_frame, speed))
             reward_vector[Player.REWARD_RED_LIGHT] = 1.
             info['red_light'] = np.float32(1.0)
@@ -952,6 +963,7 @@ class Player(object):
         if self._camera_sensor:
             self._camera_sensor.render(self._surface)
         obs = self._current_time_step.observation
+        env_info = self._current_time_step.env_info
         np_precision = np.get_printoptions()['precision']
         np.set_printoptions(precision=1)
         info_text = [
@@ -979,7 +991,9 @@ class Player(object):
             'Reverse:  %4s' % self._control.reverse,
             'Reward: (%s)' % self._current_time_step.reward,
             'Route Length: %4.2f m' % self._route_length,
-            'Speed Limit: %4.2f m/s' % self._speed_limit
+            'Speed Limit: %4.2f m/s' % self._speed_limit,
+            'Red light zone: %1d' % (self._prev_encountered_red_light_id != None),
+            'Red light run: %1d' % env_info['red_light_run'],
         ]
         info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)
