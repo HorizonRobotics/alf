@@ -35,8 +35,9 @@ import time
 import torch
 import torch.distributions as td
 import torch.nn as nn
+import traceback
 import types
-from typing import Callable
+from typing import Callable, List
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -1236,3 +1237,10 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     interval = math.ceil(num_iterations / summary_or_eval_calls)
     logging.info("A summary or eval interval=%d is calculated" % interval)
     return interval
+
+
+def call_stack() -> List[str]:
+    """Return a list of strings showing the current function call stacks for
+    debugging.
+    """
+    return [line.strip() for line in traceback.format_stack()]
