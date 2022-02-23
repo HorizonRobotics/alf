@@ -35,8 +35,9 @@ import time
 import torch
 import torch.distributions as td
 import torch.nn as nn
+import traceback
 import types
-from typing import Callable
+from typing import Callable, List
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -211,7 +212,7 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     return Periodically(update, period, 'periodic_update_targets')
 
 
-def expand_dims_as(x, y):
+def expand_dims_as(x, y, end=True):
     """Expand the shape of ``x`` with extra singular dimensions.
 
     The result is broadcastable to the shape of ``y``.
@@ -219,6 +220,8 @@ def expand_dims_as(x, y):
     Args:
         x (Tensor): source tensor
         y (Tensor): target tensor. Only its shape will be used.
+        end (bool): If True, the extra dimensions are at the end of ``x``;
+            otherwise they are at the beginning.
     Returns:
         ``x`` with extra singular dimensions.
     """
@@ -227,8 +230,12 @@ def expand_dims_as(x, y):
     if k == 0:
         return x
     else:
-        assert x.shape == y.shape[:len(x.shape)]
-        return x.reshape(*x.shape, *([1] * k))
+        if end:
+            assert x.shape == y.shape[:x.ndim]
+            return x.reshape(*x.shape, *([1] * k))
+        else:
+            assert x.shape == y.shape[k:]
+            return x.reshape(*([1] * k), *x.shape)
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
@@ -1230,3 +1237,10 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     interval = math.ceil(num_iterations / summary_or_eval_calls)
     logging.info("A summary or eval interval=%d is calculated" % interval)
     return interval
+
+
+def call_stack() -> List[str]:
+    """Return a list of strings showing the current function call stacks for
+    debugging.
+    """
+    return [line.strip() for line in traceback.format_stack()]

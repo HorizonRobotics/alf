@@ -1495,8 +1495,6 @@ class Algorithm(AlgorithmInterface):
             train_info = self._collect_train_info_parallelly(experience)
         else:
             train_info = self._collect_train_info_sequentially(experience)
-        experience = dist_utils.params_to_distributions(
-            experience, self.processed_experience_spec)
         loss_info = self.calc_loss(train_info)
 
         return train_info, loss_info

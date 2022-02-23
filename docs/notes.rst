@@ -12,3 +12,4 @@ Notes
     notes/howto_docstring
     notes/fetch_env_sac_actrepeat_notes
     notes/sac_with_hybrid_action_types
+    notes/compute_probs_of_transformed_dist
