@@ -555,18 +555,19 @@ class ReplayBuffer(RingBuffer):
         rewards = self._buffer.reward[all_ind]
         rewards[~valid] = 0
         epi_discounts[~valid] = 0
-        # reward[t] * discount[t - 1] is the correct discounted_return.
+        # reward[t + 1] * discount[t] is the correct discounted_return,
+        # because r0 needs to be ignored, r1 is the result of the action from FIRST step.
         discounted_rewards = rewards[:, 1:] * epi_discounts[:, :-1]
         # Then flip and cumsum from back of episode.
         discounted_return = discounted_rewards.flip(1).cumsum(dim=1).flip(1)
         future_discounted_return = discounted_return / discounts[:, :-1]
-        valid_backfill = valid[:, :-1]
-        valid_ind = (env_ids.unsqueeze(1).expand(-1,
-                                                 max_len - 1)[valid_backfill],
-                     self.circular(epi_pos[:, :-1]).expand(
-                         current_pos.shape[0], -1)[valid_backfill])
+        future_discounted_return = alf.utils.tensor_utils.tensor_extend_zero(
+            future_discounted_return, dim=1)
+        valid_ind = (env_ids.unsqueeze(1).expand(-1, max_len)[valid],
+                     self.circular(epi_pos).expand(current_pos.shape[0],
+                                                   -1)[valid])
         self._episodic_discounted_return[valid_ind] = future_discounted_return[
-            valid_backfill]
+            valid]
 
     def _store_episode_end_pos(self, non_first, pos, env_ids):
         """Update _indexed_pos and _headless_indexed_pos for episode end pos.
