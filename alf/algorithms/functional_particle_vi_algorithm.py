@@ -76,12 +76,17 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  data_creator_outlier=None,
                  input_tensor_spec=None,
                  output_dim=None,
-                 use_bias_for_last_layer=True,
                  param_net: ParamNetwork = None,
                  conv_layer_params=None,
                  fc_layer_params=None,
+                 use_conv_bias=False,
+                 use_conv_ln=False,
+                 use_fc_bias=True,
+                 use_fc_ln=False,
                  activation=torch.relu_,
                  last_activation=math_ops.identity,
+                 last_use_bias=True,
+                 last_use_ln=False,
                  num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
@@ -116,7 +121,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 None. It must be provided if ``data_creator`` is not provided.
             output_dim (int): dimension of the output of the generated network.
                 It must be provided if ``data_creator`` is not provided.
-            use_bias_for_last_layer (bool): whether use bias for the last layer
             param_net (ParamNetwork): input parametric network.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
@@ -125,12 +129,19 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
                 takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
+            use_conv_bias (bool|None): whether use bias for conv layers. If None, 
+                will use ``not use_bn`` for conv layers.
+            use_conv_ln (bool): whether use layer normalization for conv layers.
+            use_fc_bias (bool): whether use bias for fc layers.
+            use_fc_ln (bool): whether use layer normalization for fc layers.
             activation (Callable): activation used for all the layers but
                 the last layer.
             last_activation (Callable): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
                 ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
+            last_use_bias (bool): whether use bias for the last layer
+            last_use_ln (bool): whether use normalization for the last layer.
 
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi.
@@ -199,7 +210,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             self._train_loader = None
             self._test_loader = None
 
-        last_layer_param = (output_dim, use_bias_for_last_layer)
+        last_layer_size = output_dim
 
         if param_net is None:
             assert input_tensor_spec is not None
@@ -207,9 +218,16 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 input_tensor_spec=input_tensor_spec,
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=fc_layer_params,
+                use_conv_bias=use_conv_bias,
+                use_conv_ln=use_conv_ln,
+                use_fc_bias=use_fc_bias,
+                use_fc_ln=use_fc_ln,
+                n_groups=num_particles,
                 activation=activation,
-                last_layer_param=last_layer_param,
-                last_activation=last_activation)
+                last_layer_size=last_layer_size,
+                last_activation=last_activation,
+                last_use_bias=last_use_bias,
+                last_use_ln=last_use_ln)
 
         particle_dim = param_net.param_length
 

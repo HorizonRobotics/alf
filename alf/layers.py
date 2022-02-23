@@ -31,7 +31,8 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
 from alf.utils.tensor_utils import BatchSquash
-from .batch_norm import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
+from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
+from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -1117,6 +1118,7 @@ class Conv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 use_ln=False,
                  weight_opt_args: Optional[Dict] = None,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
@@ -1136,6 +1138,7 @@ class Conv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            use_ln (bool): whether use layer normalization
             weight_opt_args: optimizer arguments for weight (not for bias)
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
@@ -1172,6 +1175,10 @@ class Conv2D(nn.Module):
             self._bn = bn_ctor(out_channels)
         else:
             self._bn = None
+        if use_ln:
+            self._ln = nn.GroupNorm(1, out_channels)
+        else:
+            self._ln = None
 
         if weight_opt_args is not None:
             self._conv2d.weight.opt_args = weight_opt_args
@@ -1190,9 +1197,13 @@ class Conv2D(nn.Module):
             nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
         if self._bn is not None:
             self._bn.reset_parameters()
+        if self._ln is not None:
+            self._ln.reset_parameters()
 
     def forward(self, img):
         y = self._conv2d(img)
+        if self._ln is not None:
+            y = self._ln(y)
         if self._bn is not None:
             y = self._bn(y)
         return self._activation(y)
@@ -1380,6 +1391,7 @@ class ParallelConv2D(nn.Module):
                  padding=0,
                  use_bias=None,
                  use_bn=False,
+                 use_ln=False,
                  weight_opt_args: Optional[Dict] = None,
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
@@ -1401,6 +1413,7 @@ class ParallelConv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
+            use_ln (bool): whether use layer normalization
             weight_opt_args: optimizer arguments for weight (not for bias)
             bn_ctor (Callable): will be called as ``bn_ctor(num_features)`` to
                 create the BN layer.
@@ -1438,6 +1451,10 @@ class ParallelConv2D(nn.Module):
             self._bn = bn_ctor(n * out_channels)
         else:
             self._bn = None
+        if use_ln:
+            self._ln = nn.GroupNorm(n, n * out_channels)
+        else:
+            self._ln = None
         if weight_opt_args is not None:
             self._conv2d.weight.opt_args = weight_opt_args
         self.reset_parameters()
@@ -1460,6 +1477,8 @@ class ParallelConv2D(nn.Module):
 
         if self._bn:
             self._bn.reset_parameters()
+        if self._ln is not None:
+            self._ln.reset_parameters()
 
     def forward(self, img):
         """Forward
@@ -1512,6 +1531,8 @@ class ParallelConv2D(nn.Module):
 
         res = self._conv2d(img)
 
+        if self._ln is not None:
+            res = self._ln(res)
         if self._bn is not None:
             res = self._bn(res)
 
@@ -1807,6 +1828,8 @@ class ParamFC(nn.Module):
                  output_size,
                  activation=torch.relu_,
                  use_bias=True,
+                 use_ln=False,
+                 n_groups=None,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1820,6 +1843,19 @@ class ParamFC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
+            use_ln (bool): whether use layer normalization
+            n_groups (int): number of parallel groups, it is determined by the first
+                dimension of the input parameters when calling ``set_parameters`` if
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
+                be specified at initialization and will be fixed, all input parameters 
+                will have to be consistent with it.
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+                If none is provided a ``variance_scaling_initializer`` with gain as
+                ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to
+                the std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
         """
         super(ParamFC, self).__init__()
 
@@ -1827,18 +1863,27 @@ class ParamFC(nn.Module):
         self._output_size = output_size
         self._activation = activation
         self._use_bias = use_bias
+        self._use_ln = use_ln
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
 
         self._weight_length = output_size * input_size
-        self.set_weight(torch.randn(1, self._weight_length))
         if use_bias:
             self._bias_length = output_size
-            self.set_bias(torch.randn(1, self._bias_length))
         else:
             self._bias_length = 0
             self._bias = None
+
+        if use_ln:
+            assert n_groups is not None, (
+                "n_groups has to be specified if use_ln")
+            self._ln = ParamLayerNorm1d(n_groups, output_size)
+            self._n_groups = n_groups
+        else:
+            n_groups = 1
+        self._param_length = None
+        self.set_parameters(torch.randn(n_groups, self.param_length))
 
     @property
     def weight(self):
@@ -1860,7 +1905,54 @@ class ParamFC(nn.Module):
         """Get the n_element of a single bias tensor. """
         return self._bias_length
 
-    def set_weight(self, weight, reinitialize=False):
+    @property
+    def param_length(self):
+        """Get total number of parameters for all layers. """
+        if self._param_length is None:
+            length = self.weight_length
+            if self._use_bias:
+                length += self.bias_length
+            if self._use_ln:
+                length += self._ln.param_length
+            self._param_length = length
+        return self._param_length
+
+    def set_parameters(self, theta, reinitialize=False):
+        """Distribute parameters to corresponding parameters.
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
+                                        or ``[B, D] (groups=B)``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of
+                each layer.
+        """
+        if theta.ndim == 1:
+            theta = theta.unsqueeze(0)
+        assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
+            "Input theta has wrong shape %s. Expecting shape (, %d)" %
+            (theta.shape, self.param_length))
+        if self._use_ln:
+            assert theta.shape[0] == self._n_groups, (
+                "the input has wrong n_groups. Expecting n_groups %d" %
+                self._n_groups)
+        else:
+            self._n_groups = theta.shape[0]
+        weight = theta[:, :self.weight_length]
+        self._set_weight(weight, reinitialize=reinitialize)
+        pos = self.weight_length
+        if self._use_bias:
+            bias = theta[:, pos:pos + self.bias_length]
+            self._set_bias(bias, reinitialize=reinitialize)
+            pos = pos + self.bias_length
+        if self._use_ln:
+            norm_theta = theta[:, pos:]
+            self._ln.set_parameters(norm_theta, reinitialize=reinitialize)
+
+    def _set_weight(self, weight, reinitialize=False):
         """Store a weight tensor or batch of weight tensors.
 
         Args:
@@ -1870,13 +1962,10 @@ class ParamFC(nn.Module):
                 - ``D``: length of weight vector, should be self._weight_length
             reinitialize (bool): whether to reinitialize self._weight
         """
-        assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
-            "Input weight has wrong shape %s. Expecting shape (n, %d)" %
-            (weight.shape, self._weight_length))
-        self._groups = weight.shape[0]
-        weight = weight.view(self._groups, self._output_size, self._input_size)
+        weight = weight.view(self._n_groups, self._output_size,
+                             self._input_size)
         if reinitialize:
-            for i in range(self._groups):
+            for i in range(self._n_groups):
                 if self._kernel_initializer is None:
                     variance_scaling_init(
                         weight[i],
@@ -1887,7 +1976,7 @@ class ParamFC(nn.Module):
 
         self._weight = weight
 
-    def set_bias(self, bias, reinitialize=False):
+    def _set_bias(self, bias, reinitialize=False):
         """Store a bias tensor or batch of bias tensors.
 
         Args:
@@ -1897,13 +1986,6 @@ class ParamFC(nn.Module):
                 - ``D``: length of bias vector, should be self._bias_length
             reinitialize (bool): whether to reinitialize self._bias
         """
-        assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
-            "Input bias has wrong shape %s. Expecting shape (n, %d)" %
-            (bias.shape, self._bias_length))
-        assert bias.shape[0] == self._groups, (
-            "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-            (bias.shape, self._group, self.bias_length))
-
         if reinitialize:
             if self._use_bias:
                 nn.init.constant_(bias, self._bias_init_value)
@@ -1935,20 +2017,19 @@ class ParamFC(nn.Module):
                 - n: number of replicas
                 - D: output dimension
         """
-
         if inputs.ndim == 2:
             # case 1: non-parallel inputs
             assert inputs.shape[1] == self._input_size, (
                 "Input inputs has wrong shape %s. Expecting (B, %d)" %
                 (inputs.shape, self._input_size))
-            inputs = inputs.unsqueeze(0).expand(self._groups, *inputs.shape)
+            inputs = inputs.unsqueeze(0).expand(self._n_groups, *inputs.shape)
         elif inputs.ndim == 3:
             # case 2: parallel inputs
             assert (
-                inputs.shape[1] == self._groups
+                inputs.shape[1] == self._n_groups
                 and inputs.shape[2] == self._input_size), (
                     "Input inputs has wrong shape %s. Expecting (B, %d, %d)" %
-                    (inputs.shape, self._groups, self._input_size))
+                    (inputs.shape, self._n_groups, self._input_size))
             inputs = inputs.transpose(0, 1)  # [n, B, D]
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
@@ -1959,7 +2040,11 @@ class ParamFC(nn.Module):
         else:
             res = torch.bmm(inputs, self._weight.transpose(1, 2))
         res = res.transpose(0, 1)  # [B, n, D]
-        res = res.squeeze(1)  # [B, D] if n=1
+        if self._use_ln:
+            # squeeze is taken care of in self._ln
+            res = self._ln(res)
+        else:
+            res = res.squeeze(1)  # [B, D] if n=1
 
         return self._activation(res)
 
@@ -1975,6 +2060,8 @@ class ParamConv2D(nn.Module):
                  pooling_kernel=None,
                  padding=0,
                  use_bias=False,
+                 use_ln=False,
+                 n_groups=None,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -1991,7 +2078,20 @@ class ParamConv2D(nn.Module):
             strides (int or tuple):
             pooling_kernel (int or tuple):
             padding (int or tuple):
-            use_bias (bool): whether use bias
+            use_bias (bool): whether use bias.
+            use_ln (bool): whether use layer normalization
+            n_groups (int): number of parallel groups, it is determined by the first
+                dimension of the input parameters when calling ``set_parameters`` if
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
+                be specified at initialization and will be fixed, all input parameters 
+                will have to be consistent with it.
+            kernel_initializer (Callable): initializer for the conv layer kernel.
+                If None is provided a variance_scaling_initializer with gain as
+                ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
         """
         super(ParamConv2D, self).__init__()
 
@@ -2003,19 +2103,29 @@ class ParamConv2D(nn.Module):
         self._strides = strides
         self._pooling_kernel = pooling_kernel
         self._padding = padding
+        use_bias = use_bias
         self._use_bias = use_bias
+        self._use_ln = use_ln
+        self._n_groups = n_groups
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
 
         self._weight_length = out_channels * in_channels * self._kH * self._kW
-        self.set_weight(torch.randn(1, self._weight_length))
         if use_bias:
             self._bias_length = out_channels
-            self.set_bias(torch.randn(1, self._bias_length))
         else:
             self._bias_length = 0
             self._bias = None
+        if use_ln:
+            assert n_groups is not None, (
+                "n_groups has to be specified if use_ln")
+            self._ln = ParamLayerNorm2d(n_groups, out_channels)
+            self._n_groups = n_groups
+        else:
+            n_groups = 1
+        self._param_length = None
+        self.set_parameters(torch.randn(n_groups, self.param_length))
 
     @property
     def weight(self):
@@ -2037,7 +2147,55 @@ class ParamConv2D(nn.Module):
         """Get the n_element of a single bias tensor. """
         return self._bias_length
 
-    def set_weight(self, weight, reinitialize=False):
+    @property
+    def param_length(self):
+        """Get total number of parameters for all layers. """
+        if self._param_length is None:
+            length = self.weight_length
+            if self._use_bias:
+                length += self.bias_length
+            if self._use_ln:
+                length += self._ln.param_length
+            self._param_length = length
+        return self._param_length
+
+    def set_parameters(self, theta, reinitialize=False):
+        """Distribute parameters to corresponding parameters.
+
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
+                                        or ``[B, D] (groups=B)``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of
+                each layer.
+        """
+        if theta.ndim == 1:
+            theta = theta.unsqueeze(0)
+        assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
+            "Input theta has wrong shape %s. Expecting shape (, %d)" %
+            (theta.shape, self.param_length))
+        if self._use_ln:
+            assert theta.shape[0] == self._n_groups, (
+                "the input has wrong n_groups. Expecting n_groups %d" %
+                self._n_groups)
+        else:
+            self._n_groups = theta.shape[0]
+        weight = theta[:, :self.weight_length]
+        self._set_weight(weight, reinitialize=reinitialize)
+        pos = self.weight_length
+        if self._use_bias:
+            bias = theta[:, pos:pos + self.bias_length]
+            self._set_bias(bias, reinitialize=reinitialize)
+            pos = pos + self.bias_length
+        if self._use_ln:
+            norm_theta = theta[:, pos:]
+            self._ln.set_parameters(norm_theta, reinitialize=reinitialize)
+
+    def _set_weight(self, weight, reinitialize=False):
         """Store a weight tensor or batch of weight tensors.
 
         Args:
@@ -2047,24 +2205,19 @@ class ParamConv2D(nn.Module):
                 - ``D``: length of weight vector, should be self._weight_length
             reinitialize (bool): whether to reinitialize self._weight
         """
-        assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
-            "Input weight has wrong shape %s. Expecting shape (n, %d)" %
-            (weight.shape, self._weight_length))
         if weight.shape[0] == 1:
             # non-parallel weight
-            self._groups = 1
             weight = weight.view(self._out_channels, self._in_channels,
                                  self._kH, self._kW)
         else:
             # parallel weight
-            self._groups = weight.shape[0]
-            weight = weight.view(self._groups, self._out_channels,
+            weight = weight.view(self._n_groups, self._out_channels,
                                  self._in_channels, self._kH, self._kW)
-            weight = weight.reshape(self._groups * self._out_channels,
+            weight = weight.reshape(self._n_groups * self._out_channels,
                                     self._in_channels, self._kH, self._kW)
 
         if reinitialize:
-            for i in range(self._groups):
+            for i in range(self._n_groups):
                 if self._kernel_initializer is None:
                     variance_scaling_init(
                         weight[i * self._out_channels:(i + 1) *
@@ -2077,7 +2230,7 @@ class ParamConv2D(nn.Module):
                                self._out_channels])
         self._weight = weight
 
-    def set_bias(self, bias, reinitialize=False):
+    def _set_bias(self, bias, reinitialize=False):
         """Store a bias tensor or batch of bias tensors.
 
         Args:
@@ -2087,13 +2240,6 @@ class ParamConv2D(nn.Module):
                 - ``D``: length of bias vector, should be self._bias_length
             reinitialize (bool): whether to reinitialize self._bias
         """
-        assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
-            "Input bias has wrong shape %s. Expecting shape (n, %d)" %
-            (bias.shape, self._bias_length))
-        assert bias.shape[0] == self._groups, (
-            "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-            (bias.shape, self._group, self.bias_length))
-
         if reinitialize:
             if self._use_bias:
                 nn.init.constant_(bias, self._bias_init_value)
@@ -2118,7 +2264,8 @@ class ParamConv2D(nn.Module):
                 will have its own input data by slicing img.
 
         Returns:
-            torch.Tensor with shape ``[B, n, C', H', W']``
+            torch.Tensor with shape ``[B, n, C', H', W']`` if ``keep_group_dim``
+            otherwise with shape ``[B, n*C', H', W']``,
                 where the meaning of the symbols are:
                 - ``B``: batch
                 - ``n``: number of replicas
@@ -2126,7 +2273,7 @@ class ParamConv2D(nn.Module):
                 - ``H'``: output height
                 - ``W'``: output width
         """
-        if self._groups == 1:
+        if self._n_groups == 1:
             # non-parallel layer
             assert (img.ndim == 4 and img.shape[1] == self._in_channels), (
                 "Input img has wrong shape %s. Expecting (B, %d, H, W)" %
@@ -2136,40 +2283,43 @@ class ParamConv2D(nn.Module):
             if img.ndim == 4:
                 if img.shape[1] == self._in_channels:
                     # case 1: non-parallel input
-                    img = img.repeat(1, self._groups, 1, 1)
+                    img = img.repeat(1, self._n_groups, 1, 1)
                 else:
                     # case 2: parallel input
-                    assert img.shape[1] == self._groups * self._in_channels, (
+                    assert img.shape[1] == self._n_groups * self._in_channels, (
                         "Input img has wrong shape %s. Expecting (B, %d, H, W) or (B, %d, H, W)"
                         % (img.shape, self._in_channels,
-                           self._groups * self._in_channels))
+                           self._n_groups * self._in_channels))
             elif img.ndim == 5:
                 # case 3: parallel input with unmerged group dim
                 assert (
-                    img.shape[1] == self._groups
+                    img.shape[1] == self._n_groups
                     and img.shape[2] == self._in_channels
                 ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
-                    % (img.shape, self._groups, self._in_channels))
+                    % (img.shape, self._n_groups, self._in_channels))
                 # merge group and channel dim
                 img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
                                   *img.shape[3:])
             else:
                 raise ValueError("Wrong img.ndim=%d" % img.ndim)
 
-        res = self._activation(
-            F.conv2d(
-                img,
-                self._weight,
-                bias=self._bias,
-                stride=self._strides,
-                padding=self._padding,
-                groups=self._groups))
+        res = F.conv2d(
+            img,
+            self._weight,
+            bias=self._bias,
+            stride=self._strides,
+            padding=self._padding,
+            groups=self._n_groups)
+        if self._use_ln:
+            res = self._ln(res, keep_group_dim=False)
+        res = self._activation(res)
+
         if self._pooling_kernel is not None:
             res = F.max_pool2d(res, self._pooling_kernel)
 
-        if self._groups > 1 and keep_group_dim:
+        if self._n_groups > 1 and keep_group_dim:
             # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
-            res = res.reshape(res.shape[0], self._groups, self._out_channels,
+            res = res.reshape(res.shape[0], self._n_groups, self._out_channels,
                               res.shape[2], res.shape[3])
 
         return res

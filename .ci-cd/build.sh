@@ -74,7 +74,7 @@ function test() {
         alf.algorithms.vae_test \
         alf.algorithms.ppg.disjoint_policy_value_network_test \
         alf.bin.train_play_test \
-        alf.batch_norm_test \
+        alf.norm_layers_test \
         alf.config_util_test \
         alf.data_structures_test \
         alf.device_ctx_test \
