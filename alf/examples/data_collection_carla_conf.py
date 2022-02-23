@@ -14,11 +14,12 @@
 
 from functools import partial
 from alf.environments import suite_carla
+from alf.environments.carla_env.carla_agents import SimpleNavigationAgent
 from alf.examples import sac_conf
 
 import alf
 
-# This is a example config file for data collection in CARLA.
+# This is an example config file for data collection in CARLA.
 
 # the desired replay buffer size for collection
 replay_buffer_length = 10000
@@ -40,7 +41,7 @@ overwrite_policy_output = True
 enable_buffer_checkpoint = True
 
 # 5.6 m/s = 20 km/h
-# alf.config('SimpleNavigationAgent', target_speed=5.6)
+alf.config('SimpleNavigationAgent', target_speed=5.6)
 alf.config('RLAlgorithm', overwrite_policy_output=overwrite_policy_output)
 
 # config Player for data collection:
@@ -51,11 +52,16 @@ alf.config(
     additional_time=additional_time)
 
 from alf.examples import sac_carla_conf
-# training config for data collection:
-# initial_collect_steps, num_env_steps, replay_buffer_length
+
+# Some relevant parameters in the config for data collection:
+# initial_collect_steps, num_env_steps, replay_buffer_length.
+# Note that since we set the value of num_env_steps as initial_collect_steps,
+# we are only leveraging the initial collection phase for data collection,
+# and do not enter the actual training mode beyond the initial collection phase.
 alf.config(
     'TrainerConfig',
     initial_collect_steps=initial_collect_steps,
+    unroll_length=1000,
     num_iterations=0,
     num_env_steps=num_env_steps,
     summary_interval=100,
