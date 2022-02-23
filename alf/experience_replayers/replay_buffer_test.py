@@ -20,7 +20,6 @@ import torch
 import alf
 from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
-from alf.utils.data_buffer_test import RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
