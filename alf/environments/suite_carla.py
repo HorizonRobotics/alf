@@ -719,12 +719,16 @@ class Player(object):
         reward_vector = np.zeros(Player.REWARD_DIMENSION, np.float32)
         reward = 0.
         discount = 1.0
+        # this dictionary structure is used for describing the occurrences
+        # of different types events appeared in the current time step.
         info = OrderedDict(
-            success=np.float32(0.0),
-            collision=np.float32(0.0),
-            red_light_run=np.float32(0.0),
-            red_light_met=np.float32(0.0),
-            overspeed=np.float32(0.0))
+            success=np.float32(0.0),  # success event (0/1)
+            collision=np.float32(0.0),  # collision event (0/1)
+            red_light_violated=np.float32(0.0),  # violated red light (0/1)
+            red_light_encountered=np.float32(
+                0.0),  # encountered red light (0/1)
+            overspeed=np.float32(0.0)  # overspeed event (0/1)
+        )
 
         #===========================Infractions=================================
 
@@ -759,7 +763,7 @@ class Player(object):
         if encountered_red_light_id is not None and encountered_red_light_id != self._prev_encountered_red_light_id:
             logging.info("actor=%d frame=%d Encountering RED_LIGHT" %
                          (self._actor.id, current_frame))
-            info['red_light_met'] = np.float32(1.0)
+            info['red_light_encountered'] = np.float32(1.0)
 
         self._prev_encountered_red_light_id = encountered_red_light_id
 
@@ -768,7 +772,7 @@ class Player(object):
             logging.info("actor=%d frame=%d Running RED_LIGHT speed %2.1f" %
                          (self._actor.id, current_frame, speed))
             reward_vector[Player.REWARD_RED_LIGHT] = 1.
-            info['red_light'] = np.float32(1.0)
+            info['red_light_violated'] = np.float32(1.0)
             if self._terminate_upon_infraction != "redlight":
                 reward -= min(
                     self._max_red_light_penalty,
@@ -993,7 +997,7 @@ class Player(object):
             'Route Length: %4.2f m' % self._route_length,
             'Speed Limit: %4.2f m/s' % self._speed_limit,
             'Red light zone: %1d' % (self._prev_encountered_red_light_id != None),
-            'Red light run: %1d' % env_info['red_light_run'],
+            'Red light violation: %1d' % env_info['red_light_violated'],
         ]
         info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)
