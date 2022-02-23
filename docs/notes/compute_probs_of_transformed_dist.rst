@@ -112,7 +112,7 @@ Transform caches
 ^^^^^^^^^^^^^^^^
 
 A cache is usually helpful for a bijective transform where the inverse is computationally
-expensive or numerically instable. The way PyTorch uses a cache is that for an
+expensive or numerically unstable. The way PyTorch uses a cache is that for an
 inquery :math:`y`, it checks whether it has the same object id with :math:`y_{old}`
 from the cached pair :math:`(x_{old}, y_{old})`. If yes, :math:`x_{old}` is returned.
 Any out-of-place operation (e.g., ``detach()``) that makes :math:`y` a different
@@ -142,15 +142,15 @@ A composition of transforms
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Suppose :math:`g` is now a composition of transforms
-:math:`g=g_N\circ \ldots g_k \ldots \circ g_1`, where :math:`g_k` is the first transform
-that contains trainable parameters. Then for PG, it is completely fine to do either
-of the following things:
+:math:`g=g_N\circ \ldots g_k \ldots \circ g_1`, where :math:`g_k` is the first
+(from left to right) transform that contains trainable parameters. Then for PG,
+it is completely fine to do either of the following things:
 
 
 1. Simply detach :math:`y` and invalidate all caches.
 
-2. Don't detach :math:`y`, turn on caches for transforms :math:`g_N, \ldots, g_{k-1}`,
-   and detach the input :math:`g^{-1}_{k-1}\circ \ldots \circ g^{-1}_N(y)`
+2. Don't detach :math:`y`, turn on caches for transforms :math:`g_N, \ldots, g_{k+1}`,
+   and detach the input :math:`g^{-1}_{k+1}\circ \ldots \circ g^{-1}_N(y)`
    to :math:`g_1^{-1}\circ \ldots \circ g^{-1}_k`.
 
 PyTorch's ``sample()`` and ``rsample()``
@@ -199,29 +199,30 @@ Action transformations as environment wrappers
 
 ALF's AC and PPO algorithms always detach the action from ``sample()`` for PG loss,
 without checking if the transforms have trainable parameters or not. This simplicity
-invalidate caches and sometimes causes numerical issues even when all the transforms
+invalidates caches and sometimes causes numerical issues even when all the transforms
 do not have trainable parameters.
 
-In the hindsight, we don't detach the action and exploit the cache for PG to avoid
-inverting. When the transform :math:`g=g_N\circ\ldots\circ g_2` has no trainable parameters
+If we know the transforms are not trainable, then a better way is that we don't
+detach the action but exploit the cache for PG to avoid inverting. When the transform
+:math:`g=g_N\circ\ldots\circ g_2` has no trainable parameters
 (e.g., ``StableTanh``), we have parameters only exist in :math:`p_{\theta}(x)`. It
 follows
 
 .. math::
 
     \begin{array}{rcl}
-        \log p_Y(y) &=& \log p_{\theta}(g^{-1}(y)) - \log \Big|\frac{\partial g(x)}{\partial x}\big|_{x=x}\Big|\\
+        \log p_Y(y) &=& \log p_{\theta}(g^{-1}(y)) - \log \Big|\frac{\partial g(x)}{\partial x}\big|_{x=g^{-1}(y)}\Big|\\
         \int_y P_Y(y)\nabla_{\theta}\log p_Y(y) dy &=& \int_y P_Y(y)\nabla_{\theta}\log p_{\theta}(g^{-1}(y)) dy\\
         &=&\int_x p_{\theta}(x) \nabla_{\theta}\log p_{\theta}(x) dx\\
     \end{array}
 
 because we can discard the Jacobian determinant for :math:`\nabla_{\theta}`.
-Thus in this case, it's equivalent to directly training :math:`p_{\theta}(x)` in the
-untransformed action space :math:`X` and apply the transformation on the
-**environment side**. If we do so, there is no longer an instability issue associated
-with PPO and AC.
+Thus in this case, regarding PG, it's equivalent to directly training
+:math:`p_{\theta}(x)` in the untransformed action space :math:`X` and apply the
+transformation on the **environment side**. If we do so, there is no longer an
+instability issue associated with PPO and AC.
 
 One caveat of applying nonparameterized transformations on the environment side is,
 the actual entropy of environment actions is difficult to be estimated on the
 algorithm side. One solution is to still have :math:`g` applied to :math:`p_{\theta}(x)`
-for entropy calculation, while PG loss directly uses :math:`p_{\theta}(x)`.
+for entropy calculation, while the PG loss directly uses :math:`p_{\theta}(x)`.
