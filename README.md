@@ -40,6 +40,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[GPVI](alf/algorithms/generator.py)|General|Ratzlaff, Bai et al. "Generative Particle Variational Inference via Estimation of Functional Gradients" [arXiv:2103.01291](https://arxiv.org/abs/2103.01291)|
 |[SVGD optimizer](alf/optimizers/optimizers.py)|General|Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm" [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)|
 |[VAE](alf/algorithms/vae.py)|General|Higgins et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework" [ICLR2017](https://openreview.net/forum?id=Sy2fzU9gl)|
+|[RealNVP](alf/networks/normalizing_flow_networks.py)|General|Dinh et al. "Density estimation using Real NVP" [arXiv:1605.08803](https://arxiv.org/abs/1605.08803)|
 
 ## Installation
 
