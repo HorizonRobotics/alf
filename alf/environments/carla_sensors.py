@@ -1246,6 +1246,7 @@ class World(object):
         """
         veh_transform = actor.get_transform()
         veh_location = veh_transform.location
+        veh_location_np = _to_numpy_loc(veh_location)
 
         veh_extent = actor.bounding_box.extent.x
         tail_close_pt = _rotate_point(
@@ -1263,7 +1264,7 @@ class World(object):
                    np.expand_dims(_to_numpy_loc(tail_far_pt), axis=0))
 
         is_red = self._traffic_light_states == carla.TrafficLightState.Red
-        dist = self._traffic_light_centers - _to_numpy_loc(veh_location)
+        dist = self._traffic_light_centers - veh_location_np
         dist = np.linalg.norm(dist, axis=-1)
 
         candidate_light_index = np.nonzero(
@@ -1271,6 +1272,9 @@ class World(object):
         ve_dir = _to_numpy_loc(veh_transform.get_forward_vector())
 
         waypoints = self._traffic_light_waypoints
+
+        violated_red_light_id = None
+        encountered_red_light_id = None
         for index in candidate_light_index:
             wp_dir = _get_forward_vector(waypoints.rotation[index])
             dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)
@@ -1292,13 +1296,20 @@ class World(object):
             left_lane_wp = location_wp + left_lane_wp
             right_lane_wp = _rotate_np_point(d, yaw_wp - 0.5 * math.pi)
             right_lane_wp = location_wp + right_lane_wp
+
+            # red-light id for red-light violation
             if np.any(same_lane & _is_segments_intersecting(
                     veh_seg, (left_lane_wp, right_lane_wp))):
                 # If veh_seg intersects with (left_lane_wp, right_lane_wp), that
                 # means the vehicle is crossing the line dividing intersection
                 # and the outside area.
-                return self._traffic_light_actors[index].id
-        return None
+                violated_red_light_id = self._traffic_light_actors[index].id
+
+            # red-light id encountered by the actor
+            if np.any(same_lane):
+                encountered_red_light_id = self._traffic_light_actors[index].id
+
+        return violated_red_light_id, encountered_red_light_id
 
     def _draw_waypoints(self, waypoints, vertical_shift, persistency=-1):
         """Draw a list of waypoints at a certain height given in vertical_shift."""
