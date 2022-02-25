@@ -26,7 +26,7 @@ def _make_alg_experience(experience, name):
     """Given an experience, extracts the ``rollout_info`` field for an
     algorithm.
     """
-    if experience.rollout_info is ():
+    if experience.rollout_info == ():
         rollout_info = ()
     else:
         rollout_info = getattr(experience.rollout_info, name)

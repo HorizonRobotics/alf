@@ -283,10 +283,18 @@ class AlgorithmInterface(nn.Module):
         it's less frequently called than ``after_update``.
 
         Args:
-            root_inputs (nest): temporally bached inputs for the ``rollout_step()``
-                of the root algorithm collected during ``unroll()``.
-            rollout_info (nest): information collected from rollout_step() for
-                this algorithm during ``unroll()``.
+            root_inputs (nest|None): temporally batched inputs for the
+                ``rollout_step()`` of the root algorithm collected during
+                ``unroll()``. In the case where no data is available from
+                the ``rollout_step()`` (e.g. in a offline pre-training phase
+                where the online interaction is not started yet) ``root_inputs``
+                will be None.
+            rollout_info (nest|None): information collected from
+                ``rollout_step()`` for this algorithm during ``unroll()``.
+                In the case where no data is available from the
+                ``rollout_step()`` (e.g. in a offline pre-training phase
+                where the online interaction is not started yet) ``rollout_info``
+                will be None.
         """
 
     def train_iter(self):
