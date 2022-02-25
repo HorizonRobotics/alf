@@ -129,7 +129,8 @@ class ImageChannelFirst(BaseObservationWrapper):
                 low = observation_space.low
                 high = observation_space.high
                 if np.isscalar(low) and np.isscalar(high):
-                    shape = observation_space.shape[::-1]
+                    shape = (observation_space.shape[-1:] +
+                             observation_space.shape[1:])
                     return gym.spaces.Box(
                         low=low,
                         high=high,

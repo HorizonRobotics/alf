@@ -38,7 +38,6 @@ from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
-from alf.utils.video_recorder import VideoRecorder
 
 
 class _TrainerProgress(nn.Module):
@@ -697,6 +696,11 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         assert batch_size == 1, 'video recording is not supported for parallel play'
+        # Note that ``VideoRecorder`` will import ``matplotlib`` which might have
+        # some side effects on xserver (if its backend needs graphics).
+        # This is incompatible with RLBench parallel envs >1 (or other
+        # envs requiring xserver) for some unknown reasons, so we have a lazy import here.
+        from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(
             env, append_blank_frames=append_blank_frames, path=record_file)
     elif render:
