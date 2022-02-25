@@ -226,18 +226,17 @@ class TrainerConfig(object):
             rl_train_after_update_steps (int): only used in the hybrid training
                 mode. It is used as a starting criteria for the normal (non-offline)
                 part of the RL training, which only starts after so many number
-                of update steps.
+                of update steps (according to ``global_counter``).
             rl_train_every_update_steps (int): only used in the hybrid training
                 mode. It is used to control the update frequency of the normal
-                (non-offline) part of the RL training. Together with
-                ``num_updates_per_train_iter``, we can have a more fine grained
-                control over the update frequencies of online and offline RL
-                training (currently assumes the training frequency of offline RL
-                is always higher or equal to the online RL part).
-                For example, we can set ``num_updates_per_train_iter = 2``, and
-                ``rl_train_every_update_steps = 1`` to have a train config that
-                executes offline RL training at a frequency that is two times
-                of the online RL training frequency.
+                (non-offline) part of the RL training  (according to
+                ``global_counter``). Through this flag, we can have a more fine
+                grained control over the update frequencies of online and offline
+                RL training (currently assumes the training frequency of offline
+                RL is always higher or equal to the online RL part).
+                For example, we can set ``rl_train_every_update_steps = 2``
+                to have a train config that executes online RL training at the
+                half frequency of that of the online RL training.
 
         """
         if isinstance(priority_replay_beta, float):

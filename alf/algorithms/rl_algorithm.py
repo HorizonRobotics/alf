@@ -579,7 +579,8 @@ class RLAlgorithm(Algorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
 
-        if self._update_count >= self._rl_train_after_update_steps:
+        if alf.summary.get_global_counter(
+        ) >= self._rl_train_after_update_steps:
             with torch.set_grad_enabled(config.unroll_with_grad):
                 with record_time("time/unroll"):
                     self.eval()

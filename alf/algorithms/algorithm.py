@@ -163,8 +163,6 @@ class Algorithm(AlgorithmInterface):
         if config:
             self._rl_train_every_update_steps = config.rl_train_every_update_steps
             self._rl_train_after_update_steps = config.rl_train_after_update_steps
-        # the number of update count
-        self._update_count = 0
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -1332,13 +1330,14 @@ class Algorithm(AlgorithmInterface):
                     whole_replay_buffer_training)
         else:
             # hybrid training scheme
-            if ((self._update_count >= self._rl_train_after_update_steps) and
-                (self._update_count % self._rl_train_every_update_steps == 0)):
+            global_step = alf.summary.get_global_counter()
+            if ((global_step >= self._rl_train_after_update_steps) and
+                (global_step % self._rl_train_every_update_steps == 0)):
                 self._RL_train = True
             else:
                 self._RL_train = False
 
-            if self._update_count >= self._rl_train_after_update_steps:
+            if global_step >= self._rl_train_after_update_steps:
                 # flag used for indicating initial pre-training phase
                 self._pre_train = False
             else:
@@ -1430,10 +1429,6 @@ class Algorithm(AlgorithmInterface):
                     mini_batch_size = np.ceil(
                         batch_size / num_batches_desired).astype(int)
 
-        def _make_time_major(nest):
-            """Put the time dim to axis=0."""
-            return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
-
         indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
@@ -1445,37 +1440,26 @@ class Algorithm(AlgorithmInterface):
                 indices = alf.nest.utils.convert_device(
                     torch.randperm(batch_size, device='cpu'))
             for b in range(0, batch_size, mini_batch_size):
-                if update_counter_every_mini_batch:
-                    alf.summary.increment_global_counter()
+
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
-                alf.summary.enable_summary(do_summary)
-                if indices is None:
-                    batch_indices = slice(b,
-                                          min(batch_size, b + mini_batch_size))
-                else:
-                    batch_indices = indices[b:min(batch_size, b +
-                                                  mini_batch_size)]
-                batch = alf.nest.map_structure(lambda x: x[batch_indices],
-                                               experience)
-                if batch_info:
-                    binfo = alf.nest.map_structure(
-                        lambda x: x[batch_indices] if isinstance(
-                            x, torch.Tensor) else x, batch_info)
-                else:
-                    binfo = None
 
-                batch = _make_time_major(batch)
-                # Ensure the batch is in Alf's default device. Note that
-                # ``convert_device()`` will do nothing if the tensors in the
-                # batch is already in the desired device.
-                batch = alf.nest.utils.convert_device(batch)
+                mini_batch_list, mini_batch_info_list = \
+                    self._extract_mini_batch_and_info_from_experience(
+                                            indices,
+                                            [experience],
+                                            [batch_info],
+                                            batch_size,
+                                            b,
+                                            mini_batch_size,
+                                            update_counter_every_mini_batch,
+                                            do_summary)
 
                 exp, train_info, loss_info, params = self._update(
-                    batch,
-                    binfo,
+                    mini_batch_list[0],
+                    mini_batch_info_list[0],
                     weight=alf.nest.get_nest_size(batch, 1) / mini_batch_size)
                 if do_summary:
                     self.summarize_train(exp, train_info, loss_info, params)
@@ -1746,6 +1730,76 @@ class Algorithm(AlgorithmInterface):
 
         return info
 
+    def _extract_mini_batch_and_info_from_experience(
+            self, indices, experience_list, batch_info_list, batch_size,
+            mini_batch_start_position, mini_batch_size,
+            update_counter_every_mini_batch, do_summary):
+        """Extract mini-batch and the corresponding batch info from experience.
+        This function also convert the mini-batch to be time-major and to be on
+        the default device.
+
+        Args:
+            indices (tensor|None): indices of the shape [batch_size]. Typically
+                it is a randomly permuted version of the sequential indices
+                to enable the extraction of a random mini-batch from the batch.
+                If None, the natural sequential indices will be used.
+                ``indices`` together with ``mini_batch_start_position`` and
+                ``mini_batch_size`` will determine the segment of indices
+                used for extracting the mini-batches.
+            experience_list ([Experience]): list of experiences from which the
+                mini-batch will be extracted, one for each experience.
+            batch_info_list (BatchInfo): list of batch information about each
+                of the experience in ``experience_list``.
+            batch_size (int): size of batch. Currently assumes all the
+                experiences (if not None) has the same batch size.
+            mini_batch_start_position (int): the starting position in the
+                ``indices`` for extracting the mini-batch
+            mini_batch_size (int): size of the mini-batch to be extracted
+                from the experiences.
+            update_counter_every_mini_batch (bool): whether to update the global
+                counter for each mini_batch.
+            do_summary (bool): whether to enable summary.
+        """
+        if update_counter_every_mini_batch:
+            alf.summary.increment_global_counter()
+
+        alf.summary.enable_summary(do_summary)
+
+        if indices is None:
+            batch_indices = slice(
+                mini_batch_start_position,
+                min(batch_size, mini_batch_start_position + mini_batch_size))
+        else:
+            batch_indices = indices[mini_batch_start_position:min(
+                batch_size, mini_batch_start_position + mini_batch_size)]
+
+        def _make_time_major(nest):
+            """Put the time dim to axis=0."""
+            return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
+
+        mini_batch_list = []
+        mini_batch_info_list = []
+        for experience, batch_info in zip(experience_list, batch_info_list):
+            if experience is not None:
+                batch = alf.nest.map_structure(lambda x: x[batch_indices],
+                                               experience)
+                if batch_info:
+                    binfo = alf.nest.map_structure(
+                        lambda x: x[batch_indices] if isinstance(
+                            x, torch.Tensor) else x, batch_info)
+                else:
+                    binfo = None
+                batch = _make_time_major(batch)
+                batch = alf.nest.utils.convert_device(batch)
+            else:
+                batch = None
+                binfo = None
+
+            mini_batch_list.append(batch)
+            mini_batch_info_list.append(binfo)
+
+        return mini_batch_list, batch_info_list
+
     def _train_hybrid_experience(
             self, experience, batch_info, offline_experience,
             offline_batch_info, num_updates, mini_batch_size,
@@ -1765,10 +1819,6 @@ class Algorithm(AlgorithmInterface):
             offline_experience, self._offline_experience_spec,
             offline_batch_info, mini_batch_length, self._offline_replay_buffer)
 
-        def _make_time_major(nest):
-            """Put the time dim to axis=0."""
-            return alf.nest.map_structure(lambda x: x.transpose(0, 1), nest)
-
         indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
@@ -1781,47 +1831,25 @@ class Algorithm(AlgorithmInterface):
                     torch.randperm(batch_size, device='cpu'))
 
             for b in range(0, batch_size, mini_batch_size):
-                if update_counter_every_mini_batch:
-                    alf.summary.increment_global_counter()
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
-                alf.summary.enable_summary(do_summary)
 
-                if indices is None:
-                    batch_indices = slice(b,
-                                          min(batch_size, b + mini_batch_size))
-                else:
-                    batch_indices = indices[b:min(batch_size, b +
-                                                  mini_batch_size)]
+                mini_batch_list, mini_batch_info_list = \
+                    self._extract_mini_batch_and_info_from_experience(
+                                            indices,
+                                            [experience, offline_experience],
+                                            [batch_info, offline_batch_info],
+                                            batch_size,
+                                            b,
+                                            mini_batch_size,
+                                            update_counter_every_mini_batch,
+                                            do_summary)
 
-                if experience is not None:
-                    batch = alf.nest.map_structure(lambda x: x[batch_indices],
-                                                   experience)
-                    if batch_info:
-                        binfo = alf.nest.map_structure(
-                            lambda x: x[batch_indices] if isinstance(
-                                x, torch.Tensor) else x, batch_info)
-                    else:
-                        binfo = None
-                    batch = _make_time_major(batch)
-                    batch = alf.nest.utils.convert_device(batch)
-                else:
-                    batch = None
-                    binfo = None
-
-                offline_batch = alf.nest.map_structure(
-                    lambda x: x[batch_indices], offline_experience)
-                if offline_batch_info:
-                    offline_binfo = alf.nest.map_structure(
-                        lambda x: x[batch_indices] if isinstance(
-                            x, torch.Tensor) else x, offline_batch_info)
-                else:
-                    offline_binfo = None
-                offline_batch = _make_time_major(offline_batch)
-                offline_batch = alf.nest.utils.convert_device(offline_batch)
+                batch, offline_batch = mini_batch_list
+                binfo, offline_binfo = mini_batch_info_list
 
                 (exp, train_info, loss_info, offline_exp, offline_train_info,
                  offline_loss_info, params) = self._hybrid_update(
@@ -1903,8 +1931,6 @@ class Algorithm(AlgorithmInterface):
         if self._RL_train:
             # for now, there is no need to do a hybrid after update
             self.after_update(experience.time_step, train_info)
-
-        self._update_count += 1
 
         return experience, train_info, loss_info, offline_experience, \
                 offline_train_info, offline_loss_info, params

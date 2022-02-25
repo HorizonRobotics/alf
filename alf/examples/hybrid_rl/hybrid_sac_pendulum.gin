@@ -1,23 +1,24 @@
 
 include 'sac_pendulum.gin'
 
-# example config for Hybrid RL
-
-# training config
-
+# Example config for Hybrid RL training.
 
 TrainerConfig.mini_batch_size=32
 
-# we can control when to start the online RL training with
+# We can control when to start the online RL training with
 # rl_train_after_update_steps
+
 TrainerConfig.rl_train_after_update_steps=0
 
-# we can control the update frequency of the online RL training
+# We can control the update frequency of the online RL training
 # wrt offline RL by setting rl_train_every_update_steps.
+
 TrainerConfig.rl_train_every_update_steps=1
 
 # Note that the following file used is just a dummy replay buffer
 # file that only contains 3 pendulum trajectories for illustration
 # purpose. It should be replaced with a larger replay buffer file
-# in practice.
-TrainerConfig.offline_buffer_dir="./hybrid_rl/replay_buffer_data/pendulum-replay_buffer"
+# in practice. This replay buffer is from an SAC agent.
+
+TrainerConfig.offline_buffer_dir="./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac"
+
