@@ -773,7 +773,6 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         iters = [200, 500, 600, 500][task_type]
         optimizer = torch.optim.Adam(list(model.parameters()), lr=1e-3)
         for i in range(iters):
-            print(i)
             optimizer.zero_grad()
             x, y = get_batch(batch_size)
             pred = model(x).squeeze(-1)

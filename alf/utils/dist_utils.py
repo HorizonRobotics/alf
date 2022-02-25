@@ -50,6 +50,14 @@ def get_invertable(cls):
     return NewCls
 
 
+"""
+WARNING: If you need to train policy gradient with a ``TransformedDistribution``,
+then make sure to detach the sampled action when the transforms have trainable
+parameters.
+
+For detailed reasons, please refer to ``alf/docs/notes/compute_probs_of_transformed_dist.rst``.
+"""
+
 AbsTransform = get_invertable(td.AbsTransform)
 AffineTransform = get_invertable(td.AffineTransform)
 ExpTransform = get_invertable(td.ExpTransform)
@@ -549,8 +557,31 @@ def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
     return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms_, **kwargs):
-    return td.TransformedDistribution(base_builder(**kwargs), transforms_)
+def _builder_transformed(base_builder, transforms_, transforms_params_,
+                         params_):
+    _set_transform_params(transforms_, transforms_params_)
+    return td.TransformedDistribution(base_builder(**params_), transforms_)
+
+
+def _set_transform_params(transforms, params):
+    """Given a nest of params where each node is a non-composed transform of
+    ``transforms`` (after expanding any composed transform), we set each param
+    to the corresponding transform.
+    """
+    if isinstance(transforms, td.Transform):
+        if isinstance(transforms, td.ComposeTransform):
+            _set_transform_params(transforms.parts, params)
+        elif hasattr(transforms, 'params'):
+            # We assume that if a td.Transform has attribute 'params', then it
+            # also can be set
+            transforms.params = params
+        else:
+            assert params == (), f"Incorrect params {params}!"
+        return
+
+    assert isinstance(transforms, list), f"Incorrect transforms {transforms}"
+    for t, p in zip(transforms, params):
+        _set_transform_params(t, p)
 
 
 def _get_categorical_builder(
@@ -573,11 +604,34 @@ def _get_independent_builder(obj: td.Independent):
     return new_builder, params
 
 
+def _get_transform_params(transforms):
+    """Return a nested structure where each node is a non-composed transform,
+    after expanding any composed transform in ``transforms``.
+    """
+    if isinstance(transforms, td.Transform):
+        if isinstance(transforms, td.ComposeTransform):
+            return _get_transform_params(transforms.parts)
+        elif hasattr(transforms, 'params') and transforms.params is not None:
+            # We assume that if a td.Transform has attribute 'params', then they are the
+            # parameters we'll extract and store.
+            return transforms.params
+        else:  # the transform doesn't have any parameter
+            return ()
+    assert isinstance(transforms, list), f"Incorrect transforms {transforms}!"
+    return [_get_transform_params(t) for t in transforms]
+
+
 def _get_transformed_builder(obj: td.TransformedDistribution):
+    # 'params' contains the dist params and all wrapped transform params starting
+    # 'obj.base_dist' downwards
     builder, params = _get_builder(obj.base_dist)
     new_builder = functools.partial(_builder_transformed, builder,
                                     obj.transforms)
-    return new_builder, params
+    new_params = {
+        "params_": params,
+        'transforms_params_': _get_transform_params(obj.transforms)
+    }
+    return new_builder, new_params
 
 
 def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):

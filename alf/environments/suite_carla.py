@@ -549,6 +549,7 @@ class Player(object):
         self._collision_loc = None  # the location of the car when it starts to have collision
 
         self._prev_violated_red_light_id = None
+        self._prev_encountered_red_light_id = None
 
         # The intermediate goal for sparse reward
         self._intermediate_goal_index = min(self._sparse_reward_index_interval,
@@ -671,7 +672,7 @@ class Player(object):
         if updated_speed_limit is not None:
             self._speed_limit = updated_speed_limit
 
-    def _get_actor_speed(self):
+    def _get_agent_speed(self):
         v = self._actor.get_velocity()
         speed = np.linalg.norm(np.array([v.x, v.y, v.z], dtype=np.float))
         return speed
@@ -686,7 +687,7 @@ class Player(object):
                 - the amount of the actor's speed over the speed limit otherwise
         """
 
-        speed = self._get_actor_speed()
+        speed = self._get_agent_speed()
 
         if self._speed_limit is None or speed < self._speed_limit:
             return 0.
@@ -718,11 +719,16 @@ class Player(object):
         reward_vector = np.zeros(Player.REWARD_DIMENSION, np.float32)
         reward = 0.
         discount = 1.0
+        # this dictionary structure is used for describing the occurrences
+        # of different types events appeared in the current time step.
         info = OrderedDict(
-            success=np.float32(0.0),
-            collision=np.float32(0.0),
-            red_light=np.float32(0.0),
-            overspeed=np.float32(0.0))
+            success=np.float32(0.0),  # success event (0/1)
+            collision=np.float32(0.0),  # collision event (0/1)
+            red_light_violated=np.float32(0.0),  # violated red light (0/1)
+            red_light_encountered=np.float32(
+                0.0),  # encountered red light (0/1)
+            overspeed=np.float32(0.0)  # overspeed event (0/1)
+        )
 
         #===========================Infractions=================================
 
@@ -751,16 +757,37 @@ class Player(object):
             reward_vector[Player.REWARD_COLLISION] = 1.
 
         # -------- Infraction 2: running red light --------
-        red_light_id = self._alf_world.is_running_red_light(self._actor)
-        if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
-            logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
-                                                          current_frame))
-            reward_vector[Player.REWARD_RED_LIGHT] = 1.
-            info['red_light'] = np.float32(1.0)
+        red_light_id, encountered_red_light_id = \
+                        self._alf_world.is_running_red_light(self._actor)
 
-            reward -= min(
-                self._max_red_light_penalty,
-                Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
+        if encountered_red_light_id is not None and encountered_red_light_id != self._prev_encountered_red_light_id:
+            logging.info("actor=%d frame=%d Encountering RED_LIGHT" %
+                         (self._actor.id, current_frame))
+            info['red_light_encountered'] = np.float32(1.0)
+
+        self._prev_encountered_red_light_id = encountered_red_light_id
+
+        if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
+            speed = self._get_agent_speed()
+            logging.info("actor=%d frame=%d Running RED_LIGHT speed %2.1f" %
+                         (self._actor.id, current_frame, speed))
+            reward_vector[Player.REWARD_RED_LIGHT] = 1.
+            info['red_light_violated'] = np.float32(1.0)
+            if self._terminate_upon_infraction != "redlight":
+                reward -= min(
+                    self._max_red_light_penalty,
+                    Player.PENALTY_RATE_RED_LIGHT * max(
+                        0., self._episode_reward))
+            else:
+                # to encourage stop at red-light, can set max_red_light_penalty
+                # to a large value (e.g. 1000) and set terminate_upon_infraction
+                # to "redlight"
+                reward -= self._max_red_light_penalty
+                # reward proportional to 1 - speed / capped_speed for encourating
+                # stopping at redlight
+                red_light_reward = (
+                    1 - min(speed / 5, 1)) * 0.5 * self._max_red_light_penalty
+                reward += red_light_reward
 
         self._prev_violated_red_light_id = red_light_id
 
@@ -940,6 +967,7 @@ class Player(object):
         if self._camera_sensor:
             self._camera_sensor.render(self._surface)
         obs = self._current_time_step.observation
+        env_info = self._current_time_step.env_info
         np_precision = np.get_printoptions()['precision']
         np.set_printoptions(precision=1)
         info_text = [
@@ -967,7 +995,9 @@ class Player(object):
             'Reverse:  %4s' % self._control.reverse,
             'Reward: (%s)' % self._current_time_step.reward,
             'Route Length: %4.2f m' % self._route_length,
-            'Speed Limit: %4.2f m/s' % self._speed_limit
+            'Speed Limit: %4.2f m/s' % self._speed_limit,
+            'Red light zone: %1d' % (self._prev_encountered_red_light_id != None),
+            'Red light violation: %1d' % env_info['red_light_violated'],
         ]
         info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)

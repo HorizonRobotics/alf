@@ -39,6 +39,22 @@ A runnable example can be found at ``/examples/hybrid_rl/hybrid_sac_pendulum.gin
 
 
 
+There are two flags in the config that are useful for hybrid and offline RL
+training: ``rl_train_after_update_steps`` and ``rl_train_every_update_steps``.
+
+We can control when to start the online RL training with
+``rl_train_after_update_steps``.
+This is useful for introducing a pre-training stage based on the offline data
+only initially, and only enable online RL training after this stage.
+
+By assigning to it a value that is larger than ``num_iterations``,
+we essentially can conduct pure offline RL training.
+
+``rl_train_every_update_steps`` can be used to contol the training frequency
+of the normal (non-offline) part of the RL training w.r.t offline RL training.
+
+
+
 3. Offline Buffer Structure
 -------------------------------------------------
 For generality, we assumes a minimal structure for the offlinereplay buffer,
