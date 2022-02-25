@@ -695,6 +695,8 @@ class RLAlgorithm(Algorithm):
         Args:
             sample_exp (nested Tensor):
         """
+        # need to set it here as it will be used in train_exp
+        self._experience_spec = exp_spec
 
         self._offline_replay_buffer = ReplayBuffer(
             data_spec=exp_spec,
@@ -704,18 +706,66 @@ class RLAlgorithm(Algorithm):
             num_earliest_frames_ignored=self._num_earliest_frames_ignored,
             name=f'{self._name}_offline_replay_buffer')
 
+        # prepare data for re-loading
+        # 1) filter out irrelevant items (this is algorithm dependent)
         replay_buffer_from_ckpt = replay_buffer_checkpoint['algorithm']
-
         buffer_dict = {}
         for name, buf in replay_buffer_from_ckpt.items():
-            short_name = name.split('.')[-1]
-            buffer_dict[short_name] = buf
+            # the actual action not the rollout.action
+            # and also not prev_action
+            if 'action' in name and (not 'rollout_info' in name
+                                     and not 'prev_action' in name):
+                buffer_dict[name] = buf
+            elif ('time_step|prev_action' in name
+                  or 'time_step|env_id' in name):
+                buffer_dict[name] = buf
+            elif ('time_step|step_type' in name or 'time_step|reward' in name
+                  or 'time_step|discount' in name
+                  or 'time_step|observation' in name
+                  or 'time_step|prev_action' in name
+                  or 'time_step|env_id' in name):
+                buffer_dict[name] = buf
 
-        self._offline_replay_buffer._load_from_state_dict(
-            buffer_dict,
-            prefix='',
-            local_metadata={},
-            strict=True,
-            missing_keys=[],
-            unexpected_keys=[],
-            error_msgs=[])
+        # 2) pack nest
+        flat_buffer = list(buffer_dict.values())
+        buffer_dict = alf.nest.pack_sequence_as(exp_spec_wo_info, flat_buffer)
+
+        # 3) wrap as experience
+        time_step_dict = buffer_dict.time_step
+        time_step = TimeStep(
+            step_type=time_step_dict.step_type,
+            reward=time_step_dict.reward,
+            discount=time_step_dict.discount,
+            observation=time_step_dict.observation,
+            prev_action=time_step_dict.prev_action,
+            env_id=time_step_dict.env_id)
+
+        exp = Experience(
+            time_step=time_step,
+            action=buffer_dict.action,
+            rollout_info=Info(
+                rl=RLInfo(action=buffer_dict.action),
+                rewards={},
+                repr={},
+            ))
+
+        # load data
+        def _load_data(exp):
+            """
+            For the sync driver, `exp` has the shape (`env_batch_size`, ...)
+            with `num_envs`==1 and `unroll_length`==1.
+            """
+            outer_rank = alf.nest.utils.get_outer_rank(exp,
+                                                       self._experience_spec)
+
+            if outer_rank == 2:
+                # The shape is [env_batch_size, mini_batch_length, ...], where
+                # mini_batch_length denotes the length of the mini_batch
+                for t in range(exp.step_type.shape[1]):
+                    bat = alf.nest.map_structure(lambda x: x[:, t, ...], exp)
+                    self._offline_replay_buffer.add_batch(bat, bat.env_id)
+            else:
+                raise ValueError(
+                    "Unsupported outer rank %s of `exp`" % outer_rank)
+
+        _load_data(exp)
