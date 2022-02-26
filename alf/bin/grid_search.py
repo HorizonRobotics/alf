@@ -394,7 +394,7 @@ def launch_snapshot_gridsearch():
         # for gin, we need to parse it first. Otherwise, configured.gin will be
         # empty
         common.parse_conf_file(conf_file)
-    common.write_config(root_dir)
+    common.write_config(root_dir, common.read_conf_file(root_dir))
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
     # ../<ALF_REPO>/alf/bin/grid_search.py

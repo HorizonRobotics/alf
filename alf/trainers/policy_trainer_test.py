@@ -119,4 +119,5 @@ class TrainerTest(alf.test.TestCase):
 
 
 if __name__ == "__main__":
-    alf.test.main()
+    TrainerTest().test_rl_trainer()
+    #alf.test.main()

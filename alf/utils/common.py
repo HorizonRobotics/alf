@@ -542,13 +542,31 @@ def summarize_config():
                          _format(inoperative_configs))
 
 
-def write_config(root_dir):
+def read_conf_file(root_dir: str) -> str:
+    """Read the content of the conf file.
+
+    Args:
+        root_dir: alf log directory path
+    Returns:
+        the content of the conf file as a str. ``None`` if conf file is not
+        specified through commandline and cannot be found in root_dir
+    """
+    conf_file = get_conf_file()
+    if conf_file is None:
+        return None
+    with open(conf_file, 'r') as f:
+        content = f.read()
+    return content
+
+
+def write_config(root_dir: str, conf_file_content: str):
     """Write config to a file under directory ``root_dir``
 
     Configs from FLAGS.conf_param are also recorded.
 
     Args:
-        root_dir (str): directory path
+        root_dir: directory path
+        conf_file_content: the content of the conf file
     """
     conf_file = get_conf_file()
     if conf_file is None or conf_file.endswith('.gin'):
@@ -570,9 +588,7 @@ def write_config(root_dir):
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
         config += "########### end pre-configs ###########\n\n"
-    f = open(conf_file, 'r')
-    config += f.read()
-    f.close()
+    config += conf_file_content
     f = open(alf_config_file, 'w')
     f.write(config)
     f.close()
