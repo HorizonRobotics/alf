@@ -1460,7 +1460,8 @@ class Algorithm(AlgorithmInterface):
                 exp, train_info, loss_info, params = self._update(
                     mini_batch_list[0],
                     mini_batch_info_list[0],
-                    weight=alf.nest.get_nest_size(batch, 1) / mini_batch_size)
+                    weight=alf.nest.get_nest_size(mini_batch_list[0], 1) /
+                    mini_batch_size)
                 if do_summary:
                     self.summarize_train(exp, train_info, loss_info, params)
 
@@ -1660,16 +1661,17 @@ class Algorithm(AlgorithmInterface):
 
         return train_info, loss_info
 
-    def _update_priority(self, loss_info, batch_info):
-        """Update the priority of the replay buffer based on the ``priority``
+    def _update_priority(self, loss_info, batch_info,
+                         replay_buffer: ReplayBuffer):
+        """Update the priority of the ``replay buffer`` based on the ``priority``
         field of loss_info.
         """
         if loss_info.priority != ():
             priority = (
                 loss_info.priority**self._config.priority_replay_alpha() +
                 self._config.priority_replay_eps)
-            self._replay_buffer.update_priority(batch_info.env_ids,
-                                                batch_info.positions, priority)
+            replay_buffer.update_priority(batch_info.env_ids,
+                                          batch_info.positions, priority)
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope("PriorityReplay"):
                     summary_utils.add_mean_hist_summary(
@@ -1693,7 +1695,7 @@ class Algorithm(AlgorithmInterface):
             train_info, loss_info = self._compute_train_info_and_loss_info(
                 experience)
 
-        self._update_priority(loss_info, batch_info)
+        self._update_priority(loss_info, batch_info, self._replay_buffer)
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
@@ -1889,7 +1891,8 @@ class Algorithm(AlgorithmInterface):
             with torch.cuda.amp.autocast(self._config.enable_amp):
                 train_info, loss_info = self._compute_train_info_and_loss_info(
                     experience)
-                self._update_priority(loss_info, batch_info)
+                self._update_priority(loss_info, batch_info,
+                                      self._replay_buffer)
         else:
             train_info = None
             loss_info = None
@@ -1899,6 +1902,9 @@ class Algorithm(AlgorithmInterface):
 
         offline_loss_info = self.calc_loss_offline(offline_train_info,
                                                    self._pre_train)
+
+        self._update_priority(offline_loss_info, offline_batch_info,
+                              self._offline_replay_buffer)
 
         if self.is_rl():
             offline_valid_masks = (offline_experience.step_type !=

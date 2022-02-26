@@ -108,7 +108,7 @@ class AgentHelper(object):
                              algorithms,
                              train_info,
                              offline=False,
-                             *offline_args):
+                             pre_train=False):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -122,7 +122,9 @@ class AgentHelper(object):
                 ``train_step()`` or ``rollout_step()``.
             offline (bool): whether the accumulation is done for offline RL part
                 or the online RL part.
-            offline_args: additional arguments for offline training
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
         Returns:
             LossInfo: the accumulated loss info.
         """
@@ -132,8 +134,7 @@ class AgentHelper(object):
             if not offline:
                 new_loss_info = algorithm.calc_loss(info)
             else:
-                new_loss_info = algorithm.calc_loss_offline(
-                    info, *offline_args)
+                new_loss_info = algorithm.calc_loss_offline(info, pre_train)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})
