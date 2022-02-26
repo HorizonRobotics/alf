@@ -341,7 +341,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         #
         # We also name the [T + R] shaped positions as "folded" positions.
 
-        def __unfold_dim1(x: torch.Tensor) -> torch.Tensor:
+        def _unfold_dim1(x: torch.Tensor) -> torch.Tensor:
             """Perform the aforementioned unfold at dim = 1 of the input tensor.
 
             """
@@ -380,8 +380,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         mcts_state_field, T + R - 1)
                     # [B', T, R + 1, ...]
                     r_candidate_actions, r_candidate_action_policy, r_values = alf.nest.map_structure(
-                        __unfold_dim1, (r_candidate_actions,
-                                        r_candidate_action_policy, r_values))
+                        _unfold_dim1, (r_candidate_actions,
+                                       r_candidate_action_policy, r_values))
                 else:
                     # [B, T + R, ...]
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
@@ -390,7 +390,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
                     # [B, T, R + 1, ...]
                     candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
-                        __unfold_dim1,
+                        _unfold_dim1,
                         (candidate_actions, candidate_action_policy, values))
 
             # [B]
@@ -429,7 +429,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         value_field)
 
                 # [B, T, R + 1]
-                values = __unfold_dim1(values)
+                values = _unfold_dim1(values)
 
                 # [B, T, R + 1]
                 candidate_actions = replay_buffer.get_field(
@@ -488,7 +488,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = __unfold_dim1(exp.observation)
+                observation = _unfold_dim1(exp.observation)
 
         rollout_info = MuzeroInfo(
             action=action,

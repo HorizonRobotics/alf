@@ -233,8 +233,6 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         processed_experience, processed_rollout_info = muzero.preprocess_experience(
             experience, experience.rollout_info, batch_info)
 
-        # import pprint
-        # pprint.pprint(processed_rollout_info)
         def _check(path, x, y):
             print(f'checking {path}, shape is {x.shape}, expected: {y.shape}')
             self.assertEqual(x, y)
