@@ -295,70 +295,146 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
     @torch.no_grad()
     def preprocess_experience(self, root_inputs: TimeStep,
                               rollout_info: MCTSInfo, batch_info):
-        """Fill rollout_info with MuzeroInfo
+        """Fill rollout_info with MuzeroInfo.
 
-        Note that the shape of experience is [B, T, ...]
+        Especially, the training targets for representation learning is computed
+        here with reanalyze and/or bootstrapping.
+
+        Note that the shape of experience is [B, T, ...], where B is the batch
+        size T is the mini batch length.
+
         """
         assert batch_info != ()
         replay_buffer: ReplayBuffer = batch_info.replay_buffer
         info_path: str = "rollout_info"
         info_path += "." + self.path if self.path else ""
-        mini_batch_length = root_inputs.step_type.shape[1]
         rollout_value = rollout_info.value
-        assert mini_batch_length == 1, (
-            "Only support TrainerConfig.mini_batch_length=1, got %s" %
-            mini_batch_length)
-
         value_field = info_path + '.value'
         candidate_actions_field = info_path + '.candidate_actions'
         candidate_action_policy_field = (
             info_path + '.candidate_action_policy')
 
+        # Create aliases for mini_batch_size (B), mini_batch_length(T) and
+        # predictive unroll steps (R) to make the implementation below more
+        # succinct.
+        B, T = root_inputs.step_type.shape
+        R = self._num_unroll_steps
+
+        # The implementation below heavily relies on the concept of "unfold".
+        # Take an individual trajectory of size T = 3 as example. Assuming the
+        # steps in this trajectory corresponds to position 11, 12, 13 in the
+        # replay buffer. In order to compute a certain type of targets for this
+        # trajectory with an unroll steps R = 5, a naive implementation will
+        # need to do computation for 15 T * (R + 1) steps at positions
+        #
+        #    11, 12, 13, 14, 15, 16
+        #    12, 13, 14, 15, 16, 17
+        #    13, 14, 15, 16, 17, 18
+        #
+        # respectively. Here we can employ a trick to compute only T + R + 1
+        # times at positions
+        #
+        #    11, 12, 13, 14, 15, 16, 17, 18
+        #
+        # and transform it to the above form. Such transformation that converts
+        # a shape of [T + R] to [T, R + 1] is the "unfold" operations.
+        #
+        # We also name the [T + R] shaped positions as "folded" positions.
+
+        def __unfold_dim1(x: torch.Tensor) -> torch.Tensor:
+            """Perform the aforementioned unfold at dim = 1 of the input tensor.
+
+            """
+            assert x.ndim >= 2
+            assert x.shape[1] == T + R
+            batch_size = x.shape[0]
+            numel = torch.prod(torch.tensor(x.shape[2:],
+                                            dtype=torch.int64)).item()
+            y = x.reshape(batch_size, -1)
+            y = y.unfold(1, numel * (R + 1), numel)
+            return y.reshape(batch_size, T, R + 1, *x.shape[2:])
+
         with alf.device(replay_buffer.device):
-            positions = convert_device(batch_info.positions)  # [B]
-            env_ids = convert_device(batch_info.env_ids)  # [B]
+            # [B]
+            start_positions = convert_device(batch_info.positions)
+            start_env_ids = convert_device(batch_info.env_ids)
+
+            # [B, T + R]
+            folded_positions = start_positions.unsqueeze(-1) + torch.arange(T +
+                                                                            R)
+            # [B, 1]
+            folded_env_ids = start_env_ids.unsqueeze(-1)
 
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
                 mcts_state_field = 'state' + info_path[len('rollout_info'):]
+
+                # Applying the "unfold" trick, where we do reanalyze from the
+                # starting position of B size-T trajectory for an unroll steps
+                # of T + R - 1, and unfold it to [B, T, R + 1]
                 if self._reanalyze_ratio < 1:
-                    batch_size = root_inputs.step_type.shape[0]
-                    r = torch.randperm(
-                        batch_size) < batch_size * self._reanalyze_ratio
+                    r = torch.randperm(B) < B * self._reanalyze_ratio
+                    # [B', T + R, ...], B' = B * reanalyze_ratio
                     r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
-                        replay_buffer, env_ids[r], positions[r],
-                        mcts_state_field)
+                        replay_buffer, start_env_ids[r], start_positions[r],
+                        mcts_state_field, T + R - 1)
+                    # [B', T, R + 1, ...]
+                    r_candidate_actions, r_candidate_action_policy, r_values = alf.nest.map_structure(
+                        __unfold_dim1, (r_candidate_actions,
+                                        r_candidate_action_policy, r_values))
                 else:
+                    # [B, T + R, ...]
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
-                        replay_buffer, env_ids, positions, mcts_state_field)
+                        replay_buffer, start_env_ids, start_positions,
+                        mcts_state_field, T + R - 1)
+
+                    # [B, T, R + 1, ...]
+                    candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
+                        __unfold_dim1,
+                        (candidate_actions, candidate_action_policy, values))
 
             # [B]
             steps_to_episode_end = replay_buffer.steps_to_episode_end(
-                positions, env_ids)
+                start_positions, start_env_ids)
             # [B]
-            episode_end_positions = positions + steps_to_episode_end
+            episode_end_positions = start_positions + steps_to_episode_end
 
-            # [B, unroll_steps+1]
-            positions = positions.unsqueeze(-1) + torch.arange(
-                self._num_unroll_steps + 1)
-            # [B, 1]
-            env_ids = batch_info.env_ids.unsqueeze(-1)
             # [B, 1]
             episode_end_positions = episode_end_positions.unsqueeze(-1)
 
-            beyond_episode_end = positions > episode_end_positions
-            positions = torch.min(positions, episode_end_positions)
+            # [B, T + R]
+            folded_beyond_episode_end = folded_positions > episode_end_positions
+            folded_positions = torch.min(folded_positions,
+                                         episode_end_positions)
+
+            # [B, 1, 1]
+            env_ids = folded_env_ids.unsqueeze(-1)
+            # [B, 1, 1]
+            episode_end_positions = episode_end_positions.unsqueeze(-1)
+            # [B, T, R + 1]
+            beyond_episode_end = folded_beyond_episode_end.unfold(1, R + 1, 1)
+            # [B, T, R + 1]
+            positions = folded_positions.unfold(1, R + 1, 1)
 
             if self._reanalyze_ratio < 1:
                 if self._td_steps >= 0:
+                    # [B, T + R]
                     values = self._calc_bootstrap_return(
-                        replay_buffer, env_ids, positions, value_field)
+                        replay_buffer, folded_env_ids, folded_positions,
+                        value_field)
                 else:
+                    # [B, T + R]
                     values = self._calc_monte_carlo_return(
-                        replay_buffer, env_ids, positions, value_field)
+                        replay_buffer, folded_env_ids, folded_positions,
+                        value_field)
 
+                # [B, T, R + 1]
+                values = __unfold_dim1(values)
+
+                # [B, T, R + 1]
                 candidate_actions = replay_buffer.get_field(
                     candidate_actions_field, env_ids, positions)
+                # [B, T, R + 1]
                 candidate_action_policy = replay_buffer.get_field(
                     candidate_action_policy_field, env_ids, positions)
 
@@ -370,6 +446,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             game_overs = ()
             if self._train_game_over_function or self._train_reward_function:
+                # [B, T, R + 1]
                 game_overs = positions == episode_end_positions
                 discount = replay_buffer.get_field('discount', env_ids,
                                                    positions)
@@ -389,8 +466,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 game_overs = ()
 
             action = replay_buffer.get_field('prev_action', env_ids,
-                                             positions[:, 1:])
+                                             positions[:, :, 1:])
 
+        # TODO(breakds): Instead of caching the observation, we can compute the
+        # representation targets directly and store the representation targets,
+        # to save some space.
         observation = ()
         if self._train_repr_prediction:
             if type(self._data_transformer) == IdentityDataTransformer:
@@ -398,7 +478,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                                                       positions)
             else:
                 observation, step_type = replay_buffer.get_field(
-                    ('observation', 'step_type'), env_ids, positions)
+                    ('observation', 'step_type'), folded_env_ids,
+                    folded_positions)
                 exp = alf.data_structures.make_experience(
                     root_inputs, AlgStep(), state=())
                 exp = exp._replace(
@@ -407,11 +488,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = exp.observation
+                observation = __unfold_dim1(exp.observation)
 
         rollout_info = MuzeroInfo(
             action=action,
-            value=(),
+            value=rollout_value,
             target=ModelTarget(
                 reward=rewards,
                 action=candidate_actions,
@@ -419,11 +500,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 value=values,
                 game_over=game_overs,
                 observation=observation))
-
-        # make the shape to [B, T, ...], where T=1
-        rollout_info = alf.nest.map_structure(lambda x: x.unsqueeze(1),
-                                              rollout_info)
-        rollout_info = rollout_info._replace(value=rollout_value)
 
         if self._reward_transformer:
             root_inputs = root_inputs._replace(
@@ -515,8 +591,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 convert_device(reward, self._device)).cpu()
         return reward
 
-    def _reanalyze(self, replay_buffer: ReplayBuffer, env_ids, positions,
-                   mcts_state_field):
+    def _reanalyze(self,
+                   replay_buffer: ReplayBuffer,
+                   env_ids,
+                   positions,
+                   mcts_state_field,
+                   horizon: Optional[int] = None):
         batch_size = env_ids.shape[0]
         mini_batch_size = batch_size
         if self._reanalyze_batch_size is not None:
@@ -529,7 +609,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             result.append(
                 self._reanalyze1(replay_buffer, env_ids[i:i + mini_batch_size],
                                  positions[i:i + mini_batch_size],
-                                 mcts_state_field))
+                                 mcts_state_field, horizon))
         self._reanalyze_mcts.train()
 
         if len(result) == 1:
@@ -576,15 +656,19 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         return exp1, exp2
 
-    def _reanalyze1(self, replay_buffer: ReplayBuffer, env_ids, positions,
-                    mcts_state_field):
+    def _reanalyze1(self,
+                    replay_buffer: ReplayBuffer,
+                    env_ids,
+                    positions,
+                    mcts_state_field,
+                    horizon: Optional[int] = None):
         """Reanalyze one batch.
 
         This means:
-        1. Re-plan the policy using MCTS for n1 = 1 + num_unroll_steps to get fresh policy
+        1. Re-plan the policy using MCTS for n1 = 1 + horizon to get fresh policy
         and value target.
         2. Caluclate the value for following n2 = reanalyze_td_steps so that we have value
-        for a total of 1 + num_unroll_steps + reanalyze_td_steps.
+        for a total of 1 + horizon + reanalyze_td_steps.
         3. Use these values and rewards from replay buffer to caculate n2-step
         bootstraped value target for the first n1 steps.
 
@@ -592,10 +676,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         and processs them using data_transformer.
         """
         batch_size = env_ids.shape[0]
-        n1 = self._num_unroll_steps + 1
+        horizon = horizon or self._num_unroll_steps
+        n1 = horizon + 1
         n2 = self._reanalyze_td_steps
-        env_ids, positions = self._next_n_positions(
-            replay_buffer, env_ids, positions, self._num_unroll_steps + n2)
+        env_ids, positions = self._next_n_positions(replay_buffer, env_ids,
+                                                    positions, horizon + n2)
         # [B, n1]
         positions1 = positions[:, :n1]
         game_overs = replay_buffer.get_field('discount', env_ids,
