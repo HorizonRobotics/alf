@@ -37,6 +37,7 @@ from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.trainers import policy_trainer
 from alf.utils import common
+import alf.summary.render as render
 import alf.utils.external_configurables
 
 
@@ -90,7 +91,7 @@ def play():
     if torch.cuda.is_available():
         alf.set_default_device("cuda")
 
-    alf.summary.render.enable_rendering(FLAGS.alg_render)
+    render.enable_rendering(FLAGS.alg_render)
 
     seed = common.set_random_seed(FLAGS.random_seed)
     if FLAGS.parallel_play > 1:

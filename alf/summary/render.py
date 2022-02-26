@@ -16,6 +16,7 @@ import functools
 import io
 import numpy as np
 import matplotlib
+matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
 plt.style.use('seaborn-dark')

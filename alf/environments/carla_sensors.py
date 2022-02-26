@@ -608,7 +608,6 @@ class CameraSensor(SensorBase):
             display (pygame.Surface): the display surface to draw the image
         """
         if self._image is not None:
-            import cv2
             import pygame
             height, width = self._image.shape[1:3]
             # (c, y, x) => (x, y, c)
