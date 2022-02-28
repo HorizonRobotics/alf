@@ -7,7 +7,7 @@ datagen.load_mnist.test_bs=100
 
 # Lenet for MNIST
 CONV_LAYER_PARAMS=((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-FC_LAYER_PARAMS = ((84, True), )
+FC_LAYER_PARAMS = (84, )
 HIDDEN_LAYERS = (512, 1024)
 
 hypernet/Adam.lr=1e-4
@@ -17,6 +17,7 @@ hypernet/Adam.weight_decay=1e-4
 HyperNetwork.data_creator=@datagen.load_mnist
 HyperNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 HyperNetwork.fc_layer_params=%FC_LAYER_PARAMS
+HyperNetwork.use_fc_bias=True
 HyperNetwork.hidden_layers=%HIDDEN_LAYERS
 HyperNetwork.num_particles=10
 HyperNetwork.noise_dim=256

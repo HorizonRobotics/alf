@@ -19,7 +19,7 @@ from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.trainers import policy_trainer
 
 CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-FC_LAYER_PARAMS = ((84, True), )
+FC_LAYER_PARAMS = (84, )
 HIDDEN_LAYERS = (512, 1024)
 
 noise_dim = 256
@@ -32,6 +32,7 @@ alf.config(
     # data_creator_outlier= dcreator_outlier,
     conv_layer_params=CONV_LAYER_PARAMS,
     fc_layer_params=FC_LAYER_PARAMS,
+    use_fc_bias=True,
     hidden_layers=HIDDEN_LAYERS,
     noise_dim=noise_dim,
     num_particles=10,

@@ -130,8 +130,8 @@ alf.config(
     env_name="BreakoutNoFrameskip-v4",
     num_parallel_environments=num_envs)
 
-alf.config("alf.batch_norm.BatchNorm1d", affine=True)
-alf.config("alf.batch_norm.BatchNorm2d", affine=True)
+alf.config("alf.norm_layers.BatchNorm1d", affine=True)
+alf.config("alf.norm_layers.BatchNorm2d", affine=True)
 alf.config(
     "layers.ResidueBlock",
     with_batch_normalization=use_bn,

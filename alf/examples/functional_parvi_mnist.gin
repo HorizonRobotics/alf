@@ -4,7 +4,7 @@ import functools
 
 # network architecture
 CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-FC_LAYER_PARAMS = ((84, True), )
+FC_LAYER_PARAMS = (84, )
 
 # optimizer settings
 func_parvi/Adam.lr = 1e-3
@@ -15,6 +15,7 @@ func_parvi_critic/Adam.weight_decay = 1e-4
 # algorithm config
 FuncParVIAlgorithm.conv_layer_params = %CONV_LAYER_PARAMS
 FuncParVIAlgorithm.fc_layer_params = %FC_LAYER_PARAMS
+FuncParVIAlgorithm.use_fc_bias = True
 FuncParVIAlgorithm.num_particles = 10
 
 FuncParVIAlgorithm.data_creator = functools.partial(
