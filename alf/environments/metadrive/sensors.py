@@ -194,7 +194,7 @@ class BirdEyeObservation(TopDownMultiChannel):
             
             env_config: MetaDrive's environment configuration.
             velocity_steps: The number of historical steps for the velocity.
-            velocity_normalization: The velocities (in m/s) will be normalizaed
+            velocity_normalization: The velocities (in m/s) will be normalized
                 by this factor before producing the feature.
 
         """
