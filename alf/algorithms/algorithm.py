@@ -1287,6 +1287,10 @@ class Algorithm(AlgorithmInterface):
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
         # not None and the number of samples in the buffer is less than
         # ``initial_collect_steps``; throughput will be 0 in this phase.
+        # Note that the conditional that ``_replay_buffer`` is not None is
+        # required here since in the case of offline pre-training when online RL
+        # training is not started yet, ``_replay_buffer`` will be None since it
+        # is only lazily created later when online RL training started.
         if (self._replay_buffer and
                 self._replay_buffer.total_size < config.initial_collect_steps):
             return 0
@@ -1808,16 +1812,19 @@ class Algorithm(AlgorithmInterface):
         We assume that experience can be None.
         """
         if experience is not None:
-            experience, processed_exp_spec, batch_info, length, mini_batch_length, batch_size = self._prepare_experience_data(
-                experience, self.experience_spec, batch_info,
-                mini_batch_length, self._replay_buffer)
+            (experience, processed_exp_spec, batch_info, length,
+             mini_batch_length, batch_size) = self._prepare_experience_data(
+                 experience, self.experience_spec, batch_info,
+                 mini_batch_length, self._replay_buffer)
 
             self._processed_experience_spec = processed_exp_spec
 
         # TODO: use a different mini_batch_length for offline training
-        offline_experience, _, offline_batch_info, length, mini_batch_length, batch_size = self._prepare_experience_data(
-            offline_experience, self._offline_experience_spec,
-            offline_batch_info, mini_batch_length, self._offline_replay_buffer)
+        (offline_experience, _, offline_batch_info, length, mini_batch_length,
+         batch_size) = self._prepare_experience_data(
+             offline_experience, self._offline_experience_spec,
+             offline_batch_info, mini_batch_length,
+             self._offline_replay_buffer)
 
         indices = None
         for u in range(num_updates):
