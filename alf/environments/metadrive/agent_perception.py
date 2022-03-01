@@ -93,7 +93,7 @@ class AgentPerception(object):
 
         # Dynamic Buffers. Please refer to documentation in reset() to
         # understand them if needed.
-        self._visible = None  # 1 = visble, 0 = invisible
+        self._visible = None  # 1 = visible, 0 = invisible
         self._history_position = None
         self._history_heading = None
 
