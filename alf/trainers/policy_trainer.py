@@ -141,6 +141,7 @@ class Trainer(object):
         self._config = config
         self._random_seed = config.random_seed
         self._rank = ddp_rank
+        self._conf_file_content = common.read_conf_file(root_dir)
 
     def train(self):
         """Perform training."""
@@ -226,7 +227,7 @@ class Trainer(object):
     def _summarize_training_setting(self):
         # We need to wait for one iteration to get the operative args
         # Right just give a fixed gin file name to store operative args
-        common.write_config(self._root_dir)
+        common.write_config(self._root_dir, self._conf_file_content)
         with alf.summary.record_if(lambda: True):
 
             def _markdownify(paragraph):
