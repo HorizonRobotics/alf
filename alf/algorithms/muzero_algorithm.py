@@ -352,24 +352,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             beyond_episode_end = positions > episode_end_positions
             positions = torch.min(positions, episode_end_positions)
 
-            # The operation unfold1 (unfold at dimension 1) transform a tensor
-            # of shape [B, T + R, ...] to [B, T, R + 1, ...] by unfolding each
-            # sequence of length T + R into T shorter sequences with indices at
-            # [0:(R+1)], [1:(R+2)], .. until [(T-1):(T+R)].
-
-            # A capped unfolding caps the index for each of such shorter
-            # sequences at the episode boundary if it crosses the episode end.
-
-            capped_unfold1_index = (
-                torch.arange(B)[:, None, None],  # [B, 1, 1]
-                torch.arange(T)[:, None] + torch.min(
-                    steps_to_episode_end.unsqueeze(-1),
-                    torch.arange(R + 1))  # [T, R + 1]
-            )  # [B, T, R + 1]
-
-            def _unfold1_adapting_episode_ends(x):
-                return x[capped_unfold1_index]
-
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
                 mcts_state_field = 'state' + info_path[len('rollout_info'):]
@@ -414,6 +396,24 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         candidate_actions[r] = r_candidate_actions
                     candidate_action_policy[r] = r_candidate_action_policy
                     values[r] = r_values
+
+            # The operation unfold1 (unfold at dimension 1) transform a tensor
+            # of shape [B, T + R, ...] to [B, T, R + 1, ...] by unfolding each
+            # sequence of length T + R into T shorter sequences with indices at
+            # [0:(R+1)], [1:(R+2)], .. until [(T-1):(T+R)].
+
+            # A capped unfolding caps the index for each of such shorter
+            # sequences at the episode boundary if it crosses the episode end.
+
+            capped_unfold1_index = (
+                torch.arange(B)[:, None, None],  # [B, 1, 1]
+                torch.arange(T)[:, None] + torch.min(
+                    steps_to_episode_end.unsqueeze(-1),
+                    torch.arange(R + 1))  # [T, R + 1]
+            )  # [B, T, R + 1]
+
+            def _unfold1_adapting_episode_ends(x):
+                return x[capped_unfold1_index]
 
             # In the logic above, they are computed in folded form to save
             # unnecessary retrieval and computation. They are unfolded here so
