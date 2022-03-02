@@ -320,19 +320,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         B, T = root_inputs.step_type.shape
         R = self._num_unroll_steps
 
-        unfold1_index = (
-            torch.arange(B)[:, None, None],  # [B, 1, 1]
-            torch.arange(T)[:, None] + torch.arange(R + 1)  # [T, R + 1]
-        )  # [B, T, R + 1]
-
-        def _unfold1(x: torch.Tensor) -> torch.Tensor:
-            """Perform the aforementioned unfold at dim = 1 of the input tensor.
-
-            """
-            if T == 1:
-                return x.unsqueeze(1)
-            return x[unfold1_index]
-
         with alf.device(replay_buffer.device):
             start_env_ids = convert_device(batch_info.env_ids)
 
@@ -495,7 +482,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = _unfold1(exp.observation)
+                observation = _unfold1_adapting_episode_ends(exp.observation)
 
         # TODO(breakds): Should also include a mask in ModelTarget as an
         # indicator of overflow beyond the end of the replay buffer.
