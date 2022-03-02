@@ -352,24 +352,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             beyond_episode_end = positions > episode_end_positions
             positions = torch.min(positions, episode_end_positions)
 
-            # 1. Some times we would like to make sure that a sequence (e.g.
-            #    reanalyze unrolled sequence) to stop at the episode end, and
-            #    elements in the sequence beyond the episode end is filled with
-            #    the value of the the episode end.
-            #
-            # 2. After the unfolding, the original sequence along dim=1 is
-            #    unfolded into T sequences of length R. If the original sequence
-            #    cross the boundaries of the episodes, the new unfolded
-            #    sequences may start at different episodes, and may therefore
-            #    have different episode ends.
-            #
-            # With the above in mind, the helper function below achieves
-            # unfolding and adapting on the episode ends individually for each
-            # unfolded sequences.
+            # The operation unfold1 (unfold at dimension 1) transform a tensor
+            # of shape [B, T + R, ...] to [B, T, R + 1, ...] by unfolding each
+            # sequence of length T + R into T shorter sequences with indices at
+            # [0:(R+1)], [1:(R+2)], .. until [(T-1):(T+R)].
 
-            # Very similar to ``unfold1_index`` above except for that this also
-            # caps each (R + 1)-sized sequences at the episode boundary if the
-            # sequence crosses it.
+            # A capped unfolding caps the index for each of such shorter
+            # sequences at the episode boundary if it crosses the episode end.
+
             capped_unfold1_index = (
                 torch.arange(B)[:, None, None],  # [B, 1, 1]
                 torch.arange(T)[:, None] + torch.min(
@@ -393,21 +383,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
                         replay_buffer, start_env_ids[r], start_positions[r],
                         mcts_state_field, T + R - 1)
-                    # [B', T, R + 1, ...]
-                    r_candidate_actions, r_candidate_action_policy, r_values = alf.nest.map_structure(
-                        _unfold1_adapting_episode_ends,
-                        (r_candidate_actions, r_candidate_action_policy,
-                         r_values))
                 else:
                     # [B, T + R, ...]
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
                         replay_buffer, start_env_ids, start_positions,
                         mcts_state_field, T + R - 1)
-
-                    # [B, T, R + 1, ...]
-                    candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
-                        _unfold1_adapting_episode_ends,
-                        (candidate_actions, candidate_action_policy, values))
 
             if self._reanalyze_ratio < 1:
                 if self._td_steps >= 0:
@@ -421,21 +401,26 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         replay_buffer, folded_env_ids, folded_positions,
                         value_field)
 
-                # [B, T, R + 1]
-                values = _unfold1_adapting_episode_ends(values)
-
-                # [B, T, R + 1]
+                # [B, T + R, ...]
                 candidate_actions = replay_buffer.get_field(
-                    candidate_actions_field, env_ids, positions)
-                # [B, T, R + 1]
+                    candidate_actions_field, folded_env_ids, folded_positions)
+                # [B, T + R, ...]
                 candidate_action_policy = replay_buffer.get_field(
-                    candidate_action_policy_field, env_ids, positions)
+                    candidate_action_policy_field, folded_env_ids,
+                    folded_positions)
 
                 if self._reanalyze_ratio > 0:
                     if candidate_actions != ():
                         candidate_actions[r] = r_candidate_actions
                     candidate_action_policy[r] = r_candidate_action_policy
                     values[r] = r_values
+
+            # In the logic above, they are computed in folded form to save
+            # unnecessary retrieval and computation. They are unfolded here so
+            # that the shape goes from [B, T + R, ...] to [B, T, R + 1, ...].
+            candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
+                _unfold1_adapting_episode_ends,
+                (candidate_actions, candidate_action_policy, values))
 
             game_overs = ()
             if self._train_game_over_function or self._train_reward_function:
