@@ -404,28 +404,19 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             # unfolding and adapting on the episode ends individually for each
             # unfolded sequences.
 
-            # Slicing ``episode_end_index`` is used to create a view of shape
-            # ([B, T, R + 1]) but each sequence (b, t) is filled with the values
-            # at the episode end, or at the sequence end if it does not cross
-            # the episode boundary. Such view is used to facilitate the helper
-            # function _unfold_dim1_adapting_episode_ends
-            episode_end_index = (torch.arange(B)[:, None, None],
-                                 torch.arange(T)[:, None],
-                                 torch.min(
-                                     steps_to_episode_end,
-                                     torch.full_like(steps_to_episode_end,
-                                                     R))[:, :, None].repeat(
-                                                         (1, 1, R + 1)))
+            # Slicing ``capped_index`` is used to create a view of shape ([B, T,
+            # R + 1]) but each sequence (b, t) is capped by the index of the
+            # episode end if the sequence crosses the episode boundary.
+            capped_index = (
+                torch.arange(B)[:, None, None],  # [B, 1, 1]
+                torch.arange(T)[:, None],  # [T, 1]
+                torch.min(
+                    steps_to_episode_end.unsqueeze(-1),
+                    torch.arange(R + 1)))  # [B, T, 1]
 
             def _unfold_dim1_adapting_episode_ends(x):
                 # Do the unfolding first.
-                y = _unfold_dim1(x)
-
-                # Fill the beyond episode end locations with the values from the
-                # aforementioned view.
-                y[beyond_episode_end] = y[episode_end_index][
-                    beyond_episode_end]
-                return y
+                return _unfold_dim1(x)[capped_index]
 
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
