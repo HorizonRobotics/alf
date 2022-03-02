@@ -1356,13 +1356,13 @@ class Algorithm(AlgorithmInterface):
                 num_updates = 1
                 mini_batch_size = config.mini_batch_size
 
-            with record_time("time/replay"):
+            with record_time("time/offline_replay"):
                 offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
                     batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
                     batch_length=config.mini_batch_length)
             # train hybrid
-            with record_time("time/train"):
+            with record_time("time/offline_train"):
                 return self._train_hybrid_experience(
                     experience, batch_info, offline_experience,
                     offline_batch_info, num_updates, mini_batch_size,

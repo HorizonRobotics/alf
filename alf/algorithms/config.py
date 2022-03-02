@@ -236,7 +236,7 @@ class TrainerConfig(object):
                 RL is always higher or equal to the online RL part).
                 For example, we can set ``rl_train_every_update_steps = 2``
                 to have a train config that executes online RL training at the
-                half frequency of that of the online RL training.
+                half frequency of that of the offline RL training.
 
         """
         if isinstance(priority_replay_beta, float):

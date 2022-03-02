@@ -26,7 +26,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import (AlgStep, Experience, make_experience,
-                                 TimeStep, Info, RLInfo)
+                                 TimeStep, BasicRolloutInfo, BasicRLInfo)
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.distributed import data_distributed_when
@@ -672,11 +672,8 @@ class RLAlgorithm(Algorithm):
             exp_spec = Experience(
                 time_step=time_step_spec,
                 action=self._action_spec,
-                rollout_info=Info(
-                    rl=RLInfo(action=self._action_spec),
-                    rewards={},
-                    repr={},
-                ))
+                rollout_info=BasicRolloutInfo(
+                    rl=BasicRLInfo(action=self._action_spec)))
             self._offline_experience_spec = exp_spec
             self._recover_offline_replay_buffer(
                 exp_spec, exp_spec_wo_info, replay_buffer_length,

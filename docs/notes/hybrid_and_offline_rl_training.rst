@@ -57,7 +57,7 @@ of the normal (non-offline) part of the RL training w.r.t offline RL training.
 
 3. Offline Buffer Structure
 -------------------------------------------------
-For generality, we assumes a minimal structure for the offlinereplay buffer,
+For generality, we assumes a minimal structure for the offline replay buffer,
 which contains the essential information that is common for all RL algorithms.
 Concretely, we assume the offline replay buffer has the structure that is
 described by the following data spec:
@@ -67,9 +67,7 @@ described by the following data spec:
                                 time_step=time_step_spec,
                                 action=self._action_spec,
                                 rollout_info=Info(
-                                    rl=RLInfo(action=self._action_spec),
-                                    rewards={},
-                                    repr={},
+                                    rl=RLInfo(action=self._action_spec)
                                 ))
 
 As can be observed, the offline replay buffer contains information including:
