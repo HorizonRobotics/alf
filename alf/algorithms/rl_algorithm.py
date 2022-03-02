@@ -673,7 +673,10 @@ class RLAlgorithm(Algorithm):
                 time_step=time_step_spec,
                 action=self._action_spec,
                 rollout_info=BasicRolloutInfo(
-                    rl=BasicRLInfo(action=self._action_spec)))
+                    rl=BasicRLInfo(action=self._action_spec),
+                    rewards={},
+                    repr={},
+                ))
             self._offline_experience_spec = exp_spec
             self._recover_offline_replay_buffer(
                 exp_spec, exp_spec_wo_info, replay_buffer_length,
@@ -741,8 +744,8 @@ class RLAlgorithm(Algorithm):
         exp = Experience(
             time_step=time_step,
             action=buffer_dict.action,
-            rollout_info=Info(
-                rl=RLInfo(action=buffer_dict.action),
+            rollout_info=BasicRolloutInfo(
+                rl=BasicRLInfo(action=buffer_dict.action),
                 rewards={},
                 repr={},
             ))

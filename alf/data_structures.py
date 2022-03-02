@@ -483,12 +483,16 @@ LossInfo = namedtuple(
     default_value=())
 
 # Some basic structures used by offline replay buffer for ``rollout_info``.
-# We assume the ``rollout_info`` contains an ``rl`` field, whose structure
-# is defined by ``RLInfo``.
+# We assume the ``rollout_info`` contains:
+# 1) an ``rl`` field, whose structure is defined by ``BasicRLInfo``
+# 2) ``rewards`` and ``repr``: these two are placeholders for compatibility
+# purpose with the ``Agent`` interface.
 BasicRolloutInfo = namedtuple(
     "BasicRolloutInfo",
     [
-        'rl'  # field containing rl rollout information, as defined in ``RLInfo``
+        'rl',  # containing rl rollout information, as defined in ``BasicRLInfo``
+        'rewards',
+        'repr'
     ])
 
 # The basic structure for ``rollout_info`` of an RL algorithm, containing

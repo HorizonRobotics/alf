@@ -66,8 +66,10 @@ described by the following data spec:
     offline_buffer_data_spec = Experience(
                                 time_step=time_step_spec,
                                 action=self._action_spec,
-                                rollout_info=Info(
-                                    rl=RLInfo(action=self._action_spec)
+                                rollout_info=BasicRolloutInfo(
+                                    rl=BasicRLInfo(action=self._action_spec),
+                                    rewards={},
+                                    repr={},
                                 ))
 
 As can be observed, the offline replay buffer contains information including:
@@ -75,9 +77,11 @@ As can be observed, the offline replay buffer contains information including:
   information including previous action, observation, reward, discout
   and step type etc.
 - action: the action taken at the current step
-- rollout_info: assumes following the same structure as used in ``Agent``,
-  and includes action information in the ``RLInfo``, which is required by
-  ALF functions (e.g. ``train_step()``) in training.
+- rollout_info (``BasicRolloutInfo``): assumes following the same structure as
+  used in ``Agent``, and includes action information in the ``BasicRLInfo``,
+  which is required by ALF functions (e.g. ``train_step()``) in training.
+  ``rewards`` and ``repr`` are placeholders for compatibility purpose with
+  the ``Agent`` interface.
 
 
 
