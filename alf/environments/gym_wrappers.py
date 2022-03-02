@@ -40,6 +40,8 @@ def transform_space(observation_space, field, func):
 
     def _traverse_transform(space, levels):
         if not levels:
+            assert not isinstance(space, gym.spaces.Dict), (
+                f"Expect a non-dict space for transforming, but got {space}")
             return func(space)
 
         assert isinstance(space, gym.spaces.Dict)
