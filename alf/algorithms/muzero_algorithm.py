@@ -460,7 +460,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         value_field)
 
                 # [B, T, R + 1]
-                values = _unfold_dim1(values)
+                values = _unfold_dim1_adapting_episode_ends(values)
 
                 # [B, T, R + 1]
                 candidate_actions = replay_buffer.get_field(
