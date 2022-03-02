@@ -408,19 +408,19 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
         transformed_dist4 = td.TransformedDistribution(transformed_dist1, [t3])
 
         params1 = dist_utils.distributions_to_params(transformed_dist1)
-        self.assertEqual(
-            params1, {
-                'transforms_params_': [[z1, z2]],
-                'params_': {
-                    'loc': mean,
-                    'scale': std
-                }
-            })
+        z12 = [{'z': z1}, {'z': z2}]
+        self.assertEqual(params1, {
+            'transforms_params_': [z12],
+            'params_': {
+                'loc': mean,
+                'scale': std
+            }
+        })
 
         params2 = dist_utils.distributions_to_params(transformed_dist2)
         self.assertEqual(
             params2, {
-                'transforms_params_': [[[z1, z2], ()]],
+                'transforms_params_': [[z12, ()]],
                 'params_': {
                     'loc': mean,
                     'scale': std
@@ -428,14 +428,14 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
             })
 
         params3 = dist_utils.distributions_to_params(transformed_dist3)
-        self.assertEqual(params3['transforms_params_'], [z1, z2])
+        self.assertEqual(params3['transforms_params_'], z12)
 
         params4 = dist_utils.distributions_to_params(transformed_dist4)
         self.assertEqual(
             params4, {
                 'transforms_params_': [()],
                 'params_': {
-                    'transforms_params_': [[z1, z2]],
+                    'transforms_params_': [z12],
                     'params_': {
                         'loc': mean,
                         'scale': std
@@ -462,7 +462,7 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
         self.assertEqual(built_dist5.base_dist.mean,
                          spec.ones(outer_dims=(1, )))
         self.assertEqual(built_dist5.transforms[0].parts[0].parts[0].params,
-                         z4)
+                         {'z': z4})
 
         dist_spec4 = dist_utils.DistributionSpec.from_distribution(
             transformed_dist4)
@@ -473,7 +473,19 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
 
         built_dist6 = dist_spec4.build_distribution(params6)
         self.assertEqual(built_dist6.base_dist.transforms[0].parts[0].params,
-                         z4)
+                         {'z': z4})
+
+        # we build another distribution using dist_spec4 and check if ``built_dist6``
+        # has an unchanged ``z``
+        built_dist7 = dist_spec4.build_distribution(
+            alf.nest.map_structure(torch.zeros_like, params6))
+        self.assertFalse(built_dist7.base_dist.transforms[0] is built_dist6.
+                         base_dist.transforms[0])
+        self.assertTensorEqual(
+            built_dist7.base_dist.transforms[0].parts[0].params['z'],
+            torch.zeros_like(z4))
+        self.assertEqual(built_dist6.base_dist.transforms[0].parts[0].params,
+                         {'z': z4})
 
 
 if __name__ == '__main__':

@@ -557,31 +557,10 @@ def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
     return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms_, transforms_params_,
-                         params_):
-    _set_transform_params(transforms_, transforms_params_)
-    return td.TransformedDistribution(base_builder(**params_), transforms_)
-
-
-def _set_transform_params(transforms, params):
-    """Given a nest of params where each node is a non-composed transform of
-    ``transforms`` (after expanding any composed transform), we set each param
-    to the corresponding transform.
-    """
-    if isinstance(transforms, td.Transform):
-        if isinstance(transforms, td.ComposeTransform):
-            _set_transform_params(transforms.parts, params)
-        elif hasattr(transforms, 'params'):
-            # We assume that if a td.Transform has attribute 'params', then it
-            # also can be set
-            transforms.params = params
-        else:
-            assert params == (), f"Incorrect params {params}!"
-        return
-
-    assert isinstance(transforms, list), f"Incorrect transforms {transforms}"
-    for t, p in zip(transforms, params):
-        _set_transform_params(t, p)
+def _builder_transformed(base_builder, transform_builders, params_,
+                         transforms_params_):
+    transforms = [b(p) for b, p in zip(transform_builders, transforms_params_)]
+    return td.TransformedDistribution(base_builder(**params_), transforms)
 
 
 def _get_categorical_builder(
@@ -604,33 +583,57 @@ def _get_independent_builder(obj: td.Independent):
     return new_builder, params
 
 
-def _get_transform_params(transforms):
+def _get_transform_builders_params(transforms):
     """Return a nested structure where each node is a non-composed transform,
     after expanding any composed transform in ``transforms``.
     """
-    if isinstance(transforms, td.Transform):
-        if isinstance(transforms, td.ComposeTransform):
-            return _get_transform_params(transforms.parts)
-        elif hasattr(transforms, 'params') and transforms.params is not None:
+
+    def _get_transform_builder(transform):
+        if hasattr(transform, "get_builder"):
+            return transform.get_builder()
+        return transform.__class__
+
+    def _get_transform_params(transform):
+        if hasattr(transforms, 'params') and transforms.params is not None:
             # We assume that if a td.Transform has attribute 'params', then they are the
             # parameters we'll extract and store.
+            assert isinstance(
+                transforms.params,
+                dict), ("Transform params must be provided as a dict! "
+                        f"Got {transforms.params}")
             return transforms.params
-        else:  # the transform doesn't have any parameter
-            return ()
+        return ()  # the transform doesn't have any parameter
+
+    if isinstance(transforms, td.Transform):
+        if isinstance(transforms, td.ComposeTransform):
+            builders, params = _get_transform_builders_params(transforms.parts)
+            compose_transform_builder = lambda params: td.ComposeTransform(
+                [b(p) for b, p in zip(builders, params)])
+            return compose_transform_builder, params
+        else:
+            builder = _get_transform_builder(transforms)
+            params = _get_transform_params(transforms)
+            new_builder = lambda params: (builder(**params)
+                                          if params != () else builder())
+            return new_builder, params
+
     assert isinstance(transforms, list), f"Incorrect transforms {transforms}!"
-    return [_get_transform_params(t) for t in transforms]
+    builders_and_params = [
+        _get_transform_builders_params(t) for t in transforms
+    ]
+    builders, params = zip(*builders_and_params)
+    return list(builders), list(params)
 
 
 def _get_transformed_builder(obj: td.TransformedDistribution):
     # 'params' contains the dist params and all wrapped transform params starting
     # 'obj.base_dist' downwards
     builder, params = _get_builder(obj.base_dist)
+    transform_builders, transform_params = _get_transform_builders_params(
+        obj.transforms)
     new_builder = functools.partial(_builder_transformed, builder,
-                                    obj.transforms)
-    new_params = {
-        "params_": params,
-        'transforms_params_': _get_transform_params(obj.transforms)
-    }
+                                    transform_builders)
+    new_params = {"params_": params, 'transforms_params_': transform_params}
     return new_builder, new_params
 
 
