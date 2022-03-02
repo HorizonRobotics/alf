@@ -345,6 +345,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             """Perform the aforementioned unfold at dim = 1 of the input tensor.
 
             """
+            if T == 1:
+                return x.unsqueeze(1)
+
             assert x.ndim >= 2
             assert x.shape[1] == T + R
             batch_size = x.shape[0]
@@ -355,20 +358,21 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             return y.reshape(batch_size, T, R + 1, *x.shape[2:])
 
         with alf.device(replay_buffer.device):
+            start_env_ids = convert_device(batch_info.env_ids)
+
+            # [B, 1]
+            folded_env_ids = start_env_ids.unsqueeze(-1)
+            # [B, 1, 1]
+            env_ids = folded_env_ids.unsqueeze(-1)
+
             # [B]
             start_positions = convert_device(batch_info.positions)
-            start_env_ids = convert_device(batch_info.env_ids)
 
             # [B, T + R], capped at the end of the replay buffer.
             folded_positions = torch.min(
                 start_positions.unsqueeze(-1) + torch.arange(T + R),
-                replay_buffer.get_current_position().max() - 1)
+                replay_buffer.get_current_position()[start_env_ids, None] - 1)
 
-            # [B, 1]
-            folded_env_ids = start_env_ids.unsqueeze(-1)
-
-            # [B, 1, 1]
-            env_ids = folded_env_ids.unsqueeze(-1)
             # [B, T, R + 1]
             positions = folded_positions.unfold(1, R + 1, 1)
 
@@ -823,7 +827,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         # [B, n + 1]
         positions = positions.unsqueeze(-1) + torch.arange(n + 1)
         # [B, 1]
-        current_pos = replay_buffer.get_current_position().max().unsqueeze(-1)
+        current_pos = replay_buffer.get_current_position()[env_ids]
         # [B, n + 1]
         positions = torch.min(positions, current_pos - 1)
         return env_ids, positions
