@@ -320,42 +320,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         B, T = root_inputs.step_type.shape
         R = self._num_unroll_steps
 
-        # The implementation below heavily relies on the concept of "unfold".
-        # Take an individual trajectory of size T = 3 as example. Assuming the
-        # steps in this trajectory corresponds to position 11, 12, 13 in the
-        # replay buffer. In order to compute a certain type of targets for this
-        # trajectory with an unroll steps R = 5, a naive implementation will
-        # need to do computation for 15 T * (R + 1) steps at positions
-        #
-        #    11, 12, 13, 14, 15, 16
-        #    12, 13, 14, 15, 16, 17
-        #    13, 14, 15, 16, 17, 18
-        #
-        # respectively. Here we can employ a trick to compute only T + R + 1
-        # times at positions
-        #
-        #    11, 12, 13, 14, 15, 16, 17, 18
-        #
-        # and transform it to the above form. Such transformation that converts
-        # a shape of [T + R] to [T, R + 1] is the "unfold" operations.
-        #
-        # We also name the [T + R] shaped positions as "folded" positions.
+        unfold1_index = (
+            torch.arange(B)[:, None, None],  # [B, 1, 1]
+            torch.arange(T)[:, None] + torch.arange(R + 1)  # [T, R + 1]
+        )  # [B, T, R + 1]
 
-        def _unfold_dim1(x: torch.Tensor) -> torch.Tensor:
+        def _unfold1(x: torch.Tensor) -> torch.Tensor:
             """Perform the aforementioned unfold at dim = 1 of the input tensor.
 
             """
             if T == 1:
                 return x.unsqueeze(1)
-
-            assert x.ndim >= 2
-            assert x.shape[1] == T + R
-            batch_size = x.shape[0]
-            numel = torch.prod(torch.tensor(x.shape[2:],
-                                            dtype=torch.int64)).item()
-            y = x.reshape(batch_size, -1)
-            y = y.unfold(1, numel * (R + 1), numel)
-            return y.reshape(batch_size, T, R + 1, *x.shape[2:])
+            return x[unfold1_index]
 
         with alf.device(replay_buffer.device):
             start_env_ids = convert_device(batch_info.env_ids)
@@ -404,19 +380,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             # unfolding and adapting on the episode ends individually for each
             # unfolded sequences.
 
-            # Slicing ``capped_index`` is used to create a view of shape ([B, T,
-            # R + 1]) but each sequence (b, t) is capped by the index of the
-            # episode end if the sequence crosses the episode boundary.
-            capped_index = (
+            # Very similar to ``unfold1_index`` above except for that this also
+            # caps each (R + 1)-sized sequences at the episode boundary if the
+            # sequence crosses it.
+            capped_unfold1_index = (
                 torch.arange(B)[:, None, None],  # [B, 1, 1]
-                torch.arange(T)[:, None],  # [T, 1]
-                torch.min(
+                torch.arange(T)[:, None] + torch.min(
                     steps_to_episode_end.unsqueeze(-1),
-                    torch.arange(R + 1)))  # [B, T, 1]
+                    torch.arange(R + 1))  # [T, R + 1]
+            )  # [B, T, R + 1]
 
-            def _unfold_dim1_adapting_episode_ends(x):
-                # Do the unfolding first.
-                return _unfold_dim1(x)[capped_index]
+            def _unfold1_adapting_episode_ends(x):
+                return x[capped_unfold1_index]
 
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
@@ -433,7 +408,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         mcts_state_field, T + R - 1)
                     # [B', T, R + 1, ...]
                     r_candidate_actions, r_candidate_action_policy, r_values = alf.nest.map_structure(
-                        _unfold_dim1_adapting_episode_ends,
+                        _unfold1_adapting_episode_ends,
                         (r_candidate_actions, r_candidate_action_policy,
                          r_values))
                 else:
@@ -444,7 +419,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
                     # [B, T, R + 1, ...]
                     candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
-                        _unfold_dim1_adapting_episode_ends,
+                        _unfold1_adapting_episode_ends,
                         (candidate_actions, candidate_action_policy, values))
 
             if self._reanalyze_ratio < 1:
@@ -460,7 +435,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                         value_field)
 
                 # [B, T, R + 1]
-                values = _unfold_dim1_adapting_episode_ends(values)
+                values = _unfold1_adapting_episode_ends(values)
 
                 # [B, T, R + 1]
                 candidate_actions = replay_buffer.get_field(
@@ -520,7 +495,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = _unfold_dim1(exp.observation)
+                observation = _unfold1(exp.observation)
 
         # TODO(breakds): Should also include a mask in ModelTarget as an
         # indicator of overflow beyond the end of the replay buffer.
