@@ -29,7 +29,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from .distributions import TruncatedDistribution, TruncatedNormal, TruncatedCauchy, TruncatedT2
 
 
-def get_invertable(cls):
+def get_invertible(cls):
     """A helper function to turn on the cache mechanism for transformation.
     This is useful as some transformations (say :math:`g`) may not be able to
     provide an accurate inversion therefore the difference between :math:`x` and
@@ -58,12 +58,21 @@ parameters.
 For detailed reasons, please refer to ``alf/docs/notes/compute_probs_of_transformed_dist.rst``.
 """
 
-AbsTransform = get_invertable(td.AbsTransform)
-AffineTransform = get_invertable(td.AffineTransform)
-ExpTransform = get_invertable(td.ExpTransform)
-PowerTransform = get_invertable(td.PowerTransform)
-SigmoidTransform = get_invertable(td.SigmoidTransform)
-SoftmaxTransform = get_invertable(td.SoftmaxTransform)
+AbsTransform = get_invertible(td.AbsTransform)
+ExpTransform = get_invertible(td.ExpTransform)
+PowerTransform = get_invertible(td.PowerTransform)
+SigmoidTransform = get_invertible(td.SigmoidTransform)
+SoftmaxTransform = get_invertible(td.SoftmaxTransform)
+
+
+class AffineTransform(get_invertible(td.AffineTransform)):
+    """Overwrite PyTorch's ``AffineTransform`` to provide a builder to be
+    compatible with ``DistributionSpec.build_distribution()``.
+    """
+
+    def get_builder(self):
+        return functools.partial(
+            AffineTransform, loc=self.loc, scale=self.scale)
 
 
 @alf.configurable
@@ -272,7 +281,7 @@ class Softsign(td.Transform):
 
 @alf.configurable
 class StableTanh(td.Transform):
-    r"""Invertable transformation (bijector) that computes :math:`Y = tanh(X)`,
+    r"""Invertible transformation (bijector) that computes :math:`Y = tanh(X)`,
     therefore :math:`Y \in (-1, 1)`.
 
     This can be achieved by an affine transform of the Sigmoid transformation,
