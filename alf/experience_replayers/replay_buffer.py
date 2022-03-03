@@ -172,6 +172,15 @@ class ReplayBuffer(RingBuffer):
                 "_headless_indexed_pos",
                 torch.zeros(self._num_envs, dtype=torch.int64, device=device))
             if self._record_episodic_return:
+                # _prev_disc_0_pos stores the previous step in the episode
+                # which has discount 0, or the FIRST step of the episode if
+                # none has discount 0.
+                self.register_buffer(
+                    "_prev_disc_0_pos",
+                    torch.zeros((self._num_envs, self._max_length),
+                                dtype=torch.int64,
+                                device=device))
+                # TODO: use reward_spec to make the return multi dimensional
                 self.register_buffer(
                     "_episodic_discounted_return",
                     torch.ones((self._num_envs, self._max_length),
@@ -321,16 +330,21 @@ class ReplayBuffer(RingBuffer):
                 # 3. Update associated episode end indices
                 # 3.1. find ending steps in batch (incl. MID and LAST steps)
                 step_types = batch.step_type
-                non_first, = torch.where(step_types != ds.StepType.FIRST)
+                epi_first = step_types == ds.StepType.FIRST
                 # 3.2. update episode ending positions
-                self._store_episode_end_pos(non_first, overwriting_pos,
+                self._store_episode_end_pos(~epi_first, overwriting_pos,
                                             env_ids)
                 # 3.3. initialize episode beginning positions to itself
-                epi_first, = torch.where(step_types == ds.StepType.FIRST)
                 self._indexed_pos[(env_ids[epi_first],
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
-                if self._keep_episodic_info and self._record_episodic_return:
+                if self._record_episodic_return:
+                    f_0 = (batch.discount == 0) | (
+                        step_types == ds.StepType.FIRST)
+                    self._store_discount_0_pos(~f_0, overwriting_pos, env_ids)
+                    self._prev_disc_0_pos[(
+                        env_ids[f_0], self.circular(
+                            overwriting_pos[f_0]))] = overwriting_pos[f_0]
                     # Compute episodic return even when a non-LAST step has discount 0,
                     # which happens when e.g. using AtariTerminalOnLifeLossWrapper.
                     # This has the advantage of start storing episodic return earlier,
@@ -535,7 +549,15 @@ class ReplayBuffer(RingBuffer):
         # TODO: bootstrapping the the episodic return with the default_return
         # if game ends with timelimit. For example, the episode length of
         # Atari games is limited to 4500, which can be reached quite often.
-        first_step_pos = self.get_episode_begin_position(current_pos, env_ids)
+
+        # This is for computing from episode start, which shouldn't be used
+        # when computing episodic return every time discount = 0 step is added:
+        # first_step_pos = self.get_episode_begin_position(current_pos, env_ids)
+
+        # This is for starting computation from a previous discount 0 step:
+        first_step_pos = self.get_disc_0_begin_position(
+            current_pos - 1, env_ids)
+
         headless = first_step_pos < current_pos - self._max_length + 1
         first_step_pos[headless] = (
             current_pos - self._max_length + 1)[headless]
@@ -569,26 +591,44 @@ class ReplayBuffer(RingBuffer):
         self._episodic_discounted_return[valid_ind] = future_discounted_return[
             valid]
 
-    def _store_episode_end_pos(self, non_first, pos, env_ids):
-        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
-
-        Args:
-            non_first_idx (tensor): index of the added batch of exp, which are
-                not FIRST steps.  We need to update last step pos for all
-                these env_ids[non_first_idx].
-            pos (tensor): position of the stored batch.
-            env_ids (tensor): env_ids of the stored batch.
-        """
-        _env_ids = env_ids[non_first]
-        _pos = pos[non_first]
+    def _filter_populate_from_prev_step(self, buffer, mask, pos, env_ids):
+        _env_ids = env_ids[mask]
+        _pos = pos[mask]
         # Because this is a non-first step, the previous step's first step
         # is the same as this stored step's first step.  Look it up.
         prev_pos = _pos - 1
         prev_idx = self.circular(prev_pos)
-        prev_first = self._indexed_pos[(_env_ids, prev_idx)]
-        prev_first_idx = self.circular(prev_first)
-        # Record pos of ``FIRST`` step into the current _indexed_pos
-        self._indexed_pos[(_env_ids, self.circular(_pos))] = prev_first
+        prev_value = buffer[(_env_ids, prev_idx)]
+        prev_value_idx = self.circular(prev_value)
+        # Record pos of ``FIRST`` step into the current buffer
+        buffer[(_env_ids, self.circular(_pos))] = prev_value
+        return _env_ids, _pos, prev_value, prev_value_idx
+
+    def _store_discount_0_pos(self, non_f_0, pos, env_ids):
+        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
+
+        Args:
+            non_f_0 (tensor or None): bool mask of steps not FIRST and discount != 0.
+                We need to update _prev_disc_0_pos for all these env_ids[non_f_0].
+            pos (tensor): position of the stored batch.
+            env_ids (tensor): env_ids of the stored batch.
+        """
+        self._filter_populate_from_prev_step(self._prev_disc_0_pos, non_f_0,
+                                             pos, env_ids)
+
+    def _store_episode_end_pos(self, non_first, pos, env_ids, non_f_0=None):
+        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
+
+        Args:
+            non_first (tensor): bool mask of the added batch of exp, which are
+                not FIRST steps.  We need to update last step pos for all
+                these env_ids[non_first].
+            pos (tensor): position of the stored batch.
+            env_ids (tensor): env_ids of the stored batch.
+        """
+        _env_ids, _pos, prev_first, prev_first_idx = \
+            self._filter_populate_from_prev_step(
+                self._indexed_pos, non_first, pos, env_ids)
 
         # Store episode end into the ``FIRST`` step of the episode.
         has_head_cond = prev_first > _pos - self._max_length
@@ -650,6 +690,17 @@ class ReplayBuffer(RingBuffer):
         buffer_step_types = self._buffer.step_type
         is_first = buffer_step_types[indices] == ds.StepType.FIRST
         first_step_pos[is_first] = pos[is_first]
+        return first_step_pos
+
+    def get_disc_0_begin_position(self, pos, env_ids):
+        """
+        Note that the discount 0 step may no longer be in the replay buffer.
+        """
+        indices = (env_ids, self.circular(pos))
+        first_step_pos = self._prev_disc_0_pos[indices]
+        # buffer_step_types = self._buffer.step_type
+        # is_first = buffer_step_types[indices] == ds.StepType.FIRST
+        # first_step_pos[is_first] = pos[is_first]
         return first_step_pos
 
     @alf.configurable

@@ -133,6 +133,42 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             ]
         ]
         # insert data that will be overwritten later
+        # reward tensor:
+        # [[ 0., -1., -1., -1., -1., 0., -1., -1.],
+        #  [-1., -1., -1., 0., -1., -1., -1., -1.]]
+        for t in range(8):
+            batch = get_batch([0, 1],
+                              self.dim,
+                              t=[steps[0][t], steps[1][t]],
+                              x=[0.1 * t, 0.1 * t + 1])
+            if t == 5:
+                batch.reward[0] = 0
+                batch.discount[0] = 0
+            if t == 3:
+                batch.reward[1] = 0
+                batch.discount[1] = 0
+            replay_buffer.add_batch(batch, batch.env_id)
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([
+                    [
+                        # MID(0) steps have discount 0 reward 0; LAST has -1 reward:
+                        #                    FIRST,  MID,   MID(0), LAST
+                        #                   [1       gamma  0       0    ] * [-1, 0, -1, x]
+                        -1.99,
+                        -1.,
+                        -1000.,
+                        -1.,
+                        0.,
+                        0.,
+                        -1000.,
+                        -1000.
+                        #              FIRST, MID(0), MID,   LAST
+                        #             [1      0       gamma  0    ] * [0, -1, -1, x]
+                    ],
+                    [-1., -1000., 0., -0.99, -1., -1000., -1000., -1000.]
+                ]),
+                replay_buffer._episodic_discounted_return))
         for t in range(8):
             batch = get_exp_batch([0, 1],
                                   self.dim,
@@ -172,18 +208,18 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
                 pos,
                 torch.tensor([[15, 16, 16, 14, 11, 11, 11, 16],
                               [14, 16, 13, 10, 10, 10, 16, 14]],
-                             dtype=torch.int64)))
+                             dtype=torch.int64) + 8))
 
         # Verify _index is built correctly.
         # Note, the _index_pos 8 represents headless timesteps, which are
         # outdated and not the same as the result of padding: 16.
         pos = torch.tensor([[15, 8, 8, 14, 11, 11, 11, 16],
-                            [14, 8, 13, 10, 10, 10, 16, 14]])
+                            [14, 8, 13, 10, 10, 10, 16, 14]]) + 8
 
         self.assertTrue(torch.equal(replay_buffer._indexed_pos, pos))
         self.assertTrue(
             torch.equal(replay_buffer._headless_indexed_pos,
-                        torch.tensor([10, 9])))
+                        torch.tensor([10, 9]) + 8))
 
         # Save original exp for later testing.
         g_orig = replay_buffer._buffer.get_time_step_field("o.g").clone()
