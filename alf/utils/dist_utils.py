@@ -219,6 +219,9 @@ class Softclip(td.Transform):
                 and self._hinge_softness == other._hinge_softness
                 and self._l == other._l and self._h == other._h)
 
+    def get_builder(self):
+        return functools.partial(Softclip, low=self._l, high=self._h)
+
     def _call(self, x):
         return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
 
