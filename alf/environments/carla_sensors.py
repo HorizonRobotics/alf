@@ -1274,6 +1274,7 @@ class World(object):
 
         violated_red_light_id = None
         encountered_red_light_id = None
+        encountered_red_light_distance = 1e10
         for index in candidate_light_index:
             wp_dir = _get_forward_vector(waypoints.rotation[index])
             dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)
@@ -1307,8 +1308,10 @@ class World(object):
             # red-light id encountered by the actor
             if np.any(same_lane):
                 encountered_red_light_id = self._traffic_light_actors[index].id
+                encountered_red_light_distance = dist[index]
 
-        return violated_red_light_id, encountered_red_light_id
+        return (violated_red_light_id, encountered_red_light_id,
+                encountered_red_light_distance)
 
     def _draw_waypoints(self, waypoints, vertical_shift, persistency=-1):
         """Draw a list of waypoints at a certain height given in vertical_shift."""
@@ -1450,6 +1453,42 @@ class NavigationSensor(SensorBase):
             int: index of the next waypoint
         """
         return min(self._nearest_index + 1, self._num_waypoints - 1)
+
+
+class RedlightSensor(SensorBase):
+    """Provide a scalar value representing the distance to the redlight
+        that affects the current ``Player``.
+    """
+
+    def __init__(self, parent_actor, player):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+            alf_world (World):
+        """
+        super().__init__(parent_actor)
+        self._player = player()
+
+    def observation_spec(self):
+        return alf.TensorSpec((1, ))
+
+    def observation_desc(self):
+        return ("Distance to redlight that affects the current actor.")
+
+    def get_current_observation(self, red_light_dist):
+        """Get the current observation.
+
+        The a scalar value representing the distance to the redlight.
+
+        Args:
+            current_frame (int): not used.
+        Returns:
+            np.ndarray: 1-D array representing the distance to the redlight
+            that affects the current ``Player``.
+        """
+
+        return np.array(
+            [self._player._prev_encountered_red_light_dist]).astype(np.float32)
 
 
 # ==============================================================================
