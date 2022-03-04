@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import partial
+from alf.algorithms.handcrafted_algorithm import SimpleCarlaAlgorithm
 from alf.environments import suite_carla
 from alf.environments.carla_env.carla_agents import SimpleNavigationAgent
 from alf.examples import sac_conf
@@ -72,3 +73,11 @@ alf.config(
     'ReplayBuffer',
     enable_checkpoint=enable_buffer_checkpoint,
     keep_episodic_info=True)
+
+# skip representation learning and use simple carla algorithm instead of SAC
+# to save computation by aovidng NN forward
+alf.config(
+    'Agent',
+    representation_learner_cls=None,
+    rl_algorithm_cls=SimpleCarlaAlgorithm,
+    optimizer=None)
