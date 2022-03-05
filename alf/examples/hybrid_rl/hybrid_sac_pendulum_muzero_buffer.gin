@@ -1,0 +1,7 @@
+
+include 'sac_pendulum.gin'
+
+# example config for Hybrid RL, with SAC agent + a non-SAC offline buffer (muzero)
+
+TrainerConfig.offline_buffer_dir="./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_muzero"
+

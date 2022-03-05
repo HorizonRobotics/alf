@@ -26,7 +26,7 @@ def _make_alg_experience(experience, name):
     """Given an experience, extracts the ``rollout_info`` field for an
     algorithm.
     """
-    if experience.rollout_info is ():
+    if experience.rollout_info == ():
         rollout_info = ()
     else:
         rollout_info = getattr(experience.rollout_info, name)
@@ -104,7 +104,11 @@ class AgentHelper(object):
             summarize_fn(os.path.join(summary_prefix, "overall"), reward)
         return reward
 
-    def accumulate_loss_info(self, algorithms, train_info):
+    def accumulate_loss_info(self,
+                             algorithms,
+                             train_info,
+                             offline=False,
+                             pre_train=False):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -116,14 +120,21 @@ class AgentHelper(object):
             train_info (nested Tensor): information collected for training
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``train_step()`` or ``rollout_step()``.
-
+            offline (bool): whether the accumulation is done for offline RL part
+                or the online RL part.
+            pre_train (bool): whether in pre_training phase. This flag
+                can be used for algorithms that need to implement different
+                training procedures at different phases.
         Returns:
             LossInfo: the accumulated loss info.
         """
 
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
-            new_loss_info = algorithm.calc_loss(info)
+            if not offline:
+                new_loss_info = algorithm.calc_loss(info)
+            else:
+                new_loss_info = algorithm.calc_loss_offline(info, pre_train)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})
