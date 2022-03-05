@@ -56,7 +56,7 @@ SacActorInfo = namedtuple(
 SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "batch_info"
+        "actor", "critic", "alpha", "log_pi", "discounted_return"
     ],
     default_value=())
 
@@ -782,7 +782,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic=critic_info,
             alpha=alpha_loss,
             log_pi=log_pi,
-            batch_info=rollout_info.batch_info)
+            discounted_return=rollout_info.discounted_return)
         return AlgStep(action, state, info)
 
     def after_update(self, root_inputs, info: SacInfo):

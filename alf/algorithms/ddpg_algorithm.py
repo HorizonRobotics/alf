@@ -42,7 +42,7 @@ DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
     "DdpgInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "batch_info"
+        "actor_loss", "critic", "discounted_return"
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
@@ -333,7 +333,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 action_distribution=policy_step.output,
                 critic=critic_info,
                 actor_loss=policy_step.info,
-                batch_info=rollout_info.batch_info))
+                discounted_return=rollout_info.discounted_return))
 
     def calc_loss(self, info: DdpgInfo):
         critic_losses = [None] * self._num_critic_replicas

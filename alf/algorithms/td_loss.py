@@ -147,9 +147,8 @@ class TDLoss(nn.Module):
             returns = advantages + target_value[:-1]
 
         disc_ret = ()
-        if hasattr(info, "batch_info") and hasattr(info.batch_info,
-                                                   "discounted_return"):
-            disc_ret = info.batch_info.discounted_return
+        if hasattr(info, "discounted_return"):
+            disc_ret = info.discounted_return
         if disc_ret != ():
             with alf.summary.scope(self._name):
                 episode_ended = disc_ret > self._default_return
