@@ -575,6 +575,8 @@ class ReplayBuffer(RingBuffer):
         epi_discounts = discounts * self._buffer.discount[all_ind]
         # rewards = [r0, r1, r2, r3]
         rewards = self._buffer.reward[all_ind]
+        if self._reward_clip:
+            rewards = torch.clamp(rewards, *self._reward_clip)
         rewards[~valid] = 0
         epi_discounts[~valid] = 0
         # reward[t + 1] * discount[t] is the correct discounted_return,
