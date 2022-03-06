@@ -565,7 +565,8 @@ class ReplayBuffer(RingBuffer):
         # Indexes cover all env_ids for the length of the longest episode.
         epi_pos = current_pos.unsqueeze(1) - max_len + 1 + torch.arange(
             max_len).unsqueeze(0)
-        all_ind = (env_ids.unsqueeze(1), self.circular(epi_pos))
+        epi_pos_idx = self.circular(epi_pos)
+        all_ind = (env_ids.unsqueeze(1), epi_pos_idx)
         # mask for the real indices
         valid = epi_pos >= first_step_pos.unsqueeze(1)
         # For episode with [FIRST, MID, MID, LAST] steps,
@@ -588,8 +589,7 @@ class ReplayBuffer(RingBuffer):
         future_discounted_return = alf.utils.tensor_utils.tensor_extend_zero(
             future_discounted_return, dim=1)
         valid_ind = (env_ids.unsqueeze(1).expand(-1, max_len)[valid],
-                     self.circular(epi_pos).expand(current_pos.shape[0],
-                                                   -1)[valid])
+                     epi_pos_idx[valid])
         self._episodic_discounted_return[valid_ind] = future_discounted_return[
             valid]
 
