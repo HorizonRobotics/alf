@@ -16,8 +16,6 @@ from absl import logging
 import torch
 import unittest
 
-import alf
-
 
 def main():
     logging.use_absl_handler()

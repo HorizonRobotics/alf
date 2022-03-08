@@ -101,21 +101,21 @@ class ReplayBuffer(RingBuffer):
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
             record_episodic_return (bool): If True, computes and stores episodic return for
                 every step in the episode upon episode completion.  The field
-                ``discounted_return'' stores the information.  When episodes are
-                incomplete, all steps get the ``default_return''.
+                ``discounted_return`` stores the information.  When episodes are
+                incomplete, all steps get the ``default_return``.
                 NOTE:
-                1) Reward transformations like ``RewardClipping.minmax=(-1, 1)'' set in
-                    ``TrainerConfig.data_transformer_ctor'' have to be set manually for
+                1) Reward transformations like ``RewardClipping.minmax=(-1, 1)`` set in
+                    ``TrainerConfig.data_transformer_ctor`` have to be set manually for
                     the ReplayBuffer to be consistent:
-                    ``ReplayBuffer.reward_clip=(-1,1)''.
-                2) Discount ``gamma'' needs to be set consistent with ``TDLoss.gamma''.
-                3) Assumes ``keep_episodic_info'' to be True.
-            default_return (float): The default values of ``discounted_return''
+                    ``ReplayBuffer.reward_clip=(-1,1)``.
+                2) Discount ``gamma`` needs to be set consistent with ``TDLoss.gamma``.
+                3) Assumes ``keep_episodic_info`` to be True.
+            default_return (float): The default values of ``discounted_return``
                 when the episode has not ended.  For value target lower bounding,
                 default_return should not be bigger than the smallest possible
                 discounted return.  It can be 0 if reward is always non-negative.
-            gamma (float): The value of discount used to compute ``discounted_return''.
-                Usually consistent with ``TDLoss.gamma''.
+            gamma (float): The value of discount used to compute ``discounted_return``.
+                Usually consistent with ``TDLoss.gamma``.
             reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
@@ -700,9 +700,6 @@ class ReplayBuffer(RingBuffer):
         """
         indices = (env_ids, self.circular(pos))
         first_step_pos = self._prev_disc_0_pos[indices]
-        # buffer_step_types = self._buffer.step_type
-        # is_first = buffer_step_types[indices] == ds.StepType.FIRST
-        # first_step_pos[is_first] = pos[is_first]
         return first_step_pos
 
     @alf.configurable
