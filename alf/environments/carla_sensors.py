@@ -995,6 +995,8 @@ class World(object):
 
     # only consider a car for running red light if it is within such distance
     RED_LIGHT_ENFORCE_DISTANCE = 15  # m
+    # set a large value as the default encountered red light distance
+    DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE = 1e10  # m
 
     def __init__(self, world: carla.World, route_resolution=1.0):
         """
@@ -1241,7 +1243,10 @@ class World(object):
         Args:
             actor (carla.Actor): the vehicle actor
         Returns:
-            red light id if running red light, None otherwise
+            - violated red light id if running red light, None otherwise
+            - encountered red light id if encounting one, None otherwise
+            - distance to the encountered red light id if encountering one,
+             ``DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE`` otherwise
         """
         veh_transform = actor.get_transform()
         veh_location = veh_transform.location
@@ -1274,7 +1279,7 @@ class World(object):
 
         violated_red_light_id = None
         encountered_red_light_id = None
-        encountered_red_light_distance = 1e10
+        encountered_red_light_distance = DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE
         for index in candidate_light_index:
             wp_dir = _get_forward_vector(waypoints.rotation[index])
             dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)
