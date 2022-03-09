@@ -471,12 +471,20 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 step_type = _unfold1_adapting_episode_ends(step_type)
                 step_type = step_type.reshape(-1, *step_type.shape[2:])
 
+                # Will also need to update the batch info to be of shape [B *
+                # T,] marking the starting positions.
+                transformed_batch_info = BatchInfo(
+                    replay_buffer=replay_buffer,
+                    env_ids=batch_info.env_ids.repeat_interleave(T),
+                    # Note that positions are already capped by episode ends.
+                    positions=positions[:, :, 0].reshape(-1))
+
                 exp = alf.data_structures.make_experience(
                     root_inputs, AlgStep(), state=())
                 exp = exp._replace(
                     time_step=root_inputs._replace(
                         step_type=step_type, observation=observation),
-                    batch_info=batch_info,
+                    batch_info=transformed_batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
                 observation = exp.observation.reshape(
