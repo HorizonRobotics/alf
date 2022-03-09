@@ -1802,7 +1802,7 @@ class Algorithm(AlgorithmInterface):
             mini_batch_list.append(batch)
             mini_batch_info_list.append(binfo)
 
-        return mini_batch_list, batch_info_list
+        return mini_batch_list, mini_batch_info_list
 
     def _train_hybrid_experience(
             self, experience, batch_info, offline_experience,
