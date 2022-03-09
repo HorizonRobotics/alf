@@ -30,8 +30,13 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo",
-    ["env_ids", "positions", "importance_weights", "replay_buffer"],
+    "BatchInfo", [
+        "env_ids",
+        "positions",
+        "importance_weights",
+        "replay_buffer",
+        "discounted_return",
+    ],
     default_value=())
 
 
@@ -61,6 +66,10 @@ class ReplayBuffer(RingBuffer):
                  device="cpu",
                  allow_multiprocess=False,
                  keep_episodic_info=None,
+                 record_episodic_return=False,
+                 default_return=-1000.,
+                 gamma=.99,
+                 reward_clip=None,
                  enable_checkpoint=False,
                  name="ReplayBuffer"):
         """
@@ -90,6 +99,24 @@ class ReplayBuffer(RingBuffer):
             allow_multiprocess (bool): whether multiprocessing is supported.
             keep_episodic_info (bool): index episode start and ending positions.
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
+            record_episodic_return (bool): If True, computes and stores episodic return for
+                every step in the episode upon episode completion.  The field
+                ``discounted_return`` stores the information.  When episodes are
+                incomplete, all steps get the ``default_return``.
+                NOTE:
+                1) Reward transformations like ``RewardClipping.minmax=(-1, 1)`` set in
+                    ``TrainerConfig.data_transformer_ctor`` have to be set manually for
+                    the ReplayBuffer to be consistent:
+                    ``ReplayBuffer.reward_clip=(-1,1)``.
+                2) Discount ``gamma`` needs to be set consistent with ``TDLoss.gamma``.
+                3) Assumes ``keep_episodic_info`` to be True.
+            default_return (float): The default values of ``discounted_return``
+                when the episode has not ended.  For value target lower bounding,
+                default_return should not be bigger than the smallest possible
+                discounted return.  It can be 0 if reward is always non-negative.
+            gamma (float): The value of discount used to compute ``discounted_return``.
+                Usually consistent with ``TDLoss.gamma``.
+            reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
         """
@@ -115,6 +142,12 @@ class ReplayBuffer(RingBuffer):
             self._initial_priority = torch.tensor(
                 initial_priority, dtype=torch.float32, device=device)
         self._keep_episodic_info = keep_episodic_info
+        self._record_episodic_return = record_episodic_return
+        if record_episodic_return:
+            assert keep_episodic_info
+        self._default_return = default_return
+        self._gamma = gamma
+        self._reward_clip = reward_clip
         self._recent_data_steps = recent_data_steps
         self._recent_data_ratio = recent_data_ratio
         self._with_replacement = with_replacement
@@ -138,6 +171,21 @@ class ReplayBuffer(RingBuffer):
             self.register_buffer(
                 "_headless_indexed_pos",
                 torch.zeros(self._num_envs, dtype=torch.int64, device=device))
+            if self._record_episodic_return:
+                # _prev_disc_0_pos stores the previous step in the episode
+                # which has discount 0, or the FIRST step of the episode if
+                # none has discount 0.
+                self.register_buffer(
+                    "_prev_disc_0_pos",
+                    torch.zeros((self._num_envs, self._max_length),
+                                dtype=torch.int64,
+                                device=device))
+                # TODO: use reward_spec to make the return multi dimensional
+                self.register_buffer(
+                    "_episodic_discounted_return",
+                    torch.ones((self._num_envs, self._max_length),
+                               dtype=torch.float32,
+                               device=device) * self._default_return)
         checkpoint_utils.enable_checkpoint(self, enable_checkpoint)
 
     @property
@@ -282,15 +330,31 @@ class ReplayBuffer(RingBuffer):
                 # 3. Update associated episode end indices
                 # 3.1. find ending steps in batch (incl. MID and LAST steps)
                 step_types = batch.step_type
-                non_first, = torch.where(step_types != ds.StepType.FIRST)
+                epi_first = step_types == ds.StepType.FIRST
                 # 3.2. update episode ending positions
-                self._store_episode_end_pos(non_first, overwriting_pos,
+                self._store_episode_end_pos(~epi_first, overwriting_pos,
                                             env_ids)
                 # 3.3. initialize episode beginning positions to itself
-                epi_first, = torch.where(step_types == ds.StepType.FIRST)
                 self._indexed_pos[(env_ids[epi_first],
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
+                if self._record_episodic_return:
+                    f_0 = (batch.discount == 0) | epi_first
+                    self._store_discount_0_pos(~f_0, overwriting_pos, env_ids)
+                    self._prev_disc_0_pos[(
+                        env_ids[f_0], self.circular(
+                            overwriting_pos[f_0]))] = overwriting_pos[f_0]
+                    # Compute episodic return even when a non-LAST step has discount 0,
+                    # which happens when e.g. using AtariTerminalOnLifeLossWrapper.
+                    # This has the advantage of start storing episodic return earlier,
+                    # but the disadvantage of having to compute episodic return a few times
+                    # per episode, repeatedly for some of the earlier steps in the episode.
+                    disc_0, = torch.where(batch.discount == 0)
+                    # Backfill episodic returns for episodes which ended
+                    if disc_0.nelement() > 0:
+                        self._compute_store_episodic_return(env_ids[disc_0])
+                    # Populate default values for steps which did not end, and also LAST steps
+                    self._set_default_return(env_ids)
 
     @atomic
     @torch.no_grad()
@@ -357,6 +421,11 @@ class ReplayBuffer(RingBuffer):
                     "replayer/" + self._name + ".original_reward_mean",
                     torch.mean(result.reward[:-1]))
 
+        if self._keep_episodic_info and self._record_episodic_return:
+            # info elements have shape [B], and needs to be device-converted.
+            # Taking first timestep's return, to lowerbound training value.
+            disc_ret = self._episodic_discounted_return[(env_ids, idx[:, 0])]
+            info = info._replace(discounted_return=disc_ret)
         if alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=self)
@@ -466,26 +535,97 @@ class ReplayBuffer(RingBuffer):
         return ((self._current_pos[env_ids] - x - 1) //
                 self._max_length) * self._max_length + x
 
-    def _store_episode_end_pos(self, non_first, pos, env_ids):
-        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
+    def _set_default_return(self, env_ids):
+        ind = (env_ids, self.circular(self._current_pos[env_ids] - 1))
+        self._episodic_discounted_return[ind] = self._default_return
 
-        Args:
-            non_first_idx (tensor): index of the added batch of exp, which are
-                not FIRST steps.  We need to update last step pos for all
-                these env_ids[non_first_idx].
-            pos (tensor): position of the stored batch.
-            env_ids (tensor): env_ids of the stored batch.
-        """
-        _env_ids = env_ids[non_first]
-        _pos = pos[non_first]
+    def _compute_store_episodic_return(self, env_ids):
+        # Always pass in env_ids whose discount is 0, to save computation.
+        current_pos = self._current_pos[env_ids]
+        current_pos -= 1
+
+        # Store episodic return when discount == 0, not ending with timelimit.
+        # TODO: bootstrapping the the episodic return with the default_return
+        # if game ends with timelimit. For example, the episode length of
+        # Atari games is limited to 4500, which can be reached quite often.
+
+        # Start computation from a previous first or discount 0 step:
+        first_step_pos = self.get_disc_0_begin_position(
+            current_pos - 1, env_ids)
+
+        headless = first_step_pos < current_pos - self._max_length + 1
+        first_step_pos[headless] = (
+            current_pos - self._max_length + 1)[headless]
+        max_len = torch.max(current_pos - first_step_pos) + 1
+        # Indexes cover all env_ids for the length of the longest episode.
+        epi_pos = current_pos.unsqueeze(1) - max_len + 1 + torch.arange(
+            max_len).unsqueeze(0)
+        epi_pos_idx = self.circular(epi_pos)
+        all_ind = (env_ids.unsqueeze(1), epi_pos_idx)
+        # mask for the real indices
+        valid = epi_pos >= first_step_pos.unsqueeze(1)
+        # For episode with [FIRST, MID, MID, LAST] steps,
+        # discounts = [1, gamma, gamma^2, gamma^3]
+        discounts = (self._gamma
+                     **torch.arange(max_len, dtype=torch.float32)).unsqueeze(0)
+        epi_discounts = discounts * self._buffer.discount[all_ind]
+        # rewards = [r0, r1, r2, r3]
+        rewards = self._buffer.reward[all_ind]
+        if self._reward_clip:
+            rewards = torch.clamp(rewards, *self._reward_clip)
+        rewards[~valid] = 0
+        epi_discounts[~valid] = 0
+        # reward[t + 1] * discount[t] is the correct discounted_return,
+        # because r0 needs to be ignored, r1 is the result of the action from FIRST step.
+        discounted_rewards = rewards[:, 1:] * epi_discounts[:, :-1]
+        # Then flip and cumsum from back of episode.
+        discounted_return = discounted_rewards.flip(1).cumsum(dim=1).flip(1)
+        future_discounted_return = discounted_return / discounts[:, :-1]
+        future_discounted_return = alf.utils.tensor_utils.tensor_extend_zero(
+            future_discounted_return, dim=1)
+        valid_ind = (env_ids.unsqueeze(1).expand(-1, max_len)[valid],
+                     epi_pos_idx[valid])
+        self._episodic_discounted_return[valid_ind] = future_discounted_return[
+            valid]
+
+    def _filter_populate_from_prev_step(self, buffer, mask, pos, env_ids):
+        _env_ids = env_ids[mask]
+        _pos = pos[mask]
         # Because this is a non-first step, the previous step's first step
         # is the same as this stored step's first step.  Look it up.
         prev_pos = _pos - 1
         prev_idx = self.circular(prev_pos)
-        prev_first = self._indexed_pos[(_env_ids, prev_idx)]
-        prev_first_idx = self.circular(prev_first)
-        # Record pos of ``FIRST`` step into the current _indexed_pos
-        self._indexed_pos[(_env_ids, self.circular(_pos))] = prev_first
+        prev_value = buffer[(_env_ids, prev_idx)]
+        prev_value_idx = self.circular(prev_value)
+        # Record pos of ``FIRST`` step into the current buffer
+        buffer[(_env_ids, self.circular(_pos))] = prev_value
+        return _env_ids, _pos, prev_value, prev_value_idx
+
+    def _store_discount_0_pos(self, non_f_0, pos, env_ids):
+        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
+
+        Args:
+            non_f_0 (tensor or None): bool mask of steps not FIRST and discount != 0.
+                We need to update _prev_disc_0_pos for all these env_ids[non_f_0].
+            pos (tensor): position of the stored batch.
+            env_ids (tensor): env_ids of the stored batch.
+        """
+        self._filter_populate_from_prev_step(self._prev_disc_0_pos, non_f_0,
+                                             pos, env_ids)
+
+    def _store_episode_end_pos(self, non_first, pos, env_ids, non_f_0=None):
+        """Update _indexed_pos and _headless_indexed_pos for episode end pos.
+
+        Args:
+            non_first (tensor): bool mask of the added batch of exp, which are
+                not FIRST steps.  We need to update last step pos for all
+                these env_ids[non_first].
+            pos (tensor): position of the stored batch.
+            env_ids (tensor): env_ids of the stored batch.
+        """
+        _env_ids, _pos, prev_first, prev_first_idx = \
+            self._filter_populate_from_prev_step(
+                self._indexed_pos, non_first, pos, env_ids)
 
         # Store episode end into the ``FIRST`` step of the episode.
         has_head_cond = prev_first > _pos - self._max_length
@@ -547,6 +687,14 @@ class ReplayBuffer(RingBuffer):
         buffer_step_types = self._buffer.step_type
         is_first = buffer_step_types[indices] == ds.StepType.FIRST
         first_step_pos[is_first] = pos[is_first]
+        return first_step_pos
+
+    def get_disc_0_begin_position(self, pos, env_ids):
+        """
+        Note that the discount 0 step may no longer be in the replay buffer.
+        """
+        indices = (env_ids, self.circular(pos))
+        first_step_pos = self._prev_disc_0_pos[indices]
         return first_step_pos
 
     @alf.configurable

@@ -475,6 +475,15 @@ class Agent(RLAlgorithm):
 
         exp, rl_info = self._rl_algorithm.preprocess_experience(
             exp, rollout_info.rl, batch_info)
+
+        # Expand discounted_return in batch_info to the correct shape, and
+        # populate to rl_info.
+        if hasattr(rl_info,
+                   "discounted_return") and batch_info.discounted_return != ():
+            discounted_return = batch_info.discounted_return.unsqueeze(
+                1).expand(exp.reward.shape[:2])
+            rl_info = rl_info._replace(discounted_return=discounted_return)
+
         return exp, rollout_info._replace(rl=rl_info)
 
     def summarize_rollout(self, experience):
