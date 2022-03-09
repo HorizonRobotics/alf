@@ -769,11 +769,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             positions: [B, n+1]
 
         """
-        steps_to_episode_end = replay_buffer.steps_to_episode_end(
-            positions, env_ids)
-        # [B]
-        episode_end_positions = positions + steps_to_episode_end
-
         # [B, 1]
         env_ids = env_ids.unsqueeze(-1)
         # [B, n + 1]
