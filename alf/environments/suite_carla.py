@@ -49,6 +49,7 @@ import sys
 import time
 import torch
 from unittest.mock import Mock
+import weakref
 
 try:
     import carla
@@ -63,7 +64,7 @@ from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
 from .carla_sensors import (
     BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
-    LaneInvasionSensor, NavigationSensor, RadarSensor, World,
+    LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor, World,
     get_scaled_image_size, MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 
@@ -314,6 +315,7 @@ class Player(object):
                  with_camera_sensor=True,
                  with_radar_sensor=True,
                  with_bev_sensor=False,
+                 with_red_light_sensor=False,
                  terminate_upon_infraction="",
                  render_waypoints=True):
         """
@@ -376,6 +378,7 @@ class Player(object):
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
             with_bev_sensor (bool): whether to use ``BEVSensor``.
+            with_red_light_sensor (bool): whether to use ``RedlightSensor``.
             terminate_upon_infraction (str): whether to terminate the episode
                 based on the specified mode ("collision", "redlight", "all", ""),
                 when the agent has the corresponding infractions.
@@ -431,6 +434,10 @@ class Player(object):
             self._observation_sensors['bev'] = self._bev_sensor
         else:
             self._bev_sensor = None
+
+        if with_red_light_sensor:
+            self._red_light_sensor = RedlightSensor(actor, weakref.ref(self))
+            self._observation_sensors['redlight'] = self._red_light_sensor
 
         self._success_reward = success_reward
         self._success_distance_thresh = success_distance_thresh
@@ -550,6 +557,7 @@ class Player(object):
 
         self._prev_violated_red_light_id = None
         self._prev_encountered_red_light_id = None
+        self._prev_encountered_red_light_dist = 1e10
 
         # The intermediate goal for sparse reward
         self._intermediate_goal_index = min(self._sparse_reward_index_interval,
@@ -757,7 +765,7 @@ class Player(object):
             reward_vector[Player.REWARD_COLLISION] = 1.
 
         # -------- Infraction 2: running red light --------
-        red_light_id, encountered_red_light_id = \
+        red_light_id, encountered_red_light_id, encountered_red_light_dist = \
                         self._alf_world.is_running_red_light(self._actor)
 
         if encountered_red_light_id is not None and encountered_red_light_id != self._prev_encountered_red_light_id:
@@ -766,6 +774,7 @@ class Player(object):
             info['red_light_encountered'] = np.float32(1.0)
 
         self._prev_encountered_red_light_id = encountered_red_light_id
+        self._prev_encountered_red_light_dist = encountered_red_light_dist
 
         if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
             speed = self._get_agent_speed()
@@ -998,6 +1007,7 @@ class Player(object):
             'Speed Limit: %4.2f m/s' % self._speed_limit,
             'Red light zone: %1d' % (self._prev_encountered_red_light_id != None),
             'Red light violation: %1d' % env_info['red_light_violated'],
+            'Red light dist: %4.2f' % self._prev_encountered_red_light_dist,
         ]
         info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)

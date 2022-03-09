@@ -995,6 +995,8 @@ class World(object):
 
     # only consider a car for running red light if it is within such distance
     RED_LIGHT_ENFORCE_DISTANCE = 15  # m
+    # set a large value as the default encountered red light distance
+    DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE = 1e10  # m
 
     def __init__(self, world: carla.World, route_resolution=1.0):
         """
@@ -1241,7 +1243,10 @@ class World(object):
         Args:
             actor (carla.Actor): the vehicle actor
         Returns:
-            red light id if running red light, None otherwise
+            - violated red light id if running red light, None otherwise
+            - encountered red light id if encounting one, None otherwise
+            - distance to the encountered red light id if encountering one,
+             ``DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE`` otherwise
         """
         veh_transform = actor.get_transform()
         veh_location = veh_transform.location
@@ -1274,6 +1279,7 @@ class World(object):
 
         violated_red_light_id = None
         encountered_red_light_id = None
+        encountered_red_light_distance = DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE
         for index in candidate_light_index:
             wp_dir = _get_forward_vector(waypoints.rotation[index])
             dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)
@@ -1307,8 +1313,10 @@ class World(object):
             # red-light id encountered by the actor
             if np.any(same_lane):
                 encountered_red_light_id = self._traffic_light_actors[index].id
+                encountered_red_light_distance = dist[index]
 
-        return violated_red_light_id, encountered_red_light_id
+        return (violated_red_light_id, encountered_red_light_id,
+                encountered_red_light_distance)
 
     def _draw_waypoints(self, waypoints, vertical_shift, persistency=-1):
         """Draw a list of waypoints at a certain height given in vertical_shift."""
@@ -1450,6 +1458,42 @@ class NavigationSensor(SensorBase):
             int: index of the next waypoint
         """
         return min(self._nearest_index + 1, self._num_waypoints - 1)
+
+
+class RedlightSensor(SensorBase):
+    """Provide a scalar value representing the distance to the redlight
+        that affects the current ``Player``.
+    """
+
+    def __init__(self, parent_actor, player):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+            alf_world (World):
+        """
+        super().__init__(parent_actor)
+        self._player = player()
+
+    def observation_spec(self):
+        return alf.TensorSpec((1, ))
+
+    def observation_desc(self):
+        return ("Distance to redlight that affects the current actor.")
+
+    def get_current_observation(self, red_light_dist):
+        """Get the current observation.
+
+        The a scalar value representing the distance to the redlight.
+
+        Args:
+            current_frame (int): not used.
+        Returns:
+            np.ndarray: 1-D array representing the distance to the redlight
+            that affects the current ``Player``.
+        """
+
+        return np.array(
+            [self._player._prev_encountered_red_light_dist]).astype(np.float32)
 
 
 # ==============================================================================
