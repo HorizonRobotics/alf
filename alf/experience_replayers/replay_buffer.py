@@ -339,8 +339,7 @@ class ReplayBuffer(RingBuffer):
                                    self.circular(overwriting_pos[epi_first])
                                    )] = overwriting_pos[epi_first]
                 if self._record_episodic_return:
-                    f_0 = (batch.discount == 0) | (
-                        step_types == ds.StepType.FIRST)
+                    f_0 = (batch.discount == 0) | epi_first
                     self._store_discount_0_pos(~f_0, overwriting_pos, env_ids)
                     self._prev_disc_0_pos[(
                         env_ids[f_0], self.circular(
@@ -550,11 +549,7 @@ class ReplayBuffer(RingBuffer):
         # if game ends with timelimit. For example, the episode length of
         # Atari games is limited to 4500, which can be reached quite often.
 
-        # This is for computing from episode start, which shouldn't be used
-        # when computing episodic return every time discount = 0 step is added:
-        # first_step_pos = self.get_episode_begin_position(current_pos, env_ids)
-
-        # This is for starting computation from a previous discount 0 step:
+        # Start computation from a previous first or discount 0 step:
         first_step_pos = self.get_disc_0_begin_position(
             current_pos - 1, env_ids)
 
