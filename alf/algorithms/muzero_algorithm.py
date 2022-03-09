@@ -455,10 +455,22 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             if type(self._data_transformer) == IdentityDataTransformer:
                 observation = replay_buffer.get_field(
                     'observation', folded_env_ids, folded_positions)
+                observation = _unfold1_adapting_episode_ends(observation)
             else:
+                # In contrast to the preceding case, where we can first extract
+                # observation and then unfold it, certain data transformers,
+                # such as FrameStacker, are sensitive to the order in which the
+                # unfold is applied. As a result, we choose to first unfold.
                 observation, step_type = replay_buffer.get_field(
                     ('observation', 'step_type'), folded_env_ids,
                     folded_positions)
+
+                # Unfold (and reshape)
+                observation = _unfold1_adapting_episode_ends(observation)
+                observation = observation.reshape(-1, *observation.shape[2:])
+                step_type = _unfold1_adapting_episode_ends(step_type)
+                step_type = step_type.reshape(-1, *step_type.shape[2:])
+
                 exp = alf.data_structures.make_experience(
                     root_inputs, AlgStep(), state=())
                 exp = exp._replace(
@@ -467,7 +479,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = _unfold1_adapting_episode_ends(exp.observation)
+                observation = exp.observation.reshape(
+                    B, T, *exp.observation.shape[1:])
 
         # TODO(breakds): Should also include a mask in ModelTarget as an
         # indicator of overflow beyond the end of the replay buffer.
@@ -485,6 +498,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reward_transformer:
             root_inputs = root_inputs._replace(
                 reward=rollout_info.target.reward[:, :, 0])
+
         return root_inputs, rollout_info
 
     def _calc_bootstrap_return(self, replay_buffer, env_ids, positions,
