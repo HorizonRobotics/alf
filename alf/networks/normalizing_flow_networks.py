@@ -460,12 +460,26 @@ class _RealNVPTransform(td.Transform):
     def params(self):
         """Let ALF know what parameters to store when extracting params from
         a transformed distribution."""
-        return self._z
+        return {'z': self._z}
 
-    @params.setter
-    def params(self, z):
-        """Let ALF update the transform params when building a distribution."""
-        self._z = z
+    def get_builder(self):
+        """If a transform has its ``get_builder`` implemented, then when building
+        a transformed distribution from the extracted params, this builder will
+        be called; otherwise its class will be used.
+
+        This builder needs ``z`` provided as the input, which is also defined as
+        the conditional variable. By assumption, this builder can create multiple
+        transform instances that have different ``z``s but share other properties
+        including scale&translation encoding networks.
+        """
+        return partial(
+            _RealNVPTransform,
+            input_tensor_spec=self._tensor_specs[0],
+            scale_trans_net=self._scale_trans_net,
+            mask=self._b,
+            conditional_input_tensor_spec=self._tensor_specs[1],
+            cache_size=self._cache_size,
+            scale_nonlinear=self._scale_nonlinear)
 
     def __eq__(self, other):
         return (isinstance(other, _realVNPTransform)
