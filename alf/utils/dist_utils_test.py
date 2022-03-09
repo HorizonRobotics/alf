@@ -129,7 +129,7 @@ class TransformationAndInversionTest(parameterized.TestCase,
         spec = dist_utils.DistributionSpec.from_distribution(dist)
 
         params1 = {
-            "transforms_params_": [()],
+            "transforms_params_": [{}],
             "params_": {
                 'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
                 'scale': torch.tensor([[2., 4.], [2., 1.]])
@@ -408,7 +408,7 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
         transformed_dist4 = td.TransformedDistribution(transformed_dist1, [t3])
 
         params1 = dist_utils.distributions_to_params(transformed_dist1)
-        z12 = [{'z': z1}, {'z': z2}]
+        z12 = {'parts_params': [{'z': z1}, {'z': z2}]}
         self.assertEqual(params1, {
             'transforms_params_': [z12],
             'params_': {
@@ -420,7 +420,9 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
         params2 = dist_utils.distributions_to_params(transformed_dist2)
         self.assertEqual(
             params2, {
-                'transforms_params_': [[z12, ()]],
+                'transforms_params_': [{
+                    'parts_params': [z12, {}]
+                }],
                 'params_': {
                     'loc': mean,
                     'scale': std
@@ -428,12 +430,12 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
             })
 
         params3 = dist_utils.distributions_to_params(transformed_dist3)
-        self.assertEqual(params3['transforms_params_'], z12)
+        self.assertEqual(params3['transforms_params_'], z12['parts_params'])
 
         params4 = dist_utils.distributions_to_params(transformed_dist4)
         self.assertEqual(
             params4, {
-                'transforms_params_': [()],
+                'transforms_params_': [{}],
                 'params_': {
                     'transforms_params_': [z12],
                     'params_': {

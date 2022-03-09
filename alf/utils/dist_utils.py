@@ -571,7 +571,9 @@ def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
 
 def _builder_transformed(base_builder, transform_builders, params_,
                          transforms_params_):
-    transforms = [b(p) for b, p in zip(transform_builders, transforms_params_)]
+    transforms = [
+        b(**p) for b, p in zip(transform_builders, transforms_params_)
+    ]
     return td.TransformedDistribution(base_builder(**params_), transforms)
 
 
@@ -614,20 +616,18 @@ def _get_transform_builders_params(transforms):
                 dict), ("Transform params must be provided as a dict! "
                         f"Got {transforms.params}")
             return transforms.params
-        return ()  # the transform doesn't have any parameter
+        return {}  # the transform doesn't have any parameter
 
     if isinstance(transforms, td.Transform):
         if isinstance(transforms, td.ComposeTransform):
             builders, params = _get_transform_builders_params(transforms.parts)
-            compose_transform_builder = lambda params: td.ComposeTransform(
-                [b(p) for b, p in zip(builders, params)])
-            return compose_transform_builder, params
+            compose_transform_builder = lambda parts_params: td.ComposeTransform(
+                [b(**p) for b, p in zip(builders, parts_params)])
+            return compose_transform_builder, {'parts_params': params}
         else:
             builder = _get_transform_builder(transforms)
             params = _get_transform_params(transforms)
-            new_builder = lambda params: (builder(**params)
-                                          if params != () else builder())
-            return new_builder, params
+            return builder, params
 
     assert isinstance(transforms, list), f"Incorrect transforms {transforms}!"
     builders_and_params = [
