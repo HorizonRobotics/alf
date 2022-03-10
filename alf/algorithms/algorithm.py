@@ -1064,8 +1064,16 @@ class Algorithm(AlgorithmInterface):
         masks = None
         if (batch_info is not None and batch_info.importance_weights != ()
                 and self._config.priority_replay):
+            if (loss_info.loss is () or loss_info.loss.ndim != 2
+                    or loss_info.scalar_loss is not ()):
+                common.warning_once(
+                    "The importance_weights of priority "
+                    "sampling cannnot be applied to LossInfo.scalar_loss or "
+                    "LossInfo.loss whose ndim is not 2.")
             masks = batch_info.importance_weights.pow(
                 -self._config.priority_replay_beta()).unsqueeze(0)
+            if self._config is not None and self._config.normalize_importance_weights_by_max:
+                masks = masks / masks.max()
 
         if valid_masks is not None:
             if masks is not None:
@@ -1075,7 +1083,7 @@ class Algorithm(AlgorithmInterface):
 
         if masks is not None:
             loss_info = alf.nest.map_structure(
-                lambda l: torch.mean(l * masks) if len(l.shape) == 2 else l,
+                lambda l: torch.mean(l * masks) if l.ndim == 2 else l,
                 loss_info)
         else:
             loss_info = alf.nest.map_structure(lambda l: torch.mean(l),
@@ -1671,9 +1679,8 @@ class Algorithm(AlgorithmInterface):
         field of loss_info.
         """
         if loss_info.priority != ():
-            priority = (
-                loss_info.priority**self._config.priority_replay_alpha() +
-                self._config.priority_replay_eps)
+            priority = (loss_info.priority + self._config.priority_replay_eps
+                        )**self._config.priority_replay_alpha()
             replay_buffer.update_priority(batch_info.env_ids,
                                           batch_info.positions, priority)
             if self._debug_summaries and alf.summary.should_record_summaries():
