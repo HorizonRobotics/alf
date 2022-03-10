@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-import tensorflow as tf
-
-
-@gin.configurable
-def split_observation_fn(o):
-
-    dimo = o.get_shape().as_list()[-1]
-    assert dimo == 23, ("The dimension does not match.")
-
-    task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
-        o, [3, 6, 6, 6, 2], axis=-1)
-
-    return (action, task_specific_ob)
+from .geometry import FieldOfView
+from .sensors import VectorizedObservation
+from .environments import VectorizedTopDownEnv

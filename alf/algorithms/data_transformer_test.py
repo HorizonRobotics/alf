@@ -16,15 +16,14 @@ from absl.testing import parameterized
 import torch
 
 import alf
-from alf.data_structures import namedtuple, StepType
+from alf.data_structures import Experience, namedtuple, StepType
 from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
-from alf.experience_replayers.replay_buffer_test import ReplayBufferTest
+from alf.experience_replayers.replay_buffer_test import get_exp_batch, ReplayBufferTest
 from alf.algorithms.data_transformer import FrameStacker, ImageScaleTransformer, HindsightExperienceTransformer
 from alf.utils import common
-from alf.utils.data_buffer_test import get_batch
 
-DataItem = namedtuple(
-    'DataItem', ['step_type', 'observation', 'batch_info', 'replay_buffer'],
+TimestepItem = namedtuple(
+    'TimestepItem', ['step_type', 'observation', 'reward', 'env_id'],
     default_value=())
 
 
@@ -48,20 +47,21 @@ class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
 class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(-1, 0)
     def test_frame_stacker(self, stack_axis=0):
-        data_spec = DataItem(
+        time_step_spec = TimestepItem(
             step_type=alf.TensorSpec((), dtype=torch.int32),
             observation=dict(
                 scalar=alf.TensorSpec(()),
                 vector=alf.TensorSpec((7, )),
                 matrix=alf.TensorSpec((5, 6)),
                 tensor=alf.TensorSpec((2, 3, 4))))
+        exp_spec = Experience(time_step=time_step_spec)
         replay_buffer = ReplayBuffer(
-            data_spec=data_spec,
+            data_spec=exp_spec,
             num_environments=2,
             max_length=1024,
             num_earliest_frames_ignored=2)
         frame_stacker = FrameStacker(
-            data_spec.observation,
+            time_step_spec.observation,
             stack_size=3,
             stack_axis=stack_axis,
             fields=['scalar', 'vector', 'matrix', 'tensor'])
@@ -84,7 +84,7 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
             return StepType.MID
 
         observation = alf.nest.map_structure(
-            lambda spec: spec.randn((1000, 2)), data_spec.observation)
+            lambda spec: spec.randn((1000, 2)), time_step_spec.observation)
         state = common.zero_tensor_from_nested_spec(frame_stacker.state_spec,
                                                     2)
 
@@ -112,13 +112,15 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(stacked['tensor'][b], expected['tensor'])
 
         for t in range(1000):
-            batch = DataItem(
+            time_step = TimestepItem(
                 step_type=torch.tensor([_step_type(t, 17),
                                         _step_type(t, 22)]),
                 observation=alf.nest.map_structure(lambda x: x[t],
                                                    observation))
+            batch = Experience(time_step=time_step)
             replay_buffer.add_batch(batch)
-            timestep, state = frame_stacker.transform_timestep(batch, state)
+            timestep, state = frame_stacker.transform_timestep(
+                time_step, state)
             if t == 0:
                 for b in (0, 1):
                     expected = _get_stacked_data([0, 0, 0], b)
@@ -156,6 +158,7 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
         experience = replay_buffer.get_field(
             '', batch_info.env_ids.unsqueeze(-1),
             batch_info.positions.unsqueeze(-1) + torch.arange(2))
+
         experience = experience._replace(
             batch_info=batch_info, replay_buffer=replay_buffer)
         experience = frame_stacker.transform_experience(experience)
@@ -188,16 +191,16 @@ class ImageScaleTransformerTest(alf.test.TestCase):
         self.assertEqual(new_spec.dtype, torch.float32)
         self.assertEqual(new_spec.minimum, 0.)
         self.assertEqual(new_spec.maximum, 1.)
-        timestep = DataItem(
+        timestep = TimestepItem(
             observation=torch.randint(256, (3, 16, 16)).to(torch.uint8))
         transformed = transformer.transform_timestep(timestep, ())[0]
         self.assertLess(
             (transformed.observation * 255 - timestep.observation).abs().max(),
             1e-4)
-        transformed = transformer.transform_experience(timestep)
-        self.assertLess(
-            (transformed.observation * 255 - timestep.observation).abs().max(),
-            1e-4)
+        experience = Experience(time_step=timestep)
+        transformed_exp = transformer.transform_experience(experience)
+        self.assertLess((transformed_exp.observation * 255 -
+                         timestep.observation).abs().max(), 1e-4)
 
         spec = dict(
             img=alf.TensorSpec((3, 16, 16), dtype=torch.uint8),
@@ -222,17 +225,31 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
         max_length = 100
         torch.manual_seed(0)
 
+        from alf.experience_replayers.replay_buffer_test import TimestepItem
+
+        data_spec = Experience(
+            time_step=TimestepItem(
+                env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+                x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+                step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
+                o=dict({
+                    "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                    "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+                }),
+                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
+                reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
+
         replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
+            data_spec=data_spec,
             num_environments=num_envs,
             max_length=max_length,
             keep_episodic_info=True)
 
         transform = HindsightExperienceTransformer(
-            self.data_spec,
+            data_spec,
             her_proportion=0.8,
-            achieved_goal_field="o.a",
-            desired_goal_field="o.g")
+            achieved_goal_field="time_step.o.a",
+            desired_goal_field="time_step.o.g")
         assert len(transform.transform_timestep((), ())) == 2
 
         # insert data
@@ -242,10 +259,10 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
             num_envs, max_steps, end_prob=end_prob)
         for t in range(max_steps):
             for b in range(num_envs):
-                batch = get_batch([b],
-                                  self.dim,
-                                  t=steps[b * max_steps + t],
-                                  x=1. / max_steps * t + b)
+                batch = get_exp_batch([b],
+                                      self.dim,
+                                      t=steps[b * max_steps + t],
+                                      x=1. / max_steps * t + b)
                 replay_buffer.add_batch(batch, batch.env_id)
             if t > 1:
                 sample_steps = min(t, max_length)
@@ -272,7 +289,8 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                     assert False, "".join(outs)
 
                 # Save original exp for later testing.
-                g_orig = replay_buffer._buffer.o["g"].clone()
+                g_orig = replay_buffer._buffer.get_time_step_field(
+                    "o.g").clone()
                 r_orig = replay_buffer._buffer.reward.clone()
 
                 # HER relabel experience
@@ -280,13 +298,17 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                 res = res._replace(batch_info=info)
                 res = transform.transform_experience(res)
 
-                self.assertEqual(list(res.o["g"].shape), [sample_steps, 2])
+                self.assertEqual(
+                    list(res.get_time_step_field("o.g").shape),
+                    [sample_steps, 2])
 
                 # Test relabeling doesn't change original experience
                 self.assertTrue(
                     torch.allclose(r_orig, replay_buffer._buffer.reward))
                 self.assertTrue(
-                    torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
+                    torch.allclose(
+                        g_orig,
+                        replay_buffer._buffer.get_time_step_field("o.g")))
                 self.assertTrue(
                     torch.all(idx_orig == replay_buffer._indexed_pos))
                 self.assertTrue(

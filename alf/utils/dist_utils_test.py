@@ -18,30 +18,37 @@ from collections import namedtuple
 import math
 import torch
 import torch.distributions as td
+from functools import partial
 
 import alf
 from alf.utils import math_ops
 import alf.utils.dist_utils as dist_utils
+from alf.networks.normalizing_flow_networks import _RealNVPTransform
+from alf.networks import NetworkWrapper
 
 ActionDistribution = namedtuple('ActionDistribution', ['a', 'b'])
 
 
 class EstimatedEntropyTest(parameterized.TestCase, alf.test.TestCase):
-    def setUp(self):
-        self.skipTest("estimate_entropy is not implemented yet")
-
     def assertArrayAlmostEqual(self, x, y, eps):
-        self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
+        self.assertLess((x - y).abs().max(), eps)
 
-    @parameterized.parameters(False, True)
-    def test_estimated_entropy(self, assume_reparametrization):
-        logging.info("assume_reparametrization=%s" % assume_reparametrization)
-        num_samples = 1000000
-        seed_stream = tfp.util.SeedStream(
-            seed=1, salt='test_estimated_entropy')
-        batch_shape = (2, )
-        loc = tf.random.normal(shape=batch_shape, seed=seed_stream())
-        scale = tf.abs(tf.random.normal(shape=batch_shape, seed=seed_stream()))
+    def test_estimated_entropy(self):
+        num_samples = 5000000
+        batch_shape = (2, 1)
+        # +1 to make sure the distribution shape is well defined
+        para1 = torch.rand(*batch_shape) + 1.
+        para2 = torch.rand(*batch_shape) + 1.
+
+        dist_ctors = [td.Normal, td.Beta]
+        for ctor in dist_ctors:
+            dist = td.Independent(
+                ctor(para1, para2), reinterpreted_batch_ndims=1)
+            exact_entropy = dist.entropy()
+            estimated_entropy, _ = dist_utils.estimated_entropy(
+                dist, num_samples=num_samples)
+            self.assertArrayAlmostEqual(
+                exact_entropy, estimated_entropy, eps=1e-2)
 
 
 class DistributionSpecTest(alf.test.TestCase):
@@ -122,8 +129,11 @@ class TransformationAndInversionTest(parameterized.TestCase,
         spec = dist_utils.DistributionSpec.from_distribution(dist)
 
         params1 = {
-            'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
-            'scale': torch.tensor([[2., 4.], [2., 1.]])
+            "transforms_params_": [{}],
+            "params_": {
+                'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
+                'scale': torch.tensor([[2., 4.], [2., 1.]])
+            }
         }
         dist1 = spec.build_distribution(params1)
         self.assertEqual(type(dist1), td.TransformedDistribution)
@@ -132,8 +142,10 @@ class TransformationAndInversionTest(parameterized.TestCase,
         self.assertEqual(
             type(dist1.base_dist), dist_utils.DiagMultivariateNormal)
         self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
-        self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
-        self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
+        self.assertEqual(dist1.base_dist.base_dist.mean,
+                         params1['params_']['loc'])
+        self.assertEqual(dist1.base_dist.base_dist.stddev,
+                         params1['params_']['scale'])
 
     @parameterized.parameters(math_ops.identity, torch.detach, torch.clone)
     def test_inversion(self, func):
@@ -369,6 +381,113 @@ class TestSoftTransforms(alf.test.TestCase):
         grad = torch.autograd.grad(y.sum(), x)[0]
         self.assertTensorClose(
             grad.log(), softclip.log_abs_det_jacobian(x, y), epsilon=1e-5)
+
+
+class TestNFTransformedDistributionParams(alf.test.TestCase):
+    def test_distribution_params(self):
+        spec = alf.tensor_specs.TensorSpec((4, ))
+        scale_trans_net = NetworkWrapper(lambda xz: x + z,
+                                         (spec, spec)).make_parallel(2)
+
+        z1 = spec.rand(outer_dims=(1, ))
+        z2 = spec.rand(outer_dims=(1, ))
+        mask = spec.ones(outer_dims=(1, ))
+
+        t1 = _RealNVPTransform(spec, scale_trans_net, mask, spec, z1)
+        t2 = _RealNVPTransform(spec, scale_trans_net, mask, spec, z2)
+        t3 = dist_utils.StableTanh()
+        t = td.ComposeTransform([t1, t2])
+        t_ = td.ComposeTransform([t, t3])
+
+        mean = spec.zeros(outer_dims=(1, ))
+        std = spec.ones(outer_dims=(1, ))
+        dist = dist_utils.DiagMultivariateNormal(mean, std)
+        transformed_dist1 = td.TransformedDistribution(dist, [t])
+        transformed_dist2 = td.TransformedDistribution(dist, [t_])
+        transformed_dist3 = td.TransformedDistribution(dist, [t1, t2])
+        transformed_dist4 = td.TransformedDistribution(transformed_dist1, [t3])
+
+        params1 = dist_utils.distributions_to_params(transformed_dist1)
+        z12 = {'parts_params': [{'z': z1}, {'z': z2}]}
+        self.assertEqual(params1, {
+            'transforms_params_': [z12],
+            'params_': {
+                'loc': mean,
+                'scale': std
+            }
+        })
+
+        params2 = dist_utils.distributions_to_params(transformed_dist2)
+        self.assertEqual(
+            params2, {
+                'transforms_params_': [{
+                    'parts_params': [z12, {}]
+                }],
+                'params_': {
+                    'loc': mean,
+                    'scale': std
+                }
+            })
+
+        params3 = dist_utils.distributions_to_params(transformed_dist3)
+        self.assertEqual(params3['transforms_params_'], z12['parts_params'])
+
+        params4 = dist_utils.distributions_to_params(transformed_dist4)
+        self.assertEqual(
+            params4, {
+                'transforms_params_': [{}],
+                'params_': {
+                    'transforms_params_': [z12],
+                    'params_': {
+                        'loc': mean,
+                        'scale': std
+                    }
+                }
+            })
+
+        dist_spec2 = dist_utils.DistributionSpec.from_distribution(
+            transformed_dist2)
+
+        z4 = spec.rand(outer_dims=(1, ))
+        z5 = spec.rand(outer_dims=(1, ))
+        t4 = _RealNVPTransform(spec, scale_trans_net, mask, spec, z4)
+        t5 = _RealNVPTransform(spec, scale_trans_net, mask, spec, z5)
+        # similar to transformed_dist2, but with different params
+        transformed_dist5 = td.TransformedDistribution(
+            dist_utils.DiagMultivariateNormal(
+                spec.ones(outer_dims=(1, )), std),
+            [td.ComposeTransform([td.ComposeTransform([t4, t5]), t3])])
+        params5 = dist_utils.distributions_to_params(transformed_dist5)
+
+        built_dist5 = dist_spec2.build_distribution(params5)
+
+        self.assertEqual(built_dist5.base_dist.mean,
+                         spec.ones(outer_dims=(1, )))
+        self.assertEqual(built_dist5.transforms[0].parts[0].parts[0].params,
+                         {'z': z4})
+
+        dist_spec4 = dist_utils.DistributionSpec.from_distribution(
+            transformed_dist4)
+        transformed_dist6 = td.TransformedDistribution(
+            td.TransformedDistribution(dist, [td.ComposeTransform([t4, t5])]),
+            [t3])
+        params6 = dist_utils.distributions_to_params(transformed_dist6)
+
+        built_dist6 = dist_spec4.build_distribution(params6)
+        self.assertEqual(built_dist6.base_dist.transforms[0].parts[0].params,
+                         {'z': z4})
+
+        # we build another distribution using dist_spec4 and check if ``built_dist6``
+        # has an unchanged ``z``
+        built_dist7 = dist_spec4.build_distribution(
+            alf.nest.map_structure(torch.zeros_like, params6))
+        self.assertFalse(built_dist7.base_dist.transforms[0] is built_dist6.
+                         base_dist.transforms[0])
+        self.assertTensorEqual(
+            built_dist7.base_dist.transforms[0].parts[0].params['z'],
+            torch.zeros_like(z4))
+        self.assertEqual(built_dist6.base_dist.transforms[0].parts[0].params,
+                         {'z': z4})
 
 
 if __name__ == '__main__':

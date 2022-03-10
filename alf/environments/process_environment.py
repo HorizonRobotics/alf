@@ -152,7 +152,7 @@ class ProcessEnvironment(object):
         # child process with the "spawn" start method. Using "fork" start method
         # is required here because we would like to have the child process
         # inherit the alf configurations from the parent process, so that such
-        # confiurations are effective for the to-be-created environments in the
+        # configuration are effective for the to-be-created environments in the
         # child process.
         mp_ctx = multiprocessing.get_context('fork')
         self._conn, conn = mp_ctx.Pipe()

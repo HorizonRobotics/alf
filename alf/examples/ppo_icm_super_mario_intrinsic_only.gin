@@ -1,3 +1,5 @@
+# Warning: Directly converted from the TF version, this gin file was NOT TESTED.
+
 include 'ppo.gin'
 
 # icm on SuperMario using PPO algorithm
@@ -19,7 +21,7 @@ CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256,)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.activation_fn=@torch.nn.functional.elu_
 actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
 actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
@@ -28,7 +30,7 @@ actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNet
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256,256)
 value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
-value/ValueNetwork.activation_fn=@tf.nn.elu
+value/ValueNetwork.activation_fn=@torch.nn.functional.elu_
 
 ac/Adam.learning_rate=3e-5
 ac/Adam.gradient_clipping=10.0
@@ -37,8 +39,9 @@ icm/encoding_net_fc_layer_params=(256,)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
-icm/EncodingNetwork.activation_fn=@tf.nn.elu
+icm/EncodingNetwork.activation_fn=@torch.nn.functional.elu_
 icm/TensorSpec.shape=%icm/encoding_net_fc_layer_params
+ImageEncodingNetwork.same_padding=True
 
 ICMAlgorithm.action_spec=%action_spec
 ICMAlgorithm.feature_spec=@icm/TensorSpec()
@@ -59,8 +62,6 @@ PPOLoss.gamma=0.99
 PPOLoss.normalize_advantages=True
 PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
-
-tf.keras.layers.Conv2D.padding="same"
 
 # training config
 TrainerConfig.num_iterations = 100000

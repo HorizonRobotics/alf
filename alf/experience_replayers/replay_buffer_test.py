@@ -12,24 +12,83 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
+from collections import namedtuple
 import itertools
 import torch
-
-from absl.testing import parameterized
 
 import alf
 from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
-from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
 from typing import List
 
+TimestepItem = namedtuple(
+    'TimestepItem', ['step_type', 'o', 'reward', 'env_id', 'discount', 'x'])
 
-class ReplayBufferTest(RingBufferTest):
+
+# Using cpu tensors are needed for running on cuda enabled devices,
+# as we are not using the spawn method to start subprocesses.
+def get_exp_batch(env_ids, dim, t, x):
+    batch_size = len(env_ids)
+    x = torch.as_tensor(x, dtype=torch.float32, device="cpu")
+    t = torch.as_tensor(t, dtype=torch.int32, device="cpu")
+    if batch_size > 1 and x.ndim > 0 and batch_size == x.shape[0]:
+        a = x
+    else:
+        a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+    if batch_size > 1 and t.ndim > 0 and batch_size == t.shape[0]:
+        pass
+    else:
+        t = t * torch.ones(batch_size, dtype=torch.int32, device="cpu")
+    ox = a.unsqueeze(1).clone().requires_grad_(True)
+    g = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+    # reward function adapted from ReplayBuffer: default_reward_fn
+    r = torch.where(
+        torch.abs(a - g) < .05,
+        torch.zeros(batch_size, dtype=torch.float32, device="cpu"),
+        -torch.ones(batch_size, dtype=torch.float32, device="cpu"))
+    return ds.Experience(
+        time_step=TimestepItem(
+            env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
+            x=ox,
+            step_type=t *
+            torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+            o=dict({
+                "a": a,
+                "g": g
+            }),
+            discount=torch.tensor(
+                t != alf.data_structures.StepType.LAST,
+                dtype=torch.float32,
+                device="cpu"),
+            reward=r))
+
+
+class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
+    dim = 20
+    max_length = 4
+    num_envs = 8
+
     def tearDown(self):
         super().tearDown()
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        alf.set_default_device("cpu")  # spawn forking is required to use cuda.
+        self.data_spec = ds.Experience(
+            time_step=TimestepItem(
+                env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+                x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+                step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
+                o=dict({
+                    "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                    "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+                }),
+                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
+                reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
     def test_replay_with_hindsight_relabel(self):
         self.max_length = 8
@@ -40,13 +99,14 @@ class ReplayBufferTest(RingBufferTest):
             num_environments=2,
             max_length=self.max_length,
             keep_episodic_info=True,
+            record_episodic_return=True,
             with_replacement=True)
 
         transform = HindsightExperienceTransformer(
             self.data_spec,
             her_proportion=0.8,
-            achieved_goal_field="o.a",
-            desired_goal_field="o.g")
+            achieved_goal_field="time_step.o.a",
+            desired_goal_field="time_step.o.g")
 
         steps = [
             [
@@ -73,13 +133,62 @@ class ReplayBufferTest(RingBufferTest):
             ]
         ]
         # insert data that will be overwritten later
-        for b, t in list(itertools.product(range(2), range(8))):
-            batch = get_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
+        # reward tensor:
+        # [[ 0., -1., -1., -1., -1., 0., -1., -1.],
+        #  [-1., -1., -1., 0., -1., -1., -1., -1.]]
+        for t in range(8):
+            batch = get_exp_batch([0, 1],
+                                  self.dim,
+                                  t=[steps[0][t], steps[1][t]],
+                                  x=[0.1 * t, 0.1 * t + 1])
+            if t == 5:
+                batch.reward[0] = 0
+                batch.discount[0] = 0
+            if t == 3:
+                batch.reward[1] = 0
+                batch.discount[1] = 0
             replay_buffer.add_batch(batch, batch.env_id)
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([
+                    # MID(0) steps have discount 0 reward 0; LAST has -1 reward:
+                    #                 FIRST  MID  MID(0) LAST
+                    #                 [  1  gamma 0      0  ] * [-1, 0, -1, x]
+                    [-1.99, -1., -1000., -1., 0., 0., -1000., -1000.],
+                    #             FIRST MID(0) MID LAST
+                    #            [1     0     gamma  0] * [0, -1, -1, x]
+                    [-1., -1000., 0., -0.99, -1., -1000., -1000., -1000.]
+                ]),
+                replay_buffer._episodic_discounted_return))
+        for t in range(8):
+            batch = get_exp_batch([0, 1],
+                                  self.dim,
+                                  t=[steps[0][t], steps[1][t]],
+                                  x=[0.1 * t, 0.1 * t + 1])
+            replay_buffer.add_batch(batch, batch.env_id)
+        # reward tensor:
+        # [[ 0., -1., -1., -1., -1., -1., -1., -1.],
+        #  [-1., -1., -1., -1., -1., -1., -1., -1.]]
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([[
+                    -1.99, -1., -1000., -2.9701, -1.99, -1., -1000., -1000.
+                ], [-1., -1000., -2.9701, -1.99, -1., -1000., -1000.,
+                    -1000.]]), replay_buffer._episodic_discounted_return))
         # insert data
         for b, t in list(itertools.product(range(2), range(9))):
-            batch = get_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
+            batch = get_exp_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
             replay_buffer.add_batch(batch, batch.env_id)
+        # reward tensor:
+        # [[-1., -1., -1., -1., -1., -1., -1., -1.],
+        #  [-1., -1., -1., -1., -1., -1., -1., -1.]]
+        self.assertTrue(
+            torch.allclose(
+                torch.tensor([[
+                    -1000., -1., -1000., -2.9701, -1.99, -1., -1000., -1000.
+                ], [
+                    -1000., -1000., -2.9701, -1.99, -1., -1000., -1000., -1000.
+                ]]), replay_buffer._episodic_discounted_return))
 
         # Test padding
         idx = torch.tensor([[7, 0, 0, 6, 3, 3, 3, 0], [6, 0, 5, 2, 2, 2, 0,
@@ -90,21 +199,21 @@ class ReplayBufferTest(RingBufferTest):
                 pos,
                 torch.tensor([[15, 16, 16, 14, 11, 11, 11, 16],
                               [14, 16, 13, 10, 10, 10, 16, 14]],
-                             dtype=torch.int64)))
+                             dtype=torch.int64) + 8))
 
         # Verify _index is built correctly.
         # Note, the _index_pos 8 represents headless timesteps, which are
         # outdated and not the same as the result of padding: 16.
         pos = torch.tensor([[15, 8, 8, 14, 11, 11, 11, 16],
-                            [14, 8, 13, 10, 10, 10, 16, 14]])
+                            [14, 8, 13, 10, 10, 10, 16, 14]]) + 8
 
         self.assertTrue(torch.equal(replay_buffer._indexed_pos, pos))
         self.assertTrue(
             torch.equal(replay_buffer._headless_indexed_pos,
-                        torch.tensor([10, 9])))
+                        torch.tensor([10, 9]) + 8))
 
         # Save original exp for later testing.
-        g_orig = replay_buffer._buffer.o["g"].clone()
+        g_orig = replay_buffer._buffer.get_time_step_field("o.g").clone()
         r_orig = replay_buffer._buffer.reward.clone()
 
         # HER selects indices [0, 2, 3, 4] to relabel, from all 5:
@@ -124,15 +233,17 @@ class ReplayBufferTest(RingBufferTest):
         res = res._replace(batch_info=info)
         res = transform.transform_experience(res)
 
-        self.assertEqual(list(res.o["g"].shape), [5, 2])
+        self.assertEqual(list(res.get_time_step_field("o.g").shape), [5, 2])
 
         # Test relabeling doesn't change original experience
         self.assertTrue(torch.allclose(r_orig, replay_buffer._buffer.reward))
-        self.assertTrue(torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
+        self.assertTrue(
+            torch.allclose(g_orig,
+                           replay_buffer._buffer.get_time_step_field("o.g")))
 
         # test relabeled goals
         g = torch.tensor([0.7, 0., .2, 1.4, .6]).unsqueeze(1).expand(5, 2)
-        self.assertTrue(torch.allclose(res.o["g"], g))
+        self.assertTrue(torch.allclose(res.get_time_step_field("o.g"), g))
 
         # test relabeled rewards
         r = torch.tensor([[-1., 0.], [-1., -1.], [-1., 0.], [-1., 0.],
@@ -228,7 +339,7 @@ class ReplayBufferTest(RingBufferTest):
             max_length=self.max_length,
             allow_multiprocess=allow_multiprocess)
 
-        batch1 = get_batch([0, 4, 7], self.dim, t=0, x=0.1)
+        batch1 = get_exp_batch([0, 4, 7], self.dim, t=0, x=0.1)
         replay_buffer.add_batch(batch1, batch1.env_id)
         self.assertEqual(replay_buffer._current_size,
                          torch.tensor([1, 0, 0, 0, 1, 0, 0, 1]))
@@ -236,7 +347,7 @@ class ReplayBufferTest(RingBufferTest):
                          torch.tensor([1, 0, 0, 0, 1, 0, 0, 1]))
         self.assertRaises(AssertionError, replay_buffer.get_batch, 8, 1)
 
-        batch2 = get_batch([1, 2, 3, 5, 6], self.dim, t=0, x=0.2)
+        batch2 = get_exp_batch([1, 2, 3, 5, 6], self.dim, t=0, x=0.2)
         replay_buffer.add_batch(batch2, batch2.env_id)
         self.assertEqual(replay_buffer._current_size,
                          torch.tensor([1, 1, 1, 1, 1, 1, 1, 1]))
@@ -246,7 +357,7 @@ class ReplayBufferTest(RingBufferTest):
         batch, _ = replay_buffer.gather_all()
         self.assertEqual(list(batch.step_type.shape), [8, 1])
         # test that RingBuffer detaches gradients of inputs
-        self.assertFalse(batch.x.requires_grad)
+        self.assertFalse(batch.get_time_step_field("x").requires_grad)
 
         self.assertRaises(AssertionError, replay_buffer.get_batch, 8, 2)
         replay_buffer.get_batch(13, 1)[0]
@@ -257,14 +368,16 @@ class ReplayBufferTest(RingBufferTest):
         bat1 = alf.nest.map_structure(lambda bat: bat[batch1.env_id], batch)
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat1.env_id, batch1.env_id)
-        self.assertEqual(bat1.x, batch1.x)
+        self.assertEqual(
+            bat1.get_time_step_field("x"), batch1.get_time_step_field("x"))
         self.assertEqual(bat1.step_type, batch1.step_type)
         self.assertEqual(bat2.env_id, batch2.env_id)
-        self.assertEqual(bat2.x, batch2.x)
+        self.assertEqual(
+            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
         self.assertEqual(bat2.step_type, batch2.step_type)
 
         for t in range(1, 10):
-            batch3 = get_batch([0, 4, 7], self.dim, t=t, x=0.3)
+            batch3 = get_exp_batch([0, 4, 7], self.dim, t=t, x=0.3)
             j = t + 1
             s = min(t + 1, self.max_length)
             replay_buffer.add_batch(batch3, batch3.env_id)
@@ -273,7 +386,7 @@ class ReplayBufferTest(RingBufferTest):
             self.assertEqual(replay_buffer._current_pos,
                              torch.tensor([j, 1, 1, 1, j, 1, 1, j]))
 
-        batch2 = get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.2)
+        batch2 = get_exp_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.2)
         replay_buffer.add_batch(batch2, batch2.env_id)
         batch = replay_buffer.get_batch(8, 1)[0]
         # squeeze the time dimension
@@ -281,9 +394,11 @@ class ReplayBufferTest(RingBufferTest):
         bat3 = alf.nest.map_structure(lambda bat: bat[batch3.env_id], batch)
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat3.env_id, batch3.env_id)
-        self.assertEqual(bat3.x, batch3.x)
+        self.assertEqual(
+            bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
         self.assertEqual(bat2.env_id, batch2.env_id)
-        self.assertEqual(bat2.x, batch2.x)
+        self.assertEqual(
+            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
 
         batch = replay_buffer.get_batch(8, 2)[0]
         t2 = []
@@ -296,9 +411,11 @@ class ReplayBufferTest(RingBufferTest):
                                           batch_t)
             t2.append(bat2.step_type)
             self.assertEqual(bat3.env_id, batch3.env_id)
-            self.assertEqual(bat3.x, batch3.x)
+            self.assertEqual(
+                bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
             self.assertEqual(bat2.env_id, batch2.env_id)
-            self.assertEqual(bat2.x, batch2.x)
+            self.assertEqual(
+                bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
             t3.append(bat3.step_type)
 
         # Test time consistency
@@ -322,7 +439,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertRaises(AssertionError, replay_buffer.gather_all)
 
         for t in range(2, 10):
-            batch4 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
+            batch4 = get_exp_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             replay_buffer.add_batch(batch4, batch4.env_id)
         batch, _ = replay_buffer.gather_all()
         self.assertEqual(list(batch.step_type.shape), [8, 4])
@@ -341,17 +458,19 @@ class ReplayBufferTest(RingBufferTest):
             with_replacement=False,
             recent_data_ratio=0.5,
             recent_data_steps=4)
-        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
+        replay_buffer.add_batch(
+            get_exp_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
         batch, info = replay_buffer.get_batch(4, 1)
         self.assertEqual(info.env_ids, torch.tensor([0, 1, 2, 3]))
 
-        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=1, x=1.0))
+        replay_buffer.add_batch(
+            get_exp_batch([0, 1, 2, 3], self.dim, t=1, x=1.0))
         batch, info = replay_buffer.get_batch(8, 1)
         self.assertEqual(info.env_ids, torch.tensor([0, 1, 2, 3] * 2))
 
         for t in range(2, 32):
             replay_buffer.add_batch(
-                get_batch([0, 1, 2, 3], self.dim, t=t, x=t))
+                get_exp_batch([0, 1, 2, 3], self.dim, t=t, x=t))
         batch, info = replay_buffer.get_batch(32, 1)
         self.assertEqual(info.env_ids[16:], torch.tensor([0, 1, 2, 3] * 4))
         # The first half is from recent data
@@ -370,15 +489,18 @@ class ReplayBufferTest(RingBufferTest):
             keep_episodic_info=False,
             num_earliest_frames_ignored=2)
 
-        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
+        replay_buffer.add_batch(
+            get_exp_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
         # not enough data
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
-        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=1, x=0.))
+        replay_buffer.add_batch(
+            get_exp_batch([0, 1, 2, 3], self.dim, t=1, x=0.))
         # not enough data
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
-        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=2, x=0.))
+        replay_buffer.add_batch(
+            get_exp_batch([0, 1, 2, 3], self.dim, t=2, x=0.))
         for _ in range(10):
             batch, batch_info = replay_buffer.get_batch(1, 1)
             self.assertEqual(batch.step_type, torch.tensor([[2]]))
@@ -392,17 +514,17 @@ class ReplayBufferTest(RingBufferTest):
             keep_episodic_info=False,
             prioritized_sampling=True)
 
-        batch1 = get_batch([1], self.dim, x=0.25, t=0)
+        batch1 = get_exp_batch([1], self.dim, x=0.25, t=0)
         replay_buffer.add_batch(batch1, batch1.env_id)
         # not enough data
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
-        batch2 = get_batch([1], self.dim, x=0.25, t=1)
+        batch2 = get_exp_batch([1], self.dim, x=0.25, t=1)
         replay_buffer.add_batch(batch2, batch1.env_id)
         # not enough data
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
-        batch3 = get_batch([1], self.dim, x=0.25, t=2)
+        batch3 = get_exp_batch([1], self.dim, x=0.25, t=2)
         replay_buffer.add_batch(batch3, batch1.env_id)
         for _ in range(10):
             batch, batch_info = replay_buffer.get_batch(1, 1)
@@ -420,7 +542,7 @@ class ReplayBufferTest(RingBufferTest):
             prioritized_sampling=True)
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
-        batch1 = get_batch([1], self.dim, x=0.25, t=0)
+        batch1 = get_exp_batch([1], self.dim, x=0.25, t=0)
         replay_buffer.add_batch(batch1, batch1.env_id)
 
         batch, batch_info = replay_buffer.get_batch(1, 1)
@@ -430,7 +552,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 2)
 
-        batch2 = get_batch([1], self.dim, x=0.5, t=1)
+        batch2 = get_exp_batch([1], self.dim, x=0.5, t=1)
         replay_buffer.add_batch(batch1, batch1.env_id)
 
         batch, batch_info = replay_buffer.get_batch(4, 2)
@@ -454,7 +576,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(n0, 250)
         self.assertEqual(n1, 750)
 
-        batch2 = get_batch([0, 2], self.dim, x=0.5, t=1)
+        batch2 = get_exp_batch([0, 2], self.dim, x=0.5, t=1)
         replay_buffer.add_batch(batch2, batch2.env_id)
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 
@@ -509,14 +631,22 @@ class ReplayBufferTest(RingBufferTest):
             num_earliest_frames_ignored=2,
             keep_episodic_info=False)
 
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=1, x=0.1))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=2, x=0.3))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=3, x=0.5))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=4, x=0.8))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=5, x=1.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=6, x=2.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=7, x=3.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=8, x=4.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=1, x=0.1))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=2, x=0.3))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=3, x=0.5))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=4, x=0.8))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=5, x=1.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=6, x=2.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=7, x=3.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=8, x=4.9))
 
         # Normally gather_all will return experience for t = 1 through
         # t = 8. However, since we have ignore_earliest_frames turned
@@ -530,12 +660,18 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(
             torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.step_type)
 
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=9, x=5.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=10, x=6.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=11, x=7.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=12, x=8.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=13, x=9.9))
-        replay_buffer.add_batch(get_batch(all_env_ids, self.dim, t=14, x=9.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=9, x=5.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=10, x=6.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=11, x=7.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=12, x=8.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=13, x=9.9))
+        replay_buffer.add_batch(
+            get_exp_batch(all_env_ids, self.dim, t=14, x=9.9))
 
         # After the above 6 pushes (remember replay buffer capacity is
         # 9), t = 1 through t = 5 will be overriden in the replay

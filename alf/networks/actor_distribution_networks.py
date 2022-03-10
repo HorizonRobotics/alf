@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ActorDistributionNetwork and ActorRNNDistributionNetwork."""
+from typing import Callable
 
 import torch
+import torch.distributions as td
 import torch.nn as nn
 
 import alf
 import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
+from .normalizing_flow_networks import RealNVPNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
@@ -268,3 +271,110 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
     @property
     def state_spec(self):
         return self._encoding_net.state_spec
+
+
+class UnitNormalActorDistributionNetwork(Network):
+    """Outputs a constant unit normal regardless of the inputs.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 action_spec,
+                 name="UnitNormalActorDistributionNetwork"):
+        super().__init__(input_tensor_spec, name=name)
+        self._action_spec = action_spec
+
+    def forward(self, inputs, state=()):
+        outer_rank = alf.nest.utils.get_outer_rank(inputs,
+                                                   self._input_tensor_spec)
+        outer_dims = alf.nest.get_nest_shape(inputs)[:outer_rank]
+        means = self._action_spec.zeros(outer_dims)
+        stds = self._action_spec.ones(outer_dims)
+        normal_dist = alf.utils.dist_utils.DiagMultivariateNormal(
+            loc=means, scale=stds)
+        return normal_dist, state
+
+
+@alf.configurable
+class LatentActorDistributionNetwork(Network):
+    """Generating an actor distribution by transforming a prior action distribution
+    (e.g., standard Normal noise :math:`\mathcal{N}(0,1)`) with a normalizing
+    flow network. The resulting distribution might have an arbitrary shape.
+
+    .. warning::
+
+        Like some invertible transform such as ``StableTanh``, the inverse computation
+        of a normalizing flow transform might cause numerical issues.
+        For policy gradient methods like AC and PPO, transform caches are usually
+        invalidated because of detaching actions for PG loss. So
+        ``LatentActorDistributionNetwork`` is best suitable for non PG algorithms
+        like DDPG and SAC. See ``alf/docs/notes/compute_probs_of_transformed_dist.rst``
+        for details.
+    """
+
+    def __init__(self,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 action_spec: alf.nest.NestedTensorSpec,
+                 prior_actor_distribution_network_ctor:
+                 Callable = UnitNormalActorDistributionNetwork,
+                 normalizing_flow_network_ctor: Callable = RealNVPNetwork,
+                 conditional_flow: bool = True,
+                 scale_distribution: bool = False,
+                 dist_squashing_transform: td.Transform = alf.utils.dist_utils.
+                 StableTanh(),
+                 name: str = "LatentActorDistributionNetwork"):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input
+            action_spec: the action spec
+            prior_actor_distribution_network_ctor: a constructor that creates
+                any actor distribution network. The only requirement is that
+                this class returns an action distribution (could be transformed)
+                for ``forward()``.
+            normalizing_flow_network_ctor: a constructor that creates a normalizing
+                flow network which is used to transform the prior action
+                distribution.
+            conditional_flow: whether to make the normalizing flow network use
+                inputs to condition its transformations. Only valid for normalizing
+                flow nets that support this option.
+            scale_distribution: Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                ``action_spec``. Note that this is different from ``mean_transform``
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform:  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. Default to
+                ``dist_utils.StableTanh()``
+            name: name of the network
+        """
+        super().__init__(input_tensor_spec, name=name)
+        self._prior_actor_network = prior_actor_distribution_network_ctor(
+            input_tensor_spec=input_tensor_spec, action_spec=action_spec)
+        self._nf_network = normalizing_flow_network_ctor(
+            input_tensor_spec=action_spec,
+            conditional_input_tensor_spec=(input_tensor_spec
+                                           if conditional_flow else None))
+        self._conditional_flow = conditional_flow
+        self._scale_distribution = scale_distribution
+
+        if scale_distribution:
+            assert isinstance(action_spec, BoundedTensorSpec), \
+                ("When squashing the mean or scaling the distribution, bounds "
+                 + "are required for the action spec!")
+            means, magnitudes = alf.utils.spec_utils.spec_means_and_magnitudes(
+                action_spec)
+            self._squash_transforms = [
+                dist_squashing_transform,
+                alf.utils.dist_utils.AffineTransform(
+                    loc=means, scale=magnitudes)
+            ]
+
+    def forward(self, inputs, state=()):
+        distribution, state = self._prior_actor_network(inputs, state)
+        if not self._conditional_flow:
+            inputs = None
+        nf_transform = self._nf_network.make_invertible_transform(inputs)
+        transforms = [nf_transform]
+        if self._scale_distribution:
+            transforms = transforms + self._squash_transforms
+        transformed_dist = td.TransformedDistribution(distribution, transforms)
+        return transformed_dist, state

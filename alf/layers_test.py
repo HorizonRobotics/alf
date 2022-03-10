@@ -388,64 +388,75 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(
         dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=True),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_ln=True),
     )
     def test_param_fc(self,
                       batch_size=1,
                       n=2,
                       act=math_ops.identity,
-                      use_bias=True):
+                      use_bias=True,
+                      use_ln=False):
         input_size = 4
         output_size = 5
         pfc = alf.layers.ParamFC(
-            input_size, output_size, activation=act, use_bias=use_bias)
+            input_size,
+            output_size,
+            activation=act,
+            use_bias=use_bias,
+            use_ln=use_ln,
+            n_groups=n)
         fc = alf.layers.FC(
-            input_size, output_size, activation=act, use_bias=use_bias)
+            input_size,
+            output_size,
+            activation=act,
+            use_ln=use_ln,
+            use_bias=use_bias)
 
         # test param length
         self.assertEqual(pfc.weight_length, fc.weight.nelement())
         if use_bias:
             self.assertEqual(pfc.bias_length, fc.bias.nelement())
-
-        # test non-parallel forward
-        fc.weight.data.copy_(pfc.weight[0])
-        if use_bias:
-            fc.bias.data.copy_(pfc.bias[0])
-        inputs = torch.randn(batch_size, input_size)
-        p_outs = pfc(inputs)
-        outs = fc(inputs)
-        self.assertLess((outs - p_outs).abs().max(), 1e-6)
+        if use_ln:
+            self.assertEqual(pfc._ln.param_length,
+                             fc._ln.weight.nelement() + fc._ln.bias.nelement())
 
         # test parallel forward
-        weight = torch.randn(n, pfc.weight_length)
-        pfc.set_weight(weight)
-        weight = weight.view(n, output_size, input_size)
-        if use_bias:
-            bias = torch.randn(n, pfc.bias_length)
-            pfc.set_bias(bias)
-
+        params = torch.randn(n, pfc.param_length)
+        pfc.set_parameters(params)
+        inputs = torch.randn(batch_size, input_size)
         n_inputs = inputs.unsqueeze(1).expand(batch_size, n, input_size)
         p_outs = pfc(inputs)
         p_n_outs = pfc(n_inputs)
         self.assertLess((p_outs - p_n_outs).abs().max(), 1e-6)
+        weight = pfc.weight
+        if use_bias:
+            bias = pfc.bias
+        if use_ln:
+            norm_weight = pfc._ln.weight.reshape(n, -1)
+            norm_bias = pfc._ln.bias.reshape(n, -1)
         for i in range(n):
             fc.weight.data.copy_(weight[i])
             if use_bias:
                 fc.bias.data.copy_(bias[i])
+            if use_ln:
+                fc._ln.weight.data.copy_(norm_weight[i])
+                fc._ln.bias.data.copy_(norm_bias[i])
             outs = fc(inputs)
             self.assertLess((outs - p_outs[:, i, :]).abs().max(), 1e-6)
 
     @parameterized.parameters(
-        dict(batch_size=1, n=2, act=torch.relu, use_bias=True),
-        dict(batch_size=3, n=2, act=torch.relu, use_bias=True),
+        dict(batch_size=1, n=2, act=torch.relu, use_bias=True, use_ln=True),
         dict(batch_size=3, n=2, act=torch.relu, use_bias=False),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=True, use_ln=True),
+        dict(batch_size=3, n=2, act=torch.relu, use_bias=False, use_ln=True),
     )
     def test_param_conv2d(self,
                           batch_size=1,
                           n=2,
                           act=math_ops.identity,
-                          use_bias=True):
+                          use_bias=True,
+                          use_ln=False):
         in_channels = 4
         out_channels = 5
         kernel_size = 3
@@ -456,44 +467,47 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             out_channels,
             kernel_size,
             activation=act,
-            use_bias=use_bias)
+            use_bias=use_bias,
+            use_ln=use_ln,
+            n_groups=n)
         conv = alf.layers.Conv2D(
             in_channels,
             out_channels,
             kernel_size,
             activation=act,
-            use_bias=use_bias)
+            use_bias=use_bias,
+            use_ln=use_ln)
 
         # test param length
         self.assertEqual(pconv.weight_length, conv.weight.nelement())
         if use_bias:
             self.assertEqual(pconv.bias_length, conv.bias.nelement())
-
-        # test non-parallel forward
-        conv.weight.data.copy_(pconv.weight)
-        if use_bias:
-            conv.bias.data.copy_(pconv.bias)
-        image = torch.randn(batch_size, in_channels, height, width)
-        p_outs = pconv(image)
-        outs = conv(image)
-        self.assertLess((outs - p_outs).abs().max(), 1e-6)
+        if use_ln:
+            self.assertEqual(
+                pconv._ln.param_length,
+                conv._ln.weight.nelement() + conv._ln.bias.nelement())
 
         # test parallel forward
-        weight = torch.randn(n, pconv.weight_length)
-        pconv.set_weight(weight)
-        weight = weight.view(n, out_channels, in_channels, kernel_size,
-                             kernel_size)
-        if use_bias:
-            bias = torch.randn(n, pconv.bias_length)
-            pconv.set_bias(bias)
+        params = torch.randn(n, pconv.param_length)
+        pconv.set_parameters(params)
+        image = torch.randn(batch_size, in_channels, height, width)
         images = image.repeat(1, n, 1, 1)
         p_outs = pconv(image)
         p_n_outs = pconv(images)
         self.assertLess((p_outs - p_n_outs).abs().max(), 1e-6)
+        weight = pconv.weight.reshape(n, -1, *pconv.weight.shape[1:])
+        if use_bias:
+            bias = pconv.bias.reshape(n, -1)
+        if use_ln:
+            norm_weight = pconv._ln.weight.reshape(n, -1)
+            norm_bias = pconv._ln.bias.reshape(n, -1)
         for i in range(n):
             conv.weight.data.copy_(weight[i])
             if use_bias:
                 conv.bias.data.copy_(bias[i])
+            if use_ln:
+                conv._ln.weight.data.copy_(norm_weight[i])
+                conv._ln.bias.data.copy_(norm_bias[i])
             outs = conv(image)
             self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-5)
 
@@ -607,6 +621,49 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         for i in range(m):
             for j in range(n):
                 self.assertEqual(y[i, j], x[n - 1 + i - j, :])
+
+    def test_transformer_block_with_mask(self):
+        batch_size = 100
+        max_len = 32
+        actual_len = 20
+        d_model = 64
+
+        x = torch.randn((batch_size, max_len, d_model))
+
+        # We are going to create ``batch_size`` of batches, where each batch has
+        # a sequence of ``max_len``. However, for the purpose of this unit test,
+        # we are going to treat only a random ``actual_len`` elements in the
+        # sequence of each batch as actaul elements, where the rest ``max_len -
+        # actual_len`` elements are masked out.
+        #
+        # The index tuple B is created such that x[B] is a tensor of shape
+        # [batch_size, actual_len, d_model], which picks out the actual elements
+        # and ignores the masked elements.
+        B = (torch.arange(batch_size).unsqueeze(1),
+             torch.argsort(torch.rand(batch_size, max_len),
+                           dim=1)[:, :actual_len])
+
+        # mask[b, i] == True means the i-th element in the sequence of batch b
+        # is MASKED OUT. This is a bit counterintuitive and thus worth noting.
+        mask = torch.ones(batch_size, max_len, dtype=torch.bool)
+        mask[B] = False
+
+        tf = alf.layers.TransformerBlock(
+            d_model=d_model,
+            d_k=d_model,
+            d_v=d_model,
+            d_ff=d_model,
+            num_heads=3,
+            memory_size=max_len,
+            scale_attention_score=False,
+            positional_encoding='none')
+
+        # The following tests that feeding the full x with the mask is
+        # equivalent to feeding the masked x to the transformer block up to
+        # certain numerical error.
+        y_lean = tf(x[B])
+        y = tf(x, mask=mask)
+        self.assertTrue((torch.abs(y_lean - y[B]) < 2e-3).all())
 
     @parameterized.parameters(0, 1, 2, 3)
     def test_transformer_block(self, task_type=2):

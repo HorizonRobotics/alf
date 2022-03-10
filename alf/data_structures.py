@@ -130,12 +130,7 @@ class Experience(
         namedtuple(
             "Experience",
             [
-                'step_type',
-                'reward',
-                'discount',
-                'observation',
-                'prev_action',
-                'env_id',
+                'time_step',
                 'action',
                 'rollout_info',  # AlgStep.info from rollout()
                 'state',  # state passed to rollout() to generate `action`
@@ -145,8 +140,10 @@ class Experience(
             ],
             default_value=())):
     """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
-    For the training purpose, it's augmented with several new attributes:
+    For the training purpose, it contains the following attributes:
 
+    - time_step (TimeStep): A ``TimeStep`` structure contains the data emitted
+        by an environment at each step of interaction.
     - action: A (nested) ``Tensor`` for action taken for the current time step.
     - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
     - state: State passed to ``rollout_step()`` to generate ``action``.
@@ -164,13 +161,61 @@ class Experience(
     """
 
     def is_first(self):
-        return self.step_type == StepType.FIRST
+        return self.time_step.is_first()
 
     def is_mid(self):
-        return self.step_type == StepType.MID
+        return self.time_step.is_mid()
 
     def is_last(self):
-        return self.step_type == StepType.LAST
+        return self.time_step.is_last()
+
+    @property
+    def step_type(self):
+        return self.time_step.step_type
+
+    @property
+    def reward(self):
+        return self.time_step.reward
+
+    @property
+    def discount(self):
+        return self.time_step.discount
+
+    @property
+    def observation(self):
+        return self.time_step.observation
+
+    @property
+    def prev_action(self):
+        return self.time_step.prev_action
+
+    @property
+    def env_id(self):
+        return self.time_step.env_id
+
+    def get_time_step_field(self, field):
+        """Get the value of the experience.time_step specified by ``field``.
+        Since we have exposed the common time_step fields as properties of
+        ``Experience``, this function can be used when the field if not
+        covered by the exposed properties.
+        Args:
+            field (str): indicate the field to be retrieved in time_step.
+        Returns:
+            The value of the field in time_step corresponding to ``field``.
+        """
+        return nest.get_field(self, field='time_step.' + field)
+
+    def update_time_step_field(self, field, new_value):
+        """Update the value of the experience.time_step specified by ``field``.
+        Args:
+            field (str): indicate the field to be updated
+            new_value (any): the new value for the field
+        Returns:
+            Experience: a structure the same as the original experience except
+            that the field ``field`` in the time_step is replaced by ``new_value``.
+        """
+        return nest.set_field(
+            self, field='time_step.' + field, new_value=new_value)
 
 
 def add_batch_info(experience, batch_info, buffer=()):
@@ -416,26 +461,10 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
         Experience:
     """
     return Experience(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        prev_action=time_step.prev_action,
-        env_id=time_step.env_id,
+        time_step=time_step,
         action=alg_step.output,
         rollout_info=alg_step.info,
         state=state)
-
-
-def experience_to_time_step(exp: Experience):
-    """Make ``TimeStep`` from ``Experience``."""
-    return TimeStep(
-        step_type=exp.step_type,
-        reward=exp.reward,
-        discount=exp.discount,
-        observation=exp.observation,
-        prev_action=exp.prev_action,
-        env_id=exp.env_id)
 
 
 LossInfo = namedtuple(
@@ -452,3 +481,47 @@ LossInfo = namedtuple(
         "priority",
     ],
     default_value=())
+
+
+def elastic_namedtuple(name, args):
+    """elastic namedtuple that returns ``()`` for a non-existing attribute,
+    instead of throwing out an ``AttributeError``.
+
+    Args:
+        name (str): type name of this elastic namedtuple.
+        args : other arguments for constructing the namedtuple
+    Returns:
+        the type for the elastic namedtuple
+    """
+    cls = namedtuple(name, args)
+
+    def __getattr__(self, name):
+        return getattr(cls, name, ())
+
+    cls.__getattr__ = __getattr__
+    return cls
+
+
+# Some basic structures used by offline replay buffer for ``rollout_info``.
+# We assume the ``rollout_info`` contains:
+# 1) an ``rl`` field, whose structure is defined by ``BasicRLInfo``
+# 2) ``rewards`` and ``repr``: these two are placeholders for compatibility
+# purpose with the ``Agent`` interface.
+BasicRolloutInfo = elastic_namedtuple(
+    "BasicRolloutInfo",
+    [
+        'rl',  # containing rl rollout information, as defined in ``BasicRLInfo``
+        'rewards',
+        'repr'
+    ])
+
+# The basic structure for ``rollout_info`` of an RL algorithm, containing
+# only an ``action`` field, which is the minimum structure required by typical
+# RL algorithms in ALF.
+# Here we use ``elastic_namedtuple`` to enable its automatic compatibility
+# with future changes of the RolloutInfo made on the algorithm side (e.g.
+# using ``rollout_info.discounted_return`` in SAC ``train_step``, which is
+# beyond the assumption of the ``BasicRLInfo`` structure.)
+BasicRLInfo = elastic_namedtuple("BasicRLInfo", [
+    "action",
+])

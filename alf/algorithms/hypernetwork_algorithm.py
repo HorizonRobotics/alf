@@ -63,14 +63,19 @@ class HyperNetwork(Algorithm):
                  data_creator_outlier=None,
                  input_tensor_spec=None,
                  output_dim=None,
-                 use_bias_for_last_layer=True,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
                  last_activation=alf.math.identity,
+                 last_use_bias=True,
+                 last_use_ln=False,
                  noise_dim=32,
                  hidden_layers=(64, 64),
-                 use_fc_bn=False,
+                 use_conv_bias=False,
+                 use_conv_ln=False,
+                 use_fc_bias=True,
+                 use_fc_ln=False,
+                 generator_use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
                  critic_hidden_layers=(100, 100),
@@ -113,7 +118,6 @@ class HyperNetwork(Algorithm):
                 None. It must be provided if ``data_creator`` is not provided.
             output_dim (int): dimension of the output of the generated network.
                 It must be provided if ``data_creator`` is not provided.
-            use_bias_for_last_layer (bool): whether use bias for the last layer
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
@@ -124,9 +128,16 @@ class HyperNetwork(Algorithm):
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             last_activation (nn.functional): activation function of the last layer.
+            last_use_bias (bool): whether use bias for the last layer
+            last_use_ln (bool): whether use layer normalization for the additional layer.
             noise_dim (int): dimension of noise
             hidden_layers (tuple): size of hidden layers.
-            use_fc_bn (bool): whether use batnch normalization for fc layers.
+            use_conv_bias (bool): whether use bias for conv layers.
+            use_conv_ln (bool): whether use layer normalization for conv layers.
+            use_fc_bias (bool): whether use bias for fc layers.
+            use_fc_ln (bool): whether use layer normalization for fc layers.
+            generator_use_fc_bn (bool): whether use batch normalization for 
+                generator fc layers.
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight for par_vi repulsive term. If
                 ``None`` and ``data_creator`` is provided, will be set as the ratio
@@ -220,14 +231,20 @@ class HyperNetwork(Algorithm):
             self._train_loader = None
             self._test_loader = None
 
-        last_layer_param = (output_dim, use_bias_for_last_layer)
-
+        last_layer_size = output_dim
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
+            use_conv_bias=use_conv_bias,
+            use_conv_ln=use_conv_ln,
+            use_fc_bias=use_fc_bias,
+            use_fc_ln=use_fc_ln,
+            n_groups=num_particles,
             activation=activation,
-            last_layer_param=last_layer_param,
+            last_layer_size=last_layer_size,
+            last_use_bias=last_use_bias,
+            last_use_ln=last_use_ln,
             last_activation=last_activation)
 
         gen_output_dim = param_net.param_length
@@ -243,7 +260,7 @@ class HyperNetwork(Algorithm):
             net = EncodingNetwork(
                 noise_spec,
                 fc_layer_params=hidden_layers,
-                use_fc_bn=use_fc_bn,
+                use_fc_bn=generator_use_fc_bn,
                 last_layer_size=gen_output_dim,
                 last_activation=math_ops.identity,
                 name="Generator")
@@ -273,7 +290,7 @@ class HyperNetwork(Algorithm):
             self._function_extra_bs_sampler = function_extra_bs_sampler
             self._function_extra_bs_std = function_extra_bs_std
             critic_input_dim = (
-                function_bs + self._function_extra_bs) * last_layer_param[0]
+                function_bs + self._function_extra_bs) * last_layer_size
         else:
             critic_input_dim = gen_output_dim
 
@@ -304,7 +321,7 @@ class HyperNetwork(Algorithm):
 
         self._param_net = param_net
         self._num_particles = num_particles
-        self._use_fc_bn = use_fc_bn
+        self._generator_use_fc_bn = generator_use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
         self._functional_gradient = functional_gradient
@@ -587,11 +604,11 @@ class HyperNetwork(Algorithm):
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin testing")
-        if self._use_fc_bn:
+        if self._generator_use_fc_bn:
             self._generator.eval()
         params = self.sample_parameters(num_particles=num_particles)
         self._param_net.set_parameters(params)
-        if self._use_fc_bn:
+        if self._generator_use_fc_bn:
             self._generator.train()
         with record_time("time/test"):
             if self._loss_type == 'classification':

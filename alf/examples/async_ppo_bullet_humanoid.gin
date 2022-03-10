@@ -1,3 +1,5 @@
+# Warning: Directly converted from the TF version, this gin file was NOT TESTED.
+
 include 'ppo.gin'
 
 # environment config
@@ -21,14 +23,14 @@ PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 
 actor/ActorDistributionNetwork.fc_layer_params=(32, 32, 32)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.tanh
+actor/ActorDistributionNetwork.activation_fn=@torch.tanh
 actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.init_means_output_factor=1e-10
 NormalProjectionNetwork.std_bias_initializer_value=0.0
-NormalProjectionNetwork.std_transform=@tf.math.exp
+NormalProjectionNetwork.std_transform=@torch.exp
 
 value/ValueNetwork.fc_layer_params=(32, 32, 32)
-value/ValueNetwork.activation_fn=@tf.nn.tanh
+value/ValueNetwork.activation_fn=@torch.tanh
 
 ac/Adam.learning_rate=3e-3
 

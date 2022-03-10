@@ -37,6 +37,7 @@ from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.trainers import policy_trainer
 from alf.utils import common
+import alf.summary.render as render
 import alf.utils.external_configurables
 
 
@@ -79,6 +80,8 @@ def _define_flags():
         'use_alf_snapshot', False,
         'Whether to use ALF snapshot stored in the model dir (if any). You can set '
         'this flag to play a model trained with legacy ALF code.')
+    flags.DEFINE_integer('parallel_play', 1,
+                         'Play so many simulations simultaneously')
 
 
 FLAGS = flags.FLAGS
@@ -88,10 +91,16 @@ def play():
     if torch.cuda.is_available():
         alf.set_default_device("cuda")
 
-    alf.summary.render.enable_rendering(FLAGS.alg_render)
+    render.enable_rendering(FLAGS.alg_render)
 
     seed = common.set_random_seed(FLAGS.random_seed)
-    alf.config('create_environment', nonparallel=True)
+    if FLAGS.parallel_play > 1:
+        alf.config(
+            'create_environment',
+            num_parallel_environments=FLAGS.parallel_play,
+            mutable=False)
+    else:
+        alf.config('create_environment', nonparallel=True)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"

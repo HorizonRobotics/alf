@@ -16,7 +16,7 @@ from absl import logging
 import copy
 import numpy as np
 import torch
-from typing import Callable
+from typing import Callable, Union
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -438,3 +438,115 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         extra = alf.nest.pack_sequence_as(
             self._algs, [loss_info.extra for loss_info in loss_infos])
         return LossInfo(loss=loss, extra=extra)
+
+
+@alf.configurable
+class SGDEntropyTargetAlgorithm(Algorithm):
+    """Adjusting the entropy weight using SGD according to a target, similar to
+    the way of SAC.
+    """
+
+    def __init__(self,
+                 action_spec: alf.tensor_specs.TensorSpec,
+                 initial_alpha: float = 0.1,
+                 target_entropy: Union[Callable[[], float], float] = None,
+                 window_size: int = 1,
+                 optimizer: torch.optim.Optimizer = None,
+                 debug_summaries: bool = False,
+                 name: str = "SGDEntropyTargetAlgorithm"):
+        """
+        Args:
+            action_spec: nested tensor spec for the action
+            initial_alpha: initial value for alpha; make sure that it's
+                large enough for initial meaningful exploration
+            target_entropy: the target of the total entropy. If it is None,
+                a default value proportional to the action dimension is used.
+            window_size: window size for averaging past entropies.
+            optimizer: the optimizer for adjusting the weight
+            debug_summaries: whether to turn on debugging info
+            name: name of the class
+        """
+
+        super().__init__(
+            optimizer=optimizer, debug_summaries=debug_summaries, name=name)
+
+        self._log_alpha = torch.nn.Parameter(
+            torch.tensor(np.log(initial_alpha), dtype=torch.float32))
+
+        self._action_spec = action_spec
+        flat_action_spec = alf.nest.flatten(self._action_spec)
+        if target_entropy is None:
+            target_entropy = np.sum(
+                list(map(calc_default_target_entropy, flat_action_spec)))
+            logging.info("target_entropy=%s" % target_entropy)
+
+        if not isinstance(target_entropy, Callable):
+            target_entropy = ConstantScheduler(target_entropy)
+
+        self._target_entropy = target_entropy
+        self._entropy_averager = ScalarWindowAverager(window_size)
+
+    def predict_step(self, distribution_and_step_type):
+        return AlgStep()
+
+    def rollout_step(self, distribution_and_step_type):
+        """
+        Args:
+            distribution_and_step_type (nested Distribution): action distribution
+                from the policy, and the step type for the distributions.
+
+        Returns:
+            AlgStep: ``info`` is ``EntropyTargetInfo`` and ``info.loss`` is
+                ``LossInfo``, other fields are empty. All fields are empty for
+                off-policy training.
+        """
+        if self.on_policy:
+            return self.train_step(distribution_and_step_type)
+        else:
+            return AlgStep()
+
+    def train_step(self, distribution_and_step_type):
+        """
+        Args:
+            distribution_and_step_type (nested Distribution): action distribution
+                from the policy, and the step type for the distributions.
+
+        Returns:
+            AlgStep: ``info`` is ``EntropyTargetInfo`` and ``info.loss`` is
+                ``LossInfo``, other fields are empty.
+        """
+        distribution, _ = distribution_and_step_type
+        entropy, entropy_for_gradient = entropy_with_fallback(distribution)
+        return AlgStep(
+            output=(),
+            state=(),
+            info=EntropyTargetInfo(
+                step_type=(),
+                loss=LossInfo(
+                    loss=-entropy_for_gradient,
+                    extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
+
+    def calc_loss(self, info: EntropyTargetInfo):
+        """Calculate the losses for training. It will compute two losses, one for
+        training the entropy weight, and the other for maximizing the entropy of
+        the action distribution.
+        """
+        loss_info = info.loss
+        avg_entropy = self._entropy_averager.average(
+            -loss_info.extra.neg_entropy)
+        alpha_loss = (
+            (avg_entropy - self._target_entropy()).detach() * self._log_alpha)
+        alpha = torch.exp(self._log_alpha).detach()
+        entropy_loss = loss_info.loss * alpha
+
+        if self._debug_summaries:
+            with alf.summary.scope(self.name):
+                alf.summary.scalar("alpha", alpha)
+                alf.summary.scalar("target_entropy", self._target_entropy())
+
+        return LossInfo(
+            loss=alpha_loss + entropy_loss,
+            extra=dict(
+                neg_entropy=loss_info.extra.neg_entropy,
+                alpha_loss=alpha_loss,
+                entropy_loss=entropy_loss))

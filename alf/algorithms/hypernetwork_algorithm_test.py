@@ -97,8 +97,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
-            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
+            last_use_bias=False,
             noise_dim=noise_dim,
             hidden_layers=hidden_layers,
             loss_type='regression',
@@ -211,8 +211,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         is the vector consisting of the first k componnets of z. For standard
         Gaussian input z, the output :math:`f(z)` follows a Gaussian distribution 
         :math:`N(b, \tilde{W}\tilde{W}^T + A)`, 
-        where :math:`\tilde{W}=\begin{bmatrix} W_1+I_k \\ W_2 \end{bmatrix}`
-        and :math:`A=\begin{bmatrix} 0_k & \\ & I_{d-k} \end{bmatrix}`,
+        where :math:`\tilde{W}=\begin{bmatrix} W_1+\lambda I_k \\ W_2 \end{bmatrix}`
+        and :math:`A=\begin{bmatrix} 0_k & \\ & \lambda^2 I_{d-k} \end{bmatrix}`,
         :math:`W_1` is the submatrix consisting of the first k rows of W and
         :math:`W_2` is the submatrix consisting of the last d-k rows of W.
         :math:`N(b, \tilde{W}\tilde{W}^T + A)` should match the posterior
@@ -244,8 +244,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=output_dim,
-            use_bias_for_last_layer=False,
             last_activation=math_ops.identity,
+            last_use_bias=False,
             noise_dim=noise_dim,
             hidden_layers=hidden_layers,
             loss_type='regression',
@@ -292,17 +292,17 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             if noise_dim == input_size:
                 learned_cov = weight @ weight.t()
             else:
+                lam = algorithm._generator.get_lambda()
                 w1 = weight[:noise_dim, :]
                 w2 = weight[noise_dim:, :]
-                cov_11 = w1 @ w1.t() + w1 + w1.t()  # [k, k]
-                cov_12 = w1 @ w2.t() + w2.t()  # [k, d-k]
-                cov_21 = w2 @ w1.t() + w2  # [d-k, k]
+                cov_11 = w1 @ w1.t() + lam * w1 + lam * w1.t()  # [k, k]
+                cov_12 = w1 @ w2.t() + lam * w2.t()  # [k, d-k]
+                cov_21 = w2 @ w1.t() + lam * w2  # [d-k, k]
                 cov_22 = w2 @ w2.t()  # [d-k, d-k]
                 cov_1 = torch.cat([cov_11, cov_12], dim=1)  # [k, d]
                 cov_2 = torch.cat([cov_21, cov_22], dim=1)  # [k, d]
                 cov = torch.cat([cov_1, cov_2], dim=0)  # [d, d]
-                learned_cov = cov + algorithm._generator.get_lambda(
-                ) * torch.eye(input_size)
+                learned_cov = cov + lam * lam * torch.eye(input_size)
 
             print("norm of generator weight: {}".format(weight.norm()))
             print("norm of learned_cov: {}".format(learned_cov.norm()))
@@ -356,17 +356,17 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         if noise_dim == input_size:
             learned_cov = weight @ weight.t()
         else:
+            lam = algorithm._generator.get_lambda()
             w1 = weight[:noise_dim, :]
             w2 = weight[noise_dim:, :]
-            cov_11 = w1 @ w1.t() + w1 + w1.t()  # [k, k]
-            cov_12 = w1 @ w2.t() + w2.t()  # [k, d-k]
-            cov_21 = w2 @ w1.t() + w2  # [d-k, k]
+            cov_11 = w1 @ w1.t() + lam * w1 + lam * w1.t()  # [k, k]
+            cov_12 = w1 @ w2.t() + lam * w2.t()  # [k, d-k]
+            cov_21 = w2 @ w1.t() + lam * w2  # [d-k, k]
             cov_22 = w2 @ w2.t()  # [d-k, d-k]
             cov_1 = torch.cat([cov_11, cov_12], dim=1)  # [k, d]
             cov_2 = torch.cat([cov_21, cov_22], dim=1)  # [k, d]
             cov = torch.cat([cov_1, cov_2], dim=0)  # [d, d]
-            learned_cov = cov + algorithm._generator.get_lambda() * torch.eye(
-                input_size)
+            learned_cov = cov + lam * lam * torch.eye(input_size)
 
         cov_err = torch.norm(learned_cov - true_cov)
         cov_err = cov_err / torch.norm(true_cov)
@@ -406,13 +406,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         outlier_test_loader = DataLoader(trainset, train_batch_size)
 
         conv_layer_params = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-        fc_layer_params = ((84, True), )
+        fc_layer_params = (84, )
         hidden_layers = (noise_dim, 256)
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             output_dim=10,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
+            use_fc_bias=True,
             hidden_layers=hidden_layers,
             num_particles=num_particles,
             last_activation=math_ops.identity,

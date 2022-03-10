@@ -61,6 +61,10 @@ alf.config(
     # uncomment the following line to use PID controller
     # controller_ctor=VehicleController,
     with_gnss_sensor=False,
+
+    # uncomment the following two lines to use the light-weight CARLA setting
+    # with_red_light_sensor=True,
+    # with_camera_sensor=False
 )
 
 alf.config(

@@ -19,6 +19,13 @@ import cnest
 
 import torch
 
+from typing import Any
+
+# For easier type annotation with nests
+Nest = Any
+NestedTensor = Any
+NestedTensorSpec = Any
+
 
 def flatten(nest):
     """(C++) Returns a flat list from a given nested structure."""

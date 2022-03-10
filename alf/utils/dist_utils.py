@@ -29,7 +29,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from .distributions import TruncatedDistribution, TruncatedNormal, TruncatedCauchy, TruncatedT2
 
 
-def get_invertable(cls):
+def get_invertible(cls):
     """A helper function to turn on the cache mechanism for transformation.
     This is useful as some transformations (say :math:`g`) may not be able to
     provide an accurate inversion therefore the difference between :math:`x` and
@@ -50,12 +50,29 @@ def get_invertable(cls):
     return NewCls
 
 
-AbsTransform = get_invertable(td.AbsTransform)
-AffineTransform = get_invertable(td.AffineTransform)
-ExpTransform = get_invertable(td.ExpTransform)
-PowerTransform = get_invertable(td.PowerTransform)
-SigmoidTransform = get_invertable(td.SigmoidTransform)
-SoftmaxTransform = get_invertable(td.SoftmaxTransform)
+"""
+WARNING: If you need to train policy gradient with a ``TransformedDistribution``,
+then make sure to detach the sampled action when the transforms have trainable
+parameters.
+
+For detailed reasons, please refer to ``alf/docs/notes/compute_probs_of_transformed_dist.rst``.
+"""
+
+AbsTransform = get_invertible(td.AbsTransform)
+ExpTransform = get_invertible(td.ExpTransform)
+PowerTransform = get_invertible(td.PowerTransform)
+SigmoidTransform = get_invertible(td.SigmoidTransform)
+SoftmaxTransform = get_invertible(td.SoftmaxTransform)
+
+
+class AffineTransform(get_invertible(td.AffineTransform)):
+    """Overwrite PyTorch's ``AffineTransform`` to provide a builder to be
+    compatible with ``DistributionSpec.build_distribution()``.
+    """
+
+    def get_builder(self):
+        return functools.partial(
+            AffineTransform, loc=self.loc, scale=self.scale)
 
 
 @alf.configurable
@@ -202,6 +219,9 @@ class Softclip(td.Transform):
                 and self._hinge_softness == other._hinge_softness
                 and self._l == other._l and self._h == other._h)
 
+    def get_builder(self):
+        return functools.partial(Softclip, low=self._l, high=self._h)
+
     def _call(self, x):
         return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
 
@@ -264,7 +284,7 @@ class Softsign(td.Transform):
 
 @alf.configurable
 class StableTanh(td.Transform):
-    r"""Invertable transformation (bijector) that computes :math:`Y = tanh(X)`,
+    r"""Invertible transformation (bijector) that computes :math:`Y = tanh(X)`,
     therefore :math:`Y \in (-1, 1)`.
 
     This can be achieved by an affine transform of the Sigmoid transformation,
@@ -549,8 +569,12 @@ def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
     return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
 
-def _builder_transformed(base_builder, transforms_, **kwargs):
-    return td.TransformedDistribution(base_builder(**kwargs), transforms_)
+def _builder_transformed(base_builder, transform_builders, params_,
+                         transforms_params_):
+    transforms = [
+        b(**p) for b, p in zip(transform_builders, transforms_params_)
+    ]
+    return td.TransformedDistribution(base_builder(**params_), transforms)
 
 
 def _get_categorical_builder(
@@ -573,11 +597,56 @@ def _get_independent_builder(obj: td.Independent):
     return new_builder, params
 
 
+def _get_transform_builders_params(transforms):
+    """Return a nested structure where each node is a non-composed transform,
+    after expanding any composed transform in ``transforms``.
+    """
+
+    def _get_transform_builder(transform):
+        if hasattr(transform, "get_builder"):
+            return transform.get_builder()
+        return transform.__class__
+
+    def _get_transform_params(transform):
+        if hasattr(transforms, 'params') and transforms.params is not None:
+            # We assume that if a td.Transform has attribute 'params', then they are the
+            # parameters we'll extract and store.
+            assert isinstance(
+                transforms.params,
+                dict), ("Transform params must be provided as a dict! "
+                        f"Got {transforms.params}")
+            return transforms.params
+        return {}  # the transform doesn't have any parameter
+
+    if isinstance(transforms, td.Transform):
+        if isinstance(transforms, td.ComposeTransform):
+            builders, params = _get_transform_builders_params(transforms.parts)
+            compose_transform_builder = lambda parts_params: td.ComposeTransform(
+                [b(**p) for b, p in zip(builders, parts_params)])
+            return compose_transform_builder, {'parts_params': params}
+        else:
+            builder = _get_transform_builder(transforms)
+            params = _get_transform_params(transforms)
+            return builder, params
+
+    assert isinstance(transforms, list), f"Incorrect transforms {transforms}!"
+    builders_and_params = [
+        _get_transform_builders_params(t) for t in transforms
+    ]
+    builders, params = zip(*builders_and_params)
+    return list(builders), list(params)
+
+
 def _get_transformed_builder(obj: td.TransformedDistribution):
+    # 'params' contains the dist params and all wrapped transform params starting
+    # 'obj.base_dist' downwards
     builder, params = _get_builder(obj.base_dist)
+    transform_builders, transform_params = _get_transform_builders_params(
+        obj.transforms)
     new_builder = functools.partial(_builder_transformed, builder,
-                                    obj.transforms)
-    return new_builder, params
+                                    transform_builders)
+    new_params = {"params_": params, 'transforms_params_': transform_params}
+    return new_builder, new_params
 
 
 def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):

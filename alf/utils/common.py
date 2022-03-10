@@ -35,8 +35,9 @@ import time
 import torch
 import torch.distributions as td
 import torch.nn as nn
+import traceback
 import types
-from typing import Callable
+from typing import Callable, List
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -211,7 +212,7 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     return Periodically(update, period, 'periodic_update_targets')
 
 
-def expand_dims_as(x, y):
+def expand_dims_as(x, y, end=True):
     """Expand the shape of ``x`` with extra singular dimensions.
 
     The result is broadcastable to the shape of ``y``.
@@ -219,6 +220,8 @@ def expand_dims_as(x, y):
     Args:
         x (Tensor): source tensor
         y (Tensor): target tensor. Only its shape will be used.
+        end (bool): If True, the extra dimensions are at the end of ``x``;
+            otherwise they are at the beginning.
     Returns:
         ``x`` with extra singular dimensions.
     """
@@ -227,8 +230,12 @@ def expand_dims_as(x, y):
     if k == 0:
         return x
     else:
-        assert x.shape == y.shape[:len(x.shape)]
-        return x.reshape(*x.shape, *([1] * k))
+        if end:
+            assert x.shape == y.shape[:x.ndim]
+            return x.reshape(*x.shape, *([1] * k))
+        else:
+            assert x.shape == y.shape[k:]
+            return x.reshape(*([1] * k), *x.shape)
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
@@ -237,14 +244,15 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Args:
         state (nested Tensor): the current batched states
         initial_state (nested Tensor): batched intitial states
-        reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=tf.bool``
+        reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=torch.bool``
     Returns:
         nested Tensor
     """
     if torch.any(reset_mask):
         return alf.nest.map_structure(
             lambda i_s, s: torch.where(
-                expand_dims_as(reset_mask, i_s), i_s, s), initial_state, state)
+                expand_dims_as(reset_mask, i_s), i_s.to(s.dtype), s),
+            initial_state, state)
     else:
         return state
 
@@ -537,17 +545,35 @@ def summarize_config():
     inoperative_configs = alf.get_inoperative_configs()
     alf.summary.text('config/operative_config', _format(operative_configs))
     if inoperative_configs:
-        alf.summary.text('gin/inoperative_config',
+        alf.summary.text('config/inoperative_config',
                          _format(inoperative_configs))
 
 
-def write_config(root_dir):
+def read_conf_file(root_dir: str) -> str:
+    """Read the content of the conf file.
+
+    Args:
+        root_dir: alf log directory path
+    Returns:
+        the content of the conf file as a str. ``None`` if conf file is not
+        specified through commandline and cannot be found in root_dir
+    """
+    conf_file = get_conf_file()
+    if conf_file is None:
+        return None
+    with open(conf_file, 'r') as f:
+        content = f.read()
+    return content
+
+
+def write_config(root_dir: str, conf_file_content: str):
     """Write config to a file under directory ``root_dir``
 
     Configs from FLAGS.conf_param are also recorded.
 
     Args:
-        root_dir (str): directory path
+        root_dir: directory path
+        conf_file_content: the content of the conf file
     """
     conf_file = get_conf_file()
     if conf_file is None or conf_file.endswith('.gin'):
@@ -569,9 +595,7 @@ def write_config(root_dir):
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
         config += "########### end pre-configs ###########\n\n"
-    f = open(conf_file, 'r')
-    config += f.read()
-    f.close()
+    config += conf_file_content
     f = open(alf_config_file, 'w')
     f.write(config)
     f.close()
@@ -828,6 +852,7 @@ def set_random_seed(seed):
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True)
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
@@ -1228,3 +1253,10 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     interval = math.ceil(num_iterations / summary_or_eval_calls)
     logging.info("A summary or eval interval=%d is calculated" % interval)
     return interval
+
+
+def call_stack() -> List[str]:
+    """Return a list of strings showing the current function call stacks for
+    debugging.
+    """
+    return [line.strip() for line in traceback.format_stack()]

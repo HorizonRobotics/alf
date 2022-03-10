@@ -1,5 +1,6 @@
+# Warning: Directly converted from the TF version, this gin file was NOT TESTED.
 
-
+import alf
 import alf.environments.suite_socialbot
 import alf.algorithms.ppo_algorithm
 import alf.algorithms.ppo_loss
@@ -31,15 +32,15 @@ PPOLoss.check_numerics=True
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(100, 50, 25)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.softsign
+actor/ActorDistributionNetwork.activation_fn=@alf.math.softsign
 # actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 # NormalProjectionNetwork.init_means_output_factor=1e-10
 # NormalProjectionNetwork.std_bias_initializer_value=0.0
-# NormalProjectionNetwork.std_transform=@tf.math.exp
+# NormalProjectionNetwork.std_transform=@torch.exp
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(100, 50, 25)
-value/ValueNetwork.activation_fn=@tf.nn.softsign
+value/ValueNetwork.activation_fn=@alf.math.softsign
 
 ac/Adam.learning_rate=2e-4
 

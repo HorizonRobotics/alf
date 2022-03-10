@@ -36,7 +36,6 @@ import carla
 import functools
 import math
 import numpy as np
-import pygame
 import os
 
 from alf.environments.suite_carla import CameraSensor
@@ -46,7 +45,7 @@ flags.DEFINE_string('host', "localhost", "Carla server address")
 FLAGS = flags.FLAGS
 
 
-def transform_to_ego(actor, target):
+def _transform_to_ego(actor, target):
     trans = actor.get_transform()
     yaw = math.radians(trans.rotation.yaw)
     target = np.array([target.x, target.y, target.z], dtype=np.float32)
@@ -57,6 +56,7 @@ def transform_to_ego(actor, target):
 
 
 def main(_):
+    import pygame
     pygame.init()
     pygame.font.init()
 
@@ -111,8 +111,8 @@ def main(_):
     def on_tick(timestamp):
         camera.render(display)
         vehicle = vehicles[vehicle_id]
-        v = transform_to_ego(vehicle, vehicle.get_velocity())
-        a = transform_to_ego(vehicle, vehicle.get_acceleration())
+        v = _transform_to_ego(vehicle, vehicle.get_velocity())
+        a = _transform_to_ego(vehicle, vehicle.get_acceleration())
         loc = vehicle.get_location()
         clock.tick_busy_loop(1000)
         info_text = [

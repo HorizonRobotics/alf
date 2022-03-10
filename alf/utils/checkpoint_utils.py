@@ -261,7 +261,7 @@ class Checkpointer(object):
                 optimizer_state[k] = v
             elif k.startswith('_replay_buffer.'):
                 replay_buffer_state[k] = v
-            else:
+            elif not k.startswith('_offline_replay_buffer.'):
                 model_state[k] = v
 
         return model_state, optimizer_state, replay_buffer_state

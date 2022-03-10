@@ -68,7 +68,8 @@ def critic_network_visualizer(net,
         data = img[0, ...].squeeze(0)
         data = data.cpu().numpy()
 
-        val_img = alf.summary.render.render_heatmap(name="val_img", data=data)
+        import alf.summary.render as render
+        val_img = render.render_heatmap(name="val_img", data=data)
 
 
     Args:

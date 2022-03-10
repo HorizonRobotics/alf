@@ -116,7 +116,7 @@ COMMON_TRAIN_CONF = [
     'TrainerConfig.summarize_grads_and_vars=False',
     'TrainerConfig.summarize_action_distributions=False',
     # train two iterations
-    'TrainerConfig.num_iterations=2',
+    'TrainerConfig.num_iterations=3',
     'TrainerConfig.num_env_steps=0',
     # only save checkpoint after train iteration finished
     'TrainerConfig.num_checkpoints=1',
@@ -635,6 +635,14 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
 
+    def test_sac_pendulum_latent_actor(self):
+        def _test_func(returns, lengths):
+            self.assertGreater(returns[-1], -200)
+
+        self._test(
+            conf_file='sac_pendulum_latent_actor_conf.py',
+            test_perf_func=_test_func)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_fishswim(self):
         self._test(
@@ -661,6 +669,16 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sarsa_sac_pendulum(self):
         self._test(
             conf_file='sarsa_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_hybrid_sac_pendulum(self):
+        self._test(
+            conf_file='./hybrid_rl/hybrid_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_hybrid_sac_pendulum_muzero_buffer(self):
+        self._test(
+            conf_file='./hybrid_rl/hybrid_sac_pendulum_muzero_buffer.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_taac_bipedal_walker(self):

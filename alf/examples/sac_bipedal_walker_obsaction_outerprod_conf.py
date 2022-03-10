@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2022 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
-import tensorflow as tf
+import alf
+from alf.examples import sac_bipedal_walker_conf
 
-
-@gin.configurable
-def split_observation_fn(o):
-
-    dimo = o.get_shape().as_list()[-1]
-    assert dimo == 23, ("The dimension does not match.")
-
-    task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
-        o, [3, 6, 6, 6, 2], axis=-1)
-
-    agent_pose_1, agent_pose_2 = tf.split(agent_pose, [3, 3], axis=-1)
-
-    return (agent_pose_1, task_specific_ob)
+alf.config(
+    'CriticNetwork',
+    observation_action_combiner=alf.layers.NestOuterProduct(padding=True))

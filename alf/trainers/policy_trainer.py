@@ -38,7 +38,6 @@ from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
-from alf.utils.video_recorder import VideoRecorder
 
 
 class _TrainerProgress(nn.Module):
@@ -142,6 +141,7 @@ class Trainer(object):
         self._config = config
         self._random_seed = config.random_seed
         self._rank = ddp_rank
+        self._conf_file_content = common.read_conf_file(root_dir)
 
     def train(self):
         """Perform training."""
@@ -227,7 +227,7 @@ class Trainer(object):
     def _summarize_training_setting(self):
         # We need to wait for one iteration to get the operative args
         # Right just give a fixed gin file name to store operative args
-        common.write_config(self._root_dir)
+        common.write_config(self._root_dir, self._conf_file_content)
         with alf.summary.record_if(lambda: True):
 
             def _markdownify(paragraph):
@@ -332,12 +332,17 @@ class RLTrainer(Trainer):
         logging.info(
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
+
+        # for offline buffer construction
+        untransformed_observation_spec = env.observation_spec()
+
         data_transformer = create_data_transformer(
-            config.data_transformer_ctor, env.observation_spec())
+            config.data_transformer_ctor, untransformed_observation_spec)
         self._config.data_transformer = data_transformer
 
         # keep compatibility with previous gin based config
         common.set_global_env(env)
+
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
         logging.info("transformed_observation_spec=%s" %
@@ -350,6 +355,11 @@ class RLTrainer(Trainer):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
+
+        # recover offline buffer
+        self._algorithm.load_offline_replay_buffer(
+            untransformed_observation_spec)
+
         self._algorithm.set_path('')
         if ddp_rank >= 0:
             # Activate the DDP training
@@ -412,8 +422,8 @@ class RLTrainer(Trainer):
         if self._eval_env:
             self._eval_env.reset()
 
-        begin_iter_num = int(self._trainer_progress._iter_num)
-        iter_num = begin_iter_num
+        iter_num = int(self._trainer_progress._iter_num)
+        training_setting_summarized = False
 
         checkpoint_interval = math.ceil(
             (self._num_iterations
@@ -440,8 +450,9 @@ class RLTrainer(Trainer):
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
-            if iter_num == begin_iter_num:
+            if not training_setting_summarized and train_steps > 0:
                 self._summarize_training_setting()
+                training_setting_summarized = True
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
@@ -627,7 +638,10 @@ def _step(algorithm,
     if recorder:
         recorder.capture_frame(policy_step.info, time_step.is_last())
     elif render:
-        env.render(mode='human')
+        if env.batch_size > 1:
+            env.envs[0].render(mode='human')
+        else:
+            env.render(mode='human')
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
@@ -689,13 +703,23 @@ def play(root_dir,
         including_optimizer=False,
         including_replay_buffer=False)
 
+    batch_size = env.batch_size
     recorder = None
     if record_file is not None:
+        assert batch_size == 1, 'video recording is not supported for parallel play'
+        # Note that ``VideoRecorder`` will import ``matplotlib`` which might have
+        # some side effects on xserver (if its backend needs graphics).
+        # This is incompatible with RLBench parallel envs >1 (or other
+        # envs requiring xserver) for some unknown reasons, so we have a lazy import here.
+        from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(
             env, append_blank_frames=append_blank_frames, path=record_file)
     elif render:
-        # pybullet_envs need to render() before reset() to enable mode='human'
-        env.render(mode='human')
+        if batch_size > 1:
+            env.envs[0].render(mode='human')
+        else:
+            # pybullet_envs need to render() before reset() to enable mode='human'
+            env.render(mode='human')
     env.reset()
 
     # The behavior of some algorithms is based by scheduler using training
@@ -709,8 +733,10 @@ def play(root_dir,
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     trans_state = algorithm.get_initial_transform_state(env.batch_size)
-    episode_reward = 0.
-    episode_length = 0
+    episodes_per_env = (num_episodes + batch_size - 1) // batch_size
+    env_episodes = torch.zeros(batch_size, dtype=torch.int32)
+    episode_reward = torch.zeros(batch_size)
+    episode_length = torch.zeros(batch_size, dtype=torch.int32)
     episodes = 0
     metrics = [
         alf.metrics.AverageReturnMetric(
@@ -719,6 +745,17 @@ def play(root_dir,
             example_time_step=time_step, buffer_size=num_episodes),
     ]
     while episodes < num_episodes:
+        # For parallel play, we cannot naively pick the first finished `num_episodes`
+        # episodes to estimate the average return (or other statitics) as it can be
+        # biased. Instead, we stick to using the first episodes_per_env episodes
+        # from each environment to calculate the statistics and ignore the potentially
+        # extra episodes from each environment.
+        invalid = env_episodes >= episodes_per_env
+        # Force the step_type of the extra episodes to be StepType.FIRST so that
+        # these time steps do not affect metrics as the metrics are only updated
+        # at StepType.LAST. The metric computation uses cpu version of time_step.
+        time_step.cpu().step_type[invalid] = StepType.FIRST
+
         next_time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
@@ -730,26 +767,25 @@ def play(root_dir,
             recorder=recorder,
             sleep_time_per_step=sleep_time_per_step)
 
-        if not time_step.is_first():
-            episode_length += 1
-            episode_reward += time_step.reward.view(-1).float().cpu().numpy()
+        time_step.step_type[invalid] = StepType.FIRST
+        started = time_step.step_type != StepType.FIRST
+        episode_length += started
+        episode_reward += started * time_step.reward
 
-        if time_step.is_last():
-            logging.info("episode_length=%s episode_reward=%s" %
-                         (episode_length, episode_reward))
-            episode_reward = 0.
-            episode_length = 0
-            episodes += 1
+        for i in range(batch_size):
+            if time_step.step_type[i] == StepType.LAST:
+                logging.info(
+                    "episode_length=%s episode_reward=%s" %
+                    (episode_length[i].item(), episode_reward[i].item()))
+                episode_reward[i] = 0.
+                episode_length[i] = 0
+                env_episodes[i] += 1
+                episodes += 1
 
         policy_state = policy_step.state
         time_step = next_time_step
 
-    for m in metrics:
-        logging.info(
-            "%s: %s", m.name,
-            map_structure(
-                lambda x: x.cpu().numpy().item()
-                if x.ndim == 0 else x.cpu().numpy(), m.result()))
+    common.log_metrics(metrics)
     if recorder:
         recorder.close()
     env.reset()
