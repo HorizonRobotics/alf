@@ -224,7 +224,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 action_spec,
                 num_unroll_steps=num_unroll_steps,
                 debug_summaries=debug_summaries)
-            self._update_target = common.get_target_updater(
+            self._update_target = common.TargetUpdater(
                 models=[self._model],
                 target_models=[self._target_model],
                 tau=target_update_tau,
