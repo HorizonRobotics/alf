@@ -23,7 +23,6 @@ import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .normalizing_flow_networks import RealNVPNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.networks.network import Network
 
@@ -50,8 +49,8 @@ class ActorDistributionNetwork(Network):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.
@@ -206,8 +205,8 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.

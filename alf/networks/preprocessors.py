@@ -11,15 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Some network input preprocessors.
-
-An ``InputPreprocessor`` is a stateless Network, which is used for the purpose
-of preprocessing input and making gin files more convenient to configure.
+"""This file contains input preprocessors as stateless Networks, used for the
+purpose of preprocessing input and making gin files more convenient to configure.
 
 Example:
 In your gin file, below will be possible to configure:
-input1 (img) -> InputPreprocessor1 -> embed1    ----> EncodingNetwork
-input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
+input1 (img) -> preprocessor1 -> embed1    ----> EncodingNetwork
+input2 (action) -> preprocessor2 -> embed2   /   (with `NestCombiner`)
 
 """
 import abc
@@ -105,7 +103,7 @@ class EmbeddingPreprocessor(Network):
                 result; otherwise it's the tensor spec of the result.
         """
         assert state is (), \
-            "InputPreprocessor is assumed to be stateless currently."
+            "The preprocessor is assumed to be stateless currently."
 
         ret = self._preprocess(inputs)
         return ret, state

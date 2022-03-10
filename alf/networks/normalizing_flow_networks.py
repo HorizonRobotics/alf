@@ -232,7 +232,7 @@ class RealNVPNetwork(NormalizingFlowNetwork):
         Args:
             input_tensor_spec: input tensor spec
             conditional_input_tensor_spec: a nested tensor spec
-            input_preprocessors: a nest of ``InputPreprocessor``, each of
+            input_preprocessors: a nest of input preprocessors, each of
                 which will be applied to the corresponding input. If not None,
                 then it must have the same structure with ``input_tensor_spec``
                 (after reshaping). If any element is None, then it will be treated

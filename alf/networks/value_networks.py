@@ -45,8 +45,8 @@ class ValueNetwork(PreprocessorNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             output_tensor_spec (TensorSpec): spec for the output
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                stateless input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.
@@ -180,8 +180,8 @@ class ValueRNNNetwork(PreprocessorNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             output_tensor_spec (TensorSpec): spec for the output
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                stateless input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.

@@ -421,8 +421,8 @@ class EncodingNetwork(_Sequential):
                 Note that ``output_tensor_spec`` is only used for reshaping
                 the network outputs for interpretation purpose and is not used
                 for specifying any network layers.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. This arg is helpful if you
                 want to have separate preprocessings for different inputs by
@@ -718,8 +718,8 @@ class LSTMEncodingNetwork(_Sequential):
                 Note that ``output_tensor_spec`` is only used for reshaping
                 the network outputs for interpretation purpose and is not used
                 for specifying any network layers.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. This arg is helpful if you
                 want to have separate preprocessings for different inputs by
