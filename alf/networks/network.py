@@ -123,9 +123,9 @@ class Network(nn.Module):
         forward. Can be used to calculate output spec or testing the network.
         """
         inputs = common.zero_tensor_from_nested_spec(
-            self._input_tensor_spec, batch_size=1)
+            self._input_tensor_spec, batch_size=2)
         states = common.zero_tensor_from_nested_spec(
-            self.state_spec, batch_size=1)
+            self.state_spec, batch_size=2)
         return self.forward(inputs, states)
 
     def singleton(self, singleton_instance=True):
@@ -227,6 +227,11 @@ class Network(nn.Module):
         Subclass should override this to return the correct ``state_spec``.
         """
         return self._state_spec
+
+    @property
+    def is_rnn(self):
+        """Whether this network is a recurrent net."""
+        return len(alf.nest.flatten(self.state_spec)) > 0
 
     @property
     def is_distribution_output(self):
