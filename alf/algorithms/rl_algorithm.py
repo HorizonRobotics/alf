@@ -140,6 +140,7 @@ class RLAlgorithm(Algorithm):
                  env=None,
                  config: TrainerConfig = None,
                  optimizer=None,
+                 overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """
@@ -170,6 +171,9 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs a training iteration
                 by itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
+            overwrite_policy_output (bool): if True, overwrite the policy output
+                with next_step.prev_action. This option can be used in some
+                cases such as data collection.
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
         """
@@ -271,6 +275,7 @@ class RLAlgorithm(Algorithm):
 
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
+        self._overwrite_policy_output = overwrite_policy_output
 
     def is_rl(self):
         """Always return True for RLAlgorithm."""
@@ -499,6 +504,16 @@ class RLAlgorithm(Algorithm):
             env_step_time += time.time() - t0
 
             self.observe_for_metrics(time_step.cpu())
+
+            # For typical cases, there is no impact since the action at the
+            # current time step is the same as the prev_action of the next
+            # time step. In some cases, for example, for data collection,
+            # this step is useful for updating the action to be saved into
+            # replay buffer with the actual action that is used (e.g. from
+            # an expert), which can be recordered in next_time_step.prev_action.
+            if self._overwrite_policy_output:
+                policy_step = policy_step._replace(
+                    output=next_time_step.prev_action)
 
             exp = make_experience(time_step.cpu(), policy_step, policy_state)
 

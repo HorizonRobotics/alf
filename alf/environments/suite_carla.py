@@ -315,6 +315,7 @@ class Player(object):
                  with_camera_sensor=True,
                  with_radar_sensor=True,
                  with_bev_sensor=False,
+                 data_collection_mode=False,
                  with_red_light_sensor=False,
                  terminate_upon_infraction="",
                  render_waypoints=True):
@@ -378,6 +379,9 @@ class Player(object):
             with_camera_sensor (bool): whether to use ``CameraSensor``.
             with_radar_sensor (bool): whether to use ``RadarSensor``.
             with_bev_sensor (bool): whether to use ``BEVSensor``.
+            data_collection_mode (bool): if True, will use Rule-based agents
+                to control the Players. This can be used for purposes such as
+                collecting data.
             with_red_light_sensor (bool): whether to use ``RedlightSensor``.
             terminate_upon_infraction (str): whether to terminate the episode
                 based on the specified mode ("collision", "redlight", "all", ""),
@@ -387,6 +391,7 @@ class Player(object):
                 in the generated video during rendering. Note that it is only
                 used for visualization and has no impacts on the perception data.
         """
+
         self._actor = actor
         self._alf_world = alf_world
         self._observation_sensors = {}
@@ -435,6 +440,11 @@ class Player(object):
         else:
             self._bev_sensor = None
 
+        self._data_collection_mode = data_collection_mode
+        if self._data_collection_mode:
+            from .carla_env.carla_agents import SimpleNavigationAgent
+            self._data_agent = SimpleNavigationAgent(actor, self._navigation,
+                                                     alf_world)
         if with_red_light_sensor:
             self._red_light_sensor = RedlightSensor(actor, weakref.ref(self))
             self._observation_sensors['redlight'] = self._red_light_sensor
@@ -550,6 +560,9 @@ class Player(object):
         self._alf_world.update_actor_location(self._actor.id, loc)
 
         self._route_length = self._navigation.set_destination(goal_loc)
+
+        if self._data_collection_mode:
+            self._data_agent.set_destination()
 
         self._prev_collision = False  # whether there is collision in the previous frame
         self._collision = False  # whether there is collision in the current frame
@@ -929,13 +942,29 @@ class Player(object):
         self._is_first_step = False
         if self._done:
             return self.reset()
-        if self._controller is not None:
-            self._control = self._controller.act(action)
+
+        if self._data_collection_mode:
+            # TODO: add support to the usage of controller
+            assert self._controller is None, ("controller is not supported "
+                                              "in data collection currently")
+            control = self._data_agent.run_step()
+            control.manual_gear_shift = False
+            action[0] = control.throttle
+            action[1] = control.steer
+            action[2] = control.brake
+            if control.reverse:
+                action[3] = 1
+            else:
+                action[3] = 0
+            self._control = control
         else:
-            self._control.throttle = max(float(action[0]), 0.0)
-            self._control.steer = float(action[1])
-            self._control.brake = max(float(action[2]), 0.0)
-            self._control.reverse = bool(action[3] > 0.5)
+            if self._controller is not None:
+                self._control = self._controller.act(action)
+            else:
+                self._control.throttle = max(float(action[0]), 0.0)
+                self._control.steer = float(action[1])
+                self._control.brake = max(float(action[2]), 0.0)
+                self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
         self.update_speed_limit()
 
