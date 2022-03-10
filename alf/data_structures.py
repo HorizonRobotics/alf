@@ -482,12 +482,32 @@ LossInfo = namedtuple(
     ],
     default_value=())
 
+
+def elastic_namedtuple(name, args):
+    """elastic namedtuple that returns ``()`` for a non-existing attribute,
+    instead of throwing out an ``AttributeError``.
+
+    Args:
+        name (str): type name of this elastic namedtuple.
+        args : other arguments for constructing the namedtuple
+    Returns:
+        the type for the elastic namedtuple
+    """
+    cls = namedtuple(name, args)
+
+    def __getattr__(self, name):
+        return getattr(cls, name, ())
+
+    cls.__getattr__ = __getattr__
+    return cls
+
+
 # Some basic structures used by offline replay buffer for ``rollout_info``.
 # We assume the ``rollout_info`` contains:
 # 1) an ``rl`` field, whose structure is defined by ``BasicRLInfo``
 # 2) ``rewards`` and ``repr``: these two are placeholders for compatibility
 # purpose with the ``Agent`` interface.
-BasicRolloutInfo = namedtuple(
+BasicRolloutInfo = elastic_namedtuple(
     "BasicRolloutInfo",
     [
         'rl',  # containing rl rollout information, as defined in ``BasicRLInfo``
@@ -498,6 +518,10 @@ BasicRolloutInfo = namedtuple(
 # The basic structure for ``rollout_info`` of an RL algorithm, containing
 # only an ``action`` field, which is the minimum structure required by typical
 # RL algorithms in ALF.
-BasicRLInfo = namedtuple("BasicRLInfo", [
+# Here we use ``elastic_namedtuple`` to enable its automatic compatibility
+# with future changes of the RolloutInfo made on the algorithm side (e.g.
+# using ``rollout_info.discounted_return`` in SAC ``train_step``, which is
+# beyond the assumption of the ``BasicRLInfo`` structure.)
+BasicRLInfo = elastic_namedtuple("BasicRLInfo", [
     "action",
 ])
