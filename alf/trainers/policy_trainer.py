@@ -739,11 +739,17 @@ def play(root_dir,
     episode_length = torch.zeros(batch_size, dtype=torch.int32)
     episodes = 0
     metrics = [
+        alf.metrics.NumberOfEpisodes(),
         alf.metrics.AverageReturnMetric(
             buffer_size=num_episodes, example_time_step=time_step),
         alf.metrics.AverageEpisodeLengthMetric(
             example_time_step=time_step, buffer_size=num_episodes),
+        alf.metrics.AverageEnvInfoMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
+        alf.metrics.AverageDiscountedReturnMetric(
+            buffer_size=num_episodes, example_time_step=time_step)
     ]
+
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statitics) as it can be
