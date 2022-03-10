@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
 from functools import partial
 import torch
 from torch import nn
+import numpy as np
 
 import alf
 from alf.algorithms.data_transformer import FrameStacker
@@ -24,6 +26,7 @@ from alf.algorithms.mcts_models import get_unique_num_actions, MCTSModel, ModelO
 import alf.data_structures as ds
 from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.utils import common, dist_utils
+from absl.testing import parameterized
 
 
 class MockMCTSModel(nn.Module):
@@ -96,9 +99,17 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
             ))
 
 
-class MuzeroAlgorithmTest(alf.test.TestCase):
-    def _test_preprocess_experience(self, train_reward_function, td_steps,
-                                    reanalyze_ratio, expected):
+class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    def _step_types(self):
+        #        01234567890123
+        return ['FMMMLFMMLFMMMM', 'FMMMMMLFMMMMLF']
+
+    def _test_preprocess_experience(self,
+                                    train_reward_function,
+                                    td_steps,
+                                    reanalyze_ratio,
+                                    expected,
+                                    mini_batch_length: int = 1):
         """
         The following summarizes how the data is generated:
 
@@ -169,9 +180,10 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
             max_length=16,
             keep_episodic_info=True)
 
-        #             01234567890123
-        step_type0 = 'FMMMLFMMLFMMMM'
-        step_type1 = 'FMMMMMLFMMMMLF'
+        #     01234567890123
+        # 0  'FMMMLFMMLFMMMM'
+        # 1  'FMMMMMLFMMMMLF'
+        step_type0, step_type1 = self._step_types()
 
         dt_state = common.zero_tensor_from_nested_spec(
             data_transformer.state_spec, batch_size)
@@ -204,22 +216,31 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
             replay_buffer.add_batch(experience)
             state = alg_step.state
 
-        env_ids = torch.tensor([0] * 14 + [1] * 14, dtype=torch.int64)
-        positions = torch.tensor(
-            list(range(14)) + list(range(14)), dtype=torch.int64)
-        experience = replay_buffer.get_field(None,
-                                             env_ids.unsqueeze(-1).cpu(),
-                                             positions.unsqueeze(-1).cpu())
+        # TODO(breakds): Add documentation for this
+        positions = torch.arange(14).unfold(0, mini_batch_length, 1).repeat(
+            2, 1)
+        env_ids = torch.zeros(positions.shape[0], 1, dtype=torch.int64)
+        env_ids[(positions.shape[0] // 2):] = 1
+
+        experience = replay_buffer.get_field(None, env_ids.cpu(),
+                                             positions.cpu())
+
         batch_info = BatchInfo(
-            env_ids=env_ids, positions=positions, replay_buffer=replay_buffer)
+            env_ids=env_ids[:, 0],
+            positions=positions[:, 0],
+            replay_buffer=replay_buffer)
+
         processed_experience, processed_rollout_info = muzero.preprocess_experience(
             experience, experience.rollout_info, batch_info)
-        import pprint
-        pprint.pprint(processed_rollout_info)
-        alf.nest.map_structure(lambda x, y: self.assertEqual(x, y),
-                               processed_rollout_info, expected)
 
-    def get_exptected_info(self, sparse_reward):
+        def _check(path, x, y):
+            print(f'checking {path}, shape is {x.shape}, expected: {y.shape}')
+            # self.assertEqual(x, y)
+
+        alf.nest.py_map_structure_with_path(_check, processed_rollout_info,
+                                            expected)
+
+    def get_exptected_info(self, sparse_reward: bool = True):
         # yapf: disable
         expected = MuzeroInfo(
             action=torch.tensor([
@@ -481,6 +502,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                     [[False,  True,  True,  True,  True]],
                     [[ True,  True,  True,  True,  True]],
                     [[False, False, False, False, False]]])))
+
         if sparse_reward:
             expected = expected._replace(target=expected.target._replace(
                 reward=torch.tensor([
@@ -512,9 +534,72 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                     [[ 0., 12.,  0.,  0.,  0.]],
                     [[12.,  0.,  0.,  0.,  0.]],
                     [[ 0.,  0.,  0.,  0.,  0.]]])))
+
         return expected
 
-    def test_bootstrap_return_with_reward_function(self):
+    def _adapt_mini_batch_length(self,
+                                 base_expected,
+                                 mini_batch_length: int):
+        """Transfrom the base case (mini_batch_length = 1) expected result to
+        its mini_batch_length > 1 counterpart.
+
+        """
+        if mini_batch_length == 1:
+            return base_expected
+
+        # The transformation is mostly about finding the corresponding
+        # counterpart (indices) in the base case for each of the new positions
+        # when mini_batch_length is greater than 1. We need to compute 3 things:
+        #
+        # base_index: base_index[b, t] = k means the new value on batch b's t-th
+        #     step should be filled with the k-th of the counterpart in base
+        #     case expected data.
+        #
+        # base_index_no_cut_off: Similar to base_index, except for that when
+        #     reaching the end of an episode, keeps going forward instead of
+        #     fixing the index.
+        #
+        # beyond_end: beyond_end[b, t] = True means that the t-th step of b's
+        #     batch is beyond the episode's end.
+        #
+        # We EXPLICITLY compute them instead duplicating the batch-computation
+        # logic since this is unit test and this helps verify the
+        # batch-computation logic from the main algorithm is correct.
+        step_types = self._step_types()
+        base_index = []
+        base_index_no_cut_off = []
+        beyond_end = []
+        for env_id in range(2):
+            for start_pos in range(14):
+                if start_pos + mini_batch_length > 14:
+                    break
+
+                end_pos = None
+                base_index.append([])
+                base_index_no_cut_off.append([])
+                beyond_end.append([])
+                for pos in range(start_pos, start_pos + mini_batch_length):
+                    beyond_end[-1].append(end_pos is not None)
+                    if step_types[env_id][pos] == 'L':
+                        end_pos = pos
+                    updated_pos = end_pos or pos
+                    base_index[-1].append(env_id * 14 + updated_pos)
+                    base_index_no_cut_off[-1].append(env_id * 14 + pos)
+        base_index = torch.tensor(base_index, dtype=torch.int64)
+        base_index_no_cut_off = torch.tensor(base_index_no_cut_off, dtype=torch.int64)
+        beyond_end = torch.tensor(beyond_end, dtype=torch.bool)
+
+        def __transform(path, x):
+            if path in ['action', 'value', 'target.game_over', 'target.reward']:
+                return x.squeeze(dim=1)[base_index_no_cut_off]
+
+            y = x.squeeze(dim=1)[base_index]
+            return y
+
+        return alf.nest.py_map_structure_with_path(__transform, base_expected)
+
+    @parameterized.parameters(1, 2, 3)
+    def test_bootstrap_return_with_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(False)
         expected = expected._replace(target=expected.target._replace(
             value=torch.tensor([
@@ -546,13 +631,17 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[12.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                 [[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                 [[ 6.5000,  6.5000,  6.5000,  6.5000,  6.5000]]])))
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
+
         self._test_preprocess_experience(
             train_reward_function=True,
             td_steps=2,
             reanalyze_ratio=0.,
-            expected=expected)
+            expected=expected,
+            mini_batch_length=mini_batch_length)
 
-    def test_bootstrap_return_without_reward_function(self):
+    @parameterized.parameters(1, 2, 3)
+    def test_bootstrap_return_without_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(False)
         expected = expected._replace(target=expected.target._replace(
             reward=(),
@@ -585,13 +674,17 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[ 6.5000,  6.5000,  6.5000,  6.5000,  6.5000]]])))
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
+
         self._test_preprocess_experience(
             train_reward_function=False,
             td_steps=2,
             reanalyze_ratio=0.,
-            expected=expected)
+            expected=expected,
+            mini_batch_length=mini_batch_length)
 
-    def test_monte_carla_return_with_reward_function(self):
+    @parameterized.parameters(1, 2, 3)
+    def test_monte_carlo_return_with_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(True)
         expected = expected._replace(target=expected.target._replace(
             value=torch.tensor([
@@ -623,9 +716,17 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[12.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                 [[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                 [[ 3.2500,  3.2500,  3.2500,  3.2500,  3.2500]]])))
-        self._test_preprocess_experience(train_reward_function=True, td_steps=-1, reanalyze_ratio=0., expected=expected)
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
 
-    def test_monte_carla_return_without_reward_function(self):
+        self._test_preprocess_experience(
+            train_reward_function=True,
+            td_steps=-1,
+            reanalyze_ratio=0.,
+            expected=expected,
+            mini_batch_length=mini_batch_length)
+
+    @parameterized.parameters(1, 2, 3)
+    def test_monte_carlo_return_without_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(True)
         expected = expected._replace(target=expected.target._replace(
             reward=(),
@@ -658,13 +759,17 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[ 3.2500,  3.2500,  3.2500,  3.2500,  3.2500]]])))
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
+
         self._test_preprocess_experience(
             train_reward_function=False,
             td_steps=-1,
             reanalyze_ratio=0.,
-            expected=expected)
+            expected=expected,
+            mini_batch_length=mini_batch_length)
 
-    def test_reanalyze_with_reward_function(self):
+    @parameterized.parameters(1, 2, 3)
+    def test_reanalyze_with_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(True)
         expected = expected._replace(
             value=expected.value,
@@ -699,13 +804,17 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                     [[12.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                     [[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]],
                     [[13.0000, 13.0000, 13.0000, 13.0000, 13.0000]]])))
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
+
         self._test_preprocess_experience(
             train_reward_function=True,
             td_steps=-1,
             reanalyze_ratio=1.,
-            expected=expected)
+            expected=expected,
+            mini_batch_length=mini_batch_length)
 
-    def test_reanalyze_without_reward_function(self):
+    @parameterized.parameters(1, 2, 3)
+    def test_reanalyze_without_reward_function(self, mini_batch_length):
         expected = self.get_exptected_info(True)
         expected = expected._replace(
             value=expected.value,
@@ -741,11 +850,14 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                     [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                     [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                     [[13.0000, 13.0000, 13.0000, 13.0000, 13.0000]]])))
+        expected = self._adapt_mini_batch_length(expected, mini_batch_length)
+
         self._test_preprocess_experience(
             train_reward_function=False,
             td_steps=-1,
             reanalyze_ratio=1.,
-            expected=expected)
+            expected=expected,
+            mini_batch_length=mini_batch_length)
         # yapf: enable
 
 
