@@ -69,6 +69,7 @@ class TrainerConfig(object):
                  offline_buffer_dir=None,
                  rl_train_after_update_steps=0,
                  rl_train_every_update_steps=1,
+                 empty_cache: bool = False,
                  clear_replay_buffer=True):
         """
         Args:
@@ -237,7 +238,9 @@ class TrainerConfig(object):
                 For example, we can set ``rl_train_every_update_steps = 2``
                 to have a train config that executes online RL training at the
                 half frequency of that of the offline RL training.
-
+            empty_cache: empty GPU memory cache at the start of every iteration
+                to reduce GPU memory usage. This option may slightly slow down
+                the overall speed.
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
@@ -294,3 +297,4 @@ class TrainerConfig(object):
         self.offline_buffer_dir = offline_buffer_dir
         self.rl_train_after_update_steps = rl_train_after_update_steps
         self.rl_train_every_update_steps = rl_train_every_update_steps
+        self.empty_cache = empty_cache

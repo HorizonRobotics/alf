@@ -563,6 +563,8 @@ class RLAlgorithm(Algorithm):
         """
         assert self.on_policy is not None
 
+        if self._config.empty_cache:
+            torch.cuda.empty_cache()
         if self.on_policy:
             return self._train_iter_on_policy()
         else:
