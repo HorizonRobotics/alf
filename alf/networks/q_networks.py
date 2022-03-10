@@ -51,8 +51,8 @@ class QNetwork(Network):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as ``math_ops.identity``.
@@ -203,8 +203,8 @@ class QRNNNetwork(Network):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.

@@ -86,8 +86,8 @@ class CriticNetwork(EncodingNetwork):
             input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
             output_tensor_spec (TensorSpec): spec for the output
-            observation_input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            observation_input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
@@ -96,8 +96,8 @@ class CriticNetwork(EncodingNetwork):
                 where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
-            action_input_processors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            action_input_processors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding action input.
             action_preprocessing_combiner (NestCombiner): preprocessing called
                 to combine complex action inputs.
@@ -220,8 +220,8 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
             input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
             ourput_tensor_spec (TensorSpec): spec for the output
-            observation_input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            observation_input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
                 corresponding observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
@@ -230,9 +230,9 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
                 where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
-            action_input_processors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding action input.
+            action_input_processors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
+                corresponding action input.a
             action_preprocessing_combiner (NestCombiner): preprocessing called
                 to combine complex action inputs.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
