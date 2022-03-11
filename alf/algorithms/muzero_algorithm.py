@@ -14,7 +14,7 @@
 """MuZero algorithm."""
 
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 import torch
 import typing
 
@@ -64,35 +64,39 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
     The pseudocode can be downloaded from `<https://arxiv.org/src/1911.08265v2/anc/pseudocode.py>`_
     """
 
-    def __init__(self,
-                 observation_spec,
-                 action_spec,
-                 model_ctor,
-                 mcts_algorithm_ctor,
-                 num_unroll_steps,
-                 td_steps,
-                 reward_spec=TensorSpec(()),
-                 recurrent_gradient_scaling_factor=0.5,
-                 reward_transformer=None,
-                 calculate_priority=None,
-                 train_reward_function=True,
-                 train_game_over_function=True,
-                 train_repr_prediction=False,
-                 reanalyze_mcts_algorithm_ctor=None,
-                 reanalyze_ratio=0.,
-                 reanalyze_td_steps=5,
-                 reanalyze_td_steps_func=None,
-                 reanalyze_batch_size=None,
-                 full_reanalyze=False,
-                 data_transformer_ctor=None,
-                 data_augmenter: Optional[Callable] = None,
-                 target_update_tau=1.,
-                 target_update_period=1000,
-                 config: Optional[TrainerConfig] = None,
-                 enable_amp: bool = True,
-                 random_action_after_episode_end=False,
-                 debug_summaries=False,
-                 name="MuZero"):
+    def __init__(
+            self,
+            observation_spec,
+            action_spec,
+            model_ctor,
+            mcts_algorithm_ctor,
+            num_unroll_steps,
+            td_steps,
+            reward_spec=TensorSpec(()),
+            recurrent_gradient_scaling_factor=0.5,
+            reward_transformer=None,
+            calculate_priority=None,
+            train_reward_function=True,
+            train_game_over_function=True,
+            train_repr_prediction=False,
+            reanalyze_mcts_algorithm_ctor=None,
+            reanalyze_ratio=0.,
+            reanalyze_td_steps=5,
+            reanalyze_td_steps_func=None,
+            reanalyze_batch_size=None,
+            full_reanalyze=False,
+            priority_func: Union[
+                Callable,
+                str] = "lambda loss_info: loss_info.extra['value'].sqrt().sum(dim=0)",
+            data_transformer_ctor=None,
+            data_augmenter: Optional[Callable] = None,
+            target_update_tau=1.,
+            target_update_period=1000,
+            config: Optional[TrainerConfig] = None,
+            enable_amp: bool = True,
+            random_action_after_episode_end=False,
+            debug_summaries=False,
+            name="MuZero"):
         """
         Args:
             observation_spec (TensorSpec): representing the observations.
@@ -147,6 +151,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 ``num_unroll_steps+1`` steps are calculated using MCTS, and the next
                  ``reanalyze_td_steps`` are calculated from the model directly.
                  If True, all are calculated using MCTS.
+            priority_func: the function for calculating priority. If it is a str,
+                ``eval(priority_func)`` will be called first to convert it a ``Callable``.
+                It is called as ``priority_func(loss_info)``, where loss_info is
+                the temporally stacked ``LossInfo`` strucuture returned from
+                ``MCTSModel.calc_loss()``.
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
@@ -185,6 +194,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             else:
                 calculate_priority = False
         self._calculate_priority = calculate_priority
+        self._priority_func = eval(priority_func) if type(
+            priority_func) == str else priority_func
         self._device = alf.get_default_device()
         super().__init__(
             observation_spec=observation_spec,
@@ -838,7 +849,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss(self, info: LossInfo):
         if self._calculate_priority:
-            priority = info.loss.extra['value'].sqrt().sum(dim=0)
+            priority = self._priority_func(info.loss)
         else:
             priority = ()
 

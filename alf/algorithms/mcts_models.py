@@ -478,6 +478,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 reward=reward_loss,
                 policy=policy_loss,
                 repr_prediction=repr_loss,
+                td_error=(target.value[:, 0] - model_output.value[:, 0]).abs(),
                 game_over=game_over_loss))
 
     def calc_repr_prediction_loss(self, repr, target_repr):
