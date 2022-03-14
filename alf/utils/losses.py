@@ -320,7 +320,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
         return ret
 
     def initialize_bias(self, bias: torch.Tensor):
-        """Initialize the bias of the last FC layer for the prediction properly.
+        r"""Initialize the bias of the last FC layer for the prediction properly.
 
         This function set the bias so that the initial distribution of the prediction
         in the original domain of target is approximatedly Cauchy: :math:`p(x) \propto \frac{1}{1+x^2}`
@@ -426,7 +426,8 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         n = bias.shape[0]
         upper_bound = n // 2
         lower_bound = -((n - 1) // 2)
-        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float32)
+        # Use float64 to prevent precision loss due to cumsum
+        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float64)
         x1 = x - 0.5
         x2 = x + 0.5
         if self._transform is not None:
@@ -436,9 +437,10 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         probs = (x2 - x1) / (x**2 + 1)
         probs = probs / probs.sum()
         probs = probs.cumsum(dim=0)
-        probs = torch.cat([torch.tensor([1e-6]), probs[:-1]], dim=0)
+        probs = torch.cat(
+            [torch.tensor([1e-20], dtype=torch.float64), probs[:-1]], dim=0)
         with torch.no_grad():
-            bias.copy_(((1 - probs) / probs).log())
+            bias.copy_(((1 - probs) / probs).log().to(torch.float32))
 
 
 @alf.repr_wrapper
