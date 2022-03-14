@@ -55,7 +55,6 @@ def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
     bs = BatchSquash(get_outer_rank(x, spec))
     x = bs.flatten(x)
 
-    variance_epsilon = torch.as_tensor(variance_epsilon).to(variance.dtype)
     inv = torch.rsqrt(variance + variance_epsilon)
     x = (x - mean.to(x.dtype)) * inv.to(x.dtype)
 
