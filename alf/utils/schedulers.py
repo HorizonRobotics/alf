@@ -13,6 +13,7 @@
 # limitations under the License.
 """Schedulers."""
 from typing import Callable
+from numbers import Number
 
 import alf
 
@@ -78,7 +79,11 @@ class ConstantScheduler(object):
 class StepScheduler(Scheduler):
     """There is one value for each defined region of training progress."""
 
-    def __init__(self, progress_type, schedule):
+    def __init__(self,
+                 progress_type,
+                 schedule,
+                 warm_up_period: Number = 0,
+                 start: Number = 0):
         """
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
@@ -86,13 +91,23 @@ class StepScheduler(Scheduler):
                 the scheduled result will be the ``value`` of the smallest
                 ``progress`` such that it is greater than the current
                 training progress.
+            warm_up_period: linearly increasing the output value from 0 to the
+                first value (i.e schedule[0][0]) for a duration of ``warm_up_period``
+                starting from ``start``. The value before ``start`` will be 0.
+            start: see ``warm_up_period``
         """
         super().__init__(progress_type)
         self._progresses, self._values = zip(*schedule)
         self._index = 0
+        self._warm_up_period = warm_up_period
+        self._start = start
+        assert start + warm_up_period < self._progresses[0]
 
     def __call__(self):
         progress = self.progress()
+        if progress < self._start + self._warm_up_period:
+            return self._values[0] * max(progress - self._start,
+                                         0) / self._warm_up_period
         index = self._index
         progresses = self._progresses
         while index < len(progresses) - 1 and progress >= progresses[index]:
