@@ -150,8 +150,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
-            data_augmenter: If provided, will called to perform data augmentation
-                as ``data_augmenter(observation)``.
+            data_augmenter: If provided, will be called to perform data augmentation
+                as ``data_augmenter(observation)`` for training observations.
             target_update_tau (float): Factor for soft update of the target
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
@@ -162,7 +162,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 This usually makes the algorithm run faster. However, the result
                 may be different (mostly likely due to random fluctuation).
             random_action_after_episode_end: If False, the actions used to predict
-                future state after the end of an episode will be the same as the
+                future states after the end of an episode will be the same as the
                 last action. If True, they will be uniformly sampled.
             debug_summaries (bool):
             name (str):
@@ -382,8 +382,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
                         replay_buffer, start_env_ids, start_positions,
                         mcts_state_field, T + R - 1)
+            # [B, T]
             last_discount = replay_buffer.get_field(
                 'discount', env_ids[:, :, 0], positions[:, :, -1])
+            # [B, T]
             is_partial_trajectory = last_discount != 0
 
             if self._reanalyze_ratio < 1:
@@ -535,26 +537,26 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         return root_inputs, rollout_info
 
     def _calc_representation(self, observation):
+        # observation: shape is [B*T, R, ...]
         target_reprs = []
         batch_size = alf.nest.flatten(observation)[0].shape[0]
         mini_batch_size = self._config.mini_batch_size
         with torch.cuda.amp.autocast(self._enable_amp):
-            with torch.no_grad():
-                for i in range(0, batch_size, mini_batch_size):
-                    end = min(batch_size, i + mini_batch_size)
-                    obs = alf.nest.map_structure(
-                        lambda x: x[i:end, 1:, ...].reshape(-1, *x.shape[2:]),
-                        observation)
-                    if self._data_augmenter:
-                        obs = self._data_augmenter(obs)
-                    target_repr = self._model._representation_net(obs)[0]
-                    target_repr = target_repr.reshape(end - i, -1,
-                                                      *target_repr.shape[1:])
-                    target_reprs.append(target_repr)
-                if len(target_reprs) == 1:
-                    return target_reprs[0]
-                else:
-                    return torch.cat(target_reprs, dim=0)
+            for i in range(0, batch_size, mini_batch_size):
+                end = min(batch_size, i + mini_batch_size)
+                obs = alf.nest.map_structure(
+                    lambda x: x[i:end, 1:, ...].reshape(-1, *x.shape[2:]),
+                    observation)
+                if self._data_augmenter:
+                    obs = self._data_augmenter(obs)
+                target_repr = self._model._representation_net(obs)[0]
+                target_repr = target_repr.reshape(end - i, -1,
+                                                  *target_repr.shape[1:])
+                target_reprs.append(target_repr)
+            if len(target_reprs) == 1:
+                return target_reprs[0]
+            else:
+                return torch.cat(target_reprs, dim=0)
 
     def _calc_bootstrap_return(self, replay_buffer, env_ids, positions,
                                value_field):
