@@ -70,6 +70,7 @@ class TrainerConfig(object):
                  rl_train_after_update_steps=0,
                  rl_train_every_update_steps=1,
                  empty_cache: bool = False,
+                 normalize_importance_weights_by_max: bool = False,
                  clear_replay_buffer=True):
         """
         Args:
@@ -241,6 +242,9 @@ class TrainerConfig(object):
             empty_cache: empty GPU memory cache at the start of every iteration
                 to reduce GPU memory usage. This option may slightly slow down
                 the overall speed.
+            normalize_importance_weights_by_max: if True, normalize the importance
+                weights by its max to prevent instability caused by large importance
+                weight.
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
@@ -298,3 +302,4 @@ class TrainerConfig(object):
         self.rl_train_after_update_steps = rl_train_after_update_steps
         self.rl_train_every_update_steps = rl_train_every_update_steps
         self.empty_cache = empty_cache
+        self.normalize_importance_weights_by_max = normalize_importance_weights_by_max
