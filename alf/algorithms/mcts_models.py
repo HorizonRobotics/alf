@@ -73,6 +73,16 @@ ModelOutput = namedtuple(
 ModelTarget = namedtuple(
     'ModelTarget',
     [
+        # A partial trajectory is a trajectory which is limited by TimeLimit or
+        # unfinished episode. Note a non-partial trjectory may contain steps beyond
+        # the episode end if the epsisode finishes within TimeLimit.
+        # bool[B]
+        'is_partial_trajectory',
+
+        # Whether a step is beyond the end of an episode
+        # bool[B, unroll_steps + 1]
+        'beyond_episode_end',
+
         # reward the for taken previous action and the next unoll_steps actions
         # [B, unroll_steps + 1]
         'reward',
@@ -123,6 +133,11 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             value_loss: losses.ScalarPredictionLoss = losses.SquareLoss(),
             target_entropy=None,
             alpha_adjust_rate=0.001,
+            initial_loss_weight: Optional[float] = 1,
+            predict_initial_reward: bool = True,
+            reset_reward_sum_period: bool = False,
+            apply_beyond_episode_end_mask: bool = False,
+            apply_partial_trajectory_mask: bool = False,
             debug_summaries=False,
             name="MCTSModel"):
         """
@@ -162,6 +177,17 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             target_entropy (float): if provided, will adjust alpha automatically
                 so that the entropy is not smaller than this.
             alpha_adjust_rate (float): the speed to adjust alpha
+            initial_loss_weight: the weight for the loss at the initial step of
+                the trajectory. If not provided, ``1 / num_unroll_steps`` will be
+                used.
+            predict_initial_reward: whether to predict the reward at the initial
+                step.
+            reset_reward_sum_period: reset the reward sum every so many steps
+            apply_beyond_episode_end_mask: If True, the steps after the end of
+                an episode is ignored for the representation prediction loss.
+            apply_partial_trajectory_mask: If True, the steps after an unfinished
+                episode (due to TimeLimit or an ongoing episode) is ignored for
+                all the losses.
         """
         super().__init__()
         self._representation_net = representation_net
@@ -173,6 +199,15 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._train_game_over_function = train_game_over_function
         self._train_repr_prediction = train_repr_prediction
         self._predict_reward_sum = predict_reward_sum
+        if reset_reward_sum_period > 0:
+            assert predict_reward_sum, ("reset_reward_sum_preiod can only be "
+                                        "used with predict_reward_sum=True")
+            assert reset_reward_sum_period >= num_unroll_steps + predict_initial_reward, (
+                "reset_reward_sum_period must be greater than or equal to "
+                "num_unroll_steps + predict_initial_reward")
+        self._reset_reward_sum_period = reset_reward_sum_period
+        self._apply_beyond_episode_end_mask = apply_beyond_episode_end_mask
+        self._apply_partial_trajectory_mask = apply_partial_trajectory_mask
         if initial_alpha > 0:
             self.register_buffer("_log_alpha",
                                  torch.tensor(np.log(initial_alpha)))
@@ -190,6 +225,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._repr_prediction_loss_weight = repr_prediction_loss_weight
         self._reward_loss = reward_loss
         self._value_loss = value_loss
+        self._initial_loss_weight = initial_loss_weight
+        self._predict_initial_reward = predict_initial_reward
 
         found1 = alf.layers.prepare_rnn_batch_norm(self._dynamics_net)
         found2 = alf.layers.prepare_rnn_batch_norm(self._prediction_net)
@@ -212,19 +249,15 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             prev_reward_sum = torch.zeros(batch_size)
         else:
             prev_reward_sum = ()
+        current_steps = torch.zeros(batch_size, dtype=torch.long)
         model_state = ModelState(
             state=state,
             pred_state=pred_state,
+            step=current_steps,
             prev_reward_sum=prev_reward_sum)
-        if not self._handle_bn:
-            return self._predict(model_state)
-        else:
+        if self._handle_bn:
             self._prediction_net.set_batch_norm_current_step(0)
-            model_output = self._predict(model_state)
-            batch_size = model_output.value.shape[0]
-            current_steps = torch.zeros(batch_size, dtype=torch.long)
-            return model_output._replace(
-                state=model_output.state._replace(step=current_steps))
+        return self._predict(model_state)
 
     def recurrent_inference(self, state, action):
         """Generate prediction given state and action.
@@ -236,37 +269,39 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         Returns:
             ModelOutput: the prediction
         """
-        if not self._handle_bn:
-            dyn_state = self._dynamics_net((state.state, action))[0]
-            return self._predict(state._replace(state=dyn_state))
-        else:
+        current_steps = state.step + 1
+        if self._handle_bn:
             self._dynamics_net.set_batch_norm_current_step(state.step)
-            dyn_state = self._dynamics_net((state.state, action))[0]
-            current_steps = state.step + 1
             self._prediction_net.set_batch_norm_current_step(current_steps)
-            model_output = self._predict(state._replace(state=dyn_state))
-            return model_output._replace(
-                state=model_output.state._replace(step=current_steps))
+        dyn_state = self._dynamics_net((state.state, action))[0]
+        return self._predict(
+            state._replace(state=dyn_state, step=current_steps))
 
     def _predict(self, state: ModelState):
         model_output = self.prediction_model(state.state, state.pred_state)
         value_pred = model_output.value_pred
         value = self._value_loss.calc_expectation(value_pred)
         reward_pred = model_output.reward_pred
+        model_state = model_output.state._replace(step=state.step)
         if isinstance(reward_pred, torch.Tensor):
             reward = self._reward_loss.calc_expectation(reward_pred)
             if self._predict_reward_sum:
                 # reward is assumed to predict the sum of reward over time steps
                 prev_reward_sum = reward
+                if self._reset_reward_sum_period > 0:
+                    need_to_reset = (
+                        state.step - 1 + self._predict_initial_reward
+                    ) % self._reset_reward_sum_period == 0
+                    state.prev_reward_sum[need_to_reset] = 0
                 reward = reward - state.prev_reward_sum
-                model_output = model_output._replace(
-                    state=model_output.state._replace(
-                        prev_reward_sum=prev_reward_sum))
+                model_state = model_state._replace(
+                    prev_reward_sum=prev_reward_sum)
         else:
             reward = ()
         if not self.training:
             model_output = model_output._replace(value_pred=(), reward_pred=())
-        return model_output._replace(value=value, reward=reward)
+        return model_output._replace(
+            value=value, reward=reward, state=model_state)
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -279,7 +314,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         batch_size = target.value.shape[0]
         num_unroll_steps = target.value.shape[1] - 1
         loss_scale = torch.ones((num_unroll_steps + 1, )) / num_unroll_steps
-        loss_scale[0] = 1.0
+        if self._initial_loss_weight is not None:
+            loss_scale[0] = self._initial_loss_weight
+
+        if self._apply_partial_trajectory_mask:
+            # [B, unroll_steps + 1]
+            partial_traj_mask = ~(target.beyond_episode_end &
+                                  target.is_partial_trajectory.unsqueeze(-1))
+            loss_scale = loss_scale * partial_traj_mask
 
         value_loss = self._value_loss(model_output.value_pred, target.value)
         value_loss = (loss_scale * value_loss).sum(dim=1)
@@ -287,15 +329,21 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         reward_loss = ()
         if self._train_reward_function:
-            if self._predict_reward_sum:
-                reward = model_output.reward.cumsum(dim=1)
-                target_reward = target.reward.cumsum(dim=1)
+            if not self._predict_initial_reward:
+                reward = model_output.reward[:, 1:]
+                target_reward = target.reward[:, 1:]
+                reward_pred = model_output.reward_pred[:, 1:]
+                reward_loss_scale = loss_scale[..., 1:]
             else:
                 reward = model_output.reward
                 target_reward = target.reward
-            reward_loss = self._reward_loss(model_output.reward_pred,
-                                            target_reward)
-            reward_loss = (loss_scale * reward_loss).sum(dim=1)
+                reward_pred = model_output.reward_pred
+                reward_loss_scale = loss_scale
+            if self._predict_reward_sum:
+                reward = reward.cumsum(dim=1)
+                target_reward = target_reward.cumsum(dim=1)
+            reward_loss = self._reward_loss(reward_pred, target_reward)
+            reward_loss = (reward_loss_scale * reward_loss).sum(dim=1)
             loss = loss + self._reward_loss_weight * reward_loss
 
         if target.action is ():
@@ -347,15 +395,18 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 return x[:, 1:, ...].reshape(-1, *x.shape[2:])
 
             # [B*unroll_steps, ...]
-            observation = alf.nest.map_structure(_flatten, target.observation)
-            with torch.no_grad():
-                target_repr = self._representation_net(observation)[0]
+            target_repr = alf.nest.map_structure(
+                lambda x: x.reshape(-1, *x.shape[2:]), target.observation)
             # [B*unroll_steps, ...]
             repr = _flatten(model_output.state.state)
             # [B*unroll_steps]
             repr_loss = self.calc_repr_prediction_loss(repr, target_repr)
             # [B, unroll_steps]
             repr_loss = repr_loss.reshape(batch_size, -1)
+            if self._apply_beyond_episode_end_mask:
+                repr_loss = repr_loss * ~target.beyond_episode_end[:, 1:]
+            elif self._apply_partial_trajectory_mask:
+                repr_loss = repr_loss * partial_traj_mask[:, 1:]
             repr_loss = repr_loss.mean(dim=1)
             loss = loss + self._repr_prediction_loss_weight * repr_loss
 
@@ -606,6 +657,7 @@ class SimpleMCTSModel(MCTSModel):
                  train_repr_prediction=False,
                  repr_projection_net_ctor=create_repr_projection_net,
                  repr_prediction_net_ctor=create_repr_prediction_net,
+                 repr_norm_eps: float = 1e-12,
                  debug_summaries=False,
                  name="SimpleMCTSModel"):
         """
@@ -646,6 +698,8 @@ class SimpleMCTSModel(MCTSModel):
             repr_prediction_net_ctor (Callable): called as
                 ``repr_prediction_net_ctor(projection_net.output_spec)`` to
                 construct the prediction_net described above
+            repr_norm_eps: the ``eps`` for calling ``F.normalize()`` when calculaing
+                the represetation loss.
         """
         encoding_net = encoding_net_ctor(observation_spec)
         repr_spec = encoding_net.output_spec
@@ -691,19 +745,21 @@ class SimpleMCTSModel(MCTSModel):
             self._repr_projection_net = repr_projection_net_ctor(repr_spec)
             self._repr_prediction_net = repr_prediction_net_ctor(
                 self._repr_projection_net.output_spec)
+        self._repr_norm_eps = repr_norm_eps
 
     def calc_repr_prediction_loss(self, repr, target_repr):
         if alf.summary.should_record_summaries():
             repr = summary_utils.summarize_tensor_gradients(
                 "SimpleMCTSModel/repr_grad", repr, clone=True)
         with torch.no_grad():
-            projected_target_repr = self._repr_projection_net(target_repr)[0]
+            projected_target_repr = self._repr_projection_net(
+                target_repr.to(repr.dtype))[0]
             norm_projected_target_repr = F.normalize(
-                projected_target_repr.detach(), dim=1)
+                projected_target_repr.detach(), dim=1, eps=self._repr_norm_eps)
         projected_repr = self._repr_projection_net(repr)[0]
         predicted_projected_repr = self._repr_prediction_net(projected_repr)[0]
         norm_predicted_projected_repr = F.normalize(
-            predicted_projected_repr, dim=1)
+            predicted_projected_repr, dim=1, eps=self._repr_norm_eps)
         cos = (norm_projected_target_repr * norm_predicted_projected_repr).sum(
             dim=1)
         if alf.summary.should_record_summaries():

@@ -14,7 +14,7 @@
 """MuZero algorithm."""
 
 from functools import partial
-from typing import Optional
+from typing import Callable, Optional
 import torch
 import typing
 
@@ -85,10 +85,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  reanalyze_batch_size=None,
                  full_reanalyze=False,
                  data_transformer_ctor=None,
+                 data_augmenter: Optional[Callable] = None,
                  target_update_tau=1.,
                  target_update_period=1000,
                  config: Optional[TrainerConfig] = None,
                  enable_amp: bool = True,
+                 random_action_after_episode_end=False,
                  debug_summaries=False,
                  name="MuZero"):
         """
@@ -148,6 +150,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
+            data_augmenter: If provided, will be called to perform data augmentation
+                as ``data_augmenter(observation)`` for training observations.
             target_update_tau (float): Factor for soft update of the target
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
@@ -157,6 +161,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             enable_amp: whether to use automatic mixed precision for inference.
                 This usually makes the algorithm run faster. However, the result
                 may be different (mostly likely due to random fluctuation).
+            random_action_after_episode_end: If False, the actions used to predict
+                future states after the end of an episode will be the same as the
+                last action. If True, they will be uniformly sampled.
             debug_summaries (bool):
             name (str):
 
@@ -205,6 +212,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reanalyze_td_steps = reanalyze_td_steps
         self._reanalyze_batch_size = reanalyze_batch_size
         self._full_reanalyze = full_reanalyze
+        self._data_augmenter = data_augmenter
+        self._random_action_after_episode_end = random_action_after_episode_end
         if data_transformer_ctor is not None:
             self._data_transformer = create_data_transformer(
                 data_transformer_ctor, observation_spec)
@@ -263,7 +272,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
-        model_output = self._model.initial_inference(exp.observation)
+        obs = exp.observation
+        if self._data_augmenter:
+            obs = self._data_augmenter(obs)
+        model_output = self._model.initial_inference(obs)
         if alf.summary.should_record_summaries():
             model_output.state.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
@@ -370,6 +382,11 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
                         replay_buffer, start_env_ids, start_positions,
                         mcts_state_field, T + R - 1)
+            # [B, T]
+            last_discount = replay_buffer.get_field(
+                'discount', env_ids[:, :, 0], positions[:, :, -1])
+            # [B, T]
+            is_partial_trajectory = last_discount != 0
 
             if self._reanalyze_ratio < 1:
                 if self._td_steps >= 0:
@@ -447,9 +464,16 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action = replay_buffer.get_field('prev_action', env_ids,
                                              positions[:, :, 1:])
 
-        # TODO(breakds): Instead of caching the observation, we can compute the
-        # representation targets directly and store the representation targets,
-        # to save some space.
+            def _set_rand_action(a, spec):
+                a[rand_mask] = spec.sample((rand_mask_size, ))
+
+            if self._random_action_after_episode_end:
+                rand_mask = beyond_episode_end[:, :, 1:]
+                rand_mask_size = rand_mask.sum()
+                if rand_mask_size > 0:
+                    alf.nest.map_structure(_set_rand_action, action,
+                                           self._action_spec)
+
         observation = ()
         if self._train_repr_prediction:
             if type(self._data_transformer) == IdentityDataTransformer:
@@ -487,8 +511,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     batch_info=transformed_batch_info,
                     replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
-                observation = exp.observation.reshape(
-                    B, T, *exp.observation.shape[1:])
+                observation = self._calc_representation(exp.observation)
+                observation = alf.nest.map_structure(
+                    lambda x: x.reshape(B, T, R, *x.shape[2:]), observation)
 
         # TODO(breakds): Should also include a mask in ModelTarget as an
         # indicator of overflow beyond the end of the replay buffer.
@@ -496,6 +521,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action=action,
             value=rollout_value,
             target=ModelTarget(
+                is_partial_trajectory=is_partial_trajectory,
+                beyond_episode_end=beyond_episode_end,
                 reward=rewards,
                 action=candidate_actions,
                 action_policy=candidate_action_policy,
@@ -508,6 +535,28 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 reward=rollout_info.target.reward[:, :, 0])
 
         return root_inputs, rollout_info
+
+    def _calc_representation(self, observation):
+        # observation: shape is [B*T, R, ...]
+        target_reprs = []
+        batch_size = alf.nest.flatten(observation)[0].shape[0]
+        mini_batch_size = self._config.mini_batch_size
+        with torch.cuda.amp.autocast(self._enable_amp):
+            for i in range(0, batch_size, mini_batch_size):
+                end = min(batch_size, i + mini_batch_size)
+                obs = alf.nest.map_structure(
+                    lambda x: x[i:end, 1:, ...].reshape(-1, *x.shape[2:]),
+                    observation)
+                if self._data_augmenter:
+                    obs = self._data_augmenter(obs)
+                target_repr = self._model._representation_net(obs)[0]
+                target_repr = target_repr.reshape(end - i, -1,
+                                                  *target_repr.shape[1:])
+                target_reprs.append(target_repr)
+            if len(target_reprs) == 1:
+                return target_reprs[0]
+            else:
+                return torch.cat(target_reprs, dim=0)
 
     def _calc_bootstrap_return(self, replay_buffer, env_ids, positions,
                                value_field):
@@ -794,9 +843,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             priority = ()
 
         return LossInfo(
-            scalar_loss=info.loss.loss.mean(),
-            extra=alf.nest.map_structure(torch.mean, info.loss.extra),
-            priority=priority)
+            loss=info.loss.loss, extra=info.loss.extra, priority=priority)
 
     def after_update(self, root_inputs, info):
         if self._update_target is not None:
