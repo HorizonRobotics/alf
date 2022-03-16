@@ -235,7 +235,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         def _check(path, x, y):
             print(f'checking {path}, shape is {x.shape}, expected: {y.shape}')
-            # self.assertEqual(x, y)
+            self.assertEqual(x, y)
 
         alf.nest.py_map_structure_with_path(_check, processed_rollout_info,
                                             expected)
@@ -608,54 +608,30 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         # The transformation is mostly about finding the corresponding
         # counterpart (indices) in the base case for each of the new positions
-        # when mini_batch_length is greater than 1. We need to compute 3 things:
+        # when mini_batch_length is greater than 1. We need to compute
         #
         # base_index: base_index[b, t] = k means the new value on batch b's t-th
         #     step should be filled with the k-th of the counterpart in base
         #     case expected data.
-        #
-        # base_index_no_cut_off: Similar to base_index, except for that when
-        #     reaching the end of an episode, keeps going forward instead of
-        #     fixing the index.
-        #
-        # beyond_end: beyond_end[b, t] = True means that the t-th step of b's
-        #     batch is beyond the episode's end.
         #
         # We EXPLICITLY compute them instead duplicating the batch-computation
         # logic since this is unit test and this helps verify the
         # batch-computation logic from the main algorithm is correct.
         step_types = self._step_types()
         base_index = []
-        base_index_no_cut_off = []
-        beyond_end = []
         for env_id in range(2):
             for start_pos in range(14):
                 if start_pos + mini_batch_length > 14:
                     break
-
-                end_pos = None
                 base_index.append([])
-                base_index_no_cut_off.append([])
-                beyond_end.append([])
                 for pos in range(start_pos, start_pos + mini_batch_length):
-                    beyond_end[-1].append(end_pos is not None)
-                    if step_types[env_id][pos] == 'L':
-                        end_pos = pos
-                    updated_pos = end_pos or pos
-                    base_index[-1].append(env_id * 14 + updated_pos)
-                    base_index_no_cut_off[-1].append(env_id * 14 + pos)
+                    base_index[-1].append(env_id * 14 + pos)
         base_index = torch.tensor(base_index, dtype=torch.int64)
-        base_index_no_cut_off = torch.tensor(base_index_no_cut_off, dtype=torch.int64)
-        beyond_end = torch.tensor(beyond_end, dtype=torch.bool)
 
-        def __transform(path, x):
-            if path in ['action', 'value', 'target.game_over', 'target.reward']:
-                return x.squeeze(dim=1)[base_index_no_cut_off]
+        def _transform(path, x):
+            return x.squeeze(dim=1)[base_index]
 
-            y = x.squeeze(dim=1)[base_index]
-            return y
-
-        return alf.nest.py_map_structure_with_path(__transform, base_expected)
+        return alf.nest.py_map_structure_with_path(_transform, base_expected)
 
     @parameterized.parameters(1, 2, 3)
     def test_bootstrap_return_with_reward_function(self, mini_batch_length):
