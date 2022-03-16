@@ -140,6 +140,7 @@ class ScalarPredictionLoss(object):
             bias.zero_()
 
 
+@alf.repr_wrapper
 class SquareLoss(ScalarPredictionLoss):
     """Square loss for predicting scalar target.
 
@@ -257,6 +258,7 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
         return bin1, bin2, w2
 
 
+@alf.repr_wrapper
 class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
     r"""A loss for predicting the distribution of a scalar.
 
@@ -340,6 +342,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
             bias.copy_(probs.log())
 
 
+@alf.repr_wrapper
 class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
     r"""A loss for predicting the distribution of a scalar.
 
@@ -435,6 +438,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
             bias.copy_(((1 - probs) / probs).log())
 
 
+@alf.repr_wrapper
 class QuantileRegressionLoss(ScalarPredictionLoss):
     """Multi-quantile Huber loss
 
