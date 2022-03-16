@@ -815,7 +815,7 @@ def write_gin_configs(root_dir, gin_file):
 
 @logging.skip_log_prefix
 def warning_once(msg, *args):
-    """Generate warning message once.
+    """Generate warning message ``msg % args`` once.
 
     Note that the current implementation resembles that of the ``log_every_n()```
     function in ``logging`` but reduces the calling stack by one to ensure
@@ -828,7 +828,19 @@ def warning_once(msg, *args):
     """
     caller = logging.get_absl_logger().findCaller()
     count = logging._get_next_log_count_per_token(caller)
-    logging.log_if(logging.WARNING, msg, count == 0, *args)
+    logging.log_if(logging.WARNING, "\033[1;31m" + msg + "\033[1;0m",
+                   count == 0, *args)
+
+
+@logging.skip_log_prefix
+def warning(msg, *args):
+    """Generate warning message ``msg % args``.
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    logging.log(logging.WARNING, "\033[1;31m" + msg + "\033[1;0m", *args)
 
 
 def set_random_seed(seed):
