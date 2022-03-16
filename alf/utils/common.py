@@ -151,7 +151,8 @@ class Periodically(nn.Module):
             return
 
 
-def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
+@alf.configurable
+class TargetUpdater(nn.Module):
     r"""Performs a soft update of the target model parameters.
 
     For each weight :math:`w_s` in the model, and its corresponding
@@ -171,15 +172,39 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
         tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
             means hard update.
         period (int): Step interval at which the target model is updated.
-        copy (bool): If True, also copy ``models`` to ``target_models`` in the
+        init_copy (bool): If True, also copy ``models`` to ``target_models`` in the
             beginning.
-    Returns:
-        Callable: a callable that performs a soft update of the target model parameters.
+        delayed_update: if True, ``target_models`` is updated using recent_models
+            every ``period`` steps. If ``tau`` is 1, the recent_models is ``models``
+            ``period`` steps before. If ``tau`` is not 1, recent_models is
+            an exponential moving average of ``models`` with rate ``tau``.
+            The use of delayed_update may help to improve the stability of TD
+            learning when a small ``period`` is used.
     """
-    models = as_list(models)
-    target_models = as_list(target_models)
 
-    def _copy_model_or_parameter(s, t):
+    def __init__(self,
+                 models,
+                 target_models,
+                 tau=1.0,
+                 period=1,
+                 init_copy=True,
+                 delayed_update: bool = False):
+        super().__init__()
+        models = as_list(models)
+        target_models = as_list(target_models)
+        self._models = models
+        self._target_models = target_models
+        if delayed_update:
+            self._recent_models = copy.deepcopy(models)
+        self._tau = tau
+        self._period = period
+        self._delayed_update = delayed_update
+        self._counter = 0
+        if init_copy:
+            for model, target_model in zip(models, target_models):
+                self._copy_model_or_parameter(model, target_model)
+
+    def _copy_model_or_parameter(self, s, t):
         if isinstance(s, nn.Parameter):
             t.data.copy_(s)
         else:
@@ -188,28 +213,39 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
             for ws, wt in zip(s.buffers(), t.buffers()):
                 wt.copy_(ws)
 
-    def _lerp_model_or_parameter(s, t):
+    def _lerp_model_or_parameter(self, s, t):
         if isinstance(s, nn.Parameter):
-            t.data.lerp_(s, tau)
+            t.data.lerp_(s, self._tau)
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
-                wt.data.lerp_(ws, tau)
+                wt.data.lerp_(ws, self._tau)
             for ws, wt in zip(s.buffers(), t.buffers()):
                 wt.copy_(ws)
 
-    if copy:
-        for model, target_model in zip(models, target_models):
-            _copy_model_or_parameter(model, target_model)
-
-    def update():
-        if tau != 1.0:
-            for model, target_model in zip(models, target_models):
-                _lerp_model_or_parameter(model, target_model)
-        else:
-            for model, target_model in zip(models, target_models):
-                _copy_model_or_parameter(model, target_model)
-
-    return Periodically(update, period, 'periodic_update_targets')
+    def forward(self):
+        self._counter += 1
+        if self._counter % self._period == 0:
+            if self._delayed_update:
+                for model, target_model in zip(self._recent_models,
+                                               self._target_models):
+                    self._copy_model_or_parameter(model, target_model)
+            elif self._tau != 1.0:
+                for model, target_model in zip(self._models,
+                                               self._target_models):
+                    self._lerp_model_or_parameter(model, target_model)
+            else:
+                for model, target_model in zip(self._models,
+                                               self._target_models):
+                    self._copy_model_or_parameter(model, target_model)
+        if self._delayed_update:
+            if self._tau != 1.0:
+                for model, target_model in zip(self._models,
+                                               self._recent_models):
+                    self._lerp_model_or_parameter(model, target_model)
+            elif self._counter % self._period == 0:
+                for model, target_model in zip(self._models,
+                                               self._recent_models):
+                    self._copy_model_or_parameter(model, target_model)
 
 
 def expand_dims_as(x, y, end=True):

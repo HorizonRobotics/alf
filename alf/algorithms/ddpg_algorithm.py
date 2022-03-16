@@ -202,7 +202,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
 
-        self._update_target = common.get_target_updater(
+        self._update_target = common.TargetUpdater(
             models=[self._actor_network, self._critic_networks],
             target_models=[
                 self._target_actor_network, self._target_critic_networks

@@ -169,7 +169,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         log_alpha = nn.Parameter(torch.tensor(float(initial_log_alpha)))
         self._log_alpha = log_alpha
 
-        self._update_target = common.get_target_updater(
+        self._update_target = common.TargetUpdater(
             models=[self._critic_networks],
             target_models=[self._target_critic_networks],
             tau=target_update_tau,

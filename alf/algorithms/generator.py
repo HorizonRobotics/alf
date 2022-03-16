@@ -120,16 +120,16 @@ class CriticAlgorithm(Algorithm):
 class InverseMVPAlgorithm(Algorithm):
     r"""InverseMVP network Algorithm
 
-    Maintain an encoding network that takes (z, vec) as input and predicts a 
-    matrix-vector product (mvp) of the form :math:`y=J^{-1}(z)*vec`, where 
+    Maintain an encoding network that takes (z, vec) as input and predicts a
+    matrix-vector product (mvp) of the form :math:`y=J^{-1}(z)*vec`, where
     :math:`J^{-1}(z)` is the inverse of the Jacobian matrix of some function
-    :math:`f(z)`, and ``vec`` is a vector. This network is used in GPVI in 
+    :math:`f(z)`, and ``vec`` is a vector. This network is used in GPVI in
     computing the ``functional_gradient`` of the generator, where :math:`J^{-1}`
     is the inverse of the Jacobian of the generator function w.r.t. input noise
-    :math:`z'`, and ``vec`` is the gradient of the kernel 
+    :math:`z'`, and ``vec`` is the gradient of the kernel
     :math:`\nabla_{z'}k(z', z)`.
 
-    Training of this network is done outside of the algorithm, where the network is 
+    Training of this network is done outside of the algorithm, where the network is
     trained to predict :math:`y` that minimize the  objective :math:`||Jy - vec||^2.
     """
 
@@ -144,9 +144,9 @@ class InverseMVPAlgorithm(Algorithm):
         r"""Create a InverseMVPAlgorithm.
         Args:
             input_dim (int): dimension of input z
-            output_dim (int): output dimension, i.e., dimension of the mvp 
+            output_dim (int): output dimension, i.e., dimension of the mvp
             hidden_size (int): width of hidden layers
-            num_hidden_layers (int): number of hidden layers after 
+            num_hidden_layers (int): number of hidden layers after
             activation (Callable): activation used for all hidden layers.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this Algorithm.
@@ -187,10 +187,10 @@ class InverseMVPAlgorithm(Algorithm):
             inputs (tuple of Tensors): inputs (z, vec) for prediction.
             - z (Tensor): of size [N2, K] or [N2, D], representing :math:`z'`,
                 where K is self._z_dim and D is self._vec_dim.
-            - vec (Tensor): of size [N2, D] or [N2, N, D], representing 
+            - vec (Tensor): of size [N2, D] or [N2, N, D], representing
                 :math:`\nabla_{z'}k(z', z)` in GPVI.
             state: not used.
-            
+
         Returns:
             AlgStep:
             - output (tuple of Tensors): predictions of InverseMVP network
@@ -271,13 +271,13 @@ class Generator(Algorithm):
       3. amortized Fisher Neural Sampler with Hutchinson's estimator (MINMAX):
 
          Hu et at. "Stein Neural Sampler." https://arxiv.org/abs/1810.03545, 2018.
-      
+
       4. generative particle-based variational inference (GPVI)
-         If ``functional_gradient`` is set to True, then GPVI is used. 
+         If ``functional_gradient`` is set to True, then GPVI is used.
 
          Ratzlaff, Bai, et al. "Generative Particle Variational Inference via
-         Estimation of Functional Gradients." International Conference on 
-         Machine Learning. 2021. 
+         Estimation of Functional Gradients." International Conference on
+         Machine Learning. 2021.
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
@@ -359,31 +359,31 @@ class Generator(Algorithm):
                 * minmax: Fisher Neural Sampler, optimal descent direction of
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
-            use_kernel_averager (bool): whether or not to use a running 
-                average of the kernel bandwith for ParVI methods. 
+            use_kernel_averager (bool): whether or not to use a running
+                average of the kernel bandwith for ParVI methods.
             functional_gradient (bool): whether or not to optimize the generator
                 with GPVI. When True, the dimension of the jacobian of the
-                generator function needs to be square -- therefore invertible. 
-                When the generator is not sqaure, we ensure this by sampling 
-                an input noise vector of the same size as the output, and only 
-                forwarding the first ``noise_dim`` components. We then add the 
-                full noise vector to the output, multiplied by the 
-                ``fullrank_diag_weight``.  
+                generator function needs to be square -- therefore invertible.
+                When the generator is not sqaure, we ensure this by sampling
+                an input noise vector of the same size as the output, and only
+                forwarding the first ``noise_dim`` components. We then add the
+                full noise vector to the output, multiplied by the
+                ``fullrank_diag_weight``.
             init_lambda (float): weight on direct input-output link added to
-                the generator output. Only used for GPVI and GPVI_Plus when 
+                the generator output. Only used for GPVI and GPVI_Plus when
                 forcing full rank Jacobian.
             lambda_trainable (bool): whether to train ``lambda``.
             block_inverse_mvp(bool): whether to use the more efficient block form
                 for inverse_mvp when ``functional_gradient`` is True. This
                 option is recommended only when ``noise_dim`` < ``output_dim``.
-                as it is equivalent to the default form when ``noise_dim`` is 
+                as it is equivalent to the default form when ``noise_dim`` is
                 equal to ``output_dim``.
             inverse_mvp_solve_iters (int): number of iterations of inverse_mvp
                 network training per single iteration of generator training.
             inverse_mvp_hidden_size (int): width of hidden layers in inverse_mvp
-                network. 
+                network.
             inverse_mvp_hidden_layers (int): number of hidden layers in inverse_mvp
-                network. 
+                network.
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
@@ -527,7 +527,7 @@ class Generator(Algorithm):
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
             self._predict_net = net.copy(name="Generator_average")
-            self._predict_net_updater = common.get_target_updater(
+            self._predict_net_updater = common.TargetUpdater(
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
     def _trainable_attributes_to_ignore(self):
@@ -1023,13 +1023,13 @@ class Generator(Algorithm):
 
     def _get_vec_for_jac_inv_vec_prod(self, z, vec):
         r"""
-        Construct a vecor as input to the helper network for 
+        Construct a vecor as input to the helper network for
         Jacobian-inverse vector product estimation, used for GPVI_Plus.
 
-        Args: 
-            z (Tensor): of size [N2, K], input noise to the self._net 
-            vec (Tensor): of size [N2, N, D], representing 
-                :math:`\nabla_{z'}k(z', z)`. 
+        Args:
+            z (Tensor): of size [N2, K], input noise to the self._net
+            vec (Tensor): of size [N2, N, D], representing
+                :math:`\nabla_{z'}k(z', z)`.
 
         Returns:
             reshaped vec (Tensor): of shape [N2*N, K]
@@ -1048,25 +1048,25 @@ class Generator(Algorithm):
         return vec, z_repeat  # [N2*N, K]
 
     def _inverse_mvp_train_step(self, z, vec):
-        r"""Compute the loss for inverse_mvp training. 
-        self._inverse_mvp solves an inverse problem for the amortized 
-        functional gradient vi method GPVI.  
-        For GPVI, it takes :math:`z'^{(1:k)}` and :math:`v=\nabla_{z'}K(z', z)` 
-        as input and outputs :math:`v^T(\partial f / \partial z')^{-1}`. 
+        r"""Compute the loss for inverse_mvp training.
+        self._inverse_mvp solves an inverse problem for the amortized
+        functional gradient vi method GPVI.
+        For GPVI, it takes :math:`z'^{(1:k)}` and :math:`v=\nabla_{z'}K(z', z)`
+        as input and outputs :math:`v^T(\partial f / \partial z')^{-1}`.
         For GPVI_plus, it takes :math:`z'^{(1:k)}` and :math:`v` as inputs
         and outputs :math:`v^T(\partial f^{(1:k)} / \partial z'^{(1:k)})^{-1}`,
         where :math:`v` can be :math:`\nabla_{z'^{(1:k)}}K(z', z)` or
         :math:`(\nabla_{z'^{(k:d)}}K(z', z))^T(\partial f^{(k:d)} / \partial z')^{-1}`.
         The training loss is given by
-        :math:`\|(\partical f / \partial z')^T y - v\|^2`, where :math`y` 
-        denotes the output of self._inverse_mvp, and the first term is 
-        computed by vector-jacobian product (vjp) between the generator 
+        :math:`\|(\partical f / \partial z')^T y - v\|^2`, where :math`y`
+        denotes the output of self._inverse_mvp, and the first term is
+        computed by vector-jacobian product (vjp) between the generator
         :math:`f` and :math`y`.
-    
-        Args: 
+
+        Args:
             z (Tensor): of size [N2, D], representing :math:`z'`
-            vec (Tensor): of size [N2, N, D], representing 
-                :math:`\nabla_{z'}k(z', z)`. 
+            vec (Tensor): of size [N2, N, D], representing
+                :math:`\nabla_{z'}k(z', z)`.
 
         Returns:
             inverse_mvp_loss (float)
@@ -1111,12 +1111,12 @@ class Generator(Algorithm):
         """
         Compute the amortized functional gradient of generator, functional gradient
         represented in an RKHS. Empirical expectation evaluated by a resampling
-        from the z space of the same batch size. 
+        from the z space of the same batch size.
 
         Args:
             inputs: None
             outputs (tuple of Tensors): (outputs, gen_inputs) of size [N, D] and
-                [N, K] respectively, where N being the sample size, D being the 
+                [N, K] respectively, where N being the sample size, D being the
                 output dim of ReluMLP and K being the input dim of the generator.
             loss_func (callable)
             entropy_regularization (float): tradeoff parameter
@@ -1186,10 +1186,10 @@ class Generator(Algorithm):
         Compute Jacobian-inverse vector product through direct Jacobian
         Inversion, used for GPVI and GPVI_Plus.
 
-        Args: 
-            z (Tensor): of size [N2, K], input noise to the self._net 
-            vec (Tensor): of size [N2, N, D], representing 
-                :math:`\nabla_{z'}k(z', z)`. 
+        Args:
+            z (Tensor): of size [N2, K], input noise to the self._net
+            vec (Tensor): of size [N2, N, D], representing
+                :math:`\nabla_{z'}k(z', z)`.
 
         Returns:
             J_inv_vec (Tensor): of shape [N2, N, D]

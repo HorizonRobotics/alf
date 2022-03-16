@@ -243,7 +243,7 @@ class SarsaAlgorithm(RLAlgorithm):
             models.append(self._actor_network)
             target_models.append(self._rollout_actor_network)
 
-        self._update_target = common.get_target_updater(
+        self._update_target = common.TargetUpdater(
             models=models,
             target_models=target_models,
             tau=target_update_tau,
