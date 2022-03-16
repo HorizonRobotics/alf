@@ -282,6 +282,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         value_pred = model_output.value_pred
         value = self._value_loss.calc_expectation(value_pred)
         reward_pred = model_output.reward_pred
+        model_state = model_output.state._replace(step=state.step)
         if isinstance(reward_pred, torch.Tensor):
             reward = self._reward_loss.calc_expectation(reward_pred)
             if self._predict_reward_sum:
@@ -293,14 +294,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                     ) % self._reset_reward_sum_period == 0
                     state.prev_reward_sum[need_to_reset] = 0
                 reward = reward - state.prev_reward_sum
-                model_output = model_output._replace(
-                    state=model_output.state._replace(
-                        step=state.step, prev_reward_sum=prev_reward_sum))
+                model_state = model_state._replace(
+                    prev_reward_sum=prev_reward_sum)
         else:
             reward = ()
         if not self.training:
             model_output = model_output._replace(value_pred=(), reward_pred=())
-        return model_output._replace(value=value, reward=reward)
+        return model_output._replace(
+            value=value, reward=reward, state=model_state)
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:

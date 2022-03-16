@@ -14,7 +14,7 @@
 """MuZero algorithm."""
 
 from functools import partial
-from typing import Optional
+from typing import Callable, Optional
 import torch
 import typing
 
@@ -85,7 +85,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  reanalyze_batch_size=None,
                  full_reanalyze=False,
                  data_transformer_ctor=None,
-                 data_augmenter=None,
+                 data_augmenter: Optional[Callable] = None,
                  target_update_tau=1.,
                  target_update_period=1000,
                  config: Optional[TrainerConfig] = None,
@@ -150,6 +150,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
+            data_augmenter: If provided, will called to perform data augmentation
+                as ``data_augmenter(observation)``.
             target_update_tau (float): Factor for soft update of the target
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
@@ -159,6 +161,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             enable_amp: whether to use automatic mixed precision for inference.
                 This usually makes the algorithm run faster. However, the result
                 may be different (mostly likely due to random fluctuation).
+            random_action_after_episode_end: If False, the actions used to predict
+                future state after the end of an episode will be the same as the
+                last action. If True, they will be uniformly sampled.
             debug_summaries (bool):
             name (str):
 
