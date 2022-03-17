@@ -34,7 +34,7 @@ MAXIMUM_FLOAT_VALUE = float('inf')
 
 class _MCTSTrees(object):
     def __init__(self, num_expansions, model_output, known_value_bounds,
-                 num_best_children):
+                 num_best_children, discount, value_min_max_delta):
         batch_size, branch_factor = model_output.action_probs.shape
         action_spec = dist_utils.extract_spec(model_output.actions, from_dim=2)
         state_spec = dist_utils.extract_spec(model_output.state, from_dim=1)
@@ -56,6 +56,8 @@ class _MCTSTrees(object):
         else:
             self.normalize_scale = torch.ones((batch_size, ))
             self.normalize_base = torch.zeros((batch_size, ))
+        self.discount = discount
+        self.value_min_max_delta = value_min_max_delta
 
         self.B = torch.arange(batch_size)
         self.root_indices = torch.zeros((batch_size, ), dtype=torch.int64)
@@ -113,7 +115,9 @@ class _MCTSTrees(object):
         """
         if self.fixed_bounds:
             return
-        values = self.calc_value(nodes)
+        values = self.discount * self.calc_value(nodes)
+        if self.reward is not None:
+            values = self.reward[nodes] + values
         if valid is not None:
             invalid = ~valid
             values[invalid] = -MAXIMUM_FLOAT_VALUE
@@ -130,7 +134,8 @@ class _MCTSTrees(object):
         # We normalize only when we have set the maximum and minimum values.
         normalize = self.maximum > self.minimum
         self.normalize_scale = torch.where(
-            normalize, 1 / (self.maximum - self.minimum + 1e-30),
+            normalize, 1 /
+            (self.maximum - self.minimum).clamp(min=self.value_min_max_delta),
             self.normalize_scale)
         self.normalize_base = torch.where(normalize, self.minimum,
                                           self.normalize_base)
@@ -251,6 +256,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             expand_all_children: bool = False,
             expand_all_root_children: bool = False,
             known_value_bounds=None,
+            value_min_max_delta: float = 1e-30,
+            ucb_break_tie_eps: float = 0.,
+            ucb_parent_visit_count_minus_one: bool = False,
             unexpanded_value_score=0.5,
             act_with_exploration_policy=False,
             search_with_exploration_policy=False,
@@ -313,6 +321,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 count does not truly refect the quality of a node. Hence it
                 should be used with (act/learn)_with_exploration_policy=True.
             known_value_bounds (tuple|None): known bound of the values.
+            value_min_max_delta: when normalizing the value using the the min and
+                max values, ``(max-min).clamp(min=value_min_max_delta)`` is used
+                as the denominator.
+            ucb_break_tie_eps: add a random number in the range of [0, ucb_break_tie_eps)
+                to the UCB score to choose actions with close UCB score randomly.
+                It is used only if at least one of ``act/search/learn_with_exploration_policy``
+                is False.
+            ucb_parent_visit_count_minus_one: This option effectively chooses the
+                first child of a parent uniformly, which can increase exploration.
             unexpanded_value_score (float|str): The value score for an unexpanded
                 child. If 'max'/'min'/'mean', will use the maximum/minimum/mean
                 of the value scores of the expanded siblings. If 'mean_with_parent',
@@ -340,6 +357,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         assert reward_spec.shape == (), "Only scalar reward is supported"
         self._num_simulations = num_simulations
         self._known_value_bounds = known_value_bounds
+        self._value_min_max_delta = value_min_max_delta
+        self._ucb_break_tie_eps = ucb_break_tie_eps
+        self._ucb_parent_visit_count_minus_one = ucb_parent_visit_count_minus_one
         self._model = None
         self._pb_c_base = pb_c_base  # c2 in Appendix B (2)
         self._pb_c_init = pb_c_init  # c1 in Appendix B (2)
@@ -442,8 +462,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             tree_size = self._num_simulations + 1
 
-        trees = _MCTSTrees(tree_size, model_output, self._known_value_bounds,
-                           self._num_parallel_sims)
+        trees = _MCTSTrees(
+            tree_size,
+            model_output,
+            self._known_value_bounds,
+            self._num_parallel_sims,
+            discount=self._discount,
+            value_min_max_delta=self._value_min_max_delta)
         if self._is_two_player_game and to_plays is None:
             # We may need the environment to pass to_play and pass to_play to
             # model because players may not always alternate in some game.
@@ -856,11 +881,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _ucb_score1(self, parent_visit_count, child_visit_count, prior,
                     value_score):
+        if self._ucb_parent_visit_count_minus_one:
+            parent_visit_count = parent_visit_count - 1
         pb_c = torch.log1p(
             (parent_visit_count + 1) / self._pb_c_base) + self._pb_c_init
         pb_c = pb_c * torch.sqrt(parent_visit_count.to(
             torch.float32)) / (child_visit_count + 1.)
         prior_score = pb_c * prior
+        if self._ucb_break_tie_eps > 0:
+            prior_score += self._ucb_break_tie_eps * torch.rand_like(
+                prior_score)
         return prior_score + value_score
 
     def _value_score(self, trees: _MCTSTrees, parents):
@@ -914,6 +944,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _calculate_policy(self, trees: _MCTSTrees, parents):
         parent_visit_count = trees.visit_count[parents].unsqueeze(-1)
+        if self._ucb_parent_visit_count_minus_one:
+            parent_visit_count = parent_visit_count - 1
         c = torch.log1p(
             (parent_visit_count + 1) / self._pb_c_base) + self._pb_c_init
         c = c / parent_visit_count.to(torch.float32).sqrt()
@@ -932,6 +964,13 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             policy, iterations = calculate_exploration_policy(
                 value_score, expanded_prior, c)
             policy = torch.where(expanded, policy * sum_expanded, prior)
+        if self._ucb_parent_visit_count_minus_one:
+            # "parent_visit_count == 0" will get c=inf and policy will be equal to
+            # prior. But according to ucb calculation (_ucb_score1()), we should
+            # use uniform distribution in this case.
+            uniform = (parent_visit_count == 0).unsqueeze(1)
+            policy[uniform] = 1 / policy.shape[1]
+
         self._max_policy_iterations = max(self._max_policy_iterations,
                                           iterations)
         return policy
