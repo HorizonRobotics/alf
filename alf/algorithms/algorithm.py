@@ -1040,6 +1040,9 @@ class Algorithm(AlgorithmInterface):
             - params (list[(name, Parameter)]): list of parameters being updated.
         """
 
+        if self._debug_summaries:
+            summary_utils.summarize_per_category_loss(loss_info)
+
         loss_info = self._aggregate_loss(loss_info, valid_masks, batch_info)
 
         all_params = self._backward_and_gradient_update(
@@ -1926,6 +1929,10 @@ class Algorithm(AlgorithmInterface):
         else:
             offline_valid_masks = None
 
+        if self._debug_summaries:
+            with alf.summary.scope("offline"):
+                summary_utils.summarize_per_category_loss(offline_loss_info)
+
         offline_loss_info = self._aggregate_loss(
             offline_loss_info, offline_valid_masks, offline_batch_info)
 
@@ -1935,6 +1942,10 @@ class Algorithm(AlgorithmInterface):
                     torch.float32)
             else:
                 valid_masks = None
+
+            if self._debug_summaries:
+                summary_utils.summarize_per_category_loss(loss_info)
+
             loss_info = self._aggregate_loss(loss_info, valid_masks,
                                              batch_info)
             # TODO: merge loss infos into one for summarization

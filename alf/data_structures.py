@@ -479,6 +479,10 @@ LossInfo = namedtuple(
         # with probability proportional to this weight powered to
         # config.priority_replay_alpha.  If not empty, its shape should be (B,).
         "priority",
+
+        # per-sample labels used for summarizing loss of samples within each
+        # category in the batch. Its shape should be the same as ``loss``.
+        "batch_label"
     ],
     default_value=())
 

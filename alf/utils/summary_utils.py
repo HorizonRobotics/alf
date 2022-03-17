@@ -166,6 +166,39 @@ def add_nested_summaries(prefix, data):
 
 
 @_summary_wrapper
+def summarize_per_category_loss(loss_info: LossInfo):
+    """Add summary about each category of the unaggregated ``loss_info.loss``
+    of the shape (T, B), or (B, ) by partationing it according to
+    ``loss_info.batch_label``, which has the same shape as ``loss_info.loss``.
+
+    Args:
+        loss_info (LossInfo): do per-category summarization if
+        ``loss_info.batch_label`` is present, and skip otherwise
+    """
+
+    if loss_info.batch_label != ():
+        assert loss_info.batch_label.shape == loss_info.loss.shape, (
+            "shape mis-match between batch_label shape {} and loss "
+            "shape {}".format(loss_info.batch_label.shape,
+                              loss_info.loss.shape))
+
+        # (T, B) -> (T * B, )
+        loss = loss_info.loss.reshape(-1)
+        batch_label = loss_info.batch_label.int().reshape(-1)
+        labels = torch.unique(batch_label)
+        labels = labels.tolist()
+        for label in labels:
+            subset_indices = (
+                batch_label == label).nonzero().reshape(-1).long()
+            subset_loss = torch.index_select(loss, 0, subset_indices)
+            alf.summary.scalar(
+                'loss/loss_for_category_{}'.format(label),
+                data=subset_loss.mean())
+    else:
+        return
+
+
+@_summary_wrapper
 def summarize_loss(loss_info: LossInfo):
     """Add summary about ``loss_info``
 
