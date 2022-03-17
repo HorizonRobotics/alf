@@ -1422,6 +1422,13 @@ class CarlaEnvironment(AlfEnvironment):
             with _get_unused_port(8000, n=1) as tm_port:
                 self._traffic_manager = self._client.get_trafficmanager(
                     tm_port)
+                # Need to set traffic manager (TM) to synchronous mode, since
+                # traffic manager is designed to work in synchronous mode.
+                # Both the CARLA server and TM should be set to synchronous
+                # in order to function properly. Using TM in asynchronous mode
+                # can lead to unexpected and undesirable results according to
+                # https://carla.readthedocs.io/en/latest/adv_traffic_manager/#synchronous-mode
+                self._traffic_manager.set_synchronous_mode(True)
             self._traffic_manager.set_hybrid_physics_mode(
                 use_hybrid_physics_mode)
             self._traffic_manager.set_global_distance_to_leading_vehicle(
