@@ -344,10 +344,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             start_positions = convert_device(batch_info.positions)
 
             # [B, T + R], capped at the end of the replay buffer.
-            folded_positions = torch.min(
-                start_positions.unsqueeze(-1) + torch.arange(T + R),
-                replay_buffer.get_current_position()[start_env_ids, None] - 1)
-
+            folded_positions = start_positions.unsqueeze(-1) + torch.arange(T +
+                                                                            R)
             # [B, T, R + 1]
             positions = folded_positions.unfold(1, R + 1, 1)
 
@@ -362,6 +360,13 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             # [B, T, R + 1]
             beyond_episode_end = positions > episode_end_positions
+
+            # [B, T + R], capped at the end of the replay buffer.
+            folded_positions = torch.min(
+                folded_positions,
+                replay_buffer.get_current_position()[start_env_ids, None] - 1)
+
+            # [B, T, R + 1], now capped at episode ends
             positions = torch.min(positions, episode_end_positions)
 
             if self._reanalyze_ratio > 0:
