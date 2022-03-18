@@ -59,8 +59,8 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         action_fc_layer_params = (10, 8)
         joint_fc_layer_params = (6, 4)
 
-        image = obs_spec.zeros(outer_dims=(1, ))
-        action = action_spec.randn(outer_dims=(1, ))
+        image = obs_spec.zeros(outer_dims=(2, ))
+        action = action_spec.randn(outer_dims=(2, ))
 
         network_input = (image, action)
 
@@ -74,7 +74,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         test_net_copy(critic_net)
 
         value, state = critic_net._test_forward()
-        self.assertEqual(value.shape, (1, ))
+        self.assertEqual(value.shape, (2, ))
         if lstm_hidden_size is None:
             self.assertEqual(state, ())
 
@@ -82,7 +82,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertEqual(critic_net.output_spec, TensorSpec(()))
         # (batch_size,)
-        self.assertEqual(value.shape, (1, ))
+        self.assertEqual(value.shape, (2, ))
 
         # test make_parallel
         pnet = critic_net.make_parallel(6)
@@ -97,7 +97,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         value, state = pnet(network_input, state)
         self.assertEqual(pnet.output_spec, TensorSpec((6, )))
-        self.assertEqual(value.shape, (1, 6))
+        self.assertEqual(value.shape, (2, 6))
 
     def test_make_parallel(self):
         obs_spec = TensorSpec((20, ), torch.float32)
