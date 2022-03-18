@@ -69,26 +69,39 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         """
         Args:
             env (gym.Env): the gym environment
-            fields (list[str]): fields to be applied transformation, A field str is a multi-level
-                path denoted by "A.B.C". If None, then non-nested observation is transformed
+            fields (list[str]): fields to be applied transformation, A field str
+                is a multi-level path denoted by "A.B.C". If None, then all
+                elements will be transformed
         """
         super().__init__(env)
 
-        self._fields = fields or [None]
+        self._fields = fields
         observation_space = env.observation_space
-        for field in self._fields:
-            observation_space = transform_space(
-                observation_space=observation_space,
-                field=field,
-                func=self.transform_space)
+        if self._fields is not None:
+            for field in self._fields:
+                observation_space = transform_space(
+                    observation_space=observation_space,
+                    field=field,
+                    func=self.transform_space)
+        else:
+            if isinstance(observation_space, gym.spaces.Dict):
+                observation_space = observation_space.spaces
+            observation_space = alf.nest.map_structure(self.transform_space,
+                                                       observation_space)
+            if isinstance(observation_space, dict):
+                observation_space = gym.spaces.Dict(observation_space)
         self.observation_space = observation_space
 
     def observation(self, observation):
-        for field in self._fields:
-            observation = transform_nest(
-                nested=observation,
-                field=field,
-                func=self.transform_observation)
+        if self._fields is not None:
+            for field in self._fields:
+                observation = transform_nest(
+                    nested=observation,
+                    field=field,
+                    func=self.transform_observation)
+        else:
+            observation = alf.nest.map_structure(self.transform_observation,
+                                                 observation)
         return observation
 
     def transform_space(self, observation_space):
