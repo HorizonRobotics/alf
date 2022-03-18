@@ -242,11 +242,16 @@ class FrameStack(BaseObservationWrapper):
             raise ValueError("Unsupported space:%s" % observation_space)
 
     def observation(self, observation):
-        for field in self._fields:
-            observation = transform_nest(
-                nested=observation,
-                field=field,
-                func=lambda obs: self.transform_observation(obs, field))
+        if self._fields is not None:
+            for field in self._fields:
+                observation = transform_nest(
+                    nested=observation,
+                    field=field,
+                    func=lambda obs: self.transform_observation(obs, field))
+        else:
+            observation = alf.nest.py_map_structure_with_path(
+                lambda field, obs: self.transform_observation(obs, field),
+                observation)
         return observation
 
     def transform_observation(self, observation, field):
