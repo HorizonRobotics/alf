@@ -50,14 +50,17 @@ import alf
 try:
     import rlbench
     import rlbench.gym
-    from rlbench.observation_config import ObservationConfig
+    from rlbench.gym.rlbench_env import RLBenchEnv
+    from rlbench.observation_config import CameraConfig, ObservationConfig
     import alf.environments.rlbench_custom_tasks
 except ImportError:
     rlbench = None
+    RLBenchEnv = None
     ObservationConfig = None
 
 from typing import List
 import gym
+import numpy as np
 
 from alf.environments.alf_wrappers import AlfEnvironmentBaseWrapper
 from alf.environments.alf_environment import AlfEnvironment
@@ -68,11 +71,138 @@ def is_available():
     return rlbench is not None
 
 
+class RLBenchLanguageWrapper(gym.Wrapper):
+    """A language command wrapper for RLBench environments.
+
+    For some tasks, the language command can be used to infer the target object.
+    Each episode will randomly sample a command from the candidate set returned by
+    the wrapped env's ``reset()``. This command will given to the robot one character
+    per time step. We assume that the vocabulary is 26 lower-case letters plus ' '.
+    """
+
+    VOCAB_SIZE = 128
+
+    def __init__(self, env: RLBenchEnv, language: bool = False):
+        """
+        Args:
+            env: an RLBench gym env instance
+            language: whether use language commands
+        """
+        assert isinstance(env, RLBenchEnv), (
+            "This wrapper only accepts an RLBenchEnv instance! "
+            "Make sure to put this wrapper as the first gym wrapper.")
+        super().__init__(env)
+
+        if language:
+            obs_space = {
+                'observation': env.observation_space,
+                'command': gym.spaces.Discrete(self.VOCAB_SIZE)
+            }
+            self.observation_space = gym.spaces.Dict(obs_space)
+
+        self._language = language
+        self._cmd_chars = []
+
+    def reset(self, **kwargs):
+        commands, obs = self.env.reset(**kwargs)
+        if not self._language:
+            return obs
+        else:
+            command = np.random.choice(commands)
+            self._cmd_chars = [ord(c) for c in command]
+            if np.amax(self._cmd_chars) > 127:
+                raise ValueError(
+                    "Character out of range. The unicode of "
+                    "character should be in [0, 127]: %s" % command)
+            return self._augment_obs_with_command(obs)
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        if self._language:
+            obs = self._augment_obs_with_command(obs)
+        return obs, reward, done, info
+
+    def _augment_obs_with_command(self, obs):
+        observation = {'observation': obs}
+        if self._cmd_chars:
+            observation['command'] = self._cmd_chars.pop(0)
+        else:
+            observation['command'] = np.int64(0)
+        return observation
+
+
+class TaskVariationWrapper(gym.Wrapper):
+    """This wrapper enables variations (different goals) for a task (if applicable).
+    For example, in the ``reach_target`` task, the target object might have a
+    different color for a different variation.
+    """
+
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+
+    def reset(self, **kwargs):
+        return self.env.reset(variation=True, **kwargs)
+
+
+"""
+class StackRGBDepth(gym.Wrapper):
+    ""For any pair of RGB and depth from the same camera, this wrapper stacks
+    them to form a 'rgbd' image, add it to the observation dict, and remove the
+    RGB and depth from the observation. This wrapper also converts rgb uint8 to
+    float in [0,1] before stacking with depth.
+    ""
+    def __init__(self, env):
+        super().__init__(env)
+        assert isinstance(self.observation_space, gym.spaces.Dict)
+        self.observation_space = gym.spaces.Dict(self._stack_observations(
+            self.observation_space.spaces, self._stack_spaces))
+
+    def _stack_observations(self, observation, stack_fn):
+        # ``observation`` can be either a dict of arrays or a ``gym.spaces.Dict``
+        obs = dict()
+        excluded_keys = []
+        for k, v in observation.items():
+            if k.endswith("_depth"):
+                camera = '_'.join(k.split('_')[:-1])
+                rgb = observation.get(camera + "_rgb", None)
+                if rgb is not None:
+                    obs[camera + '_rgbd'] = stack_fn(rgb, v)
+                    excluded_keys.append(camera + '_rgb')
+                    continue
+            obs[k] = v
+        for k in excluded_keys:
+            obs.pop(k)
+        return obs
+
+    def _stack_spaces(self, rgb, d):
+        # [H,W,D]
+        return gym.spaces.Box(
+            low=d.low.min(), high=d.high.max(), shape=d.shape + (4,),
+            dtype=d.dtype)
+
+    def _stack_arrays(self, rgb, d):
+        # [H,W,D]
+        return np.concatenate([rgb, np.expand_dims(d, -1)], axis=-1)
+
+    def reset(self):
+        obs = self.env.reset()
+        obs = self._stack_observations(obs, self._stack_arrays)
+        return obs
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        obs = self._stack_observations(obs, self._stack_arrays)
+        return obs, reward, done, info
+"""
+
+
 @alf.configurable
 def load(environment_name: str,
          env_id: int = None,
          discount: float = 1.,
          max_episode_steps: int = None,
+         observe_language: bool = False,
+         task_variation: bool = False,
          observation_config: ObservationConfig = None,
          gym_env_wrappers: List[gym.Wrapper] = (),
          alf_env_wrappers: List[AlfEnvironmentBaseWrapper] = ()
@@ -98,6 +228,11 @@ def load(environment_name: str,
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
             to 0 or if there is no ``timestep_limit`` set in the environment's spec.
+        observe_language: whether the observation contains language commands or not.
+        task_variation: whether enables task variations across episodes. If True, then
+            ``observe_language`` must also be True to let the agent know the task goal.
+            For example, in ``reach_target`` task, the variation is which object to reach,
+            and the language command will describe the goal.
         observation_config: configuration object for observation. Using this config,
             we can easily customize which sensors to turn on in the env observation.
             For all options, please see ``rlbench.observation_config.py``. This arg
@@ -116,6 +251,11 @@ def load(environment_name: str,
             max_episode_steps = gym_spec.max_episode_steps
         else:
             max_episode_steps = 0
+
+    env = RLBenchLanguageWrapper(env, observe_language)
+
+    if task_variation:
+        env = TaskVariationWrapper(env)
 
     return suite_gym.wrap_env(
         env,

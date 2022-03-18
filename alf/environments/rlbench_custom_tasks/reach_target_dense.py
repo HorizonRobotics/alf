@@ -42,4 +42,6 @@ class ReachTargetDense(ReachTarget):
         else:
             reward = self._prev_distance - distance
         self._prev_distance = distance
+        # additional big reward when success
+        #reward += float(self.success()[0]) * 0.1
         return reward
