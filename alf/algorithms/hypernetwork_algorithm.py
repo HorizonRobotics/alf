@@ -220,6 +220,7 @@ class HyperNetwork(Algorithm):
                 trainset,
                 testset,
                 outlier_dataloaders,
+                mini_batch_training=mini_batch_training,
                 entropy_regularization=entropy_regularization)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
@@ -349,6 +350,7 @@ class HyperNetwork(Algorithm):
                         train_loader,
                         test_loader=None,
                         outlier_data_loaders=None,
+                        mini_batch_training=True,
                         entropy_regularization=None):
         """Set data loadder for training and testing.
 
@@ -360,7 +362,7 @@ class HyperNetwork(Algorithm):
             entropy_regularization (float): weight for par_vi repulsive term.
                 If None, then self._entropy_regarization is used.
         """
-        if self._mini_batch_training:
+        if mini_batch_training:
             assert train_loader.batch_size % self.num_particles == 0, (
                 "The batch_size of train_loader must be multiples of num_particles."
             )
