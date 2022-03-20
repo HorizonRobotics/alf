@@ -78,6 +78,7 @@ class HyperNetwork(Algorithm):
                  generator_use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
+                 mini_batch_training=True,
                  critic_hidden_layers=(100, 100),
                  critic_iter_num=2,
                  critic_l2_weight=10.,
@@ -142,6 +143,8 @@ class HyperNetwork(Algorithm):
             entropy_regularization (float): weight for par_vi repulsive term. If
                 ``None`` and ``data_creator`` is provided, will be set as the ratio
                 between the batch_size and the total size of the trainset.
+            mini_batch_training (bool): whether training using mini_batch or the 
+                whole dataset, default is True.
             critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
             critic_hidden_layers (tuple): sizes of critic hidden layeres.
             critic_iter_num (int): number of minmax optimization iterations to 
@@ -324,6 +327,7 @@ class HyperNetwork(Algorithm):
         self._generator_use_fc_bn = generator_use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
+        self._mini_batch_training = mini_batch_training
         self._functional_gradient = functional_gradient
         self._direct_jac_inverse = direct_jac_inverse
         self._logging_training = logging_training
@@ -356,11 +360,20 @@ class HyperNetwork(Algorithm):
             entropy_regularization (float): weight for par_vi repulsive term.
                 If None, then self._entropy_regarization is used.
         """
+        if self._mini_batch_training:
+            assert train_loader.batch_size % self.num_particles == 0, (
+                "The batch_size of train_loader must be multiples of num_particles."
+            )
+            permute_idx = np.arange(self.num_particles - 1)
+            self._permute_idx = np.insert(permute_idx, 0, -1)
+
         self._train_loader = train_loader
         self._test_loader = test_loader
         if entropy_regularization is None:
             self._entropy_regularization = train_loader.batch_size \
                 / train_loader.dataset.data.shape[0]
+        else:
+            self._entropy_regularization = entropy_regularization
 
         if outlier_data_loaders is not None:
             assert isinstance(outlier_data_loaders, tuple), "outlier dataset "\
@@ -447,15 +460,40 @@ class HyperNetwork(Algorithm):
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
-                alg_step = self.train_step((data, target),
-                                           num_particles=num_particles,
-                                           state=state)
-                loss_info, params = self.update_with_gradient(alg_step.info)
-                loss += loss_info.extra.generator.loss
-                if self._functional_gradient and not self._direct_jac_inverse:
-                    inverse_mvp_loss += loss_info.extra.inverse_mvp
-                if self._loss_type == 'classification':
-                    avg_acc.append(alg_step.info.extra.generator.extra)
+
+                if self._mini_batch_training:
+                    # [B*n, d] -> [B, n, d]
+                    data = data.reshape(-1, self.num_particles,
+                                        *data.shape[1:])
+                    target = target.reshape(-1, self.num_particles,
+                                            *target.shape[1:])
+                    for permute_iter in range(self.num_particles):
+                        if permute_iter != 0:
+                            data = data[:, self._permute_idx, ...]
+                            target = target[:, self._permute_idx, ...]
+
+                        alg_step = self.train_step((data, target),
+                                                   num_particles=num_particles,
+                                                   state=state)
+                        loss_info, params = self.update_with_gradient(
+                            alg_step.info)
+                        loss += loss_info.extra.generator.loss
+                        if self._functional_gradient and not self._direct_jac_inverse:
+                            inverse_mvp_loss += loss_info.extra.inverse_mvp
+                        if self._loss_type == 'classification':
+                            avg_acc.append(alg_step.info.extra.generator.extra)
+                else:
+                    alg_step = self.train_step((data, target),
+                                               num_particles=num_particles,
+                                               state=state)
+                    loss_info, params = self.update_with_gradient(
+                        alg_step.info)
+                    loss += loss_info.extra.generator.loss
+                    if self._functional_gradient and not self._direct_jac_inverse:
+                        inverse_mvp_loss += loss_info.extra.inverse_mvp
+                    if self._loss_type == 'classification':
+                        avg_acc.append(alg_step.info.extra.generator.extra)
+
         acc = None
         if self._loss_type == 'classification':
             acc = torch.as_tensor(avg_acc).mean() * 100
@@ -590,8 +628,9 @@ class HyperNetwork(Algorithm):
         num_particles = params.shape[0]
         data, target = inputs
         output, _ = self._param_net(data)  # [B, P, D]
-        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
-                                            *target.shape[1:])
+        if not self._mini_batch_training:
+            target = target.unsqueeze(1).expand(
+                *target.shape[:1], num_particles, *target.shape[1:])
         return self._loss_func(output, target)
 
     def evaluate(self, num_particles=None):

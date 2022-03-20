@@ -89,6 +89,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  last_use_ln=False,
                  num_particles=10,
                  entropy_regularization=1.,
+                 mini_batch_training=True,
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
@@ -145,6 +146,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi.
+            mini_batch_training (bool): whether training using mini_batch or the 
+                whole dataset, default is True.
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
@@ -257,6 +260,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
+        self._mini_batch_training = mini_batch_training
         self._function_vi = function_vi
 
         if function_vi:
@@ -294,6 +298,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             entropy_regularization (float): weight of particle VI repulsive
                 term.
         """
+        if self._mini_batch_training:
+            assert train_loader.batch_size % self.num_particles == 0, (
+                "The batch_size of train_loader must be multiples of num_particles."
+            )
+            permute_idx = np.arange(self.num_particles - 1)
+            self._permute_idx = np.insert(permute_idx, 0, -1)
+
         self._train_loader = train_loader
         self._test_loader = test_loader
         if entropy_regularization is not None:
@@ -347,11 +358,31 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
-                alg_step = self.train_step((data, target), state=state)
-                loss_info, params = self.update_with_gradient(alg_step.info)
-                loss += loss_info.extra.loss
-                if self._loss_type == 'classification':
-                    avg_acc.append(alg_step.info.extra.extra)
+
+                if self._mini_batch_training:
+                    # [B*n, d] -> [B, n, d]
+                    data = data.reshape(-1, self.num_particles,
+                                        *data.shape[1:])
+                    target = target.reshape(-1, self.num_particles,
+                                            *target.shape[1:])
+                    for permute_iter in range(self.num_particles):
+                        if permute_iter != 0:
+                            data = data[:, self._permute_idx, ...]
+                            target = target[:, self._permute_idx, ...]
+                        alg_step = self.train_step((data, target), state=state)
+                        loss_info, params = self.update_with_gradient(
+                            alg_step.info)
+                        loss += loss_info.extra.loss
+                        if self._loss_type == 'classification':
+                            avg_acc.append(alg_step.info.extra.extra)
+                else:
+                    alg_step = self.train_step((data, target), state=state)
+                    loss_info, params = self.update_with_gradient(
+                        alg_step.info)
+                    loss += loss_info.extra.loss
+                    if self._loss_type == 'classification':
+                        avg_acc.append(alg_step.info.extra.extra)
+
         acc = None
         if self._loss_type == 'classification':
             acc = torch.as_tensor(avg_acc).mean() * 100
@@ -457,19 +488,23 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         """
         num_particles = outputs.shape[0]
         if self._loss_type == 'regression':
-            # [B, D] -> [B, N, D]
-            targets = _expand_to_replica(targets, num_particles,
-                                         self._param_net.output_spec)
+            if not self._mini_batch_training:
+                # [B, D] -> [B, N, D]
+                targets = _expand_to_replica(targets, num_particles,
+                                             self._param_net.output_spec)
             # [B, N, D] -> [N, B, D]
             targets = targets.permute(1, 0, 2)
             # [N, B, D] -> [N, -1]
             targets = targets.view(num_particles, -1)
         else:
-            # [B] -> [B, 1]
-            targets = targets.unsqueeze(1)
-            # [B, 1] -> [N, B, 1]
-            targets = targets.unsqueeze(0).expand(num_particles,
-                                                  *targets.shape)
+            # [B] -> [B, 1] or [B, N] -> [B, N, 1]
+            targets = targets.unsqueeze(-1)
+            if not self._mini_batch_training:
+                # [B, 1] -> [N, B, 1]
+                targets = targets.unsqueeze(0).expand(num_particles,
+                                                      *targets.shape)
+            # [B, N, 1] -> [N, B, 1]
+            targets = targets.permute(1, 0, 2)
 
         return self._loss_func(outputs, targets)
 
@@ -488,14 +523,15 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         num_particles = params.shape[0]
         data, target = inputs
         output, _ = self._param_net(data)  # [B, N, D]
-        if self._loss_type == 'regression':
-            # [B, d] -> [B, N, d]
-            target = _expand_to_replica(target, num_particles,
-                                        self._param_net.output_spec)
-        else:
-            # [B] -> [B, N]
-            target = target.unsqueeze(1).expand(*target.shape[:1],
-                                                num_particles)
+        if not self._mini_batch_training:
+            if self._loss_type == 'regression':
+                # [B, d] -> [B, N, d]
+                target = _expand_to_replica(target, num_particles,
+                                            self._param_net.output_spec)
+            else:
+                # [B] -> [B, N]
+                target = target.unsqueeze(1).expand(*target.shape[:1],
+                                                    num_particles)
 
         return self._loss_func(output, target)
 
