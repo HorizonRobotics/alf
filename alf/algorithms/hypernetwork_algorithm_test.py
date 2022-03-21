@@ -274,9 +274,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
 
         algorithm.set_data_loader(
-            train_loader,
-            mini_batch_training=False,
-            entropy_regularization=train_batch_size / size)
+            train_loader, entropy_regularization=train_batch_size / size)
 
         def _test(i, sampled_predictive=False):
             print("-" * 68)
