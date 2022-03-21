@@ -183,7 +183,7 @@ class FrameStacker(DataTransformer):
         self._stack_axis = stack_axis
         self._stack_size = stack_size
         self._frames = dict()
-        self._fields = fields if fields is not None else [None]
+        self._fields = fields if (fields is not None) else [None]
         self._exp_fields = []
         prev_frames_spec = []
         stacked_observation_spec = observation_spec

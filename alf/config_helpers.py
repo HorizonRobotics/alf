@@ -41,8 +41,8 @@ def get_raw_observation_spec(field=None):
     """Get the ``TensorSpec`` of observations provided by the global environment.
 
     .. note::
-        This function can only be called after all gym wrappers have been
-        configured. Otherwise the created environment might have unexpected
+        This function can only be called after all gym wrappers and ``TrainerConfig.random_seed``
+        have been configured. Otherwise the created environment might have unexpected
         behaviors.
 
     Args:
