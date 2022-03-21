@@ -21,12 +21,13 @@ import torch.nn as nn
 import alf
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .preprocessor_networks import PreprocessorNetwork
+from alf.networks import Network
 from alf.tensor_specs import TensorSpec
 import alf.utils.math_ops as math_ops
 
 
 @alf.configurable
-class ValueNetwork(PreprocessorNetwork):
+class ValueNetwork(Network):
     """Output temporally uncorrelated values."""
 
     def __init__(self,
@@ -46,7 +47,7 @@ class ValueNetwork(PreprocessorNetwork):
             input_tensor_spec (TensorSpec): the tensor spec of the input
             output_tensor_spec (TensorSpec): spec for the output
             input_preprocessors (nested Network|nn.Module|None): a nest of
-                stateless input preprocessors, each of which will be applied to the
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.
@@ -74,11 +75,7 @@ class ValueNetwork(PreprocessorNetwork):
                 FC layers (i.e. FC layers beside the last one).
             name (str):
         """
-        super().__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner,
-            name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         if kernel_initializer is None:
             kernel_initializer = torch.nn.init.xavier_uniform_
@@ -87,7 +84,9 @@ class ValueNetwork(PreprocessorNetwork):
             torch.nn.init.uniform_, a=-0.03, b=0.03)
 
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
@@ -110,8 +109,7 @@ class ValueNetwork(PreprocessorNetwork):
             value (torch.Tensor): a 1D tensor
             state: empty
         """
-        observation, state = super().forward(observation, state)
-        value, _ = self._encoding_net(observation)
+        value, state = self._encoding_net(observation, state)
         value = value.reshape(value.shape[0], *self._output_spec.shape)
         return value, state
 
@@ -122,7 +120,7 @@ class ValueNetwork(PreprocessorNetwork):
         return ParallelValueNetwork(self, n, "parallel_" + self._name)
 
 
-class ParallelValueNetwork(PreprocessorNetwork):
+class ParallelValueNetwork(Network):
     """Perform ``n`` value computations in parallel."""
 
     def __init__(self,
@@ -138,12 +136,9 @@ class ParallelValueNetwork(PreprocessorNetwork):
             name (str):
         """
 
-        # TODO: handle input_preprocessors
-        assert value_network._input_preprocessors is None
-
         super().__init__(
             input_tensor_spec=value_network.input_tensor_spec, name=name)
-        self._encoding_net = value_network._encoding_net.make_parallel(n, True)
+        self._encoding_net = value_network._encoding_net.make_parallel(n)
         self._output_spec = TensorSpec((n, ) + value_network.output_spec.shape)
 
     def forward(self, observation, state=()):
@@ -153,14 +148,13 @@ class ParallelValueNetwork(PreprocessorNetwork):
             state (tuple): Empty for API consistent with ``ValueRNNNetwork``.
         """
 
-        observation, _ = super().forward(observation, state, max_outer_rank=2)
-        value, _ = self._encoding_net(observation)
+        value, state = self._encoding_net(observation, state)
         value = value.reshape(value.shape[0], *self._output_spec.shape)
         return value, state
 
 
 @alf.configurable
-class ValueRNNNetwork(PreprocessorNetwork):
+class ValueRNNNetwork(ValueNetwork):
     """Outputs temporally correlated values."""
 
     def __init__(self,
@@ -181,7 +175,7 @@ class ValueRNNNetwork(PreprocessorNetwork):
             input_tensor_spec (TensorSpec): the tensor spec of the input
             output_tensor_spec (TensorSpec): spec for the output
             input_preprocessors (nested Network|nn.Module|None): a nest of
-                stateless input preprocessors, each of which will be applied to the
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.
@@ -213,9 +207,12 @@ class ValueRNNNetwork(PreprocessorNetwork):
             name (str):
         """
         super().__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner,
+            input_tensor_spec=input_tensor_spec,
+            output_tensor_spec=output_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
             name=name)
 
         if kernel_initializer is None:
@@ -225,7 +222,9 @@ class ValueRNNNetwork(PreprocessorNetwork):
                                     a=-0.03, b=0.03)
 
         self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
@@ -235,24 +234,6 @@ class ValueRNNNetwork(PreprocessorNetwork):
             last_layer_size=output_tensor_spec.numel,
             last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
-
-        self._output_spec = output_tensor_spec
-
-    def forward(self, observation, state):
-        """Computes a value given an observation.
-
-        Args:
-            observation (torch.Tensor): consistent with `input_tensor_spec`
-            state (nest[tuple]): a nest structure of state tuples (h, c)
-
-        Returns:
-            value (torch.Tensor): a 1D tensor
-            new_state (nest[tuple]): the updated states
-        """
-        observation, state = super().forward(observation, state)
-        value, state = self._encoding_net(observation, state)
-        value = value.reshape(value.shape[0], *self._output_spec.shape)
-        return value, state
 
     @property
     def state_spec(self):

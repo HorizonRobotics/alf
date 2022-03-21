@@ -93,7 +93,7 @@ class TransformerNetwork(PreprocessorNetwork):
                 for all the memroy layers and it is updated using the last core
                 embeddings.
             input_preprocessors (nested Network|nn.Module): a nest of
-                preprocessor networks, each of which will be applied to the
+                stateless preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. If any element is None, then
                 it will be treated as math_ops.identity. This arg is helpful if

@@ -34,7 +34,7 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
                 ValueRNNNetwork, lstm_hidden_size=lstm_hidden_size)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
-            state = []
+            state = [()]
             for size in lstm_hidden_size:
                 state.append((torch.randn((
                     1,
@@ -70,7 +70,6 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
         value, state = value_net([image, vector], state)
 
-        self.assertEqual(value_net._processed_input_tensor_spec.shape[0], 200)
         self.assertEqual(value_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))

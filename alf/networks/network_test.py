@@ -162,29 +162,22 @@ class PreprocessorNetworkTest(alf.test.TestCase):
         action_spec = TensorSpec((5, ), torch.float32)
         combiner = alf.nest.utils.NestConcat()
 
-        def _test(network_ctor):
-            network_ctor(
-                input_tensor_spec=input_spec,
-                input_preprocessors=EmbeddingPreprocessor(
-                    input_spec, embedding_dim=10),
-                preprocessing_combiner=combiner)
-            network_ctor(
-                input_tensor_spec=input_spec,
-                input_preprocessors=alf.layers.Reshape(-1),
-                preprocessing_combiner=combiner)
-            self.assertRaises(
-                AssertionError,
-                network_ctor,
-                input_tensor_spec=input_spec,
-                input_preprocessors=LSTMEncodingNetwork(
-                    input_tensor_spec=input_spec),
-                preprocessing_combiner=combiner)
-
-        _test(PreprocessorNetwork)
-        _test(partial(ActorNetwork, action_spec=action_spec))
-        _test(partial(ActorRNNNetwork, action_spec=action_spec))
-        _test(ValueNetwork)
-        _test(ValueRNNNetwork)
+        PreprocessorNetwork(
+            input_tensor_spec=input_spec,
+            input_preprocessors=EmbeddingPreprocessor(
+                input_spec, embedding_dim=10),
+            preprocessing_combiner=combiner)
+        PreprocessorNetwork(
+            input_tensor_spec=input_spec,
+            input_preprocessors=alf.layers.Reshape(-1),
+            preprocessing_combiner=combiner)
+        self.assertRaises(
+            AssertionError,
+            PreprocessorNetwork,
+            input_tensor_spec=input_spec,
+            input_preprocessors=LSTMEncodingNetwork(
+                input_tensor_spec=input_spec),
+            preprocessing_combiner=combiner)
 
         def _create_transformer_net(preprocessor):
             return TransformerNetwork(

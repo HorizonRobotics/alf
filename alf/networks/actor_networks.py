@@ -25,12 +25,13 @@ from .preprocessor_networks import PreprocessorNetwork
 import alf.layers as layers
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
+from alf.networks import Network
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
 
 
 @alf.configurable
-class ActorNetwork(PreprocessorNetwork):
+class ActorNetwork(Network):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
@@ -49,7 +50,7 @@ class ActorNetwork(PreprocessorNetwork):
             input_tensor_spec (TensorSpec): the tensor spec of the input.
             action_spec (BoundedTensorSpec): the tensor spec of the action.
             input_preprocessors (nested Network|nn.Module|None): a nest of
-                stateless input preprocessors, each of which will be applied to the
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as ``math_ops.identity``.
@@ -77,11 +78,7 @@ class ActorNetwork(PreprocessorNetwork):
                 with uniform distribution will be used.
             name (str): name of the network
         """
-        super(ActorNetwork, self).__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner,
-            name=name)
+        super(ActorNetwork, self).__init__(input_tensor_spec, name=name)
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -102,7 +99,9 @@ class ActorNetwork(PreprocessorNetwork):
         assert all(is_continuous), "only continuous action is supported"
 
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
@@ -133,8 +132,7 @@ class ActorNetwork(PreprocessorNetwork):
             - state: empty
         """
 
-        observation, state = super().forward(observation, state)
-        encoded_obs, _ = self._encoding_net(observation)
+        encoded_obs, state = self._encoding_net(observation, state)
 
         actions = []
         i = 0
@@ -167,7 +165,7 @@ class ActorNetwork(PreprocessorNetwork):
 
 
 @alf.configurable
-class ActorRNNNetwork(PreprocessorNetwork):
+class ActorRNNNetwork(ActorNetwork):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
@@ -189,7 +187,7 @@ class ActorRNNNetwork(PreprocessorNetwork):
             input_tensor_spec (TensorSpec): the tensor spec of the input.
             action_spec (BoundedTensorSpec): the tensor spec of the action.
             input_preprocessors (nested Network|nn.Module|None): a nest of
-                stateless input preprocessors, each of which will be applied to the
+                input preprocessors, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as ``math_ops.identity``.
@@ -224,8 +222,11 @@ class ActorRNNNetwork(PreprocessorNetwork):
         """
         super(ActorRNNNetwork, self).__init__(
             input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner,
+            action_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
             name=name)
 
         if kernel_initializer is None:
@@ -235,19 +236,10 @@ class ActorRNNNetwork(PreprocessorNetwork):
                 mode='fan_in',
                 distribution='uniform')
 
-        self._action_spec = action_spec
-        flat_action_spec = nest.flatten(action_spec)
-        self._flat_action_spec = flat_action_spec
-
-        is_continuous = [
-            single_action_spec.is_continuous
-            for single_action_spec in flat_action_spec
-        ]
-
-        assert all(is_continuous), "only continuous action is supported"
-
-        self._lstm_encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+        self._encoding_net = LSTMEncodingNetwork(
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
@@ -259,38 +251,14 @@ class ActorRNNNetwork(PreprocessorNetwork):
                                     a=-0.003, b=0.003)
 
         self._action_layers = nn.ModuleList()
-        for single_action_spec in flat_action_spec:
+        for single_action_spec in self._flat_action_spec:
             self._action_layers.append(
                 layers.FC(
-                    self._lstm_encoding_net.output_spec.shape[0],
+                    self._encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
                     activation=squashing_func,
                     kernel_initializer=last_kernel_initializer))
 
-    def forward(self, observation, state):
-        """Computes action given an observation.
-
-        Args:
-            inputs:  A tensor consistent with ``input_tensor_spec``
-            state (nest[tuple]): a nest structure of state tuples ``(h, c)``
-
-        Returns:
-            tuple:
-            - action (torch.Tensor): a tensor consistent with ``action_spec``
-            - new_state (nest[tuple]): the updated states
-        """
-        observation, state = super().forward(observation, state)
-        encoded_obs, state = self._lstm_encoding_net(observation, state)
-
-        actions = []
-        for layer, spec in zip(self._action_layers, self._flat_action_spec):
-            action = layer(encoded_obs)
-            action = spec_utils.scale_to_spec(action, spec)
-            actions.append(action)
-
-        output_actions = nest.pack_sequence_as(self._action_spec, actions)
-        return output_actions, state
-
     @property
     def state_spec(self):
-        return self._lstm_encoding_net.state_spec
+        return self._encoding_net.state_spec
