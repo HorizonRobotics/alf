@@ -300,6 +300,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             test_loader (torch.utils.data.DataLoader): testing data loader
             outlier_data_loaders (tuple[torch.utils.data.DataLoader):
                 (trainloader, testloader) for outlier datasets
+            mini_batch_training (bool): whether training using mini_batch or the 
+                whole dataset, default is True.
             entropy_regularization (float): weight of particle VI repulsive
                 term.
         """

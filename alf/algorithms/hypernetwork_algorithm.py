@@ -210,6 +210,8 @@ class HyperNetwork(Algorithm):
         """
         super().__init__(optimizer=optimizer, name=name)
         self._entropy_regularization = entropy_regularization
+        self._num_particles = num_particles
+        self._mini_batch_training = mini_batch_training
         if data_creator is not None:
             trainset, testset = data_creator()
             if data_creator_outlier is not None:
@@ -220,7 +222,6 @@ class HyperNetwork(Algorithm):
                 trainset,
                 testset,
                 outlier_dataloaders,
-                mini_batch_training=mini_batch_training,
                 entropy_regularization=entropy_regularization)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
@@ -324,11 +325,9 @@ class HyperNetwork(Algorithm):
             name=name)
 
         self._param_net = param_net
-        self._num_particles = num_particles
         self._generator_use_fc_bn = generator_use_fc_bn
         self._loss_type = loss_type
         self._function_vi = function_vi
-        self._mini_batch_training = mini_batch_training
         self._functional_gradient = functional_gradient
         self._direct_jac_inverse = direct_jac_inverse
         self._logging_training = logging_training
@@ -350,7 +349,6 @@ class HyperNetwork(Algorithm):
                         train_loader,
                         test_loader=None,
                         outlier_data_loaders=None,
-                        mini_batch_training=True,
                         entropy_regularization=None):
         """Set data loadder for training and testing.
 
@@ -362,7 +360,7 @@ class HyperNetwork(Algorithm):
             entropy_regularization (float): weight for par_vi repulsive term.
                 If None, then self._entropy_regarization is used.
         """
-        if mini_batch_training:
+        if self._mini_batch_training:
             assert train_loader.batch_size % self.num_particles == 0, (
                 "The batch_size of train_loader must be multiples of num_particles."
             )
