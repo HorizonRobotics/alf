@@ -14,6 +14,7 @@
 """ValueNetwork and ValueRNNNetwork."""
 
 import functools
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -26,8 +27,56 @@ from alf.tensor_specs import TensorSpec
 import alf.utils.math_ops as math_ops
 
 
+class ValueNetworkBase(Network):
+    """A base class for ``ValueNetwork`` and ``ValueRNNNetwork``.
+    """
+
+    def __init__(self,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 output_tensor_spec: alf.nest.NestedTensorSpec,
+                 encoding_network_ctor: Callable,
+                 name="ValueNetworkBase",
+                 **encoder_kwargs):
+        super().__init__(input_tensor_spec, name=name)
+
+        if encoder_kwargs.get('kernel_initializer', None) is None:
+            encoder_kwargs[
+                'kernel_initializer'] = torch.nn.init.xavier_uniform_
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.03, b=0.03)
+
+        self._encoding_net = encoding_network_ctor(
+            input_tensor_spec=input_tensor_spec,
+            last_layer_size=output_tensor_spec.numel,
+            last_activation=math_ops.identity,
+            last_kernel_initializer=last_kernel_initializer,
+            **encoder_kwargs)
+        self._output_spec = output_tensor_spec
+
+    def forward(self, observation, state=()):
+        """Computes a value given an observation.
+
+        Args:
+            observation (torch.Tensor): consistent with `input_tensor_spec`
+            state: empty for API consistent with ValueRNNNetwork
+
+        Returns:
+            value (torch.Tensor): a 1D tensor
+            state: empty
+        """
+        value, state = self._encoding_net(observation, state)
+        value = value.reshape(value.shape[0], *self._output_spec.shape)
+        return value, state
+
+    def make_parallel(self, n):
+        """Create a ``ParallelValueNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        """
+        return ParallelValueNetwork(self, n, "parallel_" + self._name)
+
+
 @alf.configurable
-class ValueNetwork(Network):
+class ValueNetwork(ValueNetworkBase):
     """Output temporally uncorrelated values."""
 
     def __init__(self,
@@ -75,49 +124,18 @@ class ValueNetwork(Network):
                 FC layers (i.e. FC layers beside the last one).
             name (str):
         """
-        super().__init__(input_tensor_spec, name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.03, b=0.03)
-
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+        super().__init__(
+            input_tensor_spec,
+            output_tensor_spec,
+            encoding_network_ctor=EncodingNetwork,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn,
-            last_layer_size=output_tensor_spec.numel,
-            last_activation=math_ops.identity,
-            last_kernel_initializer=last_kernel_initializer)
-
-        self._output_spec = output_tensor_spec
-
-    def forward(self, observation, state=()):
-        """Computes a value given an observation.
-
-        Args:
-            observation (torch.Tensor): consistent with `input_tensor_spec`
-            state: empty for API consistent with ValueRNNNetwork
-
-        Returns:
-            value (torch.Tensor): a 1D tensor
-            state: empty
-        """
-        value, state = self._encoding_net(observation, state)
-        value = value.reshape(value.shape[0], *self._output_spec.shape)
-        return value, state
-
-    def make_parallel(self, n):
-        """Create a ``ParallelValueNetwork`` using ``n`` replicas of ``self``.
-        The initialized network parameters will be different.
-        """
-        return ParallelValueNetwork(self, n, "parallel_" + self._name)
+            use_fc_bn=use_fc_bn)
 
 
 class ParallelValueNetwork(Network):
@@ -154,7 +172,7 @@ class ParallelValueNetwork(Network):
 
 
 @alf.configurable
-class ValueRNNNetwork(ValueNetwork):
+class ValueRNNNetwork(ValueNetworkBase):
     """Outputs temporally correlated values."""
 
     def __init__(self,
@@ -209,20 +227,8 @@ class ValueRNNNetwork(ValueNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             output_tensor_spec=output_tensor_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.03, b=0.03)
-
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+            encoding_network_ctor=LSTMEncodingNetwork,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -230,10 +236,7 @@ class ValueRNNNetwork(ValueNetwork):
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=value_fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer,
-            last_layer_size=output_tensor_spec.numel,
-            last_activation=math_ops.identity,
-            last_kernel_initializer=last_kernel_initializer)
+            kernel_initializer=kernel_initializer)
 
     @property
     def state_spec(self):

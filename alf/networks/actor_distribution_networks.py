@@ -13,6 +13,7 @@
 # limitations under the License.
 """ActorDistributionNetwork and ActorRNNDistributionNetwork."""
 from typing import Callable
+from functools import partial
 
 import torch
 import torch.distributions as td
@@ -23,81 +24,33 @@ import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .normalizing_flow_networks import RealNVPNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
+from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.networks.network import Network
 
 
-@alf.configurable
-class ActorDistributionNetwork(Network):
-    """Network which outputs temporally uncorrelated action distributions."""
+class ActorDistributionNetworkBase(Network):
+    """A base class for ``ActorDistributionNetwork`` and ``ActorDistributionRNNNetwork``.
+    """
 
     def __init__(self,
-                 input_tensor_spec,
-                 action_spec,
-                 input_preprocessors=None,
-                 preprocessing_combiner=None,
-                 conv_layer_params=None,
-                 fc_layer_params=None,
-                 activation=torch.relu_,
-                 kernel_initializer=None,
-                 use_fc_bn=False,
-                 discrete_projection_net_ctor=CategoricalProjectionNetwork,
-                 continuous_projection_net_ctor=NormalProjectionNetwork,
-                 name="ActorDistributionNetwork"):
-        """
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 action_spec: alf.nest.NestedTensorSpec,
+                 encoding_network_ctor: Callable,
+                 discrete_projection_net_ctor: Callable,
+                 continuous_projection_net_ctor: Callable,
+                 name: str = 'ActorDistributionNetworkBase',
+                 **encoder_kwargs):
 
-        Args:
-            input_tensor_spec (TensorSpec): the tensor spec of the input
-            action_spec (TensorSpec): the action spec
-            input_preprocessors (nested Network|nn.Module|None): a nest of
-                input preprocessors, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with ``input_tensor_spec`` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format ``(filters, kernel_size, strides, padding)``,
-                where ``padding`` is optional.
-            fc_layer_params (tuple[int]): a tuple of integers representing hidden
-                FC layer sizes.
-            activation (nn.functional): activation used for hidden layers.
-            kernel_initializer (Callable): initializer for all the layers
-                excluding the projection net. If none is provided a default
-                xavier_uniform will be used.
-            use_fc_bn (bool): whether use Batch Normalization for the internal
-                FC layers (i.e. FC layers except the last one).
-            discrete_projection_net_ctor (ProjectionNetwork): constructor that
-                generates a discrete projection network that outputs discrete
-                actions.
-            continuous_projection_net_ctor (ProjectionNetwork): constructor that
-                generates a continuous projection network that outputs
-                continuous actions.
-            name (str):
-        """
         super().__init__(input_tensor_spec, name=name)
 
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
+        if encoder_kwargs.get('kernel_initializer', None) is None:
+            encoder_kwargs[
+                'kernel_initializer'] = torch.nn.init.xavier_uniform_
 
         self._action_spec = action_spec
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn)
+        self._encoding_net = encoding_network_ctor(input_tensor_spec,
+                                                   **encoder_kwargs)
         self._create_projection_net(discrete_projection_net_ctor,
                                     continuous_projection_net_ctor)
 
@@ -148,6 +101,78 @@ class ActorDistributionNetwork(Network):
                                                 "parallel_" + self._name)
 
 
+@alf.configurable
+class ActorDistributionNetwork(ActorDistributionNetworkBase):
+    """Network which outputs temporally uncorrelated action distributions."""
+
+    def __init__(self,
+                 input_tensor_spec,
+                 action_spec,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 discrete_projection_net_ctor=CategoricalProjectionNetwork,
+                 continuous_projection_net_ctor=NormalProjectionNetwork,
+                 name="ActorDistributionNetwork"):
+        """
+
+        Args:
+            input_tensor_spec (TensorSpec): the tensor spec of the input
+            action_spec (TensorSpec): the action spec
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                `input_tensor_spec` as the input to compute the processed
+                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
+                FC layer sizes.
+            activation (nn.functional): activation used for hidden layers.
+            kernel_initializer (Callable): initializer for all the layers
+                excluding the projection net. If none is provided a default
+                xavier_uniform will be used.
+            use_fc_bn (bool): whether use Batch Normalization for the internal
+                FC layers (i.e. FC layers except the last one).
+            discrete_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a discrete projection network that outputs discrete
+                actions.
+            continuous_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a continuous projection network that outputs
+                continuous actions.
+            name (str):
+        """
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            action_spec=action_spec,
+            encoding_network_ctor=EncodingNetwork,
+            discrete_projection_net_ctor=discrete_projection_net_ctor,
+            continuous_projection_net_ctor=continuous_projection_net_ctor,
+            name=name,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn)
+
+
 class ParallelActorDistributionNetwork(Network):
     """Perform ``n`` actor distribution computations in parallel."""
 
@@ -183,7 +208,7 @@ class ParallelActorDistributionNetwork(Network):
 
 
 @alf.configurable
-class ActorDistributionRNNNetwork(ActorDistributionNetwork):
+class ActorDistributionRNNNetwork(ActorDistributionNetworkBase):
     """Network which outputs temporally correlated action distributions."""
 
     def __init__(self,
@@ -205,8 +230,8 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessors (nested Network|nn.Module|None): a nest of
-                input preprocessors, each of which will be applied to the
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with ``input_tensor_spec`` (after reshaping).
                 If any element is None, then it will be treated as math_ops.identity.
@@ -245,17 +270,10 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             action_spec=action_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+            encoding_network_ctor=LSTMEncodingNetwork,
+            discrete_projection_net_ctor=discrete_projection_net_ctor,
+            continuous_projection_net_ctor=continuous_projection_net_ctor,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -264,8 +282,6 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-        self._create_projection_net(discrete_projection_net_ctor,
-                                    continuous_projection_net_ctor)
 
     @property
     def state_spec(self):

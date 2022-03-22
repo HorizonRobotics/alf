@@ -15,6 +15,7 @@
 
 import functools
 import math
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -30,58 +31,21 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
 
 
-@alf.configurable
-class ActorNetwork(Network):
+class ActorNetworkBase(Network):
+    """A base class for ``ActorNetwork`` and ``ActorRNNNetwork``.
+    """
+
     def __init__(self,
-                 input_tensor_spec: TensorSpec,
-                 action_spec: BoundedTensorSpec,
-                 input_preprocessors=None,
-                 preprocessing_combiner=None,
-                 conv_layer_params=None,
-                 fc_layer_params=None,
-                 activation=torch.relu_,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 action_spec: alf.nest.NestedTensorSpec,
+                 encoding_network_ctor: Callable = EncodingNetwork,
                  squashing_func=torch.tanh,
-                 kernel_initializer=None,
-                 name="ActorNetwork"):
-        """Creates an instance of ``ActorNetwork``, which maps the inputs to
-        actions (single or nested) through a sequence of deterministic layers.
+                 name="ActorNetworkBase",
+                 **encoder_kwargs):
+        super().__init__(input_tensor_spec, name=name)
 
-        Args:
-            input_tensor_spec (TensorSpec): the tensor spec of the input.
-            action_spec (BoundedTensorSpec): the tensor spec of the action.
-            input_preprocessors (nested Network|nn.Module|None): a nest of
-                input preprocessors, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with ``input_tensor_spec`` (after reshaping).
-                If any element is None, then it will be treated as ``math_ops.identity``.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                ``input_tensor_spec`` as the input to compute the processed
-                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format ``(filters, kernel_size, strides, padding)``,
-                where ``padding`` is optional.
-            fc_layer_params (tuple[int]): a tuple of integers representing hidden
-                FC layer sizes.
-            activation (nn.functional): activation used for hidden layers. The
-                last layer will not be activated.
-            squashing_func (Callable): the activation function used to squashing
-                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
-            kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a ``variance_scaling_initializer``
-                with uniform distribution will be used.
-            name (str): name of the network
-        """
-        super(ActorNetwork, self).__init__(input_tensor_spec, name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = functools.partial(
+        if encoder_kwargs.get('kernel_initializer', None) is None:
+            encoder_kwargs['kernel_initializer'] = functools.partial(
                 variance_scaling_init,
                 gain=math.sqrt(1.0 / 3),
                 mode='fan_in',
@@ -95,18 +59,12 @@ class ActorNetwork(Network):
             single_action_spec.is_continuous
             for single_action_spec in flat_action_spec
         ]
-
         assert all(is_continuous), "only continuous action is supported"
 
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            name=self.name + ".encoding_net")
+        self._encoding_net = encoding_network_ctor(
+            input_tensor_spec,
+            name=self.name + '.encoding_net',
+            **encoder_kwargs)
 
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                     a=-0.003, b=0.003)
@@ -165,7 +123,69 @@ class ActorNetwork(Network):
 
 
 @alf.configurable
-class ActorRNNNetwork(ActorNetwork):
+class ActorNetwork(ActorNetworkBase):
+    def __init__(self,
+                 input_tensor_spec: TensorSpec,
+                 action_spec: BoundedTensorSpec,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=torch.relu_,
+                 squashing_func=torch.tanh,
+                 kernel_initializer=None,
+                 name="ActorNetwork"):
+        """Creates an instance of ``ActorNetwork``, which maps the inputs to
+        actions (single or nested) through a sequence of deterministic layers.
+
+        Args:
+            input_tensor_spec (TensorSpec): the tensor spec of the input.
+            action_spec (BoundedTensorSpec): the tensor spec of the action.
+            input_preprocessors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as ``math_ops.identity``.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
+                FC layer sizes.
+            activation (nn.functional): activation used for hidden layers. The
+                last layer will not be activated.
+            squashing_func (Callable): the activation function used to squashing
+                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a ``variance_scaling_initializer``
+                with uniform distribution will be used.
+            name (str): name of the network
+        """
+        super(ActorNetwork, self).__init__(
+            input_tensor_spec=input_tensor_spec,
+            action_spec=action_spec,
+            encoding_network_ctor=EncodingNetwork,
+            squashing_func=squashing_func,
+            name=name,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer)
+
+
+@alf.configurable
+class ActorRNNNetwork(ActorNetworkBase):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
@@ -223,21 +243,9 @@ class ActorRNNNetwork(ActorNetwork):
         super(ActorRNNNetwork, self).__init__(
             input_tensor_spec,
             action_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                gain=math.sqrt(1.0 / 3),
-                mode='fan_in',
-                distribution='uniform')
-
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+            encoding_network_ctor=LSTMEncodingNetwork,
+            squashing_func=squashing_func,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -246,18 +254,6 @@ class ActorRNNNetwork(ActorNetwork):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
-
-        self._action_layers = nn.ModuleList()
-        for single_action_spec in self._flat_action_spec:
-            self._action_layers.append(
-                layers.FC(
-                    self._encoding_net.output_spec.shape[0],
-                    single_action_spec.shape[0],
-                    activation=squashing_func,
-                    kernel_initializer=last_kernel_initializer))
 
     @property
     def state_spec(self):
