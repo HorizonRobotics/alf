@@ -74,7 +74,7 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         """
         super().__init__(env)
 
-        self._fields = fields or [None]
+        self._fields = fields if (fields is not None) else [None]
         observation_space = env.observation_space
         for field in self._fields:
             observation_space = transform_space(

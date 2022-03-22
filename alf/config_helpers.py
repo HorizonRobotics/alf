@@ -40,8 +40,10 @@ _transformed_observation_spec = None
 def get_raw_observation_spec(field=None):
     """Get the ``TensorSpec`` of observations provided by the global environment.
 
-    Note: you need to finish all the config for environments and
-    TrainerConfig.random_seed before using this function.
+    .. note::
+        This function can only be called after all gym wrappers and ``TrainerConfig.random_seed``
+        have been configured. Otherwise the created environment might have unexpected
+        behaviors.
 
     Args:
         field (str): a multi-step path denoted by "A.B.C".
@@ -61,8 +63,10 @@ def get_observation_spec(field=None):
 
     The data transformers are specified by ``TrainerConfig.data_transformer_ctor``.
 
-    Note: you need to finish all the config for environments and
-    TrainerConfig.data_transformer_ctor before using this function.
+    .. note::
+
+        You need to finish all the config for environments and
+        ``TrainerConfig.data_transformer_ctor`` before using this function.
 
     Args:
         field (str): a multi-step path denoted by "A.B.C".
