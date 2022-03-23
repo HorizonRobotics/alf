@@ -64,6 +64,11 @@ from alf.utils import losses
 # MuzeroAlgorithm does not suppport the RewardClipping configured in atari_conf
 alf.config('TrainerConfig', data_transformer_ctor=[FrameStacker])
 
+# Since some module (i.e. repr_loss) is created in this file, we need to set
+# random seed first so that the random seed can affect their parameter initialization.
+# The "get_env()" later is also related to this.
+alf.config('TrainerConfig', random_seed=2)
+
 
 def define_config(name, default_value):
     alf.define_config(name, default_value)
@@ -130,6 +135,10 @@ alf.config(
     env_name="BreakoutNoFrameskip-v4",
     num_parallel_environments=num_envs)
 
+# call get_env() to actually set the random seed so that the modules (i.e. repr_loss)
+# created in the file will be based on the seed.
+alf.get_env()
+
 alf.config("alf.norm_layers.BatchNorm1d", affine=True)
 alf.config("alf.norm_layers.BatchNorm2d", affine=True)
 alf.config(
@@ -138,6 +147,12 @@ alf.config(
     bn_ctor=norm_type.BatchNorm2d)
 alf.config("layers.Conv2D", use_bn=use_bn, bn_ctor=norm_type.BatchNorm2d)
 alf.config("layers.FC", bn_ctor=norm_type.BatchNorm1d)
+
+# latent_dim should set according to the output shape of representation_net
+if use_small_net:
+    latent_dim = 7 * 7 * 64
+else:
+    latent_dim = 6 * 6 * 64
 
 
 def create_representation_net(observation_spec):
@@ -246,7 +261,7 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
             if use_small_net:
                 return [
                     alf.layers.Reshape(-1),
-                    alf.nn.LSTMCell(7 * 7 * 64, 512),
+                    alf.nn.LSTMCell(latent_dim, 512),
                     alf.layers.FC(
                         512, dim, activation=torch.relu_, use_bn=pred_use_bn)
                 ]
@@ -263,7 +278,7 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
                 return [
                     alf.layers.Reshape(-1),
                     alf.layers.FC(
-                        7 * 7 * 64,
+                        latent_dim,
                         1024,
                         activation=torch.relu_,
                         use_bn=use_bn),
@@ -356,36 +371,6 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
     )
 
 
-@alf.configurable
-def repr_projection_net_ctor(input_tensor_spec,
-                             hidden_size=512,
-                             output_size=1024,
-                             last_use_bn=False):
-    return alf.nn.Sequential(
-        alf.layers.Reshape(-1),
-        alf.layers.FC(
-            input_tensor_spec.numel,
-            hidden_size,
-            activation=torch.relu_,
-            use_bn=True),
-        alf.layers.FC(
-            hidden_size, hidden_size, activation=torch.relu_, use_bn=True),
-        alf.layers.FC(hidden_size, output_size, use_bn=last_use_bn),
-        input_tensor_spec=input_tensor_spec)
-
-
-@alf.configurable
-def repr_prediction_net_ctor(input_tensor_spec,
-                             hidden_size=512,
-                             output_size=1024):
-    return alf.nn.Sequential(
-        alf.layers.FC(
-            input_tensor_spec.numel,
-            hidden_size,
-            activation=torch.relu_,
-            use_bn=True), alf.layers.FC(hidden_size, output_size))
-
-
 if use_small_net:
     encoding_net_ctor = create_representation_net_small
     dynamics_net_ctor = create_dynamics_net_small
@@ -402,6 +387,11 @@ alf.config(
     "MCTSModel",
     value_loss=rv_loss,
     reward_loss=rv_loss,
+    repr_loss=losses.AsymmetricSimSiamLoss(
+        input_size=latent_dim,
+        proj_hidden_size=512,
+        pred_hidden_size=512,
+        output_size=1024),
     predict_reward_sum=True,
     policy_loss_weight=1.0,
     value_loss_weight=0.05,
@@ -415,8 +405,6 @@ alf.config(
     prediction_net_ctor=create_prediction_net,
     train_repr_prediction=train_repr_prediction,
     train_game_over_function=train_game_over_function,
-    repr_projection_net_ctor=repr_projection_net_ctor,
-    repr_prediction_net_ctor=repr_prediction_net_ctor,
     initial_alpha=0.)
 
 alf.config(
@@ -480,14 +468,13 @@ alf.config("Agent", optimizer=optimizer)
 # training config
 alf.config(
     "TrainerConfig",
-    random_seed=2,
     unroll_length=unroll_length,
     mini_batch_size=256,
     num_updates_per_train_iter=5,
     update_counter_every_mini_batch=False,
     priority_replay=True,
     priority_replay_alpha=1.2,
-    priority_replay_beta=LinearScheduler("percent", [(0.0, 0.4), (1.0, 1.0)]),
+    priority_replay_beta=0,
     num_iterations=0,
     num_env_steps=100000,
     num_checkpoints=1,
