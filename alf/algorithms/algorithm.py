@@ -83,7 +83,7 @@ class Algorithm(AlgorithmInterface):
             train_state_spec (nested TensorSpec): for the network state of
                 ``train_step()``.
             rollout_state_spec (nested TensorSpec): for the network state of
-                ``predict_step()``. If None, it's assumed to be the same as
+                ``rollout_step()``. If None, it's assumed to be the same as
                 ``train_state_spec``.
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
