@@ -31,8 +31,12 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
 
 
+@alf.configurable
 class ActorNetworkBase(Network):
     """A base class for ``ActorNetwork`` and ``ActorRNNNetwork``.
+
+    Can also be used to create customized actor networks by providing
+    different encoding network creators.
     """
 
     def __init__(self,
@@ -42,6 +46,17 @@ class ActorNetworkBase(Network):
                  squashing_func=torch.tanh,
                  name="ActorNetworkBase",
                  **encoder_kwargs):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input.
+            action_spec: the tensor spec of the action.
+            encoding_network_ctor: the creator of the encoding network that does
+                the heavy lifting of the actor.
+            squashing_func: the activation function used to squashing
+                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
+            name: name of the network
+            encoder_kwargs: the extra keyword arguments to the encoding network
+        """
         super().__init__(input_tensor_spec, name=name)
 
         if encoder_kwargs.get('kernel_initializer', None) is None:
@@ -120,6 +135,12 @@ class ActorNetworkBase(Network):
 
         output_actions = nest.pack_sequence_as(self._action_spec, actions)
         return output_actions, state
+
+    @property
+    def state_spec(self):
+        """Return the state spec of the actor network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
 
 
 @alf.configurable
@@ -254,7 +275,3 @@ class ActorRNNNetwork(ActorNetworkBase):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-
-    @property
-    def state_spec(self):
-        return self._encoding_net.state_spec

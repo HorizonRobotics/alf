@@ -23,6 +23,7 @@ import alf
 from alf.tensor_specs import TensorSpec
 from alf.networks import ValueNetwork
 from alf.networks import ValueRNNNetwork
+from alf.networks.value_networks import ParallelValueNetwork
 from alf.nest.utils import NestConcat
 from alf.networks.preprocessors import EmbeddingPreprocessor
 
@@ -101,6 +102,27 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
         pnet = alf.networks.network.NaiveParallelNetwork(value_net, replicas)
         _train(pnet, "NaiveParallelNetwork")
+
+    def test_rnn_make_parallel(self):
+        obs_spec = TensorSpec((20, ), torch.float32)
+        value_net = ValueRNNNetwork(
+            obs_spec, fc_layer_params=(256, ), lstm_hidden_size=100)
+        batch_size = 4
+        state = [(), (torch.randn(
+            (batch_size, 100), dtype=torch.float32), ) * 2, ()]
+        replicas = 2
+
+        pnet = value_net.make_parallel(replicas)
+        state = alf.layers.make_parallel_input(state, replicas)
+        self.assertTrue(isinstance(pnet, ParallelValueNetwork))
+        self.assertEqual(pnet.name, "parallel_" + value_net.name)
+        self.assertEqual(
+            pnet.state_spec,
+            alf.nest.map_structure(
+                functools.partial(TensorSpec.from_tensor, from_dim=1), state))
+
+        value, _ = pnet(obs_spec.randn((batch_size, replicas)), state)
+        self.assertEqual(value.shape, (batch_size, replicas))
 
 
 if __name__ == "__main__":

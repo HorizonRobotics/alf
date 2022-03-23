@@ -29,8 +29,12 @@ from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.networks.network import Network
 
 
+@alf.configurable
 class ActorDistributionNetworkBase(Network):
     """A base class for ``ActorDistributionNetwork`` and ``ActorDistributionRNNNetwork``.
+
+    Can also be used to create customized actor networks by providing
+    different encoding network creators.
     """
 
     def __init__(self,
@@ -41,6 +45,21 @@ class ActorDistributionNetworkBase(Network):
                  continuous_projection_net_ctor: Callable,
                  name: str = 'ActorDistributionNetworkBase',
                  **encoder_kwargs):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input.
+            action_spec: the tensor spec of the action.
+            encoding_network_ctor: the creator of the encoding network that does
+                the heavy lifting of the actor.
+            discrete_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a discrete projection network that outputs discrete
+                actions.
+            continuous_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a continuous projection network that outputs
+                continuous actions.
+            name: name of the network
+            encoder_kwargs: the extra keyword arguments to the encoding network
+        """
 
         super().__init__(input_tensor_spec, name=name)
 
@@ -99,6 +118,12 @@ class ActorDistributionNetworkBase(Network):
         """
         return ParallelActorDistributionNetwork(self, n,
                                                 "parallel_" + self._name)
+
+    @property
+    def state_spec(self):
+        """Return the state spec of the actor network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
 
 
 @alf.configurable
@@ -201,10 +226,16 @@ class ParallelActorDistributionNetwork(Network):
             inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
             state (tuple): Empty for API consistent with ``ActorDistributionRNNNetwork``.
         """
-        encoding, _ = self._encoding_net(observation, state)
+        encoding, state = self._encoding_net(observation, state)
         act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
                                       self._projection_net)
         return act_dist, state
+
+    @property
+    def state_spec(self):
+        """Return the state spec of the actor network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
 
 
 @alf.configurable
@@ -282,10 +313,6 @@ class ActorDistributionRNNNetwork(ActorDistributionNetworkBase):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-
-    @property
-    def state_spec(self):
-        return self._encoding_net.state_spec
 
 
 class UnitNormalActorDistributionNetwork(Network):

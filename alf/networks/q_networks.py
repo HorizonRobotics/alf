@@ -14,6 +14,7 @@
 """QNetworks"""
 
 import functools
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -28,7 +29,96 @@ import alf.utils.math_ops as math_ops
 
 
 @alf.configurable
-class QNetwork(Network):
+class QNetworkBase(Network):
+    """A base class for ``QNetwork`` and ``QRNNNetwork``.
+
+    Can also be used to create customized value networks by providing
+    different encoding network creators.
+    """
+
+    def __init__(self,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 action_spec: BoundedTensorSpec,
+                 encoding_network_ctor: Callable,
+                 use_naive_parallel_network: bool = False,
+                 name: str = "QNetworkBase",
+                 **encoder_kwargs):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input
+            action_spec : the tensor spec of the action
+            encoding_network_ctor: the creator of the encoding network that does
+                the heavy lifting of the q network.
+            use_naive_parallel_network: if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
+            name: name of the network
+            encoder_kwargs: the extra keyword arguments to the encoding network
+        """
+        super().__init__(input_tensor_spec, name=name)
+
+        assert len(nest.flatten(action_spec)) == 1, (
+            "Currently only support a single discrete action! Use "
+            "CriticNetwork instead for multiple actions.")
+
+        num_actions = action_spec.maximum - action_spec.minimum + 1
+
+        self._use_naive_parallel_network = use_naive_parallel_network
+        self._output_spec = TensorSpec((num_actions, ))
+
+        self._encoding_net = encoding_network_ctor(
+            input_tensor_spec=input_tensor_spec, **encoder_kwargs)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
+
+        self._final_layer = layers.FC(
+            self._encoding_net.output_spec.shape[0],
+            num_actions,
+            activation=math_ops.identity,
+            kernel_initializer=last_kernel_initializer,
+            bias_init_value=-0.2)
+
+    def forward(self, observation, state=()):
+        """Computes action values given an observation.
+
+        Args:
+            observation (nest): consistent with ``input_tensor_spec``
+            state: empty for API consistent with ``QRNNNetwork``
+
+        Returns:
+            tuple:
+            - action_value (torch.Tensor): a tensor of the size
+              ``[batch_size, num_actions]``
+            - state: empty
+        """
+        encoded_obs, state = self._encoding_net(observation, state)
+        action_value = self._final_layer(encoded_obs)
+        return action_value, state
+
+    def make_parallel(self, n):
+        """Create a ``ParallelQNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        If ``use_naive_parallel_network`` is True, use ``NaiveParallelNetwork``
+        to create the parallel network.
+        """
+        if self._use_naive_parallel_network:
+            return alf.networks.NaiveParallelNetwork(self, n)
+        else:
+            return ParallelQNetwork(self, n, "parallel_" + self._name)
+
+    @property
+    def state_spec(self):
+        """Return the state spec of the q network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
+
+
+@alf.configurable
+class QNetwork(QNetworkBase):
     """Create an instance of QNetwork."""
 
     def __init__(self,
@@ -83,63 +173,18 @@ class QNetwork(Network):
                 You have to test to see which way is faster for your particular
                 situation.
         """
-        super(QNetwork, self).__init__(input_tensor_spec, name=name)
-
-        assert len(nest.flatten(action_spec)) == 1, (
-            "Currently only support a single discrete action! Use "
-            "CriticNetwork instead for multiple actions.")
-
-        num_actions = action_spec.maximum - action_spec.minimum + 1
-
-        self._use_naive_parallel_network = use_naive_parallel_network
-        self._output_spec = TensorSpec((num_actions, ))
-
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+        super(QNetwork, self).__init__(
+            input_tensor_spec,
+            action_spec,
+            encoding_network_ctor=EncodingNetwork,
+            use_naive_parallel_network=use_naive_parallel_network,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
-
-        self._final_layer = layers.FC(
-            self._encoding_net.output_spec.shape[0],
-            num_actions,
-            activation=math_ops.identity,
-            kernel_initializer=last_kernel_initializer,
-            bias_init_value=-0.2)
-
-    def forward(self, observation, state=()):
-        """Computes action values given an observation.
-
-        Args:
-            observation (nest): consistent with ``input_tensor_spec``
-            state: empty for API consistent with ``QRNNNetwork``
-
-        Returns:
-            tuple:
-            - action_value (torch.Tensor): a tensor of the size
-              ``[batch_size, num_actions]``
-            - state: empty
-        """
-        encoded_obs, _ = self._encoding_net(observation)
-        action_value = self._final_layer(encoded_obs)
-        return action_value, state
-
-    def make_parallel(self, n):
-        """Create a ``ParallelQNetwork`` using ``n`` replicas of ``self``.
-        The initialized network parameters will be different.
-        If ``use_naive_parallel_network`` is True, use ``NaiveParallelNetwork``
-        to create the parallel network.
-        """
-        if self._use_naive_parallel_network:
-            return alf.networks.NaiveParallelNetwork(self, n)
-        else:
-            return ParallelQNetwork(self, n, "parallel_" + self._name)
 
 
 class ParallelQNetwork(Network):
@@ -174,13 +219,19 @@ class ParallelQNetwork(Network):
               :math:`k` is the number of actions.
             - state: empty
         """
-        encoded_obs, _ = self._encoding_net(inputs)
+        encoded_obs, state = self._encoding_net(inputs, state)
         action_value = self._final_layer(encoded_obs)
         return action_value, state
 
+    @property
+    def state_spec(self):
+        """Return the state spec of the q network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
+
 
 @alf.configurable
-class QRNNNetwork(Network):
+class QRNNNetwork(QNetworkBase):
     """Create a RNN-based that outputs temporally correlated q-values."""
 
     def __init__(self,
@@ -194,6 +245,7 @@ class QRNNNetwork(Network):
                  value_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_naive_parallel_network=False,
                  name="QRNNNetwork"):
         """Creates an instance of `QRNNNetwork` for estimating action-value of
         discrete actions. The action-value is defined as the expected return
@@ -233,18 +285,19 @@ class QRNNNetwork(Network):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a default
                 variance_scaling_initializer will be used.
+            use_naive_parallel_network (bool): if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
         """
-        super().__init__(input_tensor_spec, name=name)
-
-        assert len(nest.flatten(action_spec)) == 1, (
-            "Currently only support a single discrete action! Use "
-            "CriticNetwork instead for multiple actions.")
-
-        num_actions = action_spec.maximum - action_spec.minimum + 1
-        self._output_spec = TensorSpec((num_actions, ))
-
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+        super(QRNNNetwork, self).__init__(
+            input_tensor_spec,
+            action_spec,
+            encoding_network_ctor=LSTMEncodingNetwork,
+            use_naive_parallel_network=use_naive_parallel_network,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -253,32 +306,3 @@ class QRNNNetwork(Network):
             post_fc_layer_params=value_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
-
-        self._final_layer = layers.FC(
-            self._encoding_net.output_spec.shape[0],
-            num_actions,
-            activation=math_ops.identity,
-            kernel_initializer=last_kernel_initializer,
-            bias_init_value=-0.2)
-
-    def forward(self, observation, state):
-        """Computes action values given an observation.
-
-        Args:
-            observation (torch.Tensor): consistent with `input_tensor_spec`
-            state (nest[tuple]): a nest structure of state tuples (h, c)
-
-        Returns:
-            action_value (torch.Tensor): a tensor of the size [batch_size, num_actions]
-            new_state (nest[tuple]): the updated states
-        """
-        encoded_obs, state = self._encoding_net(observation, state)
-        action_value = self._final_layer(encoded_obs)
-        return action_value, state
-
-    @property
-    def state_spec(self):
-        return self._encoding_net.state_spec
