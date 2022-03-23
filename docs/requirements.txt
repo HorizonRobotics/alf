@@ -3,7 +3,7 @@ atari_py == 0.1.7
 bsuite
 carla
 fasteners
-git+git://github.com/HorizonRobotics/gin-config@master#egg=gin-config
+git+https://github.com/HorizonRobotics/gin-config@master#egg=gin-config
 gym==0.15.4
 matplotlib
 opencv-python>=3.4.1.15
@@ -12,7 +12,7 @@ psutil
 sphinx==3.0
 docutils==0.16
 sphinx-autobuild
-git+git://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typehints
+git+https://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typehints
 sphinxcontrib-napoleon==0.7
 --find-links https://download.pytorch.org/whl/torch_stable.html
 tensorboard==2.1.0
