@@ -131,7 +131,6 @@ class Experience(
             "Experience",
             [
                 'time_step',
-                'action',
                 'rollout_info',  # AlgStep.info from rollout()
                 'state',  # state passed to rollout() to generate `action`
                 'batch_info',
@@ -144,7 +143,6 @@ class Experience(
 
     - time_step (TimeStep): A ``TimeStep`` structure contains the data emitted
         by an environment at each step of interaction.
-    - action: A (nested) ``Tensor`` for action taken for the current time step.
     - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
     - state: State passed to ``rollout_step()`` to generate ``action``.
     - batch_info: Its type is ``alf.experience_replays.replay_buffer.BatchInfo``.
@@ -461,10 +459,7 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
         Experience:
     """
     return Experience(
-        time_step=time_step,
-        action=alg_step.output,
-        rollout_info=alg_step.info,
-        state=state)
+        time_step=time_step, rollout_info=alg_step.info, state=state)
 
 
 LossInfo = namedtuple(

@@ -523,7 +523,6 @@ class RLAlgorithm(Algorithm):
 
             exp_for_training = Experience(
                 time_step=transformed_time_step,
-                action=action,
                 rollout_info=dist_utils.distributions_to_params(
                     policy_step.info),
                 state=policy_state)
@@ -682,13 +681,11 @@ class RLAlgorithm(Algorithm):
                 prev_action=self._action_spec,
                 env_id=env_id_spec)
 
-            exp_spec_wo_info = Experience(
-                time_step=time_step_spec, action=self._action_spec)
+            exp_spec_wo_info = Experience(time_step=time_step_spec)
 
             # assumes a typical Agent structure
             exp_spec = Experience(
                 time_step=time_step_spec,
-                action=self._action_spec,
                 rollout_info=BasicRolloutInfo(
                     rl=BasicRLInfo(action=self._action_spec),
                     rewards={},
@@ -760,7 +757,6 @@ class RLAlgorithm(Algorithm):
 
         exp = Experience(
             time_step=time_step,
-            action=buffer_dict.action,
             rollout_info=BasicRolloutInfo(
                 rl=BasicRLInfo(action=buffer_dict.action),
                 rewards={},
