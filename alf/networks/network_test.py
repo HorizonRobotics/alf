@@ -152,5 +152,25 @@ class NaiveParallelNetworkTest(alf.test.TestCase):
              (TensorSpec((4, 40)), TensorSpec((4, 40)))])
 
 
+class NetworkWrapperTest(alf.test.TestCase):
+    def test_network_wrapper(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        net = alf.networks.NetworkWrapper(
+            lambda input: input + 1., input_tensor_spec=input_spec)
+        self.assertTensorEqual(net._test_forward()[0], input_spec.ones((2, )))
+
+        net1 = alf.networks.NetworkWrapper(
+            lambda input, state: (input + state, state + 1.),
+            input_tensor_spec=input_spec,
+            state_spec=input_spec)
+        output, new_state = net1._test_forward()
+        self.assertTensorEqual(output, input_spec.zeros((2, )))
+        self.assertTensorEqual(new_state, input_spec.ones((2, )))
+
+        pnet1 = net1.make_parallel(n=4)
+        self.assertEqual(pnet1.state_spec,
+                         TensorSpec((4, ) + input_spec.shape))
+
+
 if __name__ == '__main__':
     alf.test.main()

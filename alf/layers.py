@@ -30,7 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
-from alf.utils.tensor_utils import BatchSquash
+from alf.utils.tensor_utils import BatchSquash, tensor_extend_new_dim
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
 
@@ -1845,8 +1845,8 @@ class ParamFC(nn.Module):
             use_ln (bool): whether use layer normalization
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
-                be specified at initialization and will be fixed, all input parameters 
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must
+                be specified at initialization and will be fixed, all input parameters
                 will have to be consistent with it.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
@@ -2081,8 +2081,8 @@ class ParamConv2D(nn.Module):
             use_ln (bool): whether use layer normalization
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
-                be specified at initialization and will be fixed, all input parameters 
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must
+                be specified at initialization and will be fixed, all input parameters
                 will have to be consistent with it.
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
@@ -3414,8 +3414,7 @@ def make_parallel_input(inputs, n: int):
     Returns:
         inputs replicated over dim 1
     """
-    return map_structure(lambda x: x.unsqueeze(1).expand(-1, n, *x.shape[1:]),
-                         inputs)
+    return map_structure(partial(tensor_extend_new_dim, dim=1, n=n), inputs)
 
 
 def make_parallel_spec(specs, n: int):
