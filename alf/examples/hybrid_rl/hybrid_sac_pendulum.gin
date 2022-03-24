@@ -20,5 +20,13 @@ TrainerConfig.rl_train_every_update_steps=1
 # purpose. It should be replaced with a larger replay buffer file
 # in practice. This replay buffer is from an SAC agent.
 
-TrainerConfig.offline_buffer_dir="./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac"
 
+
+# we can provide offline data from different experts, scenarios etc.
+TrainerConfig.offline_buffer_dir=[
+    "./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac",
+    "./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_muzero"
+]
+
+# we can set the buffer length to be allocated for each offline buffer checkpoint
+TrainerConfig.offline_buffer_length=100
