@@ -175,7 +175,7 @@ class NetworkWrapperTest(alf.test.TestCase):
         self.assertEqual(pnet1.state_spec,
                          TensorSpec((4, ) + input_spec.shape))
 
-        
+
 class PreprocessorNetworkTest(alf.test.TestCase):
     def test_stateless_preprocessors(self):
         input_spec = TensorSpec((100, ), torch.float32)
