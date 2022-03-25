@@ -17,10 +17,13 @@ MCTSAlgorithm.pb_c_base=19652
 MCTSAlgorithm.is_two_player_game=True
 VisitSoftmaxTemperatureByMoves.move_temperature_pairs=[(0, 1.0), (10, 0.0001)]
 MCTSAlgorithm.visit_softmax_temperature_fn=@VisitSoftmaxTemperatureByMoves()
+
+MuzeroRepresentationLearner.model_ctor=@SimpleMCTSModel
+MuzeroRepresentationLearner.num_unroll_steps=5
+MuzeroRepresentationLearner.td_steps=-1
+MuzeroRepresentationLearner.discount=1.0
 MuzeroAlgorithm.mcts_algorithm_ctor=@MCTSAlgorithm
-MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
-MuzeroAlgorithm.num_unroll_steps=5
-MuzeroAlgorithm.td_steps=-1
+MuzeroAlgorithm.representation_learner_ctor=@MuzeroRepresentationLearner
 
 encoder/EncodingNetwork.fc_layer_params=(256, 256)
 encoder/EncodingNetwork.input_preprocessors=@alf.layers.Reshape([-1])

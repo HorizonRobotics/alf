@@ -21,6 +21,7 @@ import numpy as np
 import alf
 from alf.algorithms.data_transformer import FrameStacker
 from alf.algorithms.muzero_algorithm import MuzeroAlgorithm, MuzeroInfo, OffPolicyAlgorithm
+from alf.algorithms.muzero_representation_learner import MuzeroRepresentationLearner
 from alf.algorithms.mcts_algorithm import MCTSInfo, MCTSState
 from alf.algorithms.mcts_models import get_unique_num_actions, MCTSModel, ModelOutput, ModelTarget
 import alf.data_structures as ds
@@ -37,8 +38,18 @@ class MockMCTSModel(nn.Module):
         self._num_actions = get_unique_num_actions(action_spec)
         self._scale = scale
 
-    def initial_inference(self, observation):
+    @property
+    def repr_spec(self):
+        return self._observation_spec
+
+    def initial_representation(self, observation):
+        return observation
+
+    def initial_predict(self, observation):
         return self._predict(observation)
+
+    def initial_inference(self, observation):
+        return self.initial_predict(self.initial_representation(observation))
 
     def recurrent_inference(self, state, action):
         return self._predict(state + 1.)
@@ -147,18 +158,25 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         global _mcts_model_id
         _mcts_model_id = 0
-        muzero = MuzeroAlgorithm(
-            observation_spec,
-            action_spec,
+
+        create_repr_learner = partial(
+            MuzeroRepresentationLearner,
             model_ctor=_create_mcts_model,
-            mcts_algorithm_ctor=MockMCTSAlgorithm,
             num_unroll_steps=num_unroll_steps,
             td_steps=td_steps,
+            discount=0.5,
             train_game_over_function=True,
             train_reward_function=train_reward_function,
+            reanalyze_algorithm_ctor=MockMCTSAlgorithm,
             reanalyze_ratio=reanalyze_ratio,
             reanalyze_td_steps=reanalyze_td_steps,
             data_transformer_ctor=partial(FrameStacker, stack_size=2))
+
+        muzero = MuzeroAlgorithm(
+            observation_spec,
+            action_spec,
+            representation_learner_ctor=create_repr_learner,
+            mcts_algorithm_ctor=MockMCTSAlgorithm)
 
         data_transformer = FrameStacker(observation_spec, stack_size=2)
         time_step = common.zero_tensor_from_nested_spec(

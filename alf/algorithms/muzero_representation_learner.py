@@ -26,7 +26,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, Experience, LossInfo, namedtuple, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
-from alf.algorithms.mcts_algorithm import MCTSAlgorithm, MCTSInfo
+from alf.algorithms.mcts_algorithm import MCTSInfo
 from alf.algorithms.mcts_models import MCTSModel, ModelOutput, ModelTarget
 from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
@@ -55,13 +55,30 @@ MuzeroInfo = namedtuple(
 
 
 @alf.configurable
-class MuzeroAlgorithm(OffPolicyAlgorithm):
-    """MuZero algorithm.
+class MuzeroRepresentationLearner(OffPolicyAlgorithm):
+    """MuZero-style Representation Learner.
 
     MuZero is described in the paper:
     `Schrittwieser et al. Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model <https://arxiv.org/abs/1911.08265>`_.
 
     The pseudocode can be downloaded from `<https://arxiv.org/src/1911.08265v2/anc/pseudocode.py>`_
+
+    This representation learner trains the underlying MCTSModel to
+
+    1) Most importantly, produce a latent representation from an observation
+    2) Predict the next latent representation given the current latent + an action
+    3) Predict various targets (e.g. reward, value)
+
+    Amont the above, 1) can be used as the representation in comibination with
+    another RL aalgorithm; 2) and 3) can be used in policy improvements that
+    requires a predictive model (e.g. Monte Carlo Tree Search).
+
+    The model is trained with supervision on target prediction in 2) and 3).
+    Some of the targets may be computed with the reanalyze component. Please
+    refer to the original MuZero paper and the following paper for details.
+
+    `Online and Offline Reinforcement Learning by Planning with a Learned Model <https://arxiv.org/abs/2104.06294>`_.
+
     """
 
     def __init__(
@@ -69,17 +86,17 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             observation_spec,
             action_spec,
             model_ctor,
-            mcts_algorithm_ctor,
-            num_unroll_steps,
-            td_steps,
+            num_unroll_steps: int,
+            td_steps: int,
+            discount: float,
             reward_spec=TensorSpec(()),
-            recurrent_gradient_scaling_factor=0.5,
+            recurrent_gradient_scaling_factor: float = 0.5,
             reward_transformer=None,
             calculate_priority=None,
             train_reward_function=True,
             train_game_over_function=True,
             train_repr_prediction=False,
-            reanalyze_mcts_algorithm_ctor=None,
+            reanalyze_algorithm_ctor=None,
             reanalyze_ratio=0.,
             reanalyze_td_steps=5,
             reanalyze_td_steps_func=None,
@@ -96,7 +113,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             enable_amp: bool = True,
             random_action_after_episode_end=False,
             debug_summaries=False,
-            name="MuZero"):
+            name="MuZeroRepresentationLearner"):
         """
         Args:
             observation_spec (TensorSpec): representing the observations.
@@ -105,11 +122,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 ``model_ctor(observation_spec=?, action_spec=?, debug_summaries=?)``
                 to construct the model. The model should follow the interface
                 ``alf.algorithms.mcts_models.MCTSModel``.
-            mcts_algorithm_ctor (Callable): will be called as
-                ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
-                to construct an ``MCTSAlgorithm`` instance.
-            num_unroll_steps (int): steps for unrolling the model during training.
-            td_steps (int): bootstrap so many steps into the future for calculating
+            num_unroll_steps: steps for unrolling the model during training.
+            td_steps: bootstrap so many steps into the future for calculating
                 the discounted return. -1 means to bootstrap to the end of the game.
                 Can only used for environments whose rewards are zero except for
                 the last step as the current implmentation only use the reward
@@ -121,18 +135,17 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 is suggested in Appendix G.
             reward_transformer (Callable|None): if provided, will be used to
                 transform reward.
-            train_reward_function (bool): whether train reward function. If
-                False, reward should only be given at the last step of an episode.
             calculate_priority (bool): whether to calculate priority. If not provided,
                 will be same as ``TrainerConfig.priority_replay``. This is only
                 useful if priority replay is enabled.
+            train_reward_function (bool): whether train reward function. If
+                False, reward should only be given at the last step of an episode.
             train_game_over_function (bool): whether train game over function.
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
-            reanalyze_mcts_algorithm_ctor (Callable): will be called as
-                ``reanalyze_mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
-                to construct an ``MCTSAlgorithm`` instance. If not provided,
-                ``mcts_algorithm_ctor`` will be used.
+            reanalyze_algorithm_ctor (Callable): will be called as
+                ``reanalyze_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
+                to construct an ``Algorithm`` instance for reanalyze.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
@@ -182,12 +195,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action_spec,
             num_unroll_steps=num_unroll_steps,
             debug_summaries=debug_summaries)
-        mcts = mcts_algorithm_ctor(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            debug_summaries=debug_summaries,
-            name="mcts")
-        mcts.set_model(model)
         if calculate_priority is None:
             if config is not None:
                 calculate_priority = config.priority_replay
@@ -197,22 +204,20 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._priority_func = eval(priority_func) if type(
             priority_func) == str else priority_func
         self._device = alf.get_default_device()
+
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
-            train_state_spec=mcts.predict_state_spec,
-            predict_state_spec=mcts.predict_state_spec,
-            rollout_state_spec=mcts.predict_state_spec,
+            train_state_spec=(),
             config=config,
             debug_summaries=debug_summaries,
             name=name)
         self._enable_amp = enable_amp
-        self._mcts = mcts
         self._model = model
         self._num_unroll_steps = num_unroll_steps
         self._td_steps = td_steps
-        self._discount = mcts.discount
+        self._discount = discount
         self._recurrent_gradient_scaling_factor = recurrent_gradient_scaling_factor
         self._reward_transformer = reward_transformer
         self._train_reward_function = train_reward_function
@@ -229,16 +234,17 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             self._data_transformer = create_data_transformer(
                 data_transformer_ctor, observation_spec)
         self._check_data_transformer()
-        self._mcts.set_model(model)
         self._update_target = None
-        self._reanalyze_mcts = None
+        self._reanalyze_algorithm = None
         if reanalyze_ratio > 0:
-            reanalyze_mcts_algorithm_ctor = reanalyze_mcts_algorithm_ctor or mcts_algorithm_ctor
-            self._reanalyze_mcts = reanalyze_mcts_algorithm_ctor(
+            assert reanalyze_algorithm_ctor is not None, (
+                'Must specify reanalyze_algorithm_ctor when reanalyze_ratio > 0'
+            )
+            self._reanalyze_algorithm = reanalyze_algorithm_ctor(
                 observation_spec=observation_spec,
                 action_spec=action_spec,
                 debug_summaries=debug_summaries,
-                name="mcts_reanalyze")
+                name="reanalyze_algorithm")
             self._target_model = model_ctor(
                 observation_spec,
                 action_spec,
@@ -249,10 +255,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 target_models=[self._target_model],
                 tau=target_update_tau,
                 period=target_update_period)
-            self._reanalyze_mcts.set_model(self._target_model)
+            # We assume that the algorithm used for reanalyze will implement the
+            # interface ``set_model`` to indicate that it requires access to the
+            # underlying (target) model.
+            if hasattr(self._reanalyze_algorithm, 'set_model'):
+                self._reanalyze_algorithm.set_model(self._target_model)
+
+    @property
+    def model(self):
+        return self._model
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_model', '_reanalyze_mcts']
+        return ['_target_model', '_reanalyze_algorithm']
 
     def _check_data_transformer(self):
         """Make sure data transformer does not contain reward transformer."""
@@ -267,17 +281,18 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 transformer)
 
     def predict_step(self, time_step: TimeStep, state):
-        if self._reward_transformer is not None:
-            time_step = time_step._replace(
-                reward=self._reward_transformer(time_step.reward))
         with torch.cuda.amp.autocast(self._enable_amp):
-            return self._mcts.predict_step(time_step, state)
+            return AlgStep(
+                output=self._model.initial_representation(
+                    time_step.observation),
+                state=(),
+                info=())
 
     def rollout_step(self, time_step: TimeStep, state):
-        if self._reward_transformer is not None:
-            time_step = time_step._replace(
-                reward=self._reward_transformer(time_step.reward))
-        return self._mcts.predict_step(time_step, state)
+        return AlgStep(
+            output=self._model.initial_representation(time_step.observation),
+            state=(),
+            info=())
 
     def train_step(self, exp: TimeStep, state, rollout_info: MuzeroInfo):
         def _hook(grad, name):
@@ -382,7 +397,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             if self._reanalyze_ratio > 0:
                 # Here we assume state and info have similar name scheme.
-                mcts_state_field = 'state' + info_path[len('rollout_info'):]
+                policy_state_field = 'state' + info_path[len('rollout_info'):]
 
                 # Applying the "unfold" trick, where we do reanalyze from the
                 # starting position of B size-T trajectory for an unroll steps
@@ -392,12 +407,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     # [B', T + R, ...], B' = B * reanalyze_ratio
                     r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
                         replay_buffer, start_env_ids[r], start_positions[r],
-                        mcts_state_field, T + R - 1)
+                        policy_state_field, T + R - 1)
                 else:
                     # [B, T + R, ...]
                     candidate_actions, candidate_action_policy, values = self._reanalyze(
                         replay_buffer, start_env_ids, start_positions,
-                        mcts_state_field, T + R - 1)
+                        policy_state_field, T + R - 1)
             # [B, T]
             last_discount = replay_buffer.get_field(
                 'discount', env_ids[:, :, 0], positions[:, :, -1])
@@ -531,8 +546,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 observation = alf.nest.map_structure(
                     lambda x: x.reshape(B, T, R, *x.shape[2:]), observation)
 
-        # TODO(breakds): Should also include a mask in ModelTarget as an
-        # indicator of overflow beyond the end of the replay buffer.
         rollout_info = MuzeroInfo(
             action=action,
             value=rollout_value,
@@ -663,22 +676,22 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                    replay_buffer: ReplayBuffer,
                    env_ids,
                    positions,
-                   mcts_state_field,
+                   policy_state_field,
                    horizon: Optional[int] = None):
         batch_size = env_ids.shape[0]
         mini_batch_size = batch_size
         if self._reanalyze_batch_size is not None:
             mini_batch_size = self._reanalyze_batch_size
 
-        self._reanalyze_mcts.eval()
+        self._reanalyze_algorithm.eval()
         result = []
         for i in range(0, batch_size, mini_batch_size):
             # Divide into several batches so that memory is enough.
             result.append(
                 self._reanalyze1(replay_buffer, env_ids[i:i + mini_batch_size],
                                  positions[i:i + mini_batch_size],
-                                 mcts_state_field, horizon))
-        self._reanalyze_mcts.train()
+                                 policy_state_field, horizon))
+        self._reanalyze_algorithm.train()
 
         if len(result) == 1:
             result = result[0]
@@ -728,7 +741,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     replay_buffer: ReplayBuffer,
                     env_ids,
                     positions,
-                    mcts_state_field,
+                    policy_state_field,
                     horizon: Optional[int] = None):
         """Reanalyze one batch.
 
@@ -792,8 +805,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
             with torch.cuda.amp.autocast(self._enable_amp):
-                mcts_step = self._reanalyze_mcts.predict_step(
-                    exp1, alf.nest.get_field(exp1, mcts_state_field))
+                latent = self._target_model.initial_representation(
+                    exp1.observation)
+                exp1 = exp1._replace(
+                    time_step=exp1.time_step._replace(observation=latent))
+                mcts_step = self._reanalyze_algorithm.predict_step(
+                    exp1, alf.nest.get_field(exp1, policy_state_field))
 
             def _reshape(x):
                 x = x.reshape(batch_size, -1, *x.shape[1:])

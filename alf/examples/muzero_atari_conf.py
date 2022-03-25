@@ -51,7 +51,7 @@ import alf
 import alf.examples.atari_conf
 import alf.examples.muzero_conf
 from alf.utils.schedulers import LinearScheduler, StepScheduler
-from alf.algorithms.muzero_algorithm import LinearTdStepFunc
+from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, MuzeroRepresentationLearner
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, VisitSoftmaxTemperatureByProgress
 from alf.optimizers import SGD, Adam, AdamTF, AdamW
@@ -441,15 +441,16 @@ alf.config(
     learn_policy_temperature=1.0)
 
 alf.config(
-    "MuzeroAlgorithm",
+    "MuzeroRepresentationLearner",
     enable_amp=True,
-    mcts_algorithm_ctor=MCTSAlgorithm,
     model_ctor=SimpleMCTSModel,
     # The following line can be commented out if GPU memory is large enough
     reanalyze_batch_size=1280 if use_small_net else 640,
     num_unroll_steps=5,
     td_steps=10,
+    discount=discount,
     reward_transformer=reward_transformer,
+    reanalyze_algorithm_ctor=MCTSAlgorithm,
     reanalyze_td_steps_func=  #LinearMaxAgeTdStepFunc(),
     LinearTdStepFunc(max_bootstrap_age=1.2, min_td_steps=1),
     train_repr_prediction=train_repr_prediction,
@@ -457,6 +458,13 @@ alf.config(
     reanalyze_ratio=1.0,
     target_update_period=400,
     target_update_tau=1.0)
+
+alf.config(
+    "MuzeroAlgorithm",
+    enable_amp=True,
+    representation_learner_ctor=MuzeroRepresentationLearner,
+    mcts_algorithm_ctor=MCTSAlgorithm,
+    reward_transformer=reward_transformer)
 
 opt_kwargs = dict(
     lr=lr_schedule,

@@ -445,7 +445,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             to_plays = None
             steps = state.steps
 
-        model_output = self._model.initial_inference(time_step.observation)
+        model_output = self._model.initial_predict(time_step.observation)
 
         if valid_action_mask is not None:
             # mask out invalid actions
