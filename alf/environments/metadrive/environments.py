@@ -26,10 +26,51 @@ except ImportError:
     metadrive = Mock()
 
 from .geometry import FieldOfView
-from .sensors import VectorizedObservation
+from .sensors import VectorizedObservation, BirdEyeObservation
 
 
 class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
+    """This is the counterpart of the TopDownEnv from MetaDrive with vectorized
+    input insead of raster input (BEV).
+
+    """
+
+    @classmethod
+    def default_config(cls) -> metadrive.utils.Config:
+        """The default config is identical to that of the raster TopDownEnv.
+
+        """
+        config = metadrive.MetaDriveEnv.default_config()
+        config["vehicle_config"]["lidar"] = {"num_lasers": 0, "distance": 0}
+        config.update({
+            "frame_skip": 5,
+            "frame_stack": 3,
+            "post_stack": 5,
+        })
+        return config
+
+    def get_single_observation(self, _=None) -> ObservationBase:
+        """Implements the get_single_observation for the base class MetaDriveEnv.
+
+        The base class is calling this function to acquire the sensor (typed
+        ObservationBase) that is used for generating observations. Unlike the
+        name may suggest, it is
+
+        1. actually only called once per environment
+        2. returning a sensor object instead of the actual observation
+
+        The sensor object is then used to produce the actual observation of each
+        frame.
+
+        """
+        return VectorizedObservation(self.config["vehicle_config"])
+
+    @property
+    def observation_spec(self):
+        return self.get_single_observation().observation_spec
+
+
+class BirdEyeTopDownEnv(metadrive.MetaDriveEnv):
     """This is the counterpart of the TopDownEnv from MetaDrive with vectorized
     input insead of raster input (BEV).
 
@@ -66,7 +107,7 @@ class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
         frame.
 
         """
-        return VectorizedObservation(self.config["vehicle_config"])
+        return BirdEyeObservation(self.config)
 
     @property
     def observation_spec(self):

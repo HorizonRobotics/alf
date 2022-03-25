@@ -19,9 +19,11 @@ import functools
 
 import torch
 
+import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import QNetwork
 from alf.networks import QRNNNetwork
+from alf.networks.q_networks import ParallelQNetwork
 from alf.utils import common
 from alf.nest.utils import NestSum
 
@@ -80,6 +82,30 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
 
         # (batch_size, n, num_actions)
         self.assertEqual(q_value.shape, (1, n, self._num_actions))
+
+    def test_rnn_parallel(self):
+        input_spec = TensorSpec([10])
+        batch_size = 1
+        replicas = 2
+        inputs = input_spec.zeros(outer_dims=(batch_size, ))
+
+        network_ctor, state = self._init(100)
+        state = alf.layers.make_parallel_input(state, replicas)
+
+        q_net = network_ctor(
+            input_spec, self._action_spec, input_preprocessors=torch.relu)
+        pnet = q_net.make_parallel(replicas)
+
+        self.assertTrue(isinstance(pnet, ParallelQNetwork))
+        self.assertEqual(pnet.name, "parallel_" + q_net.name)
+        self.assertEqual(
+            pnet.state_spec,
+            alf.nest.map_structure(
+                functools.partial(TensorSpec.from_tensor, from_dim=1), state))
+
+        q_value, _ = pnet(inputs, state)
+        self.assertEqual(q_value.shape,
+                         (batch_size, replicas, self._num_actions))
 
 
 if __name__ == "__main__":

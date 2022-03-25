@@ -14,6 +14,7 @@
 """Tests for alf.networks.network."""
 
 from absl.testing import parameterized
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -22,7 +23,10 @@ import alf
 from alf.tensor_specs import TensorSpec
 from alf.initializers import _numerical_calculate_gain
 from alf.initializers import _calculate_gain
-from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks import (ActorNetwork, ActorRNNNetwork, EncodingNetwork,
+                          LSTMEncodingNetwork, PreprocessorNetwork,
+                          TransformerNetwork, ValueNetwork, ValueRNNNetwork)
+from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.networks.network import NaiveParallelNetwork
 
 
@@ -170,6 +174,49 @@ class NetworkWrapperTest(alf.test.TestCase):
         pnet1 = net1.make_parallel(n=4)
         self.assertEqual(pnet1.state_spec,
                          TensorSpec((4, ) + input_spec.shape))
+
+        
+class PreprocessorNetworkTest(alf.test.TestCase):
+    def test_stateless_preprocessors(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        action_spec = TensorSpec((5, ), torch.float32)
+        combiner = alf.nest.utils.NestConcat()
+
+        PreprocessorNetwork(
+            input_tensor_spec=input_spec,
+            input_preprocessors=EmbeddingPreprocessor(
+                input_spec, embedding_dim=10),
+            preprocessing_combiner=combiner)
+        PreprocessorNetwork(
+            input_tensor_spec=input_spec,
+            input_preprocessors=alf.layers.Reshape(-1),
+            preprocessing_combiner=combiner)
+        self.assertRaises(
+            AssertionError,
+            PreprocessorNetwork,
+            input_tensor_spec=input_spec,
+            input_preprocessors=LSTMEncodingNetwork(
+                input_tensor_spec=input_spec),
+            preprocessing_combiner=combiner)
+
+        def _create_transformer_net(preprocessor):
+            return TransformerNetwork(
+                input_tensor_spec=input_spec,
+                num_prememory_layers=2,
+                num_attention_heads=5,
+                d_ff=100,
+                input_preprocessors=preprocessor)
+
+        _create_transformer_net(
+            alf.nn.Sequential(
+                EmbeddingPreprocessor(input_spec, embedding_dim=100),
+                alf.layers.Reshape(10, 10)))
+        self.assertRaises(
+            AssertionError, _create_transformer_net,
+            alf.nn.Sequential(
+                LSTMEncodingNetwork(
+                    input_tensor_spec=input_spec, hidden_size=(100, )),
+                alf.layers.Reshape(10, 10)))
 
 
 if __name__ == '__main__':

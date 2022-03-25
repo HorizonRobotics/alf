@@ -216,6 +216,32 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
 
+    def test_rnn_make_parallel(self):
+        obs_spec = TensorSpec((3, 20, 20), torch.float32)
+        network_ctor, state = self._init(100)
+        replicas = 2
+
+        action_spec = BoundedTensorSpec((3, ), torch.float32)
+        actor_dist_net = network_ctor(
+            obs_spec,
+            action_spec,
+            conv_layer_params=self._conv_layer_params,
+            fc_layer_params=self._fc_layer_params,
+            continuous_projection_net_ctor=functools.partial(
+                NormalProjectionNetwork, scale_distribution=True))
+        pnet = actor_dist_net.make_parallel(replicas)
+        state = alf.layers.make_parallel_input(state, replicas)
+        self.assertTrue(isinstance(pnet, ParallelActorDistributionNetwork))
+        self.assertEqual(pnet.name, "parallel_" + actor_dist_net.name)
+        self.assertEqual(
+            pnet.state_spec,
+            alf.nest.map_structure(
+                functools.partial(TensorSpec.from_tensor, from_dim=1), state))
+
+        act_dist, _ = pnet(obs_spec.randn((1, replicas)), state)
+        actions = act_dist.sample()
+        self.assertEqual(actions.shape, (1, replicas) + action_spec.shape)
+
 
 if __name__ == "__main__":
     alf.test.main()
