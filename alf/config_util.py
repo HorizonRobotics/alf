@@ -663,7 +663,7 @@ def repr_wrapper(cls):
         if multiline:
             s = ['  ' + x for x in s]
             self._repr_wrapper_str_ = '%s(\n%s)' % (cls.__qualname__,
-                                                    "\n".join(s))
+                                                    ",\n".join(s))
         else:
             self._repr_wrapper_str_ = '%s(%s)' % (cls.__qualname__,
                                                   ", ".join(s))
