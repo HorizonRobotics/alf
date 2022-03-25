@@ -44,7 +44,7 @@ class PreprocessorNetwork(Network):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input.
             input_preprocessors (nested Network|nn.Module|None): a nest of
-                preprocessor networks, each of which will be applied to the
+                preprocessors, each of which will be applied to the
                 corresponding input. If None, it is treated as ``math_ops.identity``.
                 If not None, ``input_tensor_spec`` must have the same structure
                 with ``input_preprocessors`` upto the structure defined by
@@ -55,7 +55,8 @@ class PreprocessorNetwork(Network):
                 you want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
-                continuous vector.
+                continuous vector. Note that only stateless networks are supported
+                as input preprocessors by ``PreprocessorNetwork``.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. It must be provided if the result from
                 ``input_preprocessors`` is nested. This combiner must accept the result

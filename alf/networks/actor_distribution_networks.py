@@ -13,6 +13,7 @@
 # limitations under the License.
 """ActorDistributionNetwork and ActorRNNDistributionNetwork."""
 from typing import Callable
+from functools import partial
 
 import torch
 import torch.distributions as td
@@ -29,7 +30,104 @@ from alf.networks.network import Network
 
 
 @alf.configurable
-class ActorDistributionNetwork(Network):
+class ActorDistributionNetworkBase(Network):
+    """A base class for ``ActorDistributionNetwork`` and ``ActorDistributionRNNNetwork``.
+
+    Can also be used to create customized actor networks by providing
+    different encoding network creators.
+    """
+
+    def __init__(self,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 action_spec: alf.nest.NestedTensorSpec,
+                 encoding_network_ctor: Callable,
+                 discrete_projection_net_ctor: Callable,
+                 continuous_projection_net_ctor: Callable,
+                 name: str = 'ActorDistributionNetworkBase',
+                 **encoder_kwargs):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input.
+            action_spec: the tensor spec of the action.
+            encoding_network_ctor: the creator of the encoding network that does
+                the heavy lifting of the actor.
+            discrete_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a discrete projection network that outputs discrete
+                actions.
+            continuous_projection_net_ctor (ProjectionNetwork): constructor that
+                generates a continuous projection network that outputs
+                continuous actions.
+            name: name of the network
+            encoder_kwargs: the extra keyword arguments to the encoding network
+        """
+
+        super().__init__(input_tensor_spec, name=name)
+
+        if encoder_kwargs.get('kernel_initializer', None) is None:
+            encoder_kwargs[
+                'kernel_initializer'] = torch.nn.init.xavier_uniform_
+
+        self._action_spec = action_spec
+        self._encoding_net = encoding_network_ctor(input_tensor_spec,
+                                                   **encoder_kwargs)
+        self._create_projection_net(discrete_projection_net_ctor,
+                                    continuous_projection_net_ctor)
+
+    def _create_projection_net(self, discrete_projection_net_ctor,
+                               continuous_projection_net_ctor):
+        """If there are :math:`N` action specs, then create :math:`N` projection
+        networks which can be a mixture of categoricals and normals.
+        """
+
+        def _create(spec):
+            if spec.is_discrete:
+                net = discrete_projection_net_ctor(
+                    input_size=self._encoding_net.output_spec.shape[0],
+                    action_spec=spec)
+            else:
+                net = continuous_projection_net_ctor(
+                    input_size=self._encoding_net.output_spec.shape[0],
+                    action_spec=spec)
+            return net
+
+        self._projection_net = nest.map_structure(_create, self._action_spec)
+        if nest.is_nested(self._projection_net):
+            # need this for torch to pickup the parameters of all the modules
+            self._projection_net_module_list = nn.ModuleList(
+                nest.flatten(self._projection_net))
+
+    def forward(self, observation, state=()):
+        """Computes an action distribution given an observation.
+
+        Args:
+            observation (torch.Tensor): consistent with ``input_tensor_spec``
+            state: empty for API consistent with ``ActorRNNDistributionNetwork``
+
+        Returns:
+            act_dist (torch.distributions): action distribution
+            state: empty
+        """
+        encoding, state = self._encoding_net(observation, state)
+        act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
+                                      self._projection_net)
+        return act_dist, state
+
+    def make_parallel(self, n):
+        """Create a ``ParallelActorDistributionNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        """
+        return ParallelActorDistributionNetwork(self, n,
+                                                "parallel_" + self._name)
+
+    @property
+    def state_spec(self):
+        """Return the state spec of the actor network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
+
+
+@alf.configurable
+class ActorDistributionNetwork(ActorDistributionNetworkBase):
     """Network which outputs temporally uncorrelated action distributions."""
 
     def __init__(self,
@@ -84,14 +182,13 @@ class ActorDistributionNetwork(Network):
                 continuous actions.
             name (str):
         """
-        super().__init__(input_tensor_spec, name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
-        self._action_spec = action_spec
-        self._encoding_net = EncodingNetwork(
+        super().__init__(
             input_tensor_spec=input_tensor_spec,
+            action_spec=action_spec,
+            encoding_network_ctor=EncodingNetwork,
+            discrete_projection_net_ctor=discrete_projection_net_ctor,
+            continuous_projection_net_ctor=continuous_projection_net_ctor,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -99,54 +196,6 @@ class ActorDistributionNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn)
-        self._create_projection_net(discrete_projection_net_ctor,
-                                    continuous_projection_net_ctor)
-
-    def _create_projection_net(self, discrete_projection_net_ctor,
-                               continuous_projection_net_ctor):
-        """If there are :math:`N` action specs, then create :math:`N` projection
-        networks which can be a mixture of categoricals and normals.
-        """
-
-        def _create(spec):
-            if spec.is_discrete:
-                net = discrete_projection_net_ctor(
-                    input_size=self._encoding_net.output_spec.shape[0],
-                    action_spec=spec)
-            else:
-                net = continuous_projection_net_ctor(
-                    input_size=self._encoding_net.output_spec.shape[0],
-                    action_spec=spec)
-            return net
-
-        self._projection_net = nest.map_structure(_create, self._action_spec)
-        if nest.is_nested(self._projection_net):
-            # need this for torch to pickup the parameters of all the modules
-            self._projection_net_module_list = nn.ModuleList(
-                nest.flatten(self._projection_net))
-
-    def forward(self, observation, state=()):
-        """Computes an action distribution given an observation.
-
-        Args:
-            observation (torch.Tensor): consistent with ``input_tensor_spec``
-            state: empty for API consistent with ``ActorRNNDistributionNetwork``
-
-        Returns:
-            act_dist (torch.distributions): action distribution
-            state: empty
-        """
-        encoding, state = self._encoding_net(observation, state)
-        act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
-                                      self._projection_net)
-        return act_dist, state
-
-    def make_parallel(self, n):
-        """Create a ``ParallelActorDistributionNetwork`` using ``n`` replicas of ``self``.
-        The initialized network parameters will be different.
-        """
-        return ParallelActorDistributionNetwork(self, n,
-                                                "parallel_" + self._name)
 
 
 class ParallelActorDistributionNetwork(Network):
@@ -177,14 +226,20 @@ class ParallelActorDistributionNetwork(Network):
             inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
             state (tuple): Empty for API consistent with ``ActorDistributionRNNNetwork``.
         """
-        encoding, _ = self._encoding_net(observation, state)
+        encoding, state = self._encoding_net(observation, state)
         act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
                                       self._projection_net)
         return act_dist, state
 
+    @property
+    def state_spec(self):
+        """Return the state spec of the actor network. It is simply the state spec
+        of the encoding network."""
+        return self._encoding_net.state_spec
+
 
 @alf.configurable
-class ActorDistributionRNNNetwork(ActorDistributionNetwork):
+class ActorDistributionRNNNetwork(ActorDistributionNetworkBase):
     """Network which outputs temporally correlated action distributions."""
 
     def __init__(self,
@@ -246,17 +301,10 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             action_spec=action_spec,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = torch.nn.init.xavier_uniform_
-
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
+            encoding_network_ctor=LSTMEncodingNetwork,
+            discrete_projection_net_ctor=discrete_projection_net_ctor,
+            continuous_projection_net_ctor=continuous_projection_net_ctor,
+            name=name,
             input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
@@ -265,12 +313,6 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
-        self._create_projection_net(discrete_projection_net_ctor,
-                                    continuous_projection_net_ctor)
-
-    @property
-    def state_spec(self):
-        return self._encoding_net.state_spec
 
 
 class UnitNormalActorDistributionNetwork(Network):

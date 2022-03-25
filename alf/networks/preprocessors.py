@@ -11,15 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Some network input preprocessors.
-
-An ``InputPreprocessor`` is a stateless Network, which is used for the purpose
-of preprocessing input and making gin files more convenient to configure.
+"""This file contains input preprocessors as stateless Networks, used for the
+purpose of preprocessing input and making gin files more convenient to configure.
 
 Example:
 In your gin file, below will be possible to configure:
-input1 (img) -> InputPreprocessor1 -> embed1    ----> EncodingNetwork
-input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
+input1 (img) -> preprocessor1 -> embed1    ----> EncodingNetwork
+input2 (action) -> preprocessor2 -> embed2   /   (with `NestCombiner`)
 
 """
 import abc
@@ -39,8 +37,9 @@ class EmbeddingPreprocessor(Network):
     """A preprocessor that converts the input to an embedding vector. This can
     be used when the input is a discrete scalar, or a continuous vector to be
     projected to a different dimension (to have the same length with other
-    vectors). Different from an ``EncodingNetwork``, the input can be in the
-    original format from the environment.
+    vectors). In the former case, ``torch.nn.Embedding`` is used without any
+    activation. In the latter case, an ``EncodingNetwork`` is used with the
+    specified network hyperparameters.
     """
 
     def __init__(self,
@@ -60,10 +59,11 @@ class EmbeddingPreprocessor(Network):
                 where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing FC
                 layer sizes.
-            activation (torch.nn.functional): activation applied to the embedding
+            activation (torch.nn.functional): activation of hidden layers if the
+                input is a continuous vector.
             last_activation (nn.functional): activation function of the
                 last layer specified by embedding_dim. ``math_ops.identity`` is
-                used by default.
+                used by default. Only used when the input is continuous.
             name (str):
         """
         super().__init__(input_tensor_spec, name=name)
@@ -105,7 +105,7 @@ class EmbeddingPreprocessor(Network):
                 result; otherwise it's the tensor spec of the result.
         """
         assert state is (), \
-            "InputPreprocessor is assumed to be stateless currently."
+            "The preprocessor is assumed to be stateless currently."
 
         ret = self._preprocess(inputs)
         return ret, state
