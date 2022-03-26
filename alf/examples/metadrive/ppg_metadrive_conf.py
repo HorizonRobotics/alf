@@ -14,6 +14,8 @@
 
 from functools import partial
 
+import torch
+
 import alf
 
 import alf.examples.metadrive.base_conf
@@ -23,19 +25,47 @@ from alf.examples.networks import impala_cnn_encoder
 from alf.utils.losses import element_wise_squared_loss
 from alf.algorithms.ppg_algorithm import PPGAuxOptions, PPGAlgorithm
 from alf.environments import suite_metadrive
-from alf.networks import StableNormalProjectionNetwork, TruncatedProjectionNetwork, BetaProjectionNetwork
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.networks import StableNormalProjectionNetwork
 
 # Environment Configuration
-alf.config('create_environment', num_parallel_environments=36)
+alf.config(
+    'create_environment', env_name='BirdEye', num_parallel_environments=36)
+
+alf.config('metadrive.sensors.BirdEyeObservation', velocity_steps=1)
 
 
 def encoding_network_ctor(input_tensor_spec):
+    # The encoding network will combine both the original BEV and the veloicty
+    # encoding into new BEV. Suppose the past v steps velocities are in the
+    # observation, we will add v channels where each channel is filled with the
+    # corresponding velocity.
+
     encoder_output_size = 256
-    return impala_cnn_encoder.create(
-        input_tensor_spec=input_tensor_spec,
-        cnn_channel_list=(16, 32, 32),
-        num_blocks_per_stack=2,
-        output_size=encoder_output_size)
+
+    bev_spec = input_tensor_spec['bev']
+    # Get the original BEV's shape (channel, height, width).
+    c, h, w = bev_spec.shape
+    # The shape of velocity is (v,), where v is the number of historical steps
+    # we store for the velocities.
+    v = input_tensor_spec['vel'].shape[0]
+
+    combined_input_spec = BoundedTensorSpec(
+        shape=(c + v, h, w),
+        dtype=bev_spec.dtype,
+        minimum=bev_spec.minimum,
+        maximum=bev_spec.maximum)
+
+    return alf.nn.Sequential(
+        lambda x: torch.cat((x['bev'], x['vel'].repeat_interleave(w * h).
+                             reshape(-1, v, h, w)),
+                            dim=1),
+        impala_cnn_encoder.create(
+            input_tensor_spec=combined_input_spec,
+            cnn_channel_list=(16, 32, 32),
+            num_blocks_per_stack=2,
+            output_size=encoder_output_size),
+        input_tensor_spec=input_tensor_spec)
 
 
 alf.config('ReplayBuffer.gather_all', convert_to_default_device=False)
@@ -61,7 +91,7 @@ alf.config(
     aux_optimizer=alf.optimizers.AdamTF(lr=8e-5),
     aux_options=PPGAuxOptions(
         enabled=True,
-        interval=32,
+        interval=16,
         mini_batch_length=None,  # None means use unroll_length as
         # mini_batch_length for aux phase
         mini_batch_size=18,
