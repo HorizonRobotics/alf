@@ -1845,8 +1845,8 @@ class ParamFC(nn.Module):
             use_ln (bool): whether use layer normalization
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
-                be specified at initialization and will be fixed, all input parameters 
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must
+                be specified at initialization and will be fixed, all input parameters
                 will have to be consistent with it.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
@@ -2081,8 +2081,8 @@ class ParamConv2D(nn.Module):
             use_ln (bool): whether use layer normalization
             n_groups (int): number of parallel groups, it is determined by the first
                 dimension of the input parameters when calling ``set_parameters`` if
-                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must 
-                be specified at initialization and will be fixed, all input parameters 
+                ``use_ln`` is False. If ``use_ln`` is True, ``n_groups`` must
+                be specified at initialization and will be fixed, all input parameters
                 will have to be consistent with it.
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
@@ -3079,6 +3079,27 @@ class ScaleGradient(ElementwiseLayerBase):
     def forward(self, input):
         # (1 - self._scale) * input.detach() + self._scale * input
         return torch.lerp(input.detach(), input, self._scale)
+
+
+@alf.configurable
+class SummarizeGradient(ElementwiseLayerBase):
+    def __init__(self, name):
+        """A layer for summarizing the gradient of the input tensor.
+
+        Args:
+            name (str): used to describe the name of the summary, after the
+                tag 'tensor_gradient'.
+        """
+        super().__init__()
+
+        self._name = name
+
+    def forward(self, x):
+        # explicitly turn on gradient calculation in order to summarize gradient
+        x.requires_grad = True
+        x = summarize_tensor_gradients(
+            "tensor_gradient/{}".format(self._name), x, clone=True)
+        return x
 
 
 class Branch(nn.Module):
