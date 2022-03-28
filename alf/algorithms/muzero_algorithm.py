@@ -21,7 +21,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, TimeStep
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, MCTSInfo
-from alf.algorithms.muzero_representation_learner import MuzeroRepresentationLearner, MuzeroInfo
+from alf.algorithms.muzero_representation_learner import MuzeroRepresentationImpl, MuzeroInfo
 from alf.tensor_specs import TensorSpec
 from alf.trainers.policy_trainer import Trainer
 
@@ -57,7 +57,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  observation_spec,
                  action_spec,
                  representation_learner_ctor: Callable[
-                     ..., MuzeroRepresentationLearner],
+                     ..., MuzeroRepresentationImpl],
                  mcts_algorithm_ctor: Callable[..., MCTSAlgorithm],
                  reward_spec=TensorSpec(()),
                  reward_transformer=None,

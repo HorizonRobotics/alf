@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from alf.algorithms.muzero_representation_learner import MuzeroRepresentationLearner
+from alf.algorithms.muzero_representation_learner import MuzeroRepresentationImpl
 import math
 
 import alf
@@ -81,7 +81,7 @@ alf.config(
 reward_transformer = RewardNormalizer(update_mode="rollout")
 
 alf.config(
-    "MuzeroRepresentationLearner",
+    "MuzeroRepresentationImpl",
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
     td_steps=10,
@@ -95,7 +95,7 @@ alf.config(
 
 alf.config(
     "MuzeroAlgorithm",
-    representation_learner_ctor=MuzeroRepresentationLearner,
+    representation_learner_ctor=MuzeroRepresentationImpl,
     mcts_algorithm_ctor=MCTSAlgorithm,
     reward_transformer=reward_transformer)
 

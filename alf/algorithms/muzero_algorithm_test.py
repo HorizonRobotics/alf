@@ -21,7 +21,7 @@ import numpy as np
 import alf
 from alf.algorithms.data_transformer import FrameStacker
 from alf.algorithms.muzero_algorithm import MuzeroAlgorithm, MuzeroInfo, OffPolicyAlgorithm
-from alf.algorithms.muzero_representation_learner import MuzeroRepresentationLearner
+from alf.algorithms.muzero_representation_learner import MuzeroRepresentationImpl
 from alf.algorithms.mcts_algorithm import MCTSInfo, MCTSState
 from alf.algorithms.mcts_models import get_unique_num_actions, MCTSModel, ModelOutput, ModelTarget
 import alf.data_structures as ds
@@ -160,7 +160,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         _mcts_model_id = 0
 
         create_repr_learner = partial(
-            MuzeroRepresentationLearner,
+            MuzeroRepresentationImpl,
             model_ctor=_create_mcts_model,
             num_unroll_steps=num_unroll_steps,
             td_steps=td_steps,

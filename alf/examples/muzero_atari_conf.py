@@ -51,7 +51,7 @@ import alf
 import alf.examples.atari_conf
 import alf.examples.muzero_conf
 from alf.utils.schedulers import LinearScheduler, StepScheduler
-from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, MuzeroRepresentationLearner
+from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, MuzeroRepresentationImpl
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.algorithms.mcts_algorithm import MCTSAlgorithm, VisitSoftmaxTemperatureByProgress
 from alf.optimizers import SGD, Adam, AdamTF, AdamW
@@ -441,7 +441,7 @@ alf.config(
     learn_policy_temperature=1.0)
 
 alf.config(
-    "MuzeroRepresentationLearner",
+    "MuzeroRepresentationImpl",
     enable_amp=True,
     model_ctor=SimpleMCTSModel,
     # The following line can be commented out if GPU memory is large enough
@@ -462,7 +462,7 @@ alf.config(
 alf.config(
     "MuzeroAlgorithm",
     enable_amp=True,
-    representation_learner_ctor=MuzeroRepresentationLearner,
+    representation_learner_ctor=MuzeroRepresentationImpl,
     mcts_algorithm_ctor=MCTSAlgorithm,
     reward_transformer=reward_transformer)
 

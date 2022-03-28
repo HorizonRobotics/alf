@@ -55,7 +55,7 @@ MuzeroInfo = namedtuple(
 
 
 @alf.configurable
-class MuzeroRepresentationLearner(OffPolicyAlgorithm):
+class MuzeroRepresentationImpl(OffPolicyAlgorithm):
     """MuZero-style Representation Learner.
 
     MuZero is described in the paper:
