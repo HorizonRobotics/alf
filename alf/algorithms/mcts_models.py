@@ -238,6 +238,11 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
     @property
     def repr_spec(self) -> TensorSpec:
+        """Returns the spec of the representation.
+
+        Used by the downstream RL algorithms as their observation spec.
+
+        """
         raise NotImplementedError('A MCTS model should implement repr_spec()')
 
     def initial_representation(self, observation) -> torch.Tensor:

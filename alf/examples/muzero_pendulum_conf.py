@@ -63,7 +63,6 @@ alf.config(
 
 alf.config(
     "MCTSAlgorithm",
-    discount=0.99,
     num_simulations=10,
     root_dirichlet_alpha=0.5,
     root_exploration_fraction=0.,
@@ -85,7 +84,6 @@ alf.config(
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
     td_steps=10,
-    discount=0.99,
     reward_transformer=reward_transformer,
     train_repr_prediction=train_repr_prediction,
     reanalyze_ratio=1.0,
@@ -95,6 +93,7 @@ alf.config(
 
 alf.config(
     "MuzeroAlgorithm",
+    discount=0.99,
     representation_learner_ctor=MuzeroRepresentationImpl,
     mcts_algorithm_ctor=MCTSAlgorithm,
     reward_transformer=reward_transformer)

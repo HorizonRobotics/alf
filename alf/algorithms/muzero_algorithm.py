@@ -53,29 +53,35 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     """
 
-    def __init__(self,
-                 observation_spec,
-                 action_spec,
-                 representation_learner_ctor: Callable[
-                     ..., MuzeroRepresentationImpl],
-                 mcts_algorithm_ctor: Callable[..., MCTSAlgorithm],
-                 reward_spec=TensorSpec(()),
-                 reward_transformer=None,
-                 config: Optional[TrainerConfig] = None,
-                 enable_amp: bool = True,
-                 debug_summaries=False,
-                 name="MuZero"):
+    def __init__(
+            self,
+            observation_spec,
+            action_spec,
+            discount: float,
+            reward_spec=TensorSpec(()),
+            representation_learner_ctor: Callable[
+                ..., MuzeroRepresentationImpl] = MuzeroRepresentationImpl,
+            mcts_algorithm_ctor: Callable[..., MCTSAlgorithm] = MCTSAlgorithm,
+            reward_transformer=None,
+            config: Optional[TrainerConfig] = None,
+            enable_amp: bool = True,
+            debug_summaries=False,
+            name="MuZero"):
         """
         Args:
             observation_spec (TensorSpec): representing the observations.
             action_spec (BoundedTensorSpec): representing the actions.
-            representation_learner_ctor: will be called to construct a MuZero-style
-                representation learner.
+            representation_learner_ctor: It will be called to construct a
+                MuZero-style representation learner. It is expected to be called
+                as ``representation_learner_ctor(observation_spec=?,
+                action_spec=?, reward_spec=?, discount=?, reward_transformer=?,
+                enable_amp=?, config=?, debug_summaries=?, name=?)``.
             mcts_algorithm_ctor: will be called as
                 ``mcts_algorithm_ctor(observation_spec=?, action_spec=?,
-                debug_summaries=?, name=?)`` to construct an ``MCTSAlgorithm`` instance.
-                The constructed MCTS algorithm is assumed to have no learnable parameters.
-                It also relies on the model from the representation learner ro run MCTS.
+                discount=?, debug_summaries=?, name=?)`` to construct an
+                ``MCTSAlgorithm`` instance. The constructed MCTS algorithm is
+                assumed to have no learnable parameters. It also relies on the
+                model from the representation learner ro run MCTS.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             reward_transformer (Callable|None): if provided, will be used to
@@ -94,6 +100,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         representation_learner = representation_learner_ctor(
             observation_spec=observation_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
+            discount=discount,
+            reward_transformer=reward_transformer,
+            enable_amp=enable_amp,
             config=config,
             debug_summaries=debug_summaries,
             name="muzero_repr")
@@ -101,6 +111,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         mcts = mcts_algorithm_ctor(
             observation_spec=representation_learner.model.repr_spec,
             action_spec=action_spec,
+            discount=discount,
             debug_summaries=debug_summaries,
             name="muzero_policy")
 

@@ -24,7 +24,6 @@ alf.layers.Conv2D.use_bn=%USE_BN
 alf.layers.BottleneckBlock.with_batch_normalization=%USE_BN
 
 MCTSAlgorithm.num_simulations=800
-MCTSAlgorithm.discount=1.0
 MCTSAlgorithm.root_dirichlet_alpha=0.03
 MCTSAlgorithm.root_exploration_fraction=0.25
 MCTSAlgorithm.pb_c_init=1.25
@@ -49,12 +48,14 @@ SimpleMCTSModel.encoding_net_ctor=@muzero_go.RepresentationNet
 SimpleMCTSModel.dynamics_net_ctor=@muzero_go.DynamicsNet
 SimpleMCTSModel.prediction_net_ctor=@muzero_go.PredictionNet
 
+MuzeroRepresentationImpl.model_ctor=@SimpleMCTSModel
+MuzeroRepresentationImpl.num_unroll_steps=5
+MuzeroRepresentationImpl.td_steps=-1
+MuzeroRepresentationImpl.reanalyze_ratio = 0.
+
 MuzeroAlgorithm.mcts_algorithm_ctor=@MCTSAlgorithm
-MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
-MuzeroAlgorithm.num_unroll_steps=5
-MuzeroAlgorithm.td_steps=-1
-MuzeroAlgorithm.data_transformer_ctor=@FrameStacker
-MuzeroAlgorithm.reanalyze_ratio = 0.
+MuzeroAlgorithm.representation_learner_ctor=@MuzeroRepresentationImpl
+MuzeroAlgorithm.discount=1.0
 
 MuzeroAlgorithm.train_game_over_function=False
 MuzeroAlgorithm.train_reward_function=False
@@ -65,6 +66,7 @@ LR_SCHEDULE=@ExponentialScheduler(progress_type='iterations', initial_value=%INI
 Agent.optimizer=@SGD(lr=%LR_SCHEDULE, momentum=0.9, weight_decay=1e-4)
 
 # training config
+TrainerConfig.data_transformer_ctor=@FrameStacker
 TrainerConfig.unroll_length=10
 TrainerConfig.mini_batch_size=256
 TrainerConfig.num_updates_per_train_iter=1

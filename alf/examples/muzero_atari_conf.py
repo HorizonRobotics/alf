@@ -421,7 +421,6 @@ alf.config(
 
 alf.config(
     "MCTSAlgorithm",
-    discount=discount,
     num_simulations=52,
     num_parallel_sims=2,
     root_dirichlet_alpha=0.3,
@@ -442,14 +441,11 @@ alf.config(
 
 alf.config(
     "MuzeroRepresentationImpl",
-    enable_amp=True,
     model_ctor=SimpleMCTSModel,
     # The following line can be commented out if GPU memory is large enough
     reanalyze_batch_size=1280 if use_small_net else 640,
     num_unroll_steps=5,
     td_steps=10,
-    discount=discount,
-    reward_transformer=reward_transformer,
     reanalyze_algorithm_ctor=MCTSAlgorithm,
     reanalyze_td_steps_func=  #LinearMaxAgeTdStepFunc(),
     LinearTdStepFunc(max_bootstrap_age=1.2, min_td_steps=1),
@@ -461,6 +457,7 @@ alf.config(
 
 alf.config(
     "MuzeroAlgorithm",
+    discount=discount,
     enable_amp=True,
     representation_learner_ctor=MuzeroRepresentationImpl,
     mcts_algorithm_ctor=MCTSAlgorithm,

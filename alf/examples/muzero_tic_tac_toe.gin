@@ -8,7 +8,6 @@ create_environment.env_load_fn=@suite_tic_tac_toe.load
 create_environment.num_parallel_environments=32
 
 MCTSAlgorithm.num_simulations=20
-MCTSAlgorithm.discount=1.0
 MCTSAlgorithm.root_dirichlet_alpha=0.25
 MCTSAlgorithm.root_exploration_fraction=0.25
 MCTSAlgorithm.num_simulations=20
@@ -21,7 +20,7 @@ MCTSAlgorithm.visit_softmax_temperature_fn=@VisitSoftmaxTemperatureByMoves()
 MuzeroRepresentationImpl.model_ctor=@SimpleMCTSModel
 MuzeroRepresentationImpl.num_unroll_steps=5
 MuzeroRepresentationImpl.td_steps=-1
-MuzeroRepresentationImpl.discount=1.0
+MuzeroAlgorithm.discount=1.0
 MuzeroAlgorithm.mcts_algorithm_ctor=@MCTSAlgorithm
 MuzeroAlgorithm.representation_learner_ctor=@MuzeroRepresentationImpl
 

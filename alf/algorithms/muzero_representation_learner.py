@@ -144,8 +144,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
             reanalyze_algorithm_ctor (Callable): will be called as
-                ``reanalyze_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?, name=?)``
-                to construct an ``Algorithm`` instance for reanalyze.
+                ``reanalyze_algorithm_ctor(observation_spec=?,
+                action_spec=?, discount=?, debug_summaries=?, name=?)`` to
+                construct an ``Algorithm`` instance for reanalyze.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
@@ -243,6 +244,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             self._reanalyze_algorithm = reanalyze_algorithm_ctor(
                 observation_spec=observation_spec,
                 action_spec=action_spec,
+                discount=discount,
                 debug_summaries=debug_summaries,
                 name="reanalyze_algorithm")
             self._target_model = model_ctor(
