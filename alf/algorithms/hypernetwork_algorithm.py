@@ -25,6 +25,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple
+from alf.algorithms.functional_particle_vi_algorithm import _expand_to_replica
 from alf.algorithms.generator import Generator
 from alf.networks import EncodingNetwork, ParamNetwork, ReluMLP
 from alf.tensor_specs import TensorSpec
@@ -366,6 +367,10 @@ class HyperNetwork(Algorithm):
             )
             permute_idx = np.arange(self.num_particles - 1)
             self._permute_idx = np.insert(permute_idx, 0, -1)
+            if self._function_vi:
+                self._random_idx = torch.randint(
+                    0, train_loader.batch_size,
+                    (int(train_loader.batch_size / self.num_particles), ))
 
         self._train_loader = train_loader
         self._test_loader = test_loader
@@ -462,6 +467,8 @@ class HyperNetwork(Algorithm):
                 target = target.to(alf.get_default_device())
 
                 if self._mini_batch_training:
+                    if self._function_vi:
+                        kernel_eval_data = data[self._random_idx]
                     # [B*n, d] -> [B, n, d]
                     data = data.reshape(-1, self.num_particles,
                                         *data.shape[1:])
@@ -471,8 +478,12 @@ class HyperNetwork(Algorithm):
                         if permute_iter != 0:
                             data = data[:, self._permute_idx, ...]
                             target = target[:, self._permute_idx, ...]
+                        if self._function_vi:
+                            train_data = (data, kernel_eval_data)
+                        else:
+                            train_data = data
 
-                        alg_step = self.train_step((data, target),
+                        alg_step = self.train_step((train_data, target),
                                                    num_particles=num_particles,
                                                    state=state)
                         loss_info, params = self.update_with_gradient(
@@ -537,8 +548,7 @@ class HyperNetwork(Algorithm):
             data, target = inputs
             return self._generator.train_step(
                 inputs=None,
-                loss_func=functools.partial(self._function_neglogprob,
-                                            target.view(-1)),
+                loss_func=functools.partial(self._function_neglogprob, target),
                 batch_size=num_particles,
                 entropy_regularization=entropy_regularization,
                 transform_func=functools.partial(self._function_transform,
@@ -557,7 +567,7 @@ class HyperNetwork(Algorithm):
         evaluated on the training batch. Used when function_vi is True.
 
         Args:
-            data (Tensor): training batch input.
+            data (nested Tensor): training batch input.
             params: tensor params or tuple of tensors (params, extra_samples)
                 - params: of shape ``[D]`` or ``[B, D]``, sampled outputs
                     from the generator
@@ -570,28 +580,34 @@ class HyperNetwork(Algorithm):
                 params evaluated on sampled extra data.
             extra_samples (Tensor): sampled extra data.
         """
+        data, kernel_eval_data = data
         # sample extra data
         if isinstance(params, tuple):
             params, extra_samples = params
         else:
-            sample = data[-self._function_extra_bs:]
+            sample = kernel_eval_data[-self._function_extra_bs:]
             noise = torch.zeros_like(sample)
             if self._function_extra_bs_sampler == 'uniform':
                 noise.uniform_(0., 1.)
             else:
                 noise.normal_(mean=0., std=self._function_extra_bs_std)
             extra_samples = sample + noise
-
+        kernel_eval_data = torch.cat([kernel_eval_data, extra_samples], dim=0)
+        # [B+b, D] -> [B+b, P, D]
+        kernel_eval_data = _expand_to_replica(
+            kernel_eval_data, self.num_particles,
+            self._param_net.input_tensor_spec)
         num_particles = params.shape[0]
         self._param_net.set_parameters(params)
-        aug_data = torch.cat([data, extra_samples], dim=0)
-        aug_outputs, _ = self._param_net(aug_data)  # [B+b, P, D]
+        aug_data = torch.cat([data, kernel_eval_data], dim=0)
+        aug_outputs, _ = self._param_net(aug_data)  # [2B+b, P, D]
 
         outputs = aug_outputs[:data.shape[0]]  # [B, P, D]
         outputs = outputs.transpose(0, 1)
         outputs = outputs.view(num_particles, -1)  # [P, B * D]
 
-        density_outputs = aug_outputs[-extra_samples.shape[0]:]  # [b, P, D]
+        density_outputs = aug_outputs[
+            -kernel_eval_data.shape[0]:]  # [B+b, P, D]
         density_outputs = density_outputs.transpose(0, 1)
         density_outputs = density_outputs.view(num_particles, -1)
 
@@ -609,7 +625,26 @@ class HyperNetwork(Algorithm):
             negative log_prob for outputs evaluated on current training batch.
         """
         num_particles = outputs.shape[0]
-        targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
+        if self._loss_type == 'regression':
+            if not self._mini_batch_training:
+                # [B, D] -> [B, N, D]
+                targets = _expand_to_replica(targets, num_particles,
+                                             self._param_net.output_spec)
+            # [B, N, D] -> [N, B, D]
+            targets = targets.permute(1, 0, 2)
+            # [N, B, D] -> [N, -1]
+            targets = targets.view(num_particles, -1)
+        else:
+            # [B] -> [B, 1] or [B, N] -> [B, N, 1]
+            targets = targets.unsqueeze(-1)
+            if not self._mini_batch_training:
+                # [B, 1] -> [N, B, 1]
+                targets = targets.unsqueeze(0).expand(num_particles,
+                                                      *targets.shape)
+            # [B, N, 1] -> [N, B, 1]
+            targets = targets.permute(1, 0, 2)
+
+        # targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
 
         return self._loss_func(outputs, targets)
 
@@ -629,8 +664,15 @@ class HyperNetwork(Algorithm):
         data, target = inputs
         output, _ = self._param_net(data)  # [B, P, D]
         if not self._mini_batch_training:
-            target = target.unsqueeze(1).expand(
-                *target.shape[:1], num_particles, *target.shape[1:])
+            if self._loss_type == 'regression':
+                # [B, d] -> [B, N, d]
+                target = _expand_to_replica(target, num_particles,
+                                            self._param_net.output_spec)
+            else:
+                # [B] -> [B, N]
+                target = target.unsqueeze(1).expand(*target.shape[:1],
+                                                    num_particles)
+
         return self._loss_func(output, target)
 
     def evaluate(self, num_particles=None):

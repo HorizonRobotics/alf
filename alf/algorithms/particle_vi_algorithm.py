@@ -299,9 +299,8 @@ class ParVIAlgorithm(Algorithm):
         """
         if transform_func is not None:
             particles, extra_particles = transform_func(particles)
-            aug_particles = torch.cat([particles, extra_particles], dim=-1)
         else:
-            aug_particles = particles
+            extra_particles = particles
         loss_inputs = particles
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
@@ -312,16 +311,23 @@ class ParVIAlgorithm(Algorithm):
                                         loss_inputs)[0]  # [N, D]
 
         # [N, N], [N, N, D]
-        kernel_weight, kernel_grad = self._rbf_func(aug_particles.detach())
+        kernel_weight, kernel_grad = self._rbf_func(extra_particles.detach())
+
         kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
             self.num_particles)  # [N, D]
 
+        # kernel_weight.fill_diagonal_(0.6)
+        # kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
+        #     self.num_particles - 1)  # [N, D]
+
         loss_prop_kernel_logp = torch.sum(
             kernel_logp.detach() * particles, dim=-1)
+
+        kernel_grad = kernel_grad.sum(0) / (self.num_particles - 1)
         loss_prop_kernel_grad = torch.sum(
-            -entropy_regularization * kernel_grad.mean(0).detach() *
-            aug_particles,
+            -entropy_regularization * kernel_grad.detach() * extra_particles,
             dim=-1)
+
         loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
 
         return loss, loss_propagated
@@ -334,10 +340,9 @@ class ParVIAlgorithm(Algorithm):
         """Compute particle gradients via GFSF (Stein estimator). """
         if transform_func is not None:
             particles, extra_particles = transform_func(particles)
-            aug_particles = torch.cat([particles, extra_particles], dim=-1)
         else:
-            aug_particles = particles
-        score_inputs = aug_particles.detach()
+            extra_particles = particles
+        score_inputs = extra_particles.detach()
         loss_inputs = particles
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
@@ -348,7 +353,8 @@ class ParVIAlgorithm(Algorithm):
         logq_grad = self._score_func(score_inputs) * entropy_regularization
 
         loss_prop_neglogp = torch.sum(loss_grad.detach() * particles, dim=-1)
-        loss_prop_logq = torch.sum(-logq_grad.detach() * aug_particles, dim=-1)
+        loss_prop_logq = torch.sum(
+            -logq_grad.detach() * extra_particles, dim=-1)
         loss_propagated = loss_prop_neglogp + loss_prop_logq
 
         return loss, loss_propagated

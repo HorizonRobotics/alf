@@ -311,6 +311,10 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             )
             permute_idx = np.arange(self.num_particles - 1)
             self._permute_idx = np.insert(permute_idx, 0, -1)
+            if self._function_vi:
+                self._random_idx = torch.randint(
+                    0, train_loader.batch_size,
+                    (int(train_loader.batch_size / self.num_particles), ))
 
         self._train_loader = train_loader
         self._test_loader = test_loader
@@ -367,6 +371,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 target = target.to(alf.get_default_device())
 
                 if self._mini_batch_training:
+                    if self._function_vi:
+                        kernel_eval_data = data[self._random_idx]
                     # [B*n, d] -> [B, n, d]
                     data = data.reshape(-1, self.num_particles,
                                         *data.shape[1:])
@@ -376,7 +382,12 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                         if permute_iter != 0:
                             data = data[:, self._permute_idx, ...]
                             target = target[:, self._permute_idx, ...]
-                        alg_step = self.train_step((data, target), state=state)
+                        if self._function_vi:
+                            train_data = (data, kernel_eval_data)
+                        else:
+                            train_data = data
+                        alg_step = self.train_step((train_data, target),
+                                                   state=state)
                         loss_info, params = self.update_with_gradient(
                             alg_step.info)
                         loss += loss_info.extra.loss
@@ -446,7 +457,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         evaluated on the training batch. Used when function_vi is True.
 
         Args:
-            data (Tensor): training batch input.
+            data (nested Tensor): training batch input.
             params (Tensor): parameter tensor for param_net.
 
         Returns:
@@ -455,28 +466,34 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             density_outputs (Tensor): outputs of param_net under
                 params evaluated on sampled extra data.
         """
-        # sample extra data
+        data, kernel_eval_data = data
+        # sample extra data for kernel_eval
         if isinstance(params, tuple):
             params, extra_samples = params
         else:
-            sample = data[-self._function_extra_bs:]
+            sample = kernel_eval_data[-self._function_extra_bs:]
             noise = torch.zeros_like(sample)
             if self._function_extra_bs_sampler == 'uniform':
                 noise.uniform_(0., 1.)
             else:
                 noise.normal_(mean=0., std=self._function_extra_bs_std)
             extra_samples = sample + noise
-
+        kernel_eval_data = torch.cat([kernel_eval_data, extra_samples], dim=0)
+        # [B+b, D] -> [B+b, P, D]
+        kernel_eval_data = _expand_to_replica(
+            kernel_eval_data, self.num_particles,
+            self._param_net.input_tensor_spec)
         num_particles = params.shape[0]
         self._param_net.set_parameters(params)
-        aug_data = torch.cat([data, extra_samples], dim=0)
-        aug_outputs, _ = self._param_net(aug_data)  # [B+b, P, D]
+        aug_data = torch.cat([data, kernel_eval_data], dim=0)
+        aug_outputs, _ = self._param_net(aug_data)  # [2B+b, P, D]
 
         outputs = aug_outputs[:data.shape[0]]  # [B, P, D]
         outputs = outputs.transpose(0, 1)
         outputs = outputs.view(num_particles, -1)  # [P, B * D]
 
-        density_outputs = aug_outputs[-extra_samples.shape[0]:]  # [b, P, D]
+        density_outputs = aug_outputs[
+            -kernel_eval_data.shape[0]:]  # [B+b, P, D]
         density_outputs = density_outputs.transpose(0, 1)  # [P, b, D]
         density_outputs = density_outputs.view(num_particles, -1)  # [P, b * D]
 

@@ -61,10 +61,9 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
         ('svgd', False),
         ('gfsf', False),
-        # TODO: after fixing stochastic ParVI, ``function_vi`` tests cannot pass
-        #       ``minmax`` test is too slow
-        # ('svgd', True),
-        # ('gfsf', True),
+        ('svgd', True),
+        ('gfsf', True),
+        # TODO: after fixing stochastic ParVI, ``minmax`` test is too slow
         # ('minmax', False),
     )
     def test_functional_par_vi_algorithm(self,
@@ -150,7 +149,7 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             absl.logging.info("computed_cov norm: {}".format(
                 computed_cov.norm()))
 
-        train_iter = 1000
+        train_iter = 1500
         for i in range(train_iter):
             algorithm.train_iter()
             if i % 1000 == 0:
