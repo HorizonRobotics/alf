@@ -31,7 +31,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
 from alf.utils.summary_utils import summarize_tensor_gradients
-from alf.utils.tensor_utils import BatchSquash
+from alf.utils.tensor_utils import BatchSquash, tensor_extend_new_dim
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
 
@@ -3446,8 +3446,7 @@ def make_parallel_input(inputs, n: int):
     Returns:
         inputs replicated over dim 1
     """
-    return map_structure(lambda x: x.unsqueeze(1).expand(-1, n, *x.shape[1:]),
-                         inputs)
+    return map_structure(partial(tensor_extend_new_dim, dim=1, n=n), inputs)
 
 
 def make_parallel_spec(specs, n: int):

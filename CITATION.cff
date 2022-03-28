@@ -17,6 +17,6 @@ authors:
     given-names: Jerry
   - family-names: ALF contributors
     given-names:
-title: "Agent Learning Framework"
-date-released: "2021"
+title: "{ALF}: Agent Learning Framework"
+date-released: 2021-12-1
 repository-code: "https://github.com/HorizonRobotics/alf"
