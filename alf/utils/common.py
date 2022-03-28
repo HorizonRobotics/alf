@@ -1018,12 +1018,12 @@ def is_eval():
     return _exe_mode == EXE_MODE_EVAL
 
 
-def is_training(alg: alf.algorithms.algorithm.Algorithm):
+def is_training(alg):
     """Return a bool value indicating whether the current code is in a training
     step, for either an on-policy or an off-policy algorithm.
 
     Args:
-        alg: the algorithm to be decided
+        alg (Algorithm): the algorithm to be decided
     """
     return (alg.on_policy and is_rollout()) or is_replay()
 
