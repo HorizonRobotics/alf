@@ -75,7 +75,8 @@ def _create_mcts_model(observation_spec, action_spec, num_unroll_steps,
 
 
 class MockMCTSAlgorithm(OffPolicyAlgorithm):
-    def __init__(self, observation_spec, action_spec, debug_summaries, name):
+    def __init__(self, observation_spec, action_spec, discount,
+                 debug_summaries, name):
         super().__init__(
             observation_spec,
             action_spec,
@@ -84,10 +85,11 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
         self._model = None
+        self._discount = discount
 
     @property
     def discount(self):
-        return 0.5
+        return self._discount
 
     def set_model(self, model: MCTSModel):
         self._model = model
@@ -164,7 +166,6 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             model_ctor=_create_mcts_model,
             num_unroll_steps=num_unroll_steps,
             td_steps=td_steps,
-            discount=0.5,
             train_game_over_function=True,
             train_reward_function=train_reward_function,
             reanalyze_algorithm_ctor=MockMCTSAlgorithm,
@@ -175,6 +176,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         muzero = MuzeroAlgorithm(
             observation_spec,
             action_spec,
+            discount=0.5,
             representation_learner_ctor=create_repr_learner,
             mcts_algorithm_ctor=MockMCTSAlgorithm)
 
