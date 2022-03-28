@@ -30,6 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
+from alf.utils.summary_utils import summarize_tensor_gradients
 from alf.utils.tensor_utils import BatchSquash, tensor_extend_new_dim
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
@@ -3079,6 +3080,37 @@ class ScaleGradient(ElementwiseLayerBase):
     def forward(self, input):
         # (1 - self._scale) * input.detach() + self._scale * input
         return torch.lerp(input.detach(), input, self._scale)
+
+
+@alf.configurable
+class SummarizeGradient(ElementwiseLayerBase):
+    def __init__(self, name):
+        """A layer for summarizing the gradient of the input tensor.
+
+        Summarize the gradient of the input tensor. Always first cloning the
+        input tensor and then setting ``requires_grad=True`` for the cloned
+        tensor to enable gradient calculation for summarization.
+
+        Args:
+            name (str): used to describe the name of the summary, after the
+                tag 'tensor_gradient'.
+    Returns:
+            cloned ``tensor``: with ``requires_grad`` set to True and gradient
+            summarization hook registered.
+        """
+        super().__init__()
+
+        self._name = name
+
+    def forward(self, x):
+        # clone the input tensor ``x`` to avoid impacts on training in the case
+        # where ``x`` does not require gradient
+        y = x.clone()
+        # explicitly turn on gradient calculation in order to summarize gradient
+        y.requires_grad = True
+        y = summarize_tensor_gradients(
+            "tensor_gradient/{}".format(self._name), y, clone=False)
+        return y
 
 
 class Branch(nn.Module):
