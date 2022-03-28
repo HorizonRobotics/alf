@@ -30,6 +30,7 @@ from alf.nest import map_structure, get_field
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
+from alf.utils.summary_utils import summarize_tensor_gradients
 from alf.utils.tensor_utils import BatchSquash
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
@@ -3086,6 +3087,14 @@ class SummarizeGradient(ElementwiseLayerBase):
     def __init__(self, name):
         """A layer for summarizing the gradient of the input tensor.
 
+        Summarize the gradient of the input tensor if its gradient
+        calculation is enabled (``requires_grad=True``).
+        Otherwise,  if the input tensor is a leaf node, whose ``requires_grad``
+        is set to False by detault, this layer will set ``requires_grad=True``
+        for the input tensor to enable gradient calculation for summarization.
+        For non-leaf tensor with ``requires_grad`` as False, this layer has no
+        effect.
+
         Args:
             name (str): used to describe the name of the summary, after the
                 tag 'tensor_gradient'.
@@ -3095,8 +3104,10 @@ class SummarizeGradient(ElementwiseLayerBase):
         self._name = name
 
     def forward(self, x):
-        # explicitly turn on gradient calculation in order to summarize gradient
-        x.requires_grad = True
+        # explicitly turn on gradient calculation only if ``x`` is a leaf node
+        # in order to summarize its gradient
+        if x.is_leaf:
+            x.requires_grad = True
         x = summarize_tensor_gradients(
             "tensor_gradient/{}".format(self._name), x, clone=True)
         return x
