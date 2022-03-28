@@ -335,26 +335,38 @@ class NaiveParallelNetwork(Network):
 class NetworkWrapper(Network):
     """Wrap module or function as a Network."""
 
-    def __init__(self, module, input_tensor_spec):
+    def __init__(self,
+                 module: typing.Callable,
+                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 state_spec: alf.nest.NestedTensorSpec = (),
+                 name: str = "NetworkWrapper"):
         """
         Args:
-            module (Callable): can be called as ``module(input)`` to calculate
-                the output.
-            input_tensor_spec (TensorSpec): the TensorSpec for the input of ``module``
+            module: can be called as ``module(input)`` to calculate the output.
+                If ``state_spec != ()``, then it's called as ``module(input,state)``
+                and its return should be a tuple of ``(output,new_state)``.
+            input_tensor_spec: the tensor spec for the input of ``module``
+            state_spec: the tensor spec for the state of ``module``
+            name: name of the wrapped network
         """
-        super().__init__(input_tensor_spec)
+        super().__init__(input_tensor_spec, state_spec, name)
         assert isinstance(
             module,
             typing.Callable), ("module is not Callable: %s" % type(module))
         self._module = module
 
     def forward(self, x, state=()):
-        return self._module(x), state
+        if state == ():
+            return self._module(x), state
+        else:
+            return self._module(x, state)
 
     def make_parallel(self, n: int):
         return NetworkWrapper(
             alf.layers.make_parallel_net(self._module, n),
-            alf.layers.make_parallel_spec(self.input_tensor_spec, n))
+            alf.layers.make_parallel_spec(self.input_tensor_spec, n),
+            alf.layers.make_parallel_spec(self.state_spec, n),
+            "parallel_" + self.name)
 
 
 def get_input_tensor_spec(net):
