@@ -53,9 +53,12 @@ class TicTacToeModel(MCTSModel):
              [0, 1, 2], [2, 1, 0]]).unsqueeze(0)
         self._actions = torch.arange(9, dtype=torch.int64).unsqueeze(0)
 
-    def initial_inference(self, observation):
-        batch_size = observation.shape[0]
-        board = observation
+    def initial_representation(self, observation):
+        return observation
+
+    def initial_predict(self, latent):
+        batch_size = latent.shape[0]
+        board = latent
         player = -self._get_current_player(board)
         won = self._check_player_win(board, player)
         reward = torch.where(won, -player.to(torch.float32), torch.tensor(0.))
@@ -67,7 +70,7 @@ class TicTacToeModel(MCTSModel):
         return ModelOutput(
             value=value,
             reward=reward,
-            state=observation,
+            state=latent,
             actions=self._actions.expand(batch_size, -1),
             action_probs=prob,
             game_over=game_over)
@@ -250,7 +253,9 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 observation_spec, action_spec, num_simulations=num_simulations)
             mcts.set_model(model)
             alg_step = mcts.predict_step(
-                time_step._replace(observation=observation), state)
+                time_step._replace(
+                    observation=model.initial_representation(observation)),
+                state)
             print(observation, alg_step.output, alg_step.info)
             if type(action) == tuple:
                 self.assertTrue(alg_step.output[0] in action)
@@ -267,7 +272,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         alg_step = mcts.predict_step(
             time_step._replace(
                 step_type=torch.tensor([StepType.MID] * len(cases)),
-                observation=observation), state)
+                observation=model.initial_representation(observation)), state)
         for i, (observation, action) in enumerate(cases):
             if type(action) == tuple:
                 self.assertTrue(alg_step.output[i] in action)
