@@ -213,6 +213,7 @@ class HyperNetwork(Algorithm):
         self._entropy_regularization = entropy_regularization
         self._num_particles = num_particles
         self._mini_batch_training = mini_batch_training
+        self._function_vi = function_vi
         if data_creator is not None:
             trainset, testset = data_creator()
             if data_creator_outlier is not None:
@@ -328,7 +329,6 @@ class HyperNetwork(Algorithm):
         self._param_net = param_net
         self._generator_use_fc_bn = generator_use_fc_bn
         self._loss_type = loss_type
-        self._function_vi = function_vi
         self._functional_gradient = functional_gradient
         self._direct_jac_inverse = direct_jac_inverse
         self._logging_training = logging_training

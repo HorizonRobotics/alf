@@ -203,6 +203,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 trainset,
                 testset,
                 outlier_dataloaders,
+                function_vi=function_vi,
                 mini_batch_training=mini_batch_training)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
@@ -291,6 +292,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                         train_loader,
                         test_loader=None,
                         outlier_data_loaders=None,
+                        function_vi=False,
                         mini_batch_training=True,
                         entropy_regularization=None):
         """Set data loadder for training and testing.
@@ -300,6 +302,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             test_loader (torch.utils.data.DataLoader): testing data loader
             outlier_data_loaders (tuple[torch.utils.data.DataLoader):
                 (trainloader, testloader) for outlier datasets
+            function_vi (bool): whether to use funciton value based par_vi
             mini_batch_training (bool): whether training using mini_batch or the 
                 whole dataset, default is True.
             entropy_regularization (float): weight of particle VI repulsive
@@ -311,7 +314,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             )
             permute_idx = np.arange(self.num_particles - 1)
             self._permute_idx = np.insert(permute_idx, 0, -1)
-            if self._function_vi:
+            if function_vi:
                 self._random_idx = torch.randint(
                     0, train_loader.batch_size,
                     (int(train_loader.batch_size / self.num_particles), ))
