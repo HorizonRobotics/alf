@@ -120,6 +120,7 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         algorithm.set_data_loader(
             train_loader,
             test_loader=test_loader,
+            function_vi=function_vi,
             entropy_regularization=train_batch_size / size)
         absl.logging.info("ground truth mean: {}".format(true_mean))
         absl.logging.info("ground truth cov: {}".format(true_cov))
