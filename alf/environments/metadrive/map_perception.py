@@ -157,7 +157,8 @@ class MapPolylinePerception(object):
             point=np.concatenate([pl.point for pl in polylines], axis=0),
             category=np.concatenate([pl.category for pl in polylines], axis=0))
 
-    def observe(self, position: tuple, heading: float) -> np.ndarray:
+    def observe(self, position: tuple,
+                heading: float) -> Tuple[np.ndarray, int]:
         """Called upon every observation to get a rotated and cropped view of the map
         objects and navigation. Returns the feature vector of the observation.
 
@@ -173,9 +174,16 @@ class MapPolylinePerception(object):
 
         Returns:
 
-            A feature tensor of shape [polyline_limit, feature_size], where
-            feature size is determined by the number of segments in each
-            polyline (polyline_size).
+            A Tuple of 2:
+
+            1. A feature tensor of shape [polyline_limit, feature_size], where
+               feature size is determined by the number of segments in each
+               polyline (polyline_size).
+
+            2. An integer indicating among the polyline_limit of polylines, how
+               many of them are actually filled. If the feature has 128
+               polylines and oly 120 are filled, feature's [120:] will be all
+               zeros.
 
         """
         # 1. Filter the polylines to keep only the ones that are within FOV
@@ -184,8 +192,9 @@ class MapPolylinePerception(object):
 
         # 2. Filter the polylines to make the population below the limit
         polylines = polylines.keep_closest_n(self._polyline_limit)
+        polyline_count = polylines.point.shape[0]
 
         # 3. Fill in the features
         return polylines.to_feature(
             required_batch_size=self._polyline_limit,
-            category_encoder=self._category_encoder)
+            category_encoder=self._category_encoder), polyline_count

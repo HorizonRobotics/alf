@@ -107,6 +107,8 @@ class VectorizedObservation(ObservationBase):
         self.fov = fov
         self.history_window_size = history_window_size
         self.polyline_size = polyline_size
+        self.polyline_limit = polyline_limit
+        self.agent_limit = agent_limit
 
     @property
     def observation_space(self):
@@ -128,12 +130,16 @@ class VectorizedObservation(ObservationBase):
         return {
             'map':
                 self._map_perception.observation_spec,
+            'map_mask':
+                TensorSpec(shape=(self.polyline_limit, ), dtype=torch.bool),
             'ego':
                 TensorSpec(
                     shape=((self._position_history.point.shape[0] - 1) * 6, ),
                     dtype=torch.float32),
             'agents':
-                self._agent_perception.observation_spec
+                self._agent_perception.observation_spec,
+            'agent_mask':
+                TensorSpec(shape=(self.agent_limit, ), dtype=torch.bool)
         }
 
     def observe(self, vehicle: BaseVehicle):
@@ -150,19 +156,31 @@ class VectorizedObservation(ObservationBase):
                 car related information.
 
         """
+        map_feature, polyline_count = self._map_perception.observe(
+            vehicle.position, vehicle.heading_theta)
+        map_mask = np.ones(map_feature.shape[0], dtype=bool)
+        map_mask[polyline_count:] = False
+
+        agent_feature, agent_count = self._agent_perception.observe()
+        agent_mask = np.ones(agent_feature.shape[0], dtype=bool)
+        agent_mask[agent_count:] = False
+
         self._position_history.point[:-1, :] = self._position_history.point[
             1:, :]
         self._position_history.point[-1, :] = vehicle.position
 
         return {
             'map':
-                self._map_perception.observe(vehicle.position,
-                                             vehicle.heading_theta),
+                map_feature,
+            'map_mask':
+                map_mask,
             'ego':
                 self._position_history.transformed(
                     vehicle.position, vehicle.heading_theta).to_feature(),
             'agents':
-                self._agent_perception.observe(),
+                agent_feature,
+            'agent_mask':
+                agent_mask,
         }
 
     def reset(self, env, vehicle=None):

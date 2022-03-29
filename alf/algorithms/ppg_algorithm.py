@@ -157,7 +157,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         """
         if type(data_transformer) is SequentialDataTransformer:
             return type(data_transformer.members()[0]) is UntransformedTimeStep
-        return False
+        return type(data_transformer) is UntransformedTimeStep
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
