@@ -12,21 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional, Union
+
 import numpy as np
 import gym
 
 from alf.tensor_specs import TensorSpec
 
 try:
+    import pygame
     import metadrive
     from metadrive.obs.observation_base import ObservationBase
 except ImportError:
     from unittest.mock import Mock
     # create 'metadrive' as a mock to not break python argument type hints
     metadrive = Mock()
+    pygame = Mock()
 
 from .geometry import FieldOfView
 from .sensors import VectorizedObservation, BirdEyeObservation
+from .renderer import Renderer, make_vectorized_observation_renderer, make_bird_eye_observation_renderer
 
 
 class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
@@ -64,6 +69,13 @@ class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
 
         """
         return VectorizedObservation(self.config["vehicle_config"])
+
+    def render(self, observation=None) -> Optional[np.ndarray]:
+        if self._top_down_renderer is None:
+            self._top_down_renderer = Renderer(
+                observation_renderer=make_vectorized_observation_renderer(
+                    sensor=self.get_single_observation()))
+        return self._top_down_renderer.render(observation)
 
     @property
     def observation_spec(self):
@@ -112,3 +124,9 @@ class BirdEyeTopDownEnv(metadrive.MetaDriveEnv):
     @property
     def observation_spec(self):
         return self.get_single_observation().observation_spec
+
+    def render(self, observation=None) -> Optional[np.ndarray]:
+        if self._top_down_renderer is None:
+            self._top_down_renderer = Renderer(
+                observation_renderer=make_bird_eye_observation_renderer())
+        return self._top_down_renderer.render(observation)

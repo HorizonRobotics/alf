@@ -104,6 +104,10 @@ class VectorizedObservation(ObservationBase):
         self._position_history = Polyline(
             point=np.zeros((history_window_size, 2), dtype=np.float32))
 
+        self.fov = fov
+        self.history_window_size = history_window_size
+        self.polyline_size = polyline_size
+
     @property
     def observation_space(self):
         """The base class ObservationBase requires that we have observation_space()
