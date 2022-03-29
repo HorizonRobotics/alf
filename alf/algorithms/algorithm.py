@@ -284,8 +284,8 @@ class Algorithm(AlgorithmInterface):
             return
 
         self._experience_spec = dist_utils.extract_spec(sample_exp, from_dim=1)
-        self._exp_contains_step_type = ('step_type' in dict(
-            alf.nest.extract_fields_from_nest(sample_exp)))
+        self._exp_contains_step_type = (getattr(sample_exp, 'step_type', None)
+                                        is not None)
 
         exp_spec = dist_utils.to_distribution_param_spec(self._experience_spec)
         self._replay_buffer = ReplayBuffer(
