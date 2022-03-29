@@ -174,7 +174,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 will used to construct data transformer. Otherwise, the one
                 provided in config will be used.
             data_augmenter: If provided, will be called to perform data augmentation
-                as ``data_augmenter(observation)`` for training observations.
+                as ``data_augmenter(observation)`` for training observations,
+                where the shape of observation is [B, T, ...] if ``train_repr_prediction``
+                is False, and [B, T*(R+1), ...] if ``train_repr_prediction`` is True.
+                B is mini-batch size, T is mini-batch length and R is ``num_unroll_steps``.
             target_update_tau (float): Factor for soft update of the target
                 networks used for reanalyzing.
             target_update_period (int): Period for soft update of the target
@@ -300,10 +303,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
-        obs = exp.observation
-        if self._data_augmenter:
-            obs = self._data_augmenter(obs)
-        model_output = self._model.initial_inference(obs)
+        model_output = self._model.initial_inference(exp.observation)
         if alf.summary.should_record_summaries():
             model_output.state.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
@@ -328,9 +328,21 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         model_outputs = alf.nest.utils.stack_nests(model_outputs, dim=1)
         model_outputs = dist_utils.params_to_distributions(
             model_outputs, model_output_spec)
+        info_target = info.target
+        if self._train_repr_prediction:
+            # [B*(R+1), ...]
+            obs = alf.nest.map_structure(lambda x: x.reshape(-1, *x.shape[2:]),
+                                         info.target.observation)
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(self._enable_amp):
+                    target_repr = self._model._representation_net(obs)[0]
+            # [B, R+1, ...]
+            target_repr = target_repr.reshape(-1, self._num_unroll_steps + 1,
+                                              *target_repr.shape[1:])
+            info_target = info.target._replace(observation=target_repr)
         return AlgStep(
             info=info._replace(
-                loss=self._model.calc_loss(model_outputs, info.target)))
+                loss=self._model.calc_loss(model_outputs, info_target)))
 
     @torch.no_grad()
     def preprocess_experience(self, root_inputs: TimeStep,
@@ -523,7 +535,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                     folded_positions)
 
                 # Unfold (and reshape)
+                # [B, T, R+1, ...]
                 observation = _unfold1_adapting_episode_ends(observation)
+                # [B*T, R+1, ...]
                 observation = observation.reshape(-1, *observation.shape[2:])
                 step_type = _unfold1_adapting_episode_ends(step_type)
                 step_type = step_type.reshape(-1, *step_type.shape[2:])
@@ -543,10 +557,29 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                         step_type=step_type, observation=observation),
                     batch_info=transformed_batch_info,
                     replay_buffer=replay_buffer)
-                exp = self._data_transformer.transform_experience(exp)
-                observation = self._calc_representation(exp.observation)
+                # [B*T, R+1, ...]
+                observation = self._data_transformer.transform_experience(
+                    exp).observation
+            if self._data_augmenter is not None:
                 observation = alf.nest.map_structure(
-                    lambda x: x.reshape(B, T, R, *x.shape[2:]), observation)
+                    lambda x: x.reshape(B, T * (R + 1), *x.shape[2:]),
+                    observation)
+                observation = self._data_augmenter(observation)
+                observation = alf.nest.map_structure(
+                    lambda x: x.reshape(B, T, R + 1, *x.shape[2:]),
+                    observation)
+                # [B, T, ...]
+                input_obs = alf.nest.map_structure(lambda x: x[:, :, 0, ...],
+                                                   observation)
+                root_inputs = root_inputs._replace(observation=input_obs)
+            else:
+                observation = alf.nest.map_structure(
+                    lambda x: x.reshape(B, T, R + 1, *x.shape[2:]),
+                    observation)
+
+        if self._data_augmenter is not None and not self._train_repr_prediction:
+            input_obs = self._data_augmenter(input_obs)
+            root_inputs = root_inputs._replace(observation=input_obs)
 
         rollout_info = MuzeroInfo(
             action=action,
@@ -566,28 +599,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 reward=rollout_info.target.reward[:, :, 0])
 
         return root_inputs, rollout_info
-
-    def _calc_representation(self, observation):
-        # observation: shape is [B*T, R, ...]
-        target_reprs = []
-        batch_size = alf.nest.flatten(observation)[0].shape[0]
-        mini_batch_size = self._config.mini_batch_size
-        with torch.cuda.amp.autocast(self._enable_amp):
-            for i in range(0, batch_size, mini_batch_size):
-                end = min(batch_size, i + mini_batch_size)
-                obs = alf.nest.map_structure(
-                    lambda x: x[i:end, 1:, ...].reshape(-1, *x.shape[2:]),
-                    observation)
-                if self._data_augmenter:
-                    obs = self._data_augmenter(obs)
-                target_repr = self._model._representation_net(obs)[0]
-                target_repr = target_repr.reshape(end - i, -1,
-                                                  *target_repr.shape[1:])
-                target_reprs.append(target_repr)
-            if len(target_reprs) == 1:
-                return target_reprs[0]
-            else:
-                return torch.cat(target_reprs, dim=0)
 
     def _calc_bootstrap_return(self, replay_buffer, env_ids, positions,
                                value_field):
