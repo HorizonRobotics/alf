@@ -138,14 +138,15 @@ def _create_algorithm_and_env(root_dir, old_configs=None):
         for k, v in old_configs.items():
             if k not in new_configs:
                 logging.error("config '%s' is set by the original config file "
-                              "but is noet set by root_dir/alf_config.py" % k)
+                              "but is not set by root_dir/alf_config.py" % k)
                 ok = False
         if not ok:
             logging.fatal(
                 "Some config set by the original config file are not "
                 "set by root_dir/alf_config.py. It may be because these configs "
                 "are set through import. Currently verify_checkpoint.py does "
-                "not support this.")
+                "not support this. A work-around for this is to copy the "
+                "imported configs directly to your config file.")
     config = policy_trainer.TrainerConfig(root_dir=root_dir)
 
     env = alf.get_env()
