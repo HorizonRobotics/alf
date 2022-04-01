@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 from typing import Callable, Dict, Iterable, Optional, Tuple, Union
 
 import alf
@@ -2974,6 +2975,114 @@ class GetFields(ElementwiseLayerBase):
     def forward(self, input):
         return alf.nest.map_structure(
             lambda path: alf.nest.get_field(input, path), self._fields)
+
+
+class ReplicationPad2d(nn.Module):
+    r"""Pad the input tensor using replication of the input boundary.
+
+    For `N`-dimensional padding, use :func:`torch.nn.functional.pad()`.
+
+    This is same as torch.nn.ReplicationPad2d except that this implementation
+    can handle input of any dtype, while torch.nn one can only handle float dtype.
+
+    Args:
+        padding (int, tuple): the size of the padding. If is `int`, uses the same
+            padding in all boundaries. If a 4-`tuple`, uses (:math:`\text{padding\_left}`,
+            :math:`\text{padding\_right}`, :math:`\text{padding\_top}`, :math:`\text{padding\_bottom}`)
+
+    Shape:
+        - Input: :math:`(N, C, H_{in}, W_{in})`
+        - Output: :math:`(N, C, H_{out}, W_{out})` where
+
+          :math:`H_{out} = H_{in} + \text{padding\_top} + \text{padding\_bottom}`
+
+          :math:`W_{out} = W_{in} + \text{padding\_left} + \text{padding\_right}`
+    """
+
+    def __init__(self, padding):
+        super().__init__()
+        if type(padding) == int:
+            padding = (padding, padding, padding, padding)
+        self._padding = padding
+        self._h = -1
+        self._w = -1
+
+    def forward(self, input):
+        h, w = input.shape[-2:]
+        left, right, top, bottom = self._padding
+        if h != self._h:
+            yindex = torch.arange(-top, h + bottom)
+            yindex[:top] = 0
+            yindex[-bottom:] = h - 1
+            yindex = yindex.unsqueeze(-1)
+            self._yindex = yindex
+            self._h = h
+        else:
+            yindex = self._yindex
+        if w != self._w:
+            xindex = torch.arange(-left, w + right)
+            xindex[:left] = 0
+            xindex[-right:] = w - 1
+            self._xindex = xindex
+            self._w = w
+        else:
+            xindex = self._xindex
+        return input[..., yindex, xindex]
+
+
+class RandomCrop(nn.Module):
+    r"""Perform random crop independently for each image in the batch.
+
+    Note that ``torchvision.transforms.RandomCrop`` is different in that it
+    applies the same random crop for all the images in the batch.
+
+    Each result image image is a random crop of the padded input image. The padded
+    pixels are from the neareat pixel from the boundary.
+
+    Args:
+        size: a tuple of desired height and width. If is `int`, uses the same
+            height and width.
+        padding: the size of the padding. If is `int`, uses the same
+            padding in all boundaries. If a 4-`tuple`, uses (:math:`\text{padding\_left}`,
+            :math:`\text{padding\_right}`, :math:`\text{padding\_top}`, :math:`\text{padding\_bottom}`).
+    """
+
+    def __init__(self,
+                 size: Union[int, Tuple[int]],
+                 padding: Union[int, Tuple[int]] = 0):
+        super().__init__()
+        if type(size) == int:
+            size = (size, size)
+        self._size = size
+        if type(padding) == int:
+            padding = (padding, padding, padding, padding)
+        self._padding = padding
+
+    def forward(self, input: Tensor) -> Tensor:
+        """
+        Args:
+            input: shape is [B, C, H, W]
+        Returns:
+            a tensor of shape [B, C, h, w], where ``h, w=size``
+        """
+        assert input.ndim == 4, "input.ndim should be 4"
+        h, w = self._size
+        left, right, top, bottom = self._padding
+        B, C, H, W = input.shape
+        assert h <= H + top + bottom and w <= W + left + right, (
+            "input size is too small: %s vs %s" % ((H, W), (h, w)))
+
+        starty = torch.randint(-top, H + bottom - h + 1, (B, )).reshape(B, 1)
+        startx = torch.randint(-left, W + right - w + 1, (B, )).reshape(
+            B, 1, 1)
+        # [B, h, 1]
+        y = (starty + torch.arange(h)).clamp_(min=0, max=H - 1).unsqueeze(-1)
+        # [B, 1, w]
+        x = (startx + torch.arange(w)).clamp_(min=0, max=W - 1)
+        # [B, 1, 1]
+        b = torch.arange(B).reshape(B, 1, 1)
+        # The alternative way of input[b, c, y, x] would use a lot more memory
+        return input.transpose(0, 1)[:, b, y, x].transpose(0, 1)
 
 
 class Sum(nn.Module):
