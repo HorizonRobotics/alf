@@ -276,7 +276,7 @@ class RLAlgorithm(Algorithm):
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
-        self._unroll_length = 0
+        self._remaining_unroll_length_fraction = 0
 
     def is_rl(self):
         """Always return True for RLAlgorithm."""
@@ -597,12 +597,13 @@ class RLAlgorithm(Algorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
 
-        self._unroll_length += self._config.unroll_length
-        unroll_length = int(self._unroll_length)
-        self._unroll_length -= unroll_length
+        unroll_length = self._remaining_unroll_length_fraction + self._config.unroll_length
+        self._remaining_unroll_length_fraction = unroll_length - int(
+            unroll_length)
+        unroll_length = int(unroll_length)
 
         if (alf.summary.get_global_counter() >=
-            self._rl_train_after_update_steps and unroll_length > 0):
+                self._rl_train_after_update_steps and unroll_length > 0):
             with torch.set_grad_enabled(config.unroll_with_grad):
                 with record_time("time/unroll"):
                     self.eval()

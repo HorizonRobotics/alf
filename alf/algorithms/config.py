@@ -199,12 +199,8 @@ class TrainerConfig(object):
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
-            num_updates_per_train_iter (int|float): number of optimization steps for
-                one iteration. Only used by ``OffPolicyAlgorithm``. If ``num_updates_per_train_iter``
-                is not an interger, the actual num_updates_per_train_iter will
-                fluctuate between floor(num_updates_per_train_iter) and
-                ceil(num_updates_per_train_iter) and the expectation will be equal
-                to ``num_updates_per_train_iter``.
+            num_updates_per_train_iter (int): number of optimization steps for
+                one iteration. Only used by ``OffPolicyAlgorithm``.
             mini_batch_size (int): number of sequences for each minibatch. If None,
                 it's set to the replayer's ``batch_size``. Only used by
                 ``OffPolicyAlgorithm``.
