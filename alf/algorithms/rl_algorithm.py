@@ -276,6 +276,7 @@ class RLAlgorithm(Algorithm):
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
+        self._offline_replay_buffer = None
 
     def is_rl(self):
         """Always return True for RLAlgorithm."""
@@ -639,13 +640,7 @@ class RLAlgorithm(Algorithm):
         else:
             logging.info('------offline replay buffer loading started------')
 
-            map_location = None
-            if not torch.cuda.is_available():
-                map_location = torch.device('cpu')
-            replay_buffer_checkpoint = torch.load(
-                self._offline_buffer_dir, map_location=map_location)
-
-            buffer_dict = replay_buffer_checkpoint['algorithm']
+            offline_buffer_dir_list = common.as_list(self._offline_buffer_dir)
 
             def _get_full_key(dict, partial_key):
                 full_key = next((key for key in dict if partial_key in key),
@@ -655,74 +650,118 @@ class RLAlgorithm(Algorithm):
                     "is not found.".format(partial_key))
                 return full_key
 
-            # prepare specs for buffer resonctruction
-            reward_key = _get_full_key(buffer_dict, "time_step|reward")
-            step_type_key = _get_full_key(buffer_dict, "time_step|step_type")
-            discount_key = _get_full_key(buffer_dict, "time_step|discount")
-            env_id_key = _get_full_key(buffer_dict, "time_step|env_id")
+            # pre-calculate the individual and total buffer length
+            if self._config.offline_buffer_length is None:
+                buffer_lens = []
+                for buffer_dir in offline_buffer_dir_list:
+                    map_location = None
+                    if not torch.cuda.is_available():
+                        map_location = torch.device('cpu')
+                    replay_buffer_checkpoint = torch.load(
+                        buffer_dir, map_location=map_location)
 
-            env_batch_size = buffer_dict[reward_key].shape[0]
-            replay_buffer_length = buffer_dict[reward_key].shape[1]
+                    buffer_dict = replay_buffer_checkpoint['algorithm']
+                    reward_key = _get_full_key(buffer_dict, "time_step|reward")
+                    replay_buffer_length = buffer_dict[reward_key].shape[1]
+                    buffer_lens.append(replay_buffer_length)
+            else:
+                buffer_lens = ([self._config.offline_buffer_length] *
+                               len(offline_buffer_dir_list))
 
-            step_type_spec = dist_utils.extract_spec(
-                buffer_dict[step_type_key], from_dim=2)
-            reward_spec = dist_utils.extract_spec(
-                buffer_dict[reward_key], from_dim=2)
-            discount_spec = dist_utils.extract_spec(
-                buffer_dict[discount_key], from_dim=2)
+            total_replay_buffer_length = sum(buffer_lens)
 
-            env_id_spec = dist_utils.extract_spec(
-                buffer_dict[env_id_key], from_dim=2)
+            for i, buffer_dir in enumerate(offline_buffer_dir_list):
+                map_location = None
+                if not torch.cuda.is_available():
+                    map_location = torch.device('cpu')
+                replay_buffer_checkpoint = torch.load(
+                    buffer_dir, map_location=map_location)
 
-            time_step_spec = TimeStep(
-                step_type=step_type_spec,
-                reward=reward_spec,
-                discount=discount_spec,
-                observation=untransformed_observation_spec,
-                prev_action=self._action_spec,
-                env_id=env_id_spec)
+                buffer_dict = replay_buffer_checkpoint['algorithm']
 
-            exp_spec_wo_info = Experience(
-                time_step=time_step_spec, action=self._action_spec)
+                # prepare specs for buffer resonctruction
+                reward_key = _get_full_key(buffer_dict, "time_step|reward")
+                step_type_key = _get_full_key(buffer_dict,
+                                              "time_step|step_type")
+                discount_key = _get_full_key(buffer_dict, "time_step|discount")
+                env_id_key = _get_full_key(buffer_dict, "time_step|env_id")
 
-            # assumes a typical Agent structure
-            exp_spec = Experience(
-                time_step=time_step_spec,
-                action=self._action_spec,
-                rollout_info=BasicRolloutInfo(
-                    rl=BasicRLInfo(action=self._action_spec),
-                    rewards={},
-                    repr={},
-                ))
-            self._offline_experience_spec = exp_spec
-            self._recover_offline_replay_buffer(
-                exp_spec, exp_spec_wo_info, replay_buffer_length,
-                env_batch_size, replay_buffer_checkpoint)
+                env_batch_size = buffer_dict[reward_key].shape[0]
+                replay_buffer_length = buffer_dict[reward_key].shape[1]
+
+                step_type_spec = dist_utils.extract_spec(
+                    buffer_dict[step_type_key], from_dim=2)
+                reward_spec = dist_utils.extract_spec(
+                    buffer_dict[reward_key], from_dim=2)
+                discount_spec = dist_utils.extract_spec(
+                    buffer_dict[discount_key], from_dim=2)
+
+                env_id_spec = dist_utils.extract_spec(
+                    buffer_dict[env_id_key], from_dim=2)
+
+                time_step_spec = TimeStep(
+                    step_type=step_type_spec,
+                    reward=reward_spec,
+                    discount=discount_spec,
+                    observation=untransformed_observation_spec,
+                    prev_action=self._action_spec,
+                    env_id=env_id_spec)
+
+                exp_spec_wo_info = Experience(
+                    time_step=time_step_spec, action=self._action_spec)
+
+                # assumes a typical Agent structure
+                exp_spec = Experience(
+                    time_step=time_step_spec,
+                    action=self._action_spec,
+                    rollout_info=BasicRolloutInfo(
+                        rl=BasicRLInfo(action=self._action_spec),
+                        rewards={},
+                        repr={},
+                    ))
+                self._offline_experience_spec = exp_spec
+
+                self._populate_offline_replay_buffer(
+                    exp_spec, exp_spec_wo_info, buffer_lens[i],
+                    total_replay_buffer_length, env_batch_size,
+                    replay_buffer_checkpoint)
 
         logging.info('------loading completed; total_size '
                      '{}------'.format(
                          self._offline_replay_buffer.total_size.item()))
 
-    def _recover_offline_replay_buffer(self, exp_spec, exp_spec_wo_info,
-                                       replay_buffer_length, env_batch_size,
-                                       replay_buffer_checkpoint):
+    def _populate_offline_replay_buffer(
+            self, exp_spec, exp_spec_wo_info, number_of_samples,
+            total_replay_buffer_length, env_batch_size,
+            replay_buffer_checkpoint):
         """Initialize the experience replay buffer from a offline replay buffer
-        checkpoint.
+        checkpoint. It will construct ``_offline_replay_buffer`` if it is not
+        constructed yet. Then the first ``number_of_samples`` data samples from
+        ``replay_buffer_checkpoint`` will be added to the
+        ``_offline_replay_buffer``.
         TODO: a non-sequential version.
 
         Args:
-            sample_exp (nested Tensor):
+            exp_spec (nested spec): spec for the ``Experience`` structure.
+            exp_spec_wo_info (nested spec): spec for the ``Experience`` structure
+                without the rollout_info field.
+            number_of_samples (int): max number of samples to be added to the
+                ``_offline_replay_buffer`` from the ``replay_buffer_checkpoint``.
+            total_replay_buffer_length (int): the full length of the
+                ``_offline_replay_buffer``. Used for constructing the buffer.
+            env_batch_size (int): environment batch size
+            replay_buffer_checkpoint (dict): the buffer dictionary loaded from
+                the saved checkpoint file.
         """
-        # need to set it here as it will be used in train_exp
-        self._experience_spec = exp_spec
 
-        self._offline_replay_buffer = ReplayBuffer(
-            data_spec=exp_spec,
-            num_environments=env_batch_size,
-            max_length=self._replay_buffer_max_length,
-            prioritized_sampling=self._prioritized_sampling,
-            num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-            name=f'{self._name}_offline_replay_buffer')
+        if self._offline_replay_buffer is None:
+            self._offline_replay_buffer = ReplayBuffer(
+                data_spec=exp_spec,
+                num_environments=env_batch_size,
+                max_length=total_replay_buffer_length,
+                prioritized_sampling=self._prioritized_sampling,
+                num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+                name=f'{self._name}_offline_replay_buffer')
 
         # prepare data for re-loading
         # 1) filter out irrelevant items (this is algorithm dependent)
@@ -773,13 +812,12 @@ class RLAlgorithm(Algorithm):
             For the sync driver, `exp` has the shape (`env_batch_size`, ...)
             with `num_envs`==1 and `unroll_length`==1.
             """
-            outer_rank = alf.nest.utils.get_outer_rank(exp,
-                                                       self._experience_spec)
+            outer_rank = alf.nest.utils.get_outer_rank(exp, exp_spec)
 
             if outer_rank == 2:
                 # The shape is [env_batch_size, mini_batch_length, ...], where
                 # mini_batch_length denotes the length of the mini_batch
-                for t in range(exp.step_type.shape[1]):
+                for t in range(min(number_of_samples, exp.step_type.shape[1])):
                     bat = alf.nest.map_structure(lambda x: x[:, t, ...], exp)
                     self._offline_replay_buffer.add_batch(bat, bat.env_id)
             else:
