@@ -21,7 +21,9 @@ import alf
 from alf.utils.common import expand_dims_as
 from .network import Network, wrap_as_network
 
-__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay']
+__all__ = [
+    'LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay', 'AMPWrapper'
+]
 
 
 class LSTMCell(Network):
@@ -284,3 +286,25 @@ class Delay(Network):
 
     def forward(self, input, state):
         return self._forward(input, state)
+
+
+class AMPWrapper(Network):
+    """Wrap a network to run in a given AMP context.
+
+    Args:
+        enabled: whether to enable AMP autocast
+        net: the wrapped network
+    """
+
+    def __init__(self, enabled: bool, net: Network):
+        super().__init__(
+            net.input_tensor_spec, state_spec=net.state_spec, name=net.name)
+        self._net = net
+        self._enabled = enabled
+
+    def forward(self, input, state):
+        if torch.is_autocast_enabled() and not self._enabled:
+            input = alf.nest.map_structure(
+                lambda x: x.float() if x.dtype.is_floating_point else x, input)
+        with torch.cuda.amp.autocast(self._enabled):
+            return self._net(input, state)

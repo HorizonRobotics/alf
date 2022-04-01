@@ -3467,3 +3467,24 @@ def make_parallel_spec(specs, n: int):
                                          spec.minimum, spec.maximum)
 
     return map_structure(_make_spec, specs)
+
+
+class AMPWrapper(nn.Module):
+    """Wrap a layer to run in a given AMP context.
+
+    Args:
+        enabled: whether to enable AMP autocast
+        net: the wrapped network
+    """
+
+    def __init__(self, enabled: bool, net: nn.Module):
+        super().__init__()
+        self._net = net
+        self._enabled = enabled
+
+    def forward(self, input):
+        if torch.is_autocast_enabled() and not self._enabled:
+            input = alf.nest.map_structure(
+                lambda x: x.float() if x.dtype.is_floating_point else x, input)
+        with torch.cuda.amp.autocast(self._enabled):
+            return self._net(input)
