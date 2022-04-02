@@ -1480,7 +1480,6 @@ class Algorithm(AlgorithmInterface):
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 
-    @common.mark_replay
     def _prepare_experience_data(self,
                                  experience,
                                  experience_spec,
