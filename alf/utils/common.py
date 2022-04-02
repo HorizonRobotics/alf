@@ -192,10 +192,17 @@ class TargetUpdater(nn.Module):
         super().__init__()
         models = as_list(models)
         target_models = as_list(target_models)
+        assert len(models) == len(target_models), (
+            "The length of models and "
+            "target_models are different: %s vs. %s" % (len(models),
+                                                        len(target_models)))
+        for model, target_model in zip(models, target_models):
+            self._validate(model, target_model)
         self._models = models
         self._target_models = target_models
         if delayed_update:
-            self._recent_models = copy.deepcopy(models)
+            self._recent_models = list(
+                map(self._make_copy, models, target_models))
         self._tau = tau
         self._period = period
         self._delayed_update = delayed_update
@@ -204,23 +211,87 @@ class TargetUpdater(nn.Module):
             for model, target_model in zip(models, target_models):
                 self._copy_model_or_parameter(model, target_model)
 
+    def _make_copy(self, s, t):
+        if isinstance(s, nn.Parameter):
+            if id(s) == id(t):
+                return s
+            else:
+                return copy.deepcopy(s)
+        else:
+            module = nn.ParameterList()
+            for ws, wt in zip(s.parameters(), t.parameters()):
+                if id(ws) == id(wt):
+                    module.append(ws)
+                else:
+                    module.append(copy.deepcopy(ws))
+            for i, (ws, wt) in enumerate(zip(s.buffers(), t.buffers())):
+                if id(ws) == id(wt):
+                    module.register_buffer("b%s" % i, ws)
+                else:
+                    module.register_buffer("b%s" % i, copy.deepcopy(ws))
+            return module
+
+    def _validate(self, s, t):
+        def _error_msg(ns, nt):
+            return ("The corresponding parameter/buffer of the source model "
+                    "and the target model have different name: %s vs %s" %
+                    (ns, nt))
+
+        def _warning_msg(n):
+            warning(
+                "The corresponding parameter/buffer %s of the source model "
+                "and the target model are same object. They will be ignored by "
+                "TargetUpdater." % n)
+
+        if isinstance(s, nn.Parameter):
+            if id(s) == id(t):
+                warning("target and the source parameter are same object. It "
+                        "will be ignored by the TargetUpdater.")
+        else:
+            sparams = list(s.named_parameters())
+            tparams = list(t.named_parameters())
+            assert len(sparams) == len(tparams), (
+                "The source model and the "
+                "target models have different number of parameters: %s vs. %s"
+                % (len(sparams), len(tparams)))
+            for (ns, ws), (nt, wt) in zip(sparams, tparams):
+                assert ns == nt, _error_msg(ns, nt)
+                if id(ws) == id(wt):
+                    _warning_msg(ns)
+            sbuffers = list(s.named_buffers())
+            tbuffers = list(t.named_buffers())
+            assert len(sbuffers) == len(tbuffers), (
+                "The source model and the "
+                "target models have different number of buffers: %s vs. %s" %
+                (len(sbuffers), len(tbuffers)))
+            for (ns, ws), (nt, wt) in zip(sbuffers, tbuffers):
+                assert ns == nt, _error_msg(ns, nt)
+                if id(ws) == id(wt):
+                    _warning_msg(ns)
+
     def _copy_model_or_parameter(self, s, t):
         if isinstance(s, nn.Parameter):
-            t.data.copy_(s)
+            if id(s) != id(t):
+                t.data.copy_(s)
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
-                wt.data.copy_(ws)
+                if id(ws) != id(wt):
+                    wt.data.copy_(ws)
             for ws, wt in zip(s.buffers(), t.buffers()):
-                wt.copy_(ws)
+                if id(ws) != id(wt):
+                    wt.copy_(ws)
 
     def _lerp_model_or_parameter(self, s, t):
         if isinstance(s, nn.Parameter):
-            t.data.lerp_(s, self._tau)
+            if id(s) != id(t):
+                t.data.lerp_(s, self._tau)
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
-                wt.data.lerp_(ws, self._tau)
+                if id(ws) != id(wt):
+                    wt.data.lerp_(ws, self._tau)
             for ws, wt in zip(s.buffers(), t.buffers()):
-                wt.copy_(ws)
+                if id(ws) != id(wt):
+                    wt.copy_(ws)
 
     def forward(self):
         self._counter += 1
