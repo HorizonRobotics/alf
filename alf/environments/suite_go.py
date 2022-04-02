@@ -744,7 +744,7 @@ class GoEnvironment(AlfEnvironment):
         """When there is a human player, the human player is part of the environment
         for the computer algorithm. ``_step()`` is the interface for the computer
         to interact with the environment. So ``_step()`` needs to get the action
-        from the human player and call the underline ``_step1()`` to update the
+        from the human player and call the underlying ``_step1()`` to update the
         board and calculate reward.
         """
         if self._human_player is None:

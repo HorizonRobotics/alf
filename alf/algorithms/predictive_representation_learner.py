@@ -138,7 +138,7 @@ class SimpleDecoder(Algorithm):
             target = self._target_normalizer.normalize(target)
             predicted = self._target_normalizer.normalize(predicted)
 
-        # self._loss() is not gauranteed to correctly handle more than one batch
+        # self._loss() is not guaranteed to correctly handle more than one batch
         # dimension (e.g. CrossEntropyLoss), so we need to do some reshaping here.
         b = predicted.shape[0] * predicted.shape[1]
         loss = self._loss(

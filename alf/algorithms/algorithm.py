@@ -1156,7 +1156,7 @@ class Algorithm(AlgorithmInterface):
         """
         assert isinstance(info, LossInfo), (
             "info returned by"
-            " train_step() should be LossInfo. Otherwise you need override"
+            " train_step() should be LossInfo. Otherwise you need to override"
             " calc_loss() to generate LossInfo from info")
         return info
 

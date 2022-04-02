@@ -33,7 +33,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         Args:
             data (tensor): A 1-D or 2-D tensor containing multiple observations
-                of multiple dimentions. Each row of ``mat`` represents a
+                of multiple dimensions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
             rowvar (bool): If True, then each row represents a dimension, with
@@ -202,15 +202,15 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                              lambda_trainable=False,
                                              num_particles=32):
         r"""
-        Same Bayesian linear regression tests for hypernetwork, but now trained with 
-        GPVI and GPVI_plus, in particular, we focus on the case of generators where 
+        Same Bayesian linear regression tests for hypernetwork, but now trained with
+        GPVI and GPVI_plus, in particular, we focus on the case of generators where
         input noise_dim is less than the output dim of the generator (i.e., a non-
         square generator network). Note that to enforce injectivity, the actual
-        generator function in this case is :math:`f(z)=Wz^{(1:k)} + \lambda z`, 
-        where g is a linear network with weight W and bias b, and :math:`z^{(1:k)}` 
+        generator function in this case is :math:`f(z)=Wz^{(1:k)} + \lambda z`,
+        where g is a linear network with weight W and bias b, and :math:`z^{(1:k)}`
         is the vector consisting of the first k componnets of z. For standard
-        Gaussian input z, the output :math:`f(z)` follows a Gaussian distribution 
-        :math:`N(b, \tilde{W}\tilde{W}^T + A)`, 
+        Gaussian input z, the output :math:`f(z)` follows a Gaussian distribution
+        :math:`N(b, \tilde{W}\tilde{W}^T + A)`,
         where :math:`\tilde{W}=\begin{bmatrix} W_1+\lambda I_k \\ W_2 \end{bmatrix}`
         and :math:`A=\begin{bmatrix} 0_k & \\ & \lambda^2 I_{d-k} \end{bmatrix}`,
         :math:`W_1` is the submatrix consisting of the first k rows of W and

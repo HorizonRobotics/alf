@@ -184,7 +184,7 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 If you use ALF for research and find it useful, please consider citing:
 ```
 @software{Xu2021ALF,
-  title={{Agent Learning Framework}},
+  title={{{ALF}: Agent Learning Framework}},
   author={Xu, Wei and Yu, Haonan and Zhang, Haichao and Hong, Yingxiang and Yang, Break and Zhao, Le and Bai, Jerry and ALF contributors},
   url={https://github.com/HorizonRobotics/alf},
   year={2021}

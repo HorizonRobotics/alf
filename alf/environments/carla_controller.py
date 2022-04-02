@@ -174,12 +174,12 @@ class VehicleController(object):
 
         control = carla.VehicleControl()
 
-        accelaration = self._speed_controller.step(speed, target_speed)
-        if accelaration >= 0.:
-            control.throttle = min(accelaration, self._max_throttle)
+        acceleration = self._speed_controller.step(speed, target_speed)
+        if acceleration >= 0.:
+            control.throttle = min(acceleration, self._max_throttle)
             control.brake = 0.
         else:
-            control.brake = min(-accelaration, self._max_brake)
+            control.brake = min(-acceleration, self._max_brake)
             control.throttle = 0.
 
         reverse = bool(reverse > 0.5)

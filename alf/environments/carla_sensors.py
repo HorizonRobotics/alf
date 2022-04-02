@@ -342,7 +342,7 @@ class GnssSensor(SensorBase):
 # -- IMUSensor -----------------------------------------------------------------
 # ==============================================================================
 class IMUSensor(SensorBase):
-    """IMUSensor for sensing accelaration and rotation."""
+    """IMUSensor for sensing acceleration and rotation."""
 
     def __init__(self, parent_actor):
         """
@@ -387,8 +387,8 @@ class IMUSensor(SensorBase):
 
     def observation_desc(self):
         return (
-            "7-D vector of [accelaration, gyroscope, compass], where "
-            "accelaration is a 3-D vector in m/s^2, gyroscope is angular "
+            "7-D vector of [acceleration, gyroscope, compass], where "
+            "acceleration is a 3-D vector in m/s^2, gyroscope is angular "
             "velocity in rad/s^2, and compass is orientation with regard to the "
             "North ((0.0, 1.0, 0.0) in Unreal Engine) in radians.")
 
@@ -475,7 +475,7 @@ class RadarSensor(SensorBase):
             "of [vel, altitude, azimuth, depth], where vel is the velocity of "
             "the detected object towards the sensor in m/s, altitude is the "
             "altitude angle of the detection in radians, azimuth is the azimuth "
-            "angle of the detection in radians, and depth id the distance from "
+            "angle of the detection in radians, and depth is the distance from "
             "the sensor to the detection in meters.")
 
     def get_current_observation(self, current_frame):
@@ -491,7 +491,7 @@ class RadarSensor(SensorBase):
                 velocity of the detected object towards the sensor in m/s,
                 altitude is the altitude angle of the detection in radians,
                 azimuth is the azimuth angle of the detection in radians, and
-                depth id the distance from the sensor to the detection in meters.
+                depth is the distance from the sensor to the detection in meters.
         """
         if current_frame == self._prev_cached_frame:
             return self._cached_points
@@ -1387,7 +1387,7 @@ class NavigationSensor(SensorBase):
             self._future_indices))
 
     def _update_nearest_index(self):
-        """Update the ``nearest_index``, whici represents the index to the
+        """Update the ``nearest_index``, which represents the index to the
         waypoint closest to the player's position in the navigation route.
         """
         loc = self._alf_world.get_actor_location(self._parent.id)
@@ -1422,7 +1422,7 @@ class NavigationSensor(SensorBase):
 
         Args:
             future_number (int): the number of future route waypoints. If -1,
-                all the future way points on the route will be returned.
+                all the future waypoints on the route will be returned.
         Returns:
             np.ndarray: contains the 3-D positions of future waypoints on the
                 route. Note that the positions are absolution coordinates.

@@ -32,8 +32,8 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         """Estimate a covariance matrix given data.
 
         Args:
-            data (tensor): A 1-D or 2-D tensor containing multiple observations 
-                of multiple dimentions. Each row of ``mat`` represents a
+            data (tensor): A 1-D or 2-D tensor containing multiple observations
+                of multiple dimensions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
             rowvar (bool): If True, then each row represents a dimension, with
@@ -72,14 +72,14 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                                          batch_size=10):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
-        regressor. The target linear regressor is :math:`y = X\beta + e`, where 
-        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
-        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        regressor. The target linear regressor is :math:`y = X\beta + e`, where
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix,
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
-        For a linear generator with weight W and bias b, and takes standard Gaussian 
-        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
+        For a linear generator with weight W and bias b, and takes standard Gaussian
+        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should
         match the posterior :math:`p(\beta|X,y)` for both svgd and gfsf.
-        
+
         """
         input_dim = 3
         input_spec = TensorSpec((input_dim, ), torch.float32)
