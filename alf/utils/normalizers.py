@@ -71,7 +71,7 @@ class Normalizer(nn.Module):
               for each call to ``normalize()``. Otherwise, the user needs to call
               ``update()``
             zero_mean (bool): whether to make the normalized value be zero-mean
-            unit_std (bool): whether assume a unit std or not when normalizaing.
+            unit_std (bool): whether assume a unit std or not when normalizing.
                 If True, then the rewards are just subtracted by the mean.
             variance_epsilon (float): a small value added to std for normalizing
             debug_summaries (bool): True if debug summaries should be created.
@@ -223,7 +223,7 @@ class WindowNormalizer(Normalizer):
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
             zero_mean (bool): whether to make the normalized value be zero-mean
-            unit_std (bool): whether assume a unit std or not when normalizaing.
+            unit_std (bool): whether assume a unit std or not when normalizing.
                 If True, then the rewards are just subtracted by the mean.
             variance_epislon (float): a small value added to std for normalizing
             debug_summaries (bool): whether to generate debug summaries
@@ -290,7 +290,7 @@ class EMNormalizer(Normalizer):
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
             zero_mean (bool): whether to make the normalized value be zero-mean
-            unit_std (bool): whether assume a unit std or not when normalizaing.
+            unit_std (bool): whether assume a unit std or not when normalizing.
                 If True, then the rewards are just subtracted by the mean.
             variance_epislon (float): a small value added to std for normalizing
             debug_summaries (bool): whether to generate debug summaries
@@ -357,7 +357,7 @@ class AdaptiveNormalizer(Normalizer):
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
             zero_mean (bool): whether to make the normalized value be zero-mean
-            unit_std (bool): whether assume a unit std or not when normalizaing.
+            unit_std (bool): whether assume a unit std or not when normalizing.
                 If True, then the rewards are just subtracted by the mean.
             variance_epislon (float): a small value added to std for normalizing
             debug_summaries (bool): whether to generate debug summaries

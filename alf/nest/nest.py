@@ -381,7 +381,7 @@ def py_map_structure_with_path(func, *nests):
     """Applies func to each entry in structure and returns a new structure.
     This function gives func access to one additional parameter as its first argument:
     the symbolic string of the path to the element currently supplied.
-    List elements will be index by the ordinal position of the element in the list.
+    List elements will be indexed by the ordinal position of the element in the list.
     """
     assert nests, "There should be at least one input nest!"
     for nest in nests[1:]:
@@ -547,7 +547,7 @@ def py_pack_sequence_as(nest, flat_seq):
 
 
 def batch_nested_tensor(nested_tensor):
-    """Unsqueeze a zero (batch) dimention for each entry in ``nested_tensor``."""
+    """Unsqueeze a zero (batch) dimension for each entry in ``nested_tensor``."""
     return map_structure(lambda x: torch.unsqueeze(x, dim=0), nested_tensor)
 
 

@@ -308,7 +308,7 @@ def cov(data, rowvar=False):
 
     Args:
         data (tensor): A 1-D or 2-D tensor containing multiple observations
-            of multiple dimentions. Each row of ``mat`` represents a
+            of multiple dimensions. Each row of ``mat`` represents a
             dimension of the observation, and each column a single
             observation.
         rowvar (bool): If True, then each row represents a dimension, with

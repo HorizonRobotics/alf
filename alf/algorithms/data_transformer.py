@@ -702,7 +702,7 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
         Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
     """
 
-    if goal.dim() == 2:  # when goals are 1-dimentional
+    if goal.dim() == 2:  # when goals are 1-dimensional
         assert achieved_goal.dim() == goal.dim()
         achieved_goal = achieved_goal.unsqueeze(2)
         goal = goal.unsqueeze(2)

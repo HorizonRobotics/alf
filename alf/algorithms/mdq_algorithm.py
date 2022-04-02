@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Multi-Dimentional Q-Learning Algorithm."""
+"""Multi-Dimensional Q-Learning Algorithm."""
 
 import functools
 
@@ -51,7 +51,7 @@ MdqLossInfo = namedtuple('MdqLossInfo', ['critic', 'distill', 'alpha'])
 
 @alf.configurable
 class MdqAlgorithm(OffPolicyAlgorithm):
-    """Multi-Dimentional Q-Learning Algorithm.
+    """Multi-Dimensional Q-Learning Algorithm.
     """
 
     def __init__(

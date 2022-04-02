@@ -102,11 +102,11 @@ class MdqCriticNetwork(Network):
             mid_encoding_layer_params (tuple[int]): a tuple of integers
                 representing hidden FC layer for further encoding the outputs
                 from pre_encoding_net. The parameters are shared across action
-                dimentions.
+                dimensions.
             post_encoding_layer_params (tuple[int]): a tuple of integers
                 representing hidden FC layer for further encoding the outputs
                 from mid_encoding_net. The parameters are not shared across
-                action dimentions.
+                action dimensions.
             free_form_fc_layer_params (tuple[int]): a tuple of integers
                 representing hidden FC layer for Q-learning. We refer it as
                 the free form to differentiate it from the mdq-form of network

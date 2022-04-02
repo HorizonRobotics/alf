@@ -108,7 +108,7 @@ class Cast(ElementwiseLayerBase):
 class Transpose(nn.Module):
     """A layer that perform the transpose of channels.
 
-    Note that batch dimention is not considered for transpose. This means that
+    Note that batch dimension is not considered for transpose. This means that
     dim0=0 means the dimension after batch dimension.
     """
 
@@ -2397,7 +2397,7 @@ class ResidueBlock(nn.Module):
             stride: stride for this block.
             transpose: whether use ``Conv2D`` or ``Conv2DTranspose``.
                 If two ``ResidueBlock`` layers ``L`` and ``LT`` are constructed
-                with the same arguments except ``transpose``, it is gauranteed that
+                with the same arguments except ``transpose``, it is guaranteed that
                 ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
                 by ``stride``.
             with_batch_normalization: whether to include batch normalization.
@@ -2501,7 +2501,7 @@ class BottleneckBlock(nn.Module):
             stride (int): stride for this block.
             transpose (bool): a bool indicate using ``Conv2D`` or ``Conv2DTranspose``.
                 If two BottleneckBlock layers ``L`` and ``LT`` are constructed
-                with the same arguments except ``transpose``, it is gauranteed that
+                with the same arguments except ``transpose``, it is guaranteed that
                 ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
                 by ``stride``.
             v1_5 (bool): whether to use the ResNet V1.5 structure
@@ -2979,7 +2979,7 @@ class GetFields(ElementwiseLayerBase):
 class Sum(nn.Module):
     """Sum over given dimension(s).
 
-    Note that batch dimention is not counted for dim. This means that
+    Note that batch dimension is not counted for dim. This means that
     dim=0 means the dimension after batch dimension.
     """
 

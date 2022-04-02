@@ -264,7 +264,7 @@ All of its inputs/outputs are ``numpy.ndarray``.
 All of its inputs/outputs are ``numpy.ndarray``.
 
 5. Wrap the non-batched ALF environmnet with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
-It provides an interface using CPU torch.Tensor and interacts with the underline
+It provides an interface using CPU torch.Tensor and interacts with the underlying
 ``AlfEnvironment`` using ``numpy.ndarray``.
 
 6. Use `ParallelAlfEnvironment <../api/alf.environments.html#alf.environments.parallel_environment.ParallelAlfEnvironment>`_

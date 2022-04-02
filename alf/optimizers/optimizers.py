@@ -144,7 +144,7 @@ def wrap_optimizer(cls):
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
                 created, where "i" is the global optimizer id.
-            kwargs: arguments passed to the constructor of the underline torch
+            kwargs: arguments passed to the constructor of the underlying torch
                 optimizer. If ``lr`` is given and it is a ``Callable``, it is
                 treated as a learning rate scheduler and will be called everytime
                 when ``step()`` is called to get the latest learning rate.

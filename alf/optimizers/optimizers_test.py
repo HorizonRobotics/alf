@@ -26,7 +26,7 @@ from alf.utils import tensor_utils
 
 class LRBatchEnsemble(nn.Module):
     """A simple linear regressor with the parameter vector being a batch
-    ensemble, used for parvi_batch_ensemble test. 
+    ensemble, used for parvi_batch_ensemble test.
     """
 
     def __init__(self, input_size, ensemble_size, ensemble_group=0):
@@ -34,10 +34,10 @@ class LRBatchEnsemble(nn.Module):
         Args:
             input_size (int): input size
             ensemble_size (int): ensemble size
-            ensemble_group (int): the extra attribute ``ensemble_group`` added 
-                to ``self._r`` and ``self._s``, default value is 0. 
-                For alf.optimizers whose ``parvi`` is not ``None``, 
-                all parameters with the same ``ensemble_group`` will be updated 
+            ensemble_group (int): the extra attribute ``ensemble_group`` added
+                to ``self._r`` and ``self._s``, default value is 0.
+                For alf.optimizers whose ``parvi`` is not ``None``,
+                all parameters with the same ``ensemble_group`` will be updated
                 by the ``SVGD`` or ``GFSF`` particle-based VI algorithm.
         """
         nn.Module.__init__(self)
@@ -66,8 +66,8 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         """Estimate a covariance matrix given data.
 
         Args:
-            data (tensor): A 1-D or 2-D tensor containing multiple observations 
-                of multiple dimentions. Each row of ``mat`` represents a
+            data (tensor): A 1-D or 2-D tensor containing multiple observations
+                of multiple dimensions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
             rowvar (bool): If True, then each row represents a dimension, with
@@ -171,9 +171,9 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         r"""
         Bayesian linear regression test for a linear regressor with BatchEnsemble
         parameter vector and trained with ``SVGD`` or ``GFSF`` optimizer.
-        The target linear regressor is :math:`y = X\beta + e`, where 
-        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
-        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        The target linear regressor is :math:`y = X\beta + e`, where
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix,
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
         """
         input_size = 3

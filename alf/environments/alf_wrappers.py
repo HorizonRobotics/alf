@@ -570,7 +570,7 @@ class MultitaskWrapper(AlfEnvironment):
             kwargs (**): arguments passed to load_fn
         """
         # TODO: may need to add the option of using ProcessEnvironment to wrap
-        # the underline environment
+        # the underlying environment
         envs = []
         for name in environment_name:
             envs.append(load_fn(name, **kwargs))
