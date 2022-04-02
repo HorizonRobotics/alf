@@ -1070,14 +1070,22 @@ def exe_mode_name():
 
 def is_replay():
     """Return a bool value indicating whether the current code belongs to
-    unrolling or training.
+    replaying. Replaying implies off-policy training.
+
+    Any code under ``train_from_replay_buffer()`` of any algorithm is classified
+    as replaying. This phase starts from experience sampling from the replay buffer,
+    all the way to the parameter update.
     """
     return _exe_mode == EXE_MODE_REPLAY
 
 
 def is_rollout():
     """Return a bool value indicating whether the current code belongs to
-    unrolling or training.
+    unrolling. For on-policy algorithms, unrolling could be treated as part of
+    training as it usually generates training info for calculating the loss.
+
+    Any code under ``unroll()`` of the root RL algorithm is classified as unrolling.
+    This is the phase of collecting experiences for training.
     """
     return _exe_mode == EXE_MODE_ROLLOUT
 
@@ -1087,6 +1095,23 @@ def is_eval():
     evaluation or playing a learned model.
     """
     return _exe_mode == EXE_MODE_EVAL
+
+
+def is_training(alg):
+    """Return a bool value indicating whether the current code is in a training
+    phase, for either an on-policy or an off-policy algorithm.
+
+    A training phase is defined as the rollout phase for an on-policy algorithm,
+    or the replay phase for an off-policy algorithm.
+
+    .. note::
+
+        Currently this function returns False for the code under ``train_from_unroll()``.
+
+    Args:
+        alg (Algorithm): the algorithm to be decided
+    """
+    return (alg.on_policy and is_rollout()) or is_replay()
 
 
 def mark_eval(func):
