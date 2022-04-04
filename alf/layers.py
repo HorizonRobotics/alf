@@ -3036,7 +3036,7 @@ class RandomCrop(nn.Module):
     Note that ``torchvision.transforms.RandomCrop`` is different in that it
     applies the same random crop for all the images in the batch.
 
-    Each result image image is a random crop of the padded input image. The padded
+    Each result image is a random crop of the padded input image. The padded
     pixels are from the neareat pixel from the boundary.
 
     Args:
