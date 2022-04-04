@@ -276,6 +276,7 @@ class RLAlgorithm(Algorithm):
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
+        self._remaining_unroll_length_fraction = 0
         self._offline_replay_buffer = None
 
     def is_rl(self):
@@ -597,28 +598,32 @@ class RLAlgorithm(Algorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
 
-        if alf.summary.get_global_counter(
-        ) >= self._rl_train_after_update_steps:
+        unroll_length = self._remaining_unroll_length_fraction + self._config.unroll_length
+        self._remaining_unroll_length_fraction = unroll_length - int(
+            unroll_length)
+        unroll_length = int(unroll_length)
+
+        if (alf.summary.get_global_counter() >=
+                self._rl_train_after_update_steps and unroll_length > 0):
             with torch.set_grad_enabled(config.unroll_with_grad):
                 with record_time("time/unroll"):
                     self.eval()
-                    experience = self.unroll(config.unroll_length)
+                    experience = self.unroll(unroll_length)
                     self.summarize_rollout(experience)
                     self.summarize_metrics()
-        else:
-            experience = None
 
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
-        with record_time("time/after_train_iter"):
-            if experience is not None:
-                train_info = experience.rollout_info
-                experience = experience._replace(rollout_info=())
-            else:
-                experience = None
-                train_info = None
-            self.after_train_iter(experience, train_info)
+        if unroll_length > 0:
+            with record_time("time/after_train_iter"):
+                if experience is not None:
+                    train_info = experience.rollout_info
+                    experience = experience._replace(rollout_info=())
+                else:
+                    experience = None
+                    train_info = None
+                self.after_train_iter(experience, train_info)
 
         # For now, we only return the steps of the primary algorithm's training
         return steps

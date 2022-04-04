@@ -106,9 +106,13 @@ class TrainerConfig(object):
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
                 for the definition of FrameSkip.
-            unroll_length (int):  number of time steps each environment proceeds per
+            unroll_length (float):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
+                If ``unroll_length`` is not an integer, the actual unroll_length
+                being used will fluctuate between ``floor(unroll_length)`` and
+                ``ceil(unroll_length)`` and the expectation will be equal to
+                ``unroll_length``.
             unroll_with_grad (bool): a bool flag indicating whether we require
                 grad during ``unroll()``. This flag is only used by
                 ``OffPolicyAlgorithm`` where unrolling with grads is usually
