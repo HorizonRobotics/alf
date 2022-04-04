@@ -337,3 +337,27 @@ class push_summary_writer(object):
 
     def __exit__(self, type, value, traceback):
         _summary_writer_stack.pop()
+
+
+def enter_summary_scope(method):
+    """A decorator to run the wrapped method in a new summary scope.
+
+    The class the method belongs to must have attribute '_name' and it
+    will be used as the name of the summary scope.
+
+    Instead of using ``with alf.summary.scope(self._name):`` inside a class method,
+    we can use ``@alf.summary.enter_summary_scope`` to decorate the method to
+    have the benefit the cleaner code.
+    """
+
+    @functools.wraps(method)
+    def wrapped(self, *args, **kwargs):
+        # The first argument to the method is going to be ``self``, i.e. the
+        # instance that the method belongs to.
+        scope_name = _scope_stack[-1] + self._name + '/'
+        _scope_stack.append(scope_name)
+        ret = method(self, *args, **kwargs)
+        _scope_stack.pop()
+        return ret
+
+    return wrapped
