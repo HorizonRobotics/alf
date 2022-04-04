@@ -116,8 +116,9 @@ class StepScheduler(Scheduler):
         return self._values[index]
 
     def __repr__(self):
-        return "StepScheduler('%s', %s)" % (
-            self._progress_type, list(zip(self._progresses, self._values)))
+        return "StepScheduler('%s', %s, warm_up_period=%s, start=%s)" % (
+            self._progress_type, list(zip(self._progresses, self._values)),
+            self._warm_up_period, self._start)
 
 
 @alf.configurable
