@@ -286,7 +286,8 @@ class Trainer(object):
             self._algorithm.train_iter()
 
         try:
-            recovered_global_step = checkpointer.load()
+            recovered_global_step = checkpointer.load(
+                strict=self._config.load_checkpoint_strict)
             self._trainer_progress.update()
         except RuntimeError as e:
             raise RuntimeError(
@@ -660,7 +661,8 @@ def play(root_dir,
          record_file=None,
          append_blank_frames=0,
          render=True,
-         ignored_parameter_prefixes=[]):
+         ignored_parameter_prefixes=[],
+         load_checkpoint_strict=True):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -692,6 +694,12 @@ def play(root_dir,
             if a ``record_file`` argument is provided.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
+        load_checkpoint_strict (bool): whether to strictly enforce that the keys
+            in ``state_dict`` match the keys returned by module's
+            ``torch.nn.Module.state_dict`` function. If True, will
+            keep lists of missing and unexpected keys and raise error when
+            any of the lists is non-empty; if ``strict=False``, missing/unexpected
+            keys will be omitted and no error will be raised.
     """
     train_dir = os.path.join(root_dir, 'train')
 
@@ -701,7 +709,8 @@ def play(root_dir,
         checkpoint_step,
         ignored_parameter_prefixes=ignored_parameter_prefixes,
         including_optimizer=False,
-        including_replay_buffer=False)
+        including_replay_buffer=False,
+        strict=load_checkpoint_strict)
 
     batch_size = env.batch_size
     recorder = None
