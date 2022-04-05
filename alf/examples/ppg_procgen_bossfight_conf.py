@@ -30,7 +30,7 @@ def encoding_network_ctor(input_tensor_spec):
         input_tensor_spec=input_tensor_spec,
         cnn_channel_list=(16, 32, 32),
         num_blocks_per_stack=2,
-        output_size=encoder_output_size)
+        flatten_output_size=encoder_output_size)
 
 
 alf.config('ReplayBuffer.gather_all', convert_to_default_device=False)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Callable
+from typing import List, Callable, Optional
 
 import torch
 from torch import Tensor
@@ -130,16 +130,19 @@ def _create_downsampling_cnn_stack(
 
 
 def create(input_tensor_spec,
-           cnn_channel_list: List[int] = (16, 32, 32),
+           cnn_channel_list: List[int] = [16, 32, 32],
            num_blocks_per_stack: int = 2,
-           output_size: int = 256,
+           flatten_output_size: Optional[int] = 256,
            output_activation: Callable[[Tensor], Tensor] = torch.relu_,
            kernel_initializer: Callable[[Tensor], None] = xavier_uniform_):
     """Create the Impala CNN Encoder
 
     Here the so called Impala CNN Encoder is essentially a series of CNN
-    downsampling stacks with an FC layer at the end to output an 1D tensor (if
-    not counting the batch dimension) of the specified output size.
+    downsampling stacks.
+
+    When explicitly specified, add an FC layer at the end to flatten the output
+    to an 1D tensor (if not counting the batch dimension) of the specified
+    output size.
 
     Note that the default values for the parameters are the ones that are used
     for the procgen environments. Credits to the OpenAI's official PPG
@@ -159,9 +162,9 @@ def create(input_tensor_spec,
         num_blocks_per_stack (int): specifies how many residual blocks to apply
             in each of the CNN downsampling stack. This parameter is uniform to
             all the CNN downsampling stacks.
-        output_size (int): the size of the output vector for each of the input
-            image in the mini batch.
-        output_activation: the activation applied to the output vector
+        flatten_output_size: When not None, the 2D output tensors will be
+            flattened into 1D vectors of this size at the end via FC.
+        output_activation: the activation applied to the output vector/tensor.
         kernel_initializer: initializer for the Conv2D and FC layers in the
             network.
 
@@ -197,14 +200,18 @@ def create(input_tensor_spec,
         last_output_spec = stacks[-1].output_spec
     stack_output_spec = stacks[-1].output_spec
 
-    return alf.nn.Sequential(
-        *stacks,
-        # Flatten the images
-        alf.layers.Reshape((-1, )),
-        torch.nn.ReLU(inplace=True),
-        alf.layers.FC(
-            input_size=stack_output_spec.numel,
-            output_size=output_size,
-            activation=output_activation,
-            kernel_initializer=kernel_initializer),
-        input_tensor_spec=input_tensor_spec)
+    if flatten_output_size is not None:
+        return alf.nn.Sequential(
+            *stacks,
+            # Flatten the images
+            alf.layers.Reshape((-1, )),
+            torch.nn.ReLU(inplace=True),
+            alf.layers.FC(
+                input_size=stack_output_spec.numel,
+                output_size=flatten_output_size,
+                activation=output_activation,
+                kernel_initializer=kernel_initializer),
+            input_tensor_spec=input_tensor_spec)
+    else:
+        return alf.nn.Sequential(
+            *stacks, output_activation, input_tensor_spec=input_tensor_spec)
