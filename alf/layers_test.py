@@ -1096,6 +1096,46 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         layer = alf.layers.Sum(dim=-1)
         self._test_make_parallel(layer, input_spec)
 
+    def test_replication_pad_2d(self):
+        layer = alf.layers.ReplicationPad2d((1, 2, 3, 4))
+        x = torch.arange(120).reshape(2, 3, 4, 5)
+        y = layer(x)
+        self.assertEqual(y.shape, (2, 3, 11, 8))
+        self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
+
+        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
+        self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
+
+        self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
+        self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
+
+        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
+        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
+        self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
+        self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
+
+    def test_random_crop(self):
+        # It's hard to test the randomness. Here we just make the crop
+        # size same as the padded size so that there is no randomness and
+        # it is same as ReplicationPad2d((1,2,3,4))
+        layer = alf.layers.RandomCrop((11, 8), (1, 2, 3, 4))
+        x = torch.arange(120).reshape(2, 3, 4, 5)
+        y = layer(x)
+        self.assertEqual(y.shape, (2, 3, 11, 8))
+
+        self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
+
+        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
+        self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
+
+        self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
+        self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
+
+        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
+        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
+        self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
+        self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
+
 
 if __name__ == "__main__":
     alf.test.main()
