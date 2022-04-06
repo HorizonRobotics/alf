@@ -104,7 +104,7 @@ ModelTarget = namedtuple(
         # [B, unroll_steps + 1]
         'value',
 
-        # [B, unroll_steps + 1]
+        # [B, unroll_steps + 1, ...]
         'observation',
     ],
     default_value=())
