@@ -347,13 +347,15 @@ def enter_summary_scope(method):
 
     Instead of using ``with alf.summary.scope(self._name):`` inside a class method,
     we can use ``@alf.summary.enter_summary_scope`` to decorate the method to
-    have the benefit the cleaner code.
+    have the benefit of cleaner code.
     """
 
     @functools.wraps(method)
     def wrapped(self, *args, **kwargs):
         # The first argument to the method is going to be ``self``, i.e. the
         # instance that the method belongs to.
+        assert hasattr(self,
+                       '_name'), "self is expected to have attribute '_name'"
         scope_name = _scope_stack[-1] + self._name + '/'
         _scope_stack.append(scope_name)
         ret = method(self, *args, **kwargs)
