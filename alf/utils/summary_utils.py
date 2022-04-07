@@ -26,6 +26,7 @@ from alf.data_structures import LossInfo
 from alf.nest import is_namedtuple, is_nested, py_map_structure_with_path, map_structure
 from alf.utils import dist_utils
 from alf.summary import should_record_summaries, get_global_counter
+from typing import List, Optional
 
 DEFAULT_BUCKET_COUNT = 30
 
@@ -163,6 +164,58 @@ def add_nested_summaries(prefix, data):
             add_nested_summaries(name, elem)
         elif isinstance(elem, torch.Tensor):
             alf.summary.scalar(name, elem)
+
+
+@_summary_wrapper
+@alf.configurable
+def summarize_per_category_loss(loss_info: LossInfo,
+                                summarize_count: bool = False,
+                                label_names: Optional[List[str]] = None):
+    """Add summary about each category of the unaggregated ``loss_info.loss``
+    of the shape (T, B), or (B, ) by partitioning it according to
+    ``loss_info.batch_label``, which has the same shape as ``loss_info.loss``.
+    It also creates summarization of the number of samples encountered
+    for each category.
+
+    Args:
+        loss_info: do per-category summarization if
+        ``loss_info.batch_label`` is present, and skip otherwise
+        summarize_count: whether to summarize the number of samples
+            for each category as well
+        label_names: the names of each category to be used
+            in tensorboard summary. The category number will be used if
+            ``label_names`` is None.
+    """
+
+    if loss_info.batch_label != ():
+        assert loss_info.batch_label.shape == loss_info.loss.shape, (
+            "shape mis-match between batch_label shape {} and loss "
+            "shape {}".format(loss_info.batch_label.shape,
+                              loss_info.loss.shape))
+
+        # (T, B) -> (T * B, )
+        loss = loss_info.loss.reshape(-1)
+        batch_label = loss_info.batch_label.int().reshape(-1)
+        labels = torch.unique(batch_label)
+        labels = labels.tolist()
+
+        for label in labels:
+            subset_indices = (batch_label == label)
+            subset_loss = loss[subset_indices]
+            if label_names is None:
+                label_str = label
+            else:
+                label_str = label_names[label]
+
+            alf.summary.scalar(
+                'loss/loss_for_category_{}'.format(label_str),
+                data=subset_loss.mean())
+            if summarize_count:
+                alf.summary.scalar(
+                    'loss/sample_count_for_category_{}'.format(label_str),
+                    data=subset_indices.sum())
+    else:
+        return
 
 
 @_summary_wrapper
