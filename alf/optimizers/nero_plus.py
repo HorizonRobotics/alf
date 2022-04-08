@@ -20,28 +20,25 @@ from typing import Tuple, Optional
 from .utils import get_opt_arg
 
 
-def _norm(x, max_norm):
+def _norm(x):
     if x.ndim > 1:
         n = x.reshape(x.shape[0], -1).norm(dim=1)
         return n.reshape(x.shape[0], *([1] * (x.ndim - 1)))
-    elif max_norm is not None:
-        return x.norm()
     else:
-        return x.abs()
+        return x.norm()
 
 
 def _normalize(p,
                max_norm: Optional[float] = 1,
                fixed_norm: bool = True,
                zero_mean: bool = True):
-    if p.ndim > 1:
-        if zero_mean:
+    if zero_mean:
+        if p.ndim > 1:
             p.data -= p.mean(dim=tuple(range(1, p.ndim)), keepdim=True)
-    elif p.ndim == 1:
-        if zero_mean:
+        elif p.ndim == 1:
             p.data -= p.mean()
     if max_norm != math.inf:
-        scale = max_norm / (_norm(p, max_norm) + 1e-30)
+        scale = max_norm / (_norm(p) + 1e-30)
         if not fixed_norm:
             scale.clamp_(max=1)
         p.data *= scale
@@ -77,10 +74,10 @@ class NeroPlus(Optimizer):
     output. For example, ``FC(m, n)`` have two parameters, its weight of shape
     [m, n] and its bias of shape [n]. Its weight have m parameter vectors. Each
     of these m vectors is subject to the norm and mean constraint. For the bias,
-    one element is responsible for one output dimension. So it is not subject the
+    one element is responsible for one output dimension. So it is not subject to the
     norm and zero-mean constraint. Since the range of the output of a model should
     not be constrained, you should set opt_config for the output layers as
-    `dict(fixed_norm=False, max_norm=math.inf)` or use a large finite ``max_norm``
+    `dict(fixed_norm=False, max_norm=math.inf, zero_mean=False)` or use a large finite ``max_norm``
     or ``weight_decay`` to introduce some regularization.
 
     For 2+ D parameter p, its parameter vectors are assumed to be p[0], p[1] ... p[-1].
@@ -137,7 +134,7 @@ class NeroPlus(Optimizer):
                  }],
                  lr: float = 0.01,
                  betas: Tuple[float] = (0.9, 0.999),
-                 eps: float = 1e-30,
+                 eps: float = 1e-7,
                  normalizing_grad_by_norm=False,
                  max_norm: float = 1,
                  weight_decay: float = 0,
@@ -153,10 +150,8 @@ class NeroPlus(Optimizer):
             fixed_norm=fixed_norm,
             zero_mean=zero_mean)
         super().__init__(params, defaults)
-        assert 0 <= betas[0] < betas[0], (
-            "Invalid value for betas[0]=%s" % betas[0])
-        assert 0 < betas[1] < betas[1], (
-            "Invalid value for betas[1]=%s" % betas[1])
+        assert 0 <= betas[0] < 1, ("Invalid value for betas[0]=%s" % betas[0])
+        assert 0 < betas[1] < 1, ("Invalid value for betas[1]=%s" % betas[1])
 
     def add_param_group(self, param_group):
         super().add_param_group(param_group)
@@ -168,24 +163,24 @@ class NeroPlus(Optimizer):
         for p in param_group['params']:
             pmax_norm, pfixed_norm, pzero_mean = _get_opt_args(
                 p, max_norm, fixed_norm, zero_mean)
-            norm = _norm(p, pmax_norm)
+            norm = _norm(p)
             if p.ndim > 1:
                 if pzero_mean:
                     mean = p.mean(dim=tuple(range(1, p.ndim)))
                     i = mean.abs().argmax()
                     assert mean[i].abs() < 0.01, (
                         "Unnormalized parameter: mean()=%s"
-                        "Model should be initialized using nero_initialize()" %
-                        mean[i].item())
-                if pmax_norm is not None:
+                        "Model should be initialized using NeroPlus.initialize()"
+                        % mean[i].item())
+                if pmax_norm != math.inf:
                     diff = norm / pmax_norm - 1
                     if pfixed_norm:
                         diff.abs_()
                     i = diff.argmax()
                     assert diff[i] < 0.01, (
                         "Unnormalized parameter: norm=%s. "
-                        "Model should be initialized using nero_initialize()" %
-                        norm[i].item())
+                        "Model should be initialized using NeroPlus.initialize()"
+                        % norm[i].item())
             state = self.state[p]
             state['step'] = 0
             if normalizing_grad_by_norm:
@@ -249,11 +244,14 @@ class NeroPlus(Optimizer):
                 else:
                     exp_avg = grad
                 if normalizing_grad_by_norm:
-                    sq = _norm(grad, pmax_norm)**2
+                    sq = _norm(grad)**2
                 else:
                     sq = grad**2
                 state['exp_avg_sq'].lerp_(sq, 1 - beta2)
                 denom = state['exp_avg_sq'].sqrt().add_(eps)
+                # the exponential moving average of exp_avg and exp_avg_sq are not
+                # unbiased estimate of the mean. Correct them using bas_correction1
+                # and bias_correct2 as suggest by the original Adam paper.
                 step_size = lr_scale * lr * math.sqrt(
                     bias_correction2) / bias_correction1
                 # p <- p  - step_size * exp_avg / denom

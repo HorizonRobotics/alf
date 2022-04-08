@@ -23,8 +23,11 @@ from alf.optimizers import NeroPlus
 from alf.utils.datagen import load_mnist
 
 
-class NeroPlusTest(alf.test.TestCase):
-    def test_nero_plus(self):
+class NeroPlusTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters(
+        dict(betas=(0, 0.999), eps=1e-30, normalizing_grad_by_norm=True),
+        dict(betas=(0.9, 0.999), eps=1e-7, normalizing_grad_by_norm=False))
+    def test_nero_plus(self, betas, eps, normalizing_grad_by_norm):
         train_set, test_set = load_mnist(train_bs=256, test_bs=256)
         num_classes = len(train_set.dataset.classes)
         model = alf.layers.Sequential(
@@ -36,10 +39,16 @@ class NeroPlusTest(alf.test.TestCase):
                 4 * 4 * 32,
                 num_classes,
                 weight_opt_args=dict(
-                    fixed_norm=False, weight_decay=1e-3,
+                    fixed_norm=False,
+                    weight_decay=1e-3,
+                    zero_mean=True,
                     max_norm=float('inf'))))
         NeroPlus.initialize(model)
-        opt = NeroPlus(lr=0.01)
+        opt = NeroPlus(
+            lr=0.01,
+            betas=betas,
+            eps=eps,
+            normalizing_grad_by_norm=normalizing_grad_by_norm)
         opt.add_param_group(dict(params=list(model.parameters())))
 
         for epoch in range(5):
