@@ -263,7 +263,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         initializations need to be completed.
 
         Args:
-            
+
             latent: A batch of initial representation (i.e. directly derived
                from a raw observation).
 
