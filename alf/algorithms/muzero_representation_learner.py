@@ -96,6 +96,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             train_reward_function=True,
             train_game_over_function=True,
             train_repr_prediction=False,
+            train_policy=True,
             reanalyze_algorithm_ctor=None,
             reanalyze_ratio=0.,
             reanalyze_td_steps=5,
@@ -143,6 +144,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             train_game_over_function (bool): whether train game over function.
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
+            train_policy (bool): whether to train a policy. Note that training
+                policy is REQUIRED when the model is used in MCTS algorithm.
             reanalyze_algorithm_ctor (Callable): will be called as
                 ``reanalyze_algorithm_ctor(observation_spec=?,
                 action_spec=?, discount=?, debug_summaries=?, name=?)`` to
@@ -227,6 +230,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
         self._train_repr_prediction = train_repr_prediction
+        self._train_policy = train_policy
         self._reanalyze_ratio = reanalyze_ratio
         self._reanalyze_td_steps_func = reanalyze_td_steps_func
         self._reanalyze_td_steps = reanalyze_td_steps
@@ -822,19 +826,22 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                     exp1.observation)
                 exp1 = exp1._replace(
                     time_step=exp1.time_step._replace(observation=latent))
-                mcts_step = self._reanalyze_algorithm.predict_step(
+                policy_step = self._reanalyze_algorithm.predict_step(
                     exp1, alf.nest.get_field(exp1, policy_state_field))
 
             def _reshape(x):
                 x = x.reshape(batch_size, -1, *x.shape[1:])
                 return x[:, :n1] if self._full_reanalyze else x
 
-            candidate_actions = mcts_step.info.candidate_actions
-            if candidate_actions != ():
-                candidate_actions = _reshape(candidate_actions)
-            candidate_action_policy = mcts_step.info.candidate_action_policy
-            candidate_action_policy = _reshape(candidate_action_policy)
-            values = mcts_step.info.value.reshape(batch_size, -1)
+            candidate_action_policy = ()
+            candidate_actions = ()
+            if self._train_policy:
+                candidate_actions = policy_step.info.candidate_actions
+                if candidate_actions != ():
+                    candidate_actions = _reshape(candidate_actions)
+                candidate_action_policy = policy_step.info.candidate_action_policy
+                candidate_action_policy = _reshape(candidate_action_policy)
+            values = policy_step.info.value.reshape(batch_size, -1)
 
             # 2. Calulate the value of the next n2 steps so that n2-step return
             # can be computed.

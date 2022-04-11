@@ -123,6 +123,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             train_reward_function,
             train_game_over_function,
             train_repr_prediction=False,
+            train_policy=True,
             predict_reward_sum=False,
             value_loss_weight=1.0,
             reward_loss_weight=1.0,
@@ -164,6 +165,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             train_game_over_function (bool): whether to predict game over
             train_repr_prediction (bool): whether to train to predict future
                 latent representation.
+            train_policy (bool): whether to train a policy. Note that training
+                policy is REQUIRED when the model is used in MCTS algorithm.
             predict_reward_sum (bool): If True, the loss for reward is between the
                 predicted reward and the sum of actual  reward over unroll steps.
                 If False, the loss for reward is the mean square error between the
@@ -205,6 +208,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._train_reward_function = train_reward_function
         self._train_game_over_function = train_game_over_function
         self._train_repr_prediction = train_repr_prediction
+        self._train_policy = train_policy
         self._predict_reward_sum = predict_reward_sum
         if reset_reward_sum_period > 0:
             assert predict_reward_sum, ("reset_reward_sum_preiod can only be "
@@ -387,20 +391,25 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             reward_loss = (reward_loss_scale * reward_loss).sum(dim=1)
             loss = loss + self._reward_loss_weight * reward_loss
 
-        if target.action is ():
-            # This condition is only possible for Categorical distribution
-            assert isinstance(model_output.action_distribution, td.Categorical)
-            policy_loss = -(target.action_policy *
-                            model_output.action_distribution.logits).sum(dim=2)
-        else:
-            # target_action.shape is [B, unroll_steps+1, num_candidate]
-            # log_prob() needs sample shape in the beginning
-            action = target.action.permute(2, 0, 1,
-                                           *list(range(3, target.action.ndim)))
-            action_log_probs = model_output.action_distribution.log_prob(
-                action)
-            action_log_probs = action_log_probs.permute(1, 2, 0)
-            policy_loss = -(target.action_policy * action_log_probs).sum(dim=2)
+        policy_loss = ()
+        if self._train_policy:
+            if target.action is ():
+                # This condition is only possible for Categorical distribution
+                assert isinstance(model_output.action_distribution,
+                                  td.Categorical)
+                policy_loss = -(target.action_policy *
+                                model_output.action_distribution.logits).sum(
+                                    dim=2)
+            else:
+                # target_action.shape is [B, unroll_steps+1, num_candidate]
+                # log_prob() needs sample shape in the beginning
+                action = target.action.permute(
+                    2, 0, 1, *list(range(3, target.action.ndim)))
+                action_log_probs = model_output.action_distribution.log_prob(
+                    action)
+                action_log_probs = action_log_probs.permute(1, 2, 0)
+                policy_loss = -(target.action_policy * action_log_probs).sum(
+                    dim=2)
 
         game_over_loss = ()
         if self._train_game_over_function:
@@ -408,14 +417,17 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 input=model_output.game_over_logit,
                 target=target.game_over.to(torch.float),
                 reduction='none')
-            # no need to train policy after game over.
-            policy_loss = policy_loss * (~target.game_over).to(torch.float32)
+            if self._train_policy:
+                # no need to train policy after game over.
+                policy_loss = policy_loss * (~target.game_over).to(
+                    torch.float32)
             unscaled_game_over_loss = game_over_loss
             game_over_loss = (loss_scale * game_over_loss).sum(dim=1)
             loss = loss + self._game_over_loss_weight * game_over_loss
 
-        policy_loss = (loss_scale * policy_loss).sum(dim=1)
-        loss = loss + self._policy_loss_weight * policy_loss
+        if self._train_policy:
+            policy_loss = (loss_scale * policy_loss).sum(dim=1)
+            loss = loss + self._policy_loss_weight * policy_loss
         entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
             model_output.action_distribution)
         if self._log_alpha is not None:
@@ -657,6 +669,7 @@ class SimpleMCTSModel(MCTSModel):
                  alpha_adjust_rate=0.001,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 train_policy=True,
                  train_repr_prediction=False,
                  debug_summaries=False,
                  name="SimpleMCTSModel"):
@@ -692,6 +705,8 @@ class SimpleMCTSModel(MCTSModel):
                 where x is the representation calcuated by dynamics_net and
                 y is the representation calcualted by representation_net
                 from the corresponding future observations.
+            train_policy (bool): whether to train a policy. Note that training
+                policy is REQUIRED when the model is used in MCTS algorithm.
         """
         encoding_net = encoding_net_ctor(observation_spec)
         repr_spec = encoding_net.output_spec
@@ -706,6 +721,7 @@ class SimpleMCTSModel(MCTSModel):
             train_repr_prediction=train_repr_prediction,
             train_reward_function=train_reward_function,
             train_game_over_function=train_game_over_function,
+            train_policy=train_policy,
             initial_alpha=initial_alpha,
             target_entropy=target_entropy,
             alpha_adjust_rate=alpha_adjust_rate,
