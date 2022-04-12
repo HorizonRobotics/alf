@@ -642,35 +642,6 @@ def create_simple_encoding_net(observation_spec):
 
 
 @alf.configurable
-def create_repr_projection_net(input_tensor_spec,
-                               hidden_size=128,
-                               output_size=256):
-    return EncodingNetwork(
-        input_tensor_spec,
-        input_preprocessors=alf.layers.Reshape(-1),
-        fc_layer_params=(hidden_size, hidden_size),
-        use_fc_bn=True,
-        activation=torch.relu_,
-        last_layer_size=output_size,
-        last_activation=alf.math.identity,
-        last_use_fc_bn=False)
-
-
-@alf.configurable
-def create_repr_prediction_net(input_tensor_spec,
-                               hidden_size=128,
-                               output_size=256):
-    return EncodingNetwork(
-        input_tensor_spec,
-        fc_layer_params=(hidden_size, ),
-        use_fc_bn=True,
-        activation=torch.relu_,
-        last_layer_size=output_size,
-        last_activation=alf.math.identity,
-        last_use_fc_bn=False)
-
-
-@alf.configurable
 class SimpleMCTSModel(MCTSModel):
     def __init__(self,
                  observation_spec,

@@ -148,7 +148,7 @@ alf.config(
 alf.config("layers.Conv2D", use_bn=use_bn, bn_ctor=norm_type.BatchNorm2d)
 alf.config("layers.FC", bn_ctor=norm_type.BatchNorm1d)
 
-# latent_dim should set according to the output shape of representation_net
+# latent_dim should be set according to the output shape of representation_net
 if use_small_net:
     latent_dim = 7 * 7 * 64
 else:
