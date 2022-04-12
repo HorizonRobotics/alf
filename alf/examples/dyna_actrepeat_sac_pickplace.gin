@@ -1,6 +1,7 @@
 include 'sac_fetchreach.gin'
 
 import alf.algorithms.dynamic_action_repeat_agent
+import alf.algorithms.data_transformer
 import alf.networks.preprocessors
 
 create_environment.num_parallel_environments=38
@@ -17,5 +18,6 @@ DynamicActionRepeatAgent.rl_algorithm_cls=@SacAlgorithm
 DynamicActionRepeatAgent.gamma=0.98
 
 TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
+TrainerConfig.data_transformer_ctor=[@UntransformedTimeStep]
 TrainerConfig.unroll_length=25
 TrainerConfig.replay_buffer_length=20000

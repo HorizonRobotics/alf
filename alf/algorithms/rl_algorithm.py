@@ -489,15 +489,8 @@ class RLAlgorithm(Algorithm):
                 policy_state, initial_state, time_step.is_first())
             transformed_time_step, trans_state = self.transform_timestep(
                 time_step, trans_state)
-            # save the untransformed time step in case that sub-algorithms need
-            # to store it in replay buffers
-            transformed_time_step = transformed_time_step._replace(
-                untransformed=time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
-            # release the reference to ``time_step``
-            transformed_time_step = transformed_time_step._replace(
-                untransformed=())
 
             action = common.detach(policy_step.output)
 

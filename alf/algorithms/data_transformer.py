@@ -125,10 +125,12 @@ class SequentialDataTransformer(DataTransformer):
         max_stack_size = 1
         for i, ctor in enumerate(data_transformer_ctors):
             obs_trans = ctor(observation_spec)
-            if isinstance(obs_trans, FrameStacker) or isinstance(
-                    obs_trans, HindsightExperienceTransformer):
+            if isinstance(obs_trans,
+                          (FrameStacker, HindsightExperienceTransformer,
+                           UntransformedTimeStep)):
                 assert i == 0, (
-                    "HindsightExperienceTransformer or FrameStacker needs to "
+                    "HindsightExperienceTransformer or FrameStacker or "
+                    "UntransformedTimeStep needs to "
                     "be the first data transformer, and cannot be combined. "
                     "Check docs/notes/knowledge_base.rst for details.")
             if isinstance(obs_trans, FrameStacker):
@@ -877,6 +879,16 @@ class HindsightExperienceTransformer(DataTransformer):
         result = alf.nest.transform_nest(
             result, "batch_info.replay_buffer", lambda _: buffer)
         return result
+
+
+@alf.configurable
+class UntransformedTimeStep(SimpleDataTransformer):
+    """Put the time step itself to its field "untransformed". Note that this
+    data transformer must be applied first, before any other data transformer.
+    """
+
+    def _transform(self, timestep):
+        return timestep._replace(untransformed=timestep)
 
 
 def create_data_transformer(data_transformer_ctor, observation_spec):

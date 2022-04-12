@@ -1492,13 +1492,7 @@ class Algorithm(AlgorithmInterface):
             experience, experience_spec)
         experience = alf.data_structures.add_batch_info(
             experience, batch_info, self._replay_buffer)
-        untransformed_time_step = None
-        if hasattr(experience, 'time_step'):
-            untransformed_time_step = experience.time_step
         experience = self.transform_experience(experience)
-        if untransformed_time_step is not None:
-            experience = alf.nest.set_field(
-                experience, 'time_step.untransformed', untransformed_time_step)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
         # experience that better handles the similar and distinct part of
