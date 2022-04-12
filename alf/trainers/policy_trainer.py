@@ -623,12 +623,14 @@ def _step(algorithm,
           policy_state,
           trans_state,
           metrics,
+          state_resetting=True,
           render=False,
           recorder=None,
           sleep_time_per_step=0):
-    policy_state = common.reset_state_if_necessary(
-        policy_state, algorithm.get_initial_predict_state(env.batch_size),
-        time_step.is_first())
+    if state_resetting:
+        policy_state = common.reset_state_if_necessary(
+            policy_state, algorithm.get_initial_predict_state(env.batch_size),
+            time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)
     # save the untransformed time step in case that sub-algorithms need it
@@ -661,6 +663,7 @@ def play(root_dir,
          record_file=None,
          append_blank_frames=0,
          render=True,
+         state_resetting=True,
          ignored_parameter_prefixes=[],
          load_checkpoint_strict=True):
     """Play using the latest checkpoint under `train_dir`.
@@ -692,6 +695,7 @@ def play(root_dir,
         render (bool): If False, then this function only evaluates the trained
             model without calling rendering functions. This value will be ignored
             if a ``record_file`` argument is provided.
+        state_resetting (bool): whether to reset states for ``StepType.FIRST``
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
         load_checkpoint_strict (bool): whether to strictly enforce that the keys
@@ -778,6 +782,7 @@ def play(root_dir,
             policy_state=policy_state,
             trans_state=trans_state,
             metrics=metrics,
+            state_resetting=state_resetting,
             render=render,
             recorder=recorder,
             sleep_time_per_step=sleep_time_per_step)

@@ -82,6 +82,8 @@ def _define_flags():
         'this flag to play a model trained with legacy ALF code.')
     flags.DEFINE_integer('parallel_play', 1,
                          'Play so many simulations simultaneously')
+    flags.DEFINE_bool('state_resetting', True,
+                      "Whether to reset states for StepType.FIRST")
 
 
 FLAGS = flags.FLAGS
@@ -140,6 +142,7 @@ def play():
             record_file=FLAGS.record_file,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
+            state_resetting=FLAGS.state_resetting,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [],
             load_checkpoint_strict=config.load_checkpoint_strict)
