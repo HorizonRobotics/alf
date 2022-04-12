@@ -1488,13 +1488,13 @@ class Algorithm(AlgorithmInterface):
                                  experience_spec,
                                  batch_info,
                                  mini_batch_length,
-                                 exp_replayer,
+                                 replay_buffer,
                                  whole_replay_buffer_training=False):
         # Apply transformation and enrichment to the experience.
         experience = dist_utils.params_to_distributions(
             experience, experience_spec)
         experience = alf.data_structures.add_batch_info(
-            experience, batch_info, self._replay_buffer)
+            experience, batch_info, replay_buffer)
         experience = self.transform_experience(experience)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
