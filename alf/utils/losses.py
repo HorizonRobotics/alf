@@ -14,11 +14,14 @@
 """Various function/classes related to loss computation."""
 
 import torch
+from torch import Tensor
+import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
 
 import alf
 from alf.utils.math_ops import InvertibleTransform
+from alf.utils import summary_utils
 
 
 @alf.configurable
@@ -507,3 +510,150 @@ class QuantileRegressionLoss(ScalarPredictionLoss):
                     dim=-1)
         else:
             return quantiles.mean(dim=-1)
+
+
+@alf.repr_wrapper
+class AsymmetricSimSiamLoss(nn.Module):
+    """The siamese loss proposed in:
+
+    Chen Xinlei et. al. "Exploring Simple Siamese Representation Learning" CVPR 2021
+
+    The loss is ``1-cosine(pred(proj(x), detach(proj(y)))``, where x is the predicted
+    representation, y is the target representation, and pred and proj are computed
+    using ``proj_net`` and ``pred_net``.
+
+    Args:
+        proj_net: if not provided, a default MLP with two hidden layers and
+            output size as ``output_size`` will be created.
+        pred_net: if not provided, a default MLP with one hidden layer will
+            be created.
+        input_size: input size of ``proj_net``
+        proj_hidden_size: the size of the hidden layers of proj_net. Only useful
+            if ``proj_net`` is not provided.
+        pred_hidden_size: the size of the hidden layer of pred_net. Only useful
+            if ``pred_net`` is not provided.
+        proj_last_use_bn: whether to use batch norm for the output layer of
+            proj_net. Only useful if ``proj_net`` is not provided
+        eps: the ``eps`` for calling ``F.normalize()`` when calculating the
+            normalized vector in order to calculate cosine.
+        debug_summaries: whether to write debug summaries
+        name: name of this loss
+    """
+
+    def __init__(self,
+                 proj_net: Optional[alf.nn.Network] = None,
+                 pred_net: Optional[alf.nn.Network] = None,
+                 input_size: Optional[int] = None,
+                 proj_hidden_size: int = 256,
+                 pred_hidden_size: int = 128,
+                 output_size: int = 256,
+                 proj_last_use_bn: bool = False,
+                 eps: float = 1e-5,
+                 debug_summaries: bool = True,
+                 name: str = "SimSiamLoss"):
+        super().__init__()
+        if proj_net is None:
+            assert input_size is not None, "input_size must be provided if proj_net is not given"
+            proj_net = alf.nn.Sequential(
+                alf.layers.Reshape(-1),
+                alf.layers.FC(
+                    input_size,
+                    proj_hidden_size,
+                    activation=torch.relu_,
+                    use_bn=True),
+                alf.layers.FC(
+                    proj_hidden_size,
+                    proj_hidden_size,
+                    activation=torch.relu_,
+                    use_bn=True),
+                alf.layers.FC(
+                    proj_hidden_size, output_size, use_bn=proj_last_use_bn),
+                input_tensor_spec=alf.TensorSpec((input_size, )))
+        output_size = proj_net.output_spec.numel
+        if pred_net is None:
+            pred_net = alf.nn.Sequential(
+                alf.layers.FC(
+                    output_size,
+                    pred_hidden_size,
+                    activation=torch.relu_,
+                    use_bn=True), alf.layers.FC(pred_hidden_size, output_size))
+        self._proj_net = proj_net
+        self._pred_net = pred_net
+        self._eps = eps
+        self._debug_summaries = debug_summaries
+        self._name = name
+
+    @alf.summary.enter_summary_scope
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Calculate the loss.
+
+        Args:
+            pred: predicted representation of shape [B, T, ...]
+            target: target representation of shape [B, T, ...]
+        Returns:
+            loss of shape [B, T]
+        """
+        assert pred.shape == target.shape
+        B, T = pred.shape[:2]
+        target = target.reshape(B * T, *target.shape[2:])
+        pred = pred.reshape(B * T, *pred.shape[2:])
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            pred = summary_utils.summarize_tensor_gradients(
+                "pred_grad", pred, clone=True)
+        with torch.no_grad():
+            projected_target = self._proj_net(target.to(pred.dtype))[0]
+            norm_projected_target = F.normalize(
+                projected_target.detach(), dim=1, eps=self._eps)
+        projected_pred = self._proj_net(pred)[0]
+        predicted_projected_pred = self._pred_net(projected_pred)[0]
+        norm_predicted_projected_pred = F.normalize(
+            predicted_projected_pred, dim=1, eps=self._eps)
+        cos = (norm_projected_target * norm_predicted_projected_pred).sum(
+            dim=1)
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            summary_utils.add_mean_hist_summary("cos", cos)
+            summary_utils.add_mean_hist_summary(
+                "predicted_projected_pred_norm",
+                predicted_projected_pred.norm(dim=1))
+        return (1 - cos).reshape(B, T)
+
+
+@alf.repr_wrapper
+class MeanSquaredLoss(object):
+    """Mean squared loss.
+
+    For a prediction and target pair (x,y), the loss is ``((x - y) ** 2).mean()``.
+
+    Args:
+        batch_dims: the first so many dims of prediction and target are treated
+            as batch dimension. The mean is performed on the rest of the dimensions.
+    """
+
+    def __init__(self,
+                 batch_dims: int = 1,
+                 debug_summaries: bool = True,
+                 name: str = "MSELoss"):
+        self._debug_summaries = debug_summaries
+        self._name = name
+        self._batch_dims = batch_dims
+
+    def __call__(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Calculate the loss.
+
+        Args:
+            pred: prediction of shape [B, ...]
+            target: target of shape [B, ...]
+        Returns:
+            loss of shape [B]
+        """
+        assert pred.shape == target.shape
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                pred = summary_utils.summarize_tensor_gradients(
+                    "pred_grad", pred, clone=True)
+        ndim = pred.ndim
+        assert ndim >= self._batch_dims
+        loss = (pred - target)**2
+        if ndim > self._batch_dims:
+            loss = loss.mean(dim=list(range(self._batch_dims, ndim)))
+        return loss

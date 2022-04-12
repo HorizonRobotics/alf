@@ -132,6 +132,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             initial_alpha=0.0,
             reward_loss: losses.ScalarPredictionLoss = losses.SquareLoss(),
             value_loss: losses.ScalarPredictionLoss = losses.SquareLoss(),
+            repr_loss: Callable = losses.MeanSquaredLoss(batch_dims=2),
             target_entropy=None,
             alpha_adjust_rate=0.001,
             initial_loss_weight: Optional[float] = 1,
@@ -175,6 +176,11 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             initial_alpha (float): initial value for the weight of entropy regulariation
             reward_loss: the loss function for reward prediction.
             value_loss: the loss function for value prediction.
+            repr_loss: the loss function for representation learning. It is called as
+                ``repr_loss(predicted_representation, target_representation)``,
+                where the shape of the two tensors are [B, num_unroll_steps+1, ...].
+                It should return a loss with the shape [B, num_unroll_steps+1]``.
+                Note that ``repr_loss`` can have its own parameters.
             target_entropy (float): if provided, will adjust alpha automatically
                 so that the entropy is not smaller than this.
             alpha_adjust_rate (float): the speed to adjust alpha
@@ -226,6 +232,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._repr_prediction_loss_weight = repr_prediction_loss_weight
         self._reward_loss = reward_loss
         self._value_loss = value_loss
+        self._repr_loss = repr_loss
         self._initial_loss_weight = initial_loss_weight
         self._predict_initial_reward = predict_initial_reward
 
@@ -423,24 +430,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         repr_loss = ()
         if self._train_repr_prediction:
-
-            def _flatten(x):
-                # there is no need to predict the first latent
-                return x[:, 1:, ...].reshape(-1, *x.shape[2:])
-
-            # [B*unroll_steps, ...]
-            target_repr = alf.nest.map_structure(
-                lambda x: x.reshape(-1, *x.shape[2:]), target.observation)
-            # [B*unroll_steps, ...]
-            repr = _flatten(model_output.state.state)
-            # [B*unroll_steps]
-            repr_loss = self.calc_repr_prediction_loss(repr, target_repr)
-            # [B, unroll_steps]
-            repr_loss = repr_loss.reshape(batch_size, -1)
+            with alf.summary.scope(self._name):
+                # [B, unroll_steps + 1]
+                repr_loss = self._repr_loss(model_output.state.state,
+                                            target.observation)
             if self._apply_beyond_episode_end_mask:
-                repr_loss = repr_loss * ~target.beyond_episode_end[:, 1:]
+                repr_loss = repr_loss * ~target.beyond_episode_end
             elif self._apply_partial_trajectory_mask:
-                repr_loss = repr_loss * partial_traj_mask[:, 1:]
+                repr_loss = repr_loss * partial_traj_mask
             repr_loss = repr_loss.mean(dim=1)
             loss = loss + self._repr_prediction_loss_weight * repr_loss
 
@@ -645,35 +642,6 @@ def create_simple_encoding_net(observation_spec):
 
 
 @alf.configurable
-def create_repr_projection_net(input_tensor_spec,
-                               hidden_size=128,
-                               output_size=256):
-    return EncodingNetwork(
-        input_tensor_spec,
-        input_preprocessors=alf.layers.Reshape(-1),
-        fc_layer_params=(hidden_size, hidden_size),
-        use_fc_bn=True,
-        activation=torch.relu_,
-        last_layer_size=output_size,
-        last_activation=alf.math.identity,
-        last_use_fc_bn=False)
-
-
-@alf.configurable
-def create_repr_prediction_net(input_tensor_spec,
-                               hidden_size=128,
-                               output_size=256):
-    return EncodingNetwork(
-        input_tensor_spec,
-        fc_layer_params=(hidden_size, ),
-        use_fc_bn=True,
-        activation=torch.relu_,
-        last_layer_size=output_size,
-        last_activation=alf.math.identity,
-        last_use_fc_bn=False)
-
-
-@alf.configurable
 class SimpleMCTSModel(MCTSModel):
     def __init__(self,
                  observation_spec,
@@ -690,9 +658,6 @@ class SimpleMCTSModel(MCTSModel):
                  train_reward_function=True,
                  train_game_over_function=True,
                  train_repr_prediction=False,
-                 repr_projection_net_ctor=create_repr_projection_net,
-                 repr_prediction_net_ctor=create_repr_prediction_net,
-                 repr_norm_eps: float = 1e-12,
                  debug_summaries=False,
                  name="SimpleMCTSModel"):
         """
@@ -727,14 +692,6 @@ class SimpleMCTSModel(MCTSModel):
                 where x is the representation calcuated by dynamics_net and
                 y is the representation calcualted by representation_net
                 from the corresponding future observations.
-            repr_projection_net_ctor (Callable): called as
-                ``repr_projection_net_ctor(repr_spec)`` to construct the
-                projection_net described above
-            repr_prediction_net_ctor (Callable): called as
-                ``repr_prediction_net_ctor(projection_net.output_spec)`` to
-                construct the prediction_net described above
-            repr_norm_eps: the ``eps`` for calling ``F.normalize()`` when calculaing
-                the represetation loss.
         """
         encoding_net = encoding_net_ctor(observation_spec)
         repr_spec = encoding_net.output_spec
@@ -776,41 +733,11 @@ class SimpleMCTSModel(MCTSModel):
                     "num_sampled_actions=%s, num_actions=%s" %
                     (num_sampled_actions, num_actions))
         self._game_over_logit_thresh = game_over_logit_thresh
-        if train_repr_prediction:
-            self._repr_projection_net = repr_projection_net_ctor(repr_spec)
-            self._repr_prediction_net = repr_prediction_net_ctor(
-                self._repr_projection_net.output_spec)
-        self._repr_norm_eps = repr_norm_eps
         self._repr_spec = repr_spec
 
     @property
     def repr_spec(self):
         return self._repr_spec
-
-    def calc_repr_prediction_loss(self, repr, target_repr):
-        if alf.summary.should_record_summaries():
-            repr = summary_utils.summarize_tensor_gradients(
-                "SimpleMCTSModel/repr_grad", repr, clone=True)
-        with torch.no_grad():
-            projected_target_repr = self._repr_projection_net(
-                target_repr.to(repr.dtype))[0]
-            norm_projected_target_repr = F.normalize(
-                projected_target_repr.detach(), dim=1, eps=self._repr_norm_eps)
-        projected_repr = self._repr_projection_net(repr)[0]
-        predicted_projected_repr = self._repr_prediction_net(projected_repr)[0]
-        norm_predicted_projected_repr = F.normalize(
-            predicted_projected_repr, dim=1, eps=self._repr_norm_eps)
-        cos = (norm_projected_target_repr * norm_predicted_projected_repr).sum(
-            dim=1)
-        if alf.summary.should_record_summaries():
-            with alf.summary.scope(self._name):
-                summary_utils.add_mean_hist_summary("repr_cos", cos)
-                summary_utils.add_mean_hist_summary(
-                    "predicted_projected_repr_norm",
-                    predicted_projected_repr.norm(dim=1))
-            repr = summary_utils.summarize_tensor_gradients(
-                "SimpleMCTSModel/repr_grad", repr, clone=True)
-        return 1 - cos
 
     def prediction_model(self, dyn_state, pred_state):
         (value_pred, reward_pred, action_distribution,
