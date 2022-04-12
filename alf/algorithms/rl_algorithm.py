@@ -82,7 +82,7 @@ def adjust_replay_buffer_length(config: TrainerConfig,
     # ``unroll_length``.
     adjusted += num_earliest_frames_ignored
 
-    logging.info(f'Actual replay buffer length is adjusted to {adjusted}.')
+    common.info(f'Actual replay buffer length is adjusted to {adjusted}.')
 
     return adjusted
 
@@ -230,7 +230,7 @@ class RLAlgorithm(Algorithm):
                 # iteration. The minimum_initial_collect_steps guarantees that.
                 minimum_initial_collect_steps = replay_buffer_length * self._env.batch_size
                 if config.initial_collect_steps < minimum_initial_collect_steps:
-                    logging.warn(
+                    common.info(
                         'Set the initial_collect_steps to minimum required '
                         f'value {minimum_initial_collect_steps} because '
                         'whole_replay_buffer_training is on.')

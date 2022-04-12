@@ -950,6 +950,31 @@ def warning(msg, *args):
     logging.log(logging.WARNING, "\033[1;31m" + msg + "\033[1;0m", *args)
 
 
+@logging.skip_log_prefix
+def info(msg, *args):
+    """Generate info message ``msg % args``.
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    logging.log(logging.INFO, "\033[1;34m" + msg + "\033[1;0m", *args)
+
+
+@logging.skip_log_prefix
+def info_once(msg, *args):
+    """Generate info message ``msg % args`` once.
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    caller = logging.get_absl_logger().findCaller()
+    count = logging._get_next_log_count_per_token(caller)
+    logging.log_if(logging.INFO, "\033[1;34m" + msg + "\033[1;0m", count == 0,
+                   *args)
+
+
 def set_random_seed(seed):
     """Set a seed for deterministic behaviors.
 
@@ -1395,7 +1420,7 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
             num_envs * config.unroll_length)
 
     interval = math.ceil(num_iterations / summary_or_eval_calls)
-    logging.info("A summary or eval interval=%d is calculated" % interval)
+    info_once("A summary or eval interval=%d is calculated" % interval)
     return interval
 
 
