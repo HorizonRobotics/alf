@@ -171,12 +171,12 @@ class MemoryBasedPredictor(Algorithm):
         vae_step = self._vae.train_step((prior_input, current_input))
 
         next_state = MBPState(
-            latent_vector=vae_step.output,
+            latent_vector=vae_step.output.z,
             mem_readout=prev_mem_readout,
             rnn_state=prev_rnn_state,
             memory=self._memory.states)
 
-        return vae_step._replace(state=next_state)
+        return vae_step._replace(output=vae_step.output.z, state=next_state)
 
     def decode_step(self, latent_vector, observations):
         """Calculate decoding loss."""
@@ -230,7 +230,7 @@ class MemoryBasedPredictor(Algorithm):
                 loss=self._loss_weight *
                 (decoder_loss.loss + encode_step.info.loss),
                 extra=MBPLossInfo(
-                    decoder=decoder_loss.extra, vae=encode_step.info.extra)))
+                    decoder=decoder_loss.extra, vae=encode_step.info.kld)))
 
 
 @alf.configurable

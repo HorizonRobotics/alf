@@ -24,6 +24,10 @@ from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 
+VAEInfo = namedtuple(
+    "VAEInfo", ["kld", "z_std", "loss", "beta_loss", 'beta'], default_value=())
+VAEOutput = namedtuple("VAEOutput", ["z", "z_mean", "z_std"])
+
 
 @alf.configurable
 class VariationalAutoEncoder(Algorithm):
@@ -44,20 +48,22 @@ class VariationalAutoEncoder(Algorithm):
     """
 
     def __init__(self,
-                 z_dim,
-                 input_tensor_spec: TensorSpec = None,
+                 z_dim: int,
+                 input_tensor_spec: alf.nest.NestedTensorSpec = None,
                  preprocess_network: EncodingNetwork = None,
                  z_prior_network: EncodingNetwork = None,
-                 beta=1.0,
-                 name="VariationalAutoEncoder"):
+                 beta: float = 1.0,
+                 target_kld_per_dim: float = None,
+                 beta_optimizer: torch.optim.Optimizer = None,
+                 name: str = "VariationalAutoEncoder"):
         """
 
         Args:
-            z_dim (int): dimension of latent vector ``z``, namely, the dimension
+            z_dim: dimension of latent vector ``z``, namely, the dimension
                 for generating ``z_mean`` and ``z_log_var``.
-            input_tensor_spec (nested TensorSpec): the input spec which can be
+            input_tensor_spec: the input spec which can be
                 a nest. If `preprocess_network` is None, then it must be provided.
-            preprocess_network (EncodingNetwork): an encoding network to
+            preprocess_network: an encoding network to
                 preprocess input data before projecting it into (mean, log_var).
                 If ``z_prior_network`` is None, this network must be handle input
                 with spec ``input_tensor_spec``. If ``z_prior_network`` is not
@@ -65,10 +71,13 @@ class VariationalAutoEncoder(Algorithm):
                 ``(z_prior_network.input_tensor_spec, input_tensor_spec, z_prior_network.output_spec)``.
                 If this is None, an MLP of hidden sizes ``(z_dim*2, z_dim*2)``
                 will be used.
-            z_prior_network (EncodingNetwork): an encoding network that
+            z_prior_network: an encoding network that
                 outputs concatenation of a prior mean and prior log var given
                 the prior input. The network shouldn't activate its output.
-            beta (float): the weight for KL-divergence
+            beta: the weight for KL-divergence
+            target_kld_per_dim: if not None, then this will be used as the
+                target KLD per dim to automatically tune beta.
+            beta_optimizer: if not None, will be used to train beta.
             name (str):
         """
         super(VariationalAutoEncoder, self).__init__(name=name)
@@ -93,8 +102,14 @@ class VariationalAutoEncoder(Algorithm):
         size = self._preprocess_network.output_spec.shape[0]
         self._z_mean = FC(input_size=size, output_size=z_dim)
         self._z_log_var = FC(input_size=size, output_size=z_dim)
-        self._beta = beta
+        self._log_beta = nn.Parameter(torch.tensor(beta).log())
+        self._target_kld = None
+        if target_kld_per_dim is not None:
+            self._target_kld = target_kld_per_dim * z_dim
         self._z_dim = z_dim
+
+        if beta_optimizer is not None:
+            self.add_optimizer(beta_optimizer, [self._log_beta])
 
     def _sampling_forward(self, inputs):
         """Encode the data into latent space then do sampling.
@@ -131,8 +146,10 @@ class VariationalAutoEncoder(Algorithm):
         kl_div_loss = 0.5 * torch.sum(kl_div_loss, dim=-1)
         # reparameterization sampling: z = u + var ** 0.5 * eps
         eps = torch.randn(z_mean.shape)
-        z = z_mean + torch.exp(z_log_var * 0.5) * eps
-        return z, kl_div_loss
+        z_std = torch.exp(z_log_var * 0.5)
+        z = z_mean + z_std * eps
+        output = VAEOutput(z=z, z_std=z_std, z_mean=z_mean)
+        return output, kl_div_loss
 
     def train_step(self, inputs, state=()):
         """
@@ -143,14 +160,19 @@ class VariationalAutoEncoder(Algorithm):
 
         Returns:
             AlgStep:
-            - output: the latent vector ``z``
+            - output (VAEOutput):
             - state: empty tuple ()
-            - info (LossInfo):
-                - loss: ``beta*KLD``
-                - extra: KLD
+            - info (VAEInfo):
         """
-        z, kld_loss = self._sampling_forward(inputs)
-        return AlgStep(
-            output=z,
-            state=state,
-            info=LossInfo(loss=self._beta * kld_loss, extra=kld_loss))
+        output, kld_loss = self._sampling_forward(inputs)
+        beta = self._log_beta.exp().detach()
+        info = VAEInfo(loss=beta * kld_loss, kld=kld_loss, z_std=output.z_std)
+        if self._target_kld is not None:
+            beta_loss = self._beta_train_step(kld_loss)
+            info = info._replace(
+                beta_loss=beta_loss, loss=info.loss + beta_loss, beta=beta)
+        return AlgStep(output=output, state=state, info=info)
+
+    def _beta_train_step(self, kld_loss):
+        beta_loss = self._log_beta * (self._target_kld - kld_loss).detach()
+        return beta_loss
