@@ -23,6 +23,7 @@ from alf.layers import FC
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
+from alf.utils.tensor_utils import tensor_extend_new_dim
 
 VAEInfo = namedtuple(
     "VAEInfo", ["kld", "z_std", "loss", "beta_loss", 'beta'], default_value=())
@@ -170,7 +171,9 @@ class VariationalAutoEncoder(Algorithm):
         if self._target_kld is not None:
             beta_loss = self._beta_train_step(kld_loss)
             info = info._replace(
-                beta_loss=beta_loss, loss=info.loss + beta_loss, beta=beta)
+                beta_loss=beta_loss,
+                loss=info.loss + beta_loss,
+                beta=tensor_extend_new_dim(beta, 0, beta_loss.shape[0]))
         return AlgStep(output=output, state=state, info=info)
 
     def _beta_train_step(self, kld_loss):
