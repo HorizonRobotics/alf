@@ -40,7 +40,7 @@ class NeroPlusTest(parameterized.TestCase, alf.test.TestCase):
                 num_classes,
                 weight_opt_args=dict(
                     fixed_norm=False,
-                    weight_decay=1e-3,
+                    l2_regularization=1e-3,
                     zero_mean=True,
                     max_norm=float('inf'))))
         NeroPlus.initialize(model)

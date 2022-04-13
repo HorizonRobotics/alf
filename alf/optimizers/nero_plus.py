@@ -94,7 +94,7 @@ class NeroPlus(Optimizer):
 
     1. Option for ADAM like update (normalizing_grad_by_norm=False)
     2. Upper bound contraint of weight norm (fixed_norm=False)
-    3. Weight decay
+    3. Weight decay and L2 regularization.
 
     To use this optimizer, you should first use ``NeroPlus.initialize()`` to normalize
     the parameter of your model for the given constrains before actually using
@@ -116,12 +116,16 @@ class NeroPlus(Optimizer):
             the ADAM like behavoir is better.
         max_norm: maximal norm of each parameter vector. A parameter vector is
             part of a parameter responsible for one output dimension.
-        weight_decay: weight decay (L2 penalty).
+        weight_decay: weight decay. This is same as the weight decay of AdamW,
+            which is implemented as substracting `lr * weight_deday * w` from
+            parameter.
+        l2_regularization: L2 penalty. This is same as the weight decay of Adam,
+            which is implemented as adding `weight_decay * w` to gradient.
         fixed_norm: whether to fix the norm of the parameter vector. If True,
             the norm will be fixed at ``max_norm``.
         zero_mean: whether to enfoce the mean of a parameter vector is zero.
 
-    ``lr``, ``weight_decay``, ``fixed_norm``, ``max_norm``, ``zero_mean`` can
+    ``lr``, ``weight_decay``, ``l2_regularization``, ``fixed_norm``, ``max_norm``, ``zero_mean`` can
     be set individually for each parameter using ``opt_args`` attributes of
     ``Parameter``. ``opt_args`` should be a dictionary. Additionally, ``lr_scale``
     which can be used to scale the global learning for a specific parameter.
@@ -138,6 +142,7 @@ class NeroPlus(Optimizer):
                  normalizing_grad_by_norm=False,
                  max_norm: float = 1,
                  weight_decay: float = 0,
+                 l2_regularization: float = 0,
                  fixed_norm: bool = True,
                  zero_mean: bool = True):
         defaults = dict(
@@ -146,6 +151,7 @@ class NeroPlus(Optimizer):
             eps=eps,
             normalizing_grad_by_norm=normalizing_grad_by_norm,
             weight_decay=weight_decay,
+            l2_regularization=l2_regularization,
             max_norm=max_norm,
             fixed_norm=fixed_norm,
             zero_mean=zero_mean)
@@ -222,6 +228,7 @@ class NeroPlus(Optimizer):
             normalizing_grad_by_norm = group['normalizing_grad_by_norm']
             eps = group['eps']
             weight_decay = group['weight_decay']
+            l2_regularization = group['l2_regularization']
             bias_correction1 = 1
             for p in group['params']:
                 if p.grad is None:
@@ -235,8 +242,10 @@ class NeroPlus(Optimizer):
                 bias_correction2 = 1 - beta2**state['step']
                 grad = p.grad
                 pweight_decay = get_opt_arg(p, 'weight_decay', weight_decay)
-                if pweight_decay != 0:
-                    grad = grad.add(p, alpha=pweight_decay)
+                pl2_regularization = get_opt_arg(p, 'l2_regularization',
+                                                 l2_regularization)
+                if pl2_regularization != 0:
+                    grad = grad.add(p, alpha=pl2_regularization)
                 if beta1 > 0:
                     bias_correction1 = 1 - beta1**state['step']
                     exp_avg = state['exp_avg']
@@ -249,6 +258,8 @@ class NeroPlus(Optimizer):
                     sq = grad**2
                 state['exp_avg_sq'].lerp_(sq, 1 - beta2)
                 denom = state['exp_avg_sq'].sqrt().add_(eps)
+                if pweight_decay > 0:
+                    p.mul_(1 - lr_scale * lr)
                 # the exponential moving average of exp_avg and exp_avg_sq are not
                 # unbiased estimate of the mean. Correct them using bas_correction1
                 # and bias_correct2 as suggest by the original Adam paper.
