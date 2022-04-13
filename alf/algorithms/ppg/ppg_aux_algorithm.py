@@ -107,11 +107,6 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
                                             or config.unroll_length)
         updated_config.mini_batch_size = aux_options.mini_batch_size
         updated_config.num_updates_per_train_iter = aux_options.num_updates_per_train_iter
-        # The replay buffer of PPGAuxAlgorithm stores already-transformed
-        # experiences. Therefore we should remove any data transformer in config
-        # to avoid applying them again during ``train_from_replay_buffer()``
-        # call.
-        updated_config.data_transformer = None
 
         super().__init__(
             config=updated_config,
@@ -141,9 +136,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
             policy_step (AlgStep): a data structure wrapping the information
                 fromm the rollout
         """
-        # Note that we need to release the ``untransformed`` from the time step
-        # (inputs) before constructing the experience.
-        lite_time_step = inputs._replace(untransformed=())
+        lite_time_step = inputs.untransformed
         exp = make_experience(lite_time_step, policy_step, state)
         if not self._use_rollout_state:
             exp = exp._replace(state=())
