@@ -67,71 +67,13 @@ from .carla_sensors import (
     LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor, World,
     get_scaled_image_size, MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
+from alf.environments.carla_env.carla_utils import (
+    _calculate_relative_position, _calculate_relative_velocity, _get_self_pose,
+    geo_distance, _to_numpy_loc)
+
 
 def is_available():
     return not isinstance(carla, Mock)
-
-
-def geo_distance(loc1, loc2):
-    """
-    Args:
-        loc1 (np.array): [latitude, longitude, altitude]. The units for altitude
-            is meter.
-        loc2 (np.array):
-    Returns:
-        float: distance in meters
-    """
-    earth_radius = 6371 * 1000
-    d2r = math.pi / 180
-
-    d = loc1 - loc2
-    dlat = d[0] * d2r
-    dlon = d[1] * d2r
-    lat1 = loc1[0] * d2r
-    lat2 = loc2[0] * d2r
-    a = np.sin(
-        0.5 * dlat)**2 + np.sin(0.5 * dlon)**2 * np.cos(lat1) * np.cos(lat2)
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    c = earth_radius * c
-    return np.sqrt(c * c + d[2] * d[2])
-
-
-def _calculate_relative_position(self_transform, location):
-    """
-    Args:
-        self_transform (carla.Transform): transform of self actor
-        location (np.ndarray): shape is [3] or [N, 3]
-    Returns:
-        np.ndarray: shape is same as location
-    """
-    trans = self_transform
-    self_loc = trans.location
-    yaw = math.radians(trans.rotation.yaw)
-
-    self_loc = np.array([self_loc.x, self_loc.y, self_loc.z])
-    cos, sin = np.cos(yaw), np.sin(yaw)
-    rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
-    return np.matmul(location - self_loc, rot).astype(np.float32)
-
-
-def _calculate_relative_velocity(self_transform, velocity):
-    """
-    Args:
-        self_transform (carla.Transform): transform of self actor
-        velocity (np.ndarray): shape is [3] or [N, 3]
-    Returns:
-        np.ndarray: shape is same as location
-    """
-    trans = self_transform
-    yaw = math.radians(trans.rotation.yaw)
-
-    cos, sin = np.cos(yaw), np.sin(yaw)
-    rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
-    return np.matmul(velocity, rot).astype(np.float32)
-
-
-def _to_numpy_loc(loc: carla.Location):
-    return np.array([loc.x, loc.y, loc.z])
 
 
 class WeatherParameters(object):
@@ -744,7 +686,8 @@ class Player(object):
         # of different types events appeared in the current time step.
         info = OrderedDict(
             success=np.float32(0.0),  # success event (0/1)
-            collision=np.float32(0.0),  # collision event (0/1)
+            collision=np.float32(0.0),  # all collision events (0/1)
+            collision_front=np.float32(0.0),  # front collision event (0/1)
             red_light_violated=np.float32(0.0),  # violated red light (0/1)
             red_light_encountered=np.float32(
                 0.0),  # encountered red light (0/1)
@@ -765,6 +708,12 @@ class Player(object):
             # We only report the first collision event among contiguous collision
             # events.
             info['collision'] = np.float32(1.0)
+
+            collision_location_available = obs['collision'].ndim == 3
+            if collision_location_available:
+                info['collision_front'] = np.any(
+                    obs['collision'][:, 1, 0] > 0.5)
+
             logging.info("actor=%d frame=%d COLLISION" % (self._actor.id,
                                                           current_frame))
             self._collision_loc = curr_loc

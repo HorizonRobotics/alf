@@ -25,6 +25,8 @@ alf.config(
 
 alf.config('CameraSensor', image_size_x=192, image_size_y=96, fov=135)
 
+alf.config('CollisionSensor', include_collision_location=True)
+
 alf.config(
     'create_environment',
     env_name='Town01',
