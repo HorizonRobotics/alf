@@ -158,6 +158,62 @@ class _MCTSTrees(object):
     def get_model_state(self, nodes):
         return nest.map_structure(lambda x: x[nodes], self.model_state)
 
+    def visualize(self, b: int):
+        """Visualize the b-th tree as a directed graph.
+
+        The graph is in Graphviz format and can be rendered
+
+        1. Directly in Jupyter Notebook, or
+        2. rendered as pdf, with ``trees.visualize(0).render(<path>)``.
+
+        """
+        try:
+            import graphviz
+        except ImportError:
+            raise RuntimeError(
+                'Need "graphviz" installed if you want to visualize MCTS')
+
+        dot = graphviz.Digraph()
+        dot.attr('node', shape='record')
+
+        def _add_node(name: str, properties: dict):
+            keys = "|".join(properties.keys())
+            values = '|'.join([
+                f'{x:.4f}' if type(x) is float else f'{x}'
+                for x in properties.values()
+            ])
+            dot.node(name, label=f'{{{keys}}}|{{{values}}}')
+
+        # Use a queue to BFS traverse the tree
+        q = [(b, 0)]
+        while len(q) > 0:
+            node = q.pop(0)
+            visit_count = self.visit_count[node].item()
+            reward = self.reward[node].item()
+            value = self.calc_value(node).item() + reward
+            _add_node(
+                str(node[1]), {
+                    'visit': visit_count,
+                    'value': value,
+                    'reward': reward
+                })
+
+            children = self.children_index[node]
+            prior = self.prior[node]
+            # Only the child nodes whose index is not zero and prior > 0 are valid.
+            valid = torch.logical_and(children != 0, prior > 0.0)
+            children = children[valid].tolist()
+            prior = prior[valid].tolist()
+            ucb_score = self.ucb_score[node][valid].tolist()
+
+            for c, u, p in zip(children, ucb_score, prior):
+                q.append((b, c))
+                dot.edge(
+                    str(node[1]),
+                    str(c),
+                    label=f'<ucb {u:.4f} <br/> pri {p:.4f}>')
+        return dot
+
 
 MCTSState = namedtuple("MCTSState", ["steps"])
 MCTSInfo = namedtuple(
