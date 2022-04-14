@@ -56,13 +56,13 @@ class VaeTest(alf.test.TestCase):
                 optimizer.zero_grad()
                 batch = x_train[i:i + self._batch_size]
                 alg_step = encoder.train_step(batch)
-                outputs = decoding_layers(alg_step.output)
+                outputs = decoding_layers(alg_step.output.z)
                 loss = torch.mean(100 * self._loss_f(batch - outputs) +
                                   alg_step.info.loss)
                 loss.backward()
                 optimizer.step()
 
-        y_test = decoding_layers(encoder.train_step(x_test).output)
+        y_test = decoding_layers(encoder.train_step(x_test).output.z)
         reconstruction_loss = float(torch.mean(self._loss_f(x_test - y_test)))
         print("reconstruction_loss:", reconstruction_loss)
         self.assertLess(reconstruction_loss, 0.05)
@@ -134,14 +134,14 @@ class VaeTest(alf.test.TestCase):
                     int(z_prior_network.input_tensor_spec.shape[0])).to(
                         torch.float32)
                 alg_step = encoder.train_step([pr_batch, batch])
-                outputs = decoding_layers(alg_step.output)
+                outputs = decoding_layers(alg_step.output.z)
                 loss = torch.mean(100 * self._loss_f(y_batch - outputs) +
                                   alg_step.info.loss)
                 loss.backward()
                 optimizer.step()
 
         y_hat_test = decoding_layers(
-            encoder.train_step([pr_test, x_test]).output)
+            encoder.train_step([pr_test, x_test]).output.z)
         reconstruction_loss = float(
             torch.mean(self._loss_f(y_test - y_hat_test)))
         print("reconstruction_loss:", reconstruction_loss)
