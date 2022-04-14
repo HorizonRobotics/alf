@@ -44,7 +44,7 @@ def policy_network_ctor(input_tensor_spec, action_spec):
             input_tensor_spec=input_tensor_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=encoder_output_size),
+            flatten_output_size=encoder_output_size),
         alf.networks.CategoricalProjectionNetwork(
             input_size=encoder_output_size, action_spec=action_spec))
 
@@ -56,7 +56,7 @@ def value_network_ctor(input_tensor_spec):
             input_tensor_spec=input_tensor_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=encoder_output_size),
+            flatten_output_size=encoder_output_size),
         alf.layers.FC(input_size=encoder_output_size, output_size=1),
         alf.layers.Reshape(shape=()))
 

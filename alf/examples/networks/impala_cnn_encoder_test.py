@@ -41,5 +41,5 @@ class TestImpalaCnnEncoder(alf.test.TestCase):
             input_tensor_spec=observation_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=256)
+            flatten_output_size=256)
         self.assertEqual((256, ), encoder.output_spec.shape)

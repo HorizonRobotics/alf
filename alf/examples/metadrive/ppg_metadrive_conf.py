@@ -64,7 +64,7 @@ def encoding_network_ctor(input_tensor_spec):
             input_tensor_spec=combined_input_spec,
             cnn_channel_list=(16, 32, 32),
             num_blocks_per_stack=2,
-            output_size=encoder_output_size),
+            flatten_output_size=encoder_output_size),
         input_tensor_spec=input_tensor_spec)
 
 
