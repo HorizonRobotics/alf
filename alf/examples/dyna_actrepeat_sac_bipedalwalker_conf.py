@@ -17,7 +17,7 @@ from functools import partial
 import alf
 from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.dynamic_action_repeat_agent import DynamicActionRepeatAgent
-from alf.algorithms.data_transformer import RewardNormalizer
+from alf.algorithms.data_transformer import UntransformedTimeStep
 from alf.examples import sac_bipedal_walker_conf
 from alf.utils import dist_utils
 
@@ -37,7 +37,7 @@ alf.config(
 
 alf.config(
     "TrainerConfig",
-    data_transformer_ctor=None,
+    data_transformer_ctor=[UntransformedTimeStep],
     algorithm_ctor=partial(
         DynamicActionRepeatAgent,
         optimizer=sac_bipedal_walker_conf.optimizer,

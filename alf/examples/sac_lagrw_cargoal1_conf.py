@@ -15,7 +15,7 @@
 from functools import partial
 
 import alf
-from alf.algorithms.data_transformer import RewardNormalizer
+from alf.algorithms.data_transformer import RewardNormalizer, UntransformedTimeStep
 # Needs to install safety gym first:
 # https://github.com/openai/safety-gym
 from alf.environments import suite_safety_gym
@@ -74,7 +74,10 @@ alf.config(
 alf.config(
     'TrainerConfig',
     temporally_independent_train_step=True,
-    data_transformer_ctor=[partial(RewardNormalizer, clip_value=10.)],
+    data_transformer_ctor=[
+        UntransformedTimeStep,
+        partial(RewardNormalizer, clip_value=10.)
+    ],
     initial_collect_steps=50000,
     mini_batch_length=20,
     unroll_length=10,
