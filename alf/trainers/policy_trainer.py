@@ -14,10 +14,12 @@
 """Trainer for training an Algorithm on given environments."""
 
 import abc
-from absl import logging
+from absl import logging, flags
+from typing import Dict
 import math
 import os
 import pprint
+from pathlib import Path
 import signal
 import sys
 import time
@@ -25,7 +27,8 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.algorithm import Algorithm, Loss
+from alf.networks import Network
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.data_structures import StepType
@@ -86,6 +89,67 @@ class _TrainerProgress(nn.Module):
     def progress(self):
         assert self._progress is not None, "Must call update() first!"
         return self._progress
+
+
+def _visualize_alf_tree(module: Algorithm):
+    """Generate a graphviz graph of the module tree structure.
+
+    This is useful to visualize the hierarchy of the current AFL algorithm.
+
+    Args:
+        module: An ALF algorithm.
+
+    Returns:
+        A graphviz directed graph that can be rendered as pdf.
+    """
+    try:
+        import graphviz
+    except ImportError:
+        raise RuntimeError(
+            'Need "graphviz" installed if you want to visualize modules')
+
+    def _visual_style(node: torch.nn.Module) -> Dict[str, str]:
+        if isinstance(node, Loss):
+            return {
+                'style': 'filled',
+                'fillcolor': '#DCDCDC',
+            }
+        elif isinstance(node, Algorithm):
+            return {
+                'style': 'filled',
+                'fillcolor': '#00BFFF',
+            }
+        elif isinstance(node, Network):
+            return {
+                'style': 'filled',
+                'fillcolor': '#FF8C00',
+            }
+        return {}
+
+    dot = graphviz.Digraph()
+    dot.attr('node', shape='record')
+    dot.graph_attr['rankdir'] = 'LR'
+
+    num_nodes = 0
+    q = [(0, module)]
+    reverse_map = {module: 0}
+    while len(q) > 0:
+        node_index, node = q.pop(0)
+        node_records = [f'<caption> {type(node).__name__}']
+        for field, child in node.named_children():
+            if child not in reverse_map:
+                num_nodes += 1
+                q.append((num_nodes, child))
+                reverse_map[child] = num_nodes
+                child_index = num_nodes
+            child_index = reverse_map[child]
+            node_records.append(f'<{field}> ({field})')
+            dot.edge(f'{node_index}:{field}', f'{child_index}:caption')
+        dot.node(
+            str(node_index),
+            label='|'.join(node_records),
+            **_visual_style(node))
+    return dot
 
 
 class Trainer(object):
@@ -245,6 +309,11 @@ class Trainer(object):
             alf.summary.text('revision', git_utils.get_revision())
             alf.summary.text('diff', _markdownify(git_utils.get_diff()))
             alf.summary.text('seed', str(self._random_seed))
+
+            # Save a rendered directed graph of the algorithm to the root
+            # directory.
+            _visualize_alf_tree(self._algorithm).render(
+                Path(flags.FLAGS.root_dir, 'algorithm_sturcture'))
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
