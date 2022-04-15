@@ -14,7 +14,7 @@
 """Trainer for training an Algorithm on given environments."""
 
 import abc
-from absl import logging, flags
+from absl import logging
 from typing import Dict
 import math
 import os
@@ -313,7 +313,7 @@ class Trainer(object):
             # Save a rendered directed graph of the algorithm to the root
             # directory.
             _visualize_alf_tree(self._algorithm).render(
-                Path(flags.FLAGS.root_dir, 'algorithm_sturcture'))
+                Path(self._root_dir, 'algorithm_sturcture'))
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
