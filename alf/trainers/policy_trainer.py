@@ -25,6 +25,8 @@ import sys
 import time
 import torch
 import torch.nn as nn
+from PIL import Image
+import numpy as np
 
 import alf
 from alf.algorithms.algorithm import Algorithm, Loss
@@ -105,8 +107,9 @@ def _visualize_alf_tree(module: Algorithm):
     try:
         import graphviz
     except ImportError:
-        raise RuntimeError(
+        logging.warn(
             'Need "graphviz" installed if you want to visualize modules')
+        return None
 
     def _visual_style(node: torch.nn.Module) -> Dict[str, str]:
         if isinstance(node, Loss):
@@ -312,8 +315,16 @@ class Trainer(object):
 
             # Save a rendered directed graph of the algorithm to the root
             # directory.
-            _visualize_alf_tree(self._algorithm).render(
-                Path(self._root_dir, 'algorithm_sturcture'))
+            algorithm_structure_graph = _visualize_alf_tree(self._algorithm)
+            if algorithm_structure_graph is not None:
+                algorithm_structure_graph.render(
+                    Path(self._root_dir, 'algorithm_sturcture'), format='png')
+                # Also put it on the tensorboard
+                img = np.array(
+                    Image.open(
+                        Path(self._root_dir, 'algorithm_sturcture.png')))
+                alf.summary.images(
+                    'algorithm_structure', img, dataformat='HWC', step=0)
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
