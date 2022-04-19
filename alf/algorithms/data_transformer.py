@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Data transformers for transforming data from environment or replay buffer."""
-
 from absl import logging
 import copy
 from functools import partial
@@ -125,23 +124,35 @@ class SequentialDataTransformer(DataTransformer):
         max_stack_size = 1
         for i, ctor in enumerate(data_transformer_ctors):
             obs_trans = ctor(observation_spec)
-            if isinstance(obs_trans,
-                          (FrameStacker, HindsightExperienceTransformer,
-                           UntransformedTimeStep)):
-                assert i == 0, (
-                    "HindsightExperienceTransformer or FrameStacker or "
-                    "UntransformedTimeStep needs to "
-                    "be the first data transformer, and cannot be combined. "
-                    "Check docs/notes/knowledge_base.rst for details.")
             if isinstance(obs_trans, FrameStacker):
                 max_stack_size = max(max_stack_size, obs_trans.stack_size)
             observation_spec = obs_trans.transformed_observation_spec
             data_transformers.append(obs_trans)
             state_spec.append(obs_trans.state_spec)
+        SequentialDataTransformer._validate_order(data_transformers)
 
         super().__init__(observation_spec, state_spec)
         self._stack_size = max_stack_size
         self._data_transformers = data_transformers
+
+    @staticmethod
+    def _validate_order(data_transformers):
+        def _tier_of(data_transformer):
+            if isinstance(data_transformer, UntransformedTimeStep):
+                return 1
+            if isinstance(data_transformer,
+                          (HindsightExperienceTransformer, FrameStacker)):
+                return 2
+            return 3
+
+        prev_tier = 0
+        for i in range(len(data_transformers)):
+            tier = _tier_of(data_transformers[i])
+            assert tier >= prev_tier, (
+                f'{type(data_transformers[i]).__name__} must be placed before '
+                f'{type(data_transformers[i - 1]).__name__}. Please check '
+                'docs/notes/knowledge_base.rst for details.')
+            prev_tier = tier
 
     @property
     def stack_size(self):
