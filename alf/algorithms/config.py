@@ -35,7 +35,7 @@ class TrainerConfig(object):
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
                  no_thread_env_for_conf=False,
-                 load_checkpoint_strict=True,
+                 load_checkpoint_options={},
                  evaluate=False,
                  num_evals=None,
                  eval_interval=10,
@@ -146,12 +146,9 @@ class TrainerConfig(object):
                 ``True`` if no evaluation is needed to save resources. The decision
                 of creating an unwrapped env won't affect training; it's used to
                 correctly display inoperative configurations in subprocesses.
-            load_checkpoint_strict (bool): whether to strictly enforce that the keys
-                in ``state_dict`` match the keys returned by module's
-                ``torch.nn.Module.state_dict`` function. If True, will
-                keep lists of missing and unexpected keys and raise error when
-                any of the lists is non-empty; if ``strict=False``, missing/unexpected
-                keys will be omitted and no error will be raised.
+            load_checkpoint_options (dict): optional args for the ``load()`` of
+                ``Checkpointer`` when training from a checkpoint. This dict should
+                contain a subset of the named args of ``load()``.
             evaluate (bool): A bool to evaluate when training
             num_evals (int): how many evaluations are needed throughout the training.
                 If not None, an automatically calculated ``eval_interval`` will
@@ -276,7 +273,7 @@ class TrainerConfig(object):
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf
-        self.load_checkpoint_strict = load_checkpoint_strict
+        self.load_checkpoint_options = load_checkpoint_options
         self.evaluate = evaluate
         self.num_evals = num_evals
         self.eval_interval = eval_interval

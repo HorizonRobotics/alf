@@ -82,6 +82,7 @@ class Checkpointer(object):
              ignored_parameter_prefixes=[],
              including_optimizer=True,
              including_replay_buffer=True,
+             including_data_transformers=True,
              strict=True):
         """Load checkpoint
         Args:
@@ -92,6 +93,7 @@ class Checkpointer(object):
                 name has one of these prefixes in the checkpoint.
             including_optimizer (bool): whether load optimizer checkpoint
             including_replay_buffer (bool): whether load replay buffer checkpoint.
+            including_data_transformers (bool): whether load data transformer checkpoint.
             strict (bool, optional): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by this module's
                 ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
@@ -104,6 +106,8 @@ class Checkpointer(object):
                 checkpoint. current_step_num is set to - 1 if the specified
                 checkpoint does not exist.
         """
+        if not including_data_transformers:
+            ignored_parameter_prefixes.append("_data_transformer")
 
         def _remove_ignored_parameters(checkpoint):
             to_delete = []
