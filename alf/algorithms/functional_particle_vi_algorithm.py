@@ -93,6 +93,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
+                 self_damping=True,
                  function_vi=False,
                  function_bs=None,
                  function_extra_bs_ratio=0.1,
@@ -184,6 +185,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                   involves a kernel matrix inversion, so computationally more
                   expensive, but in some cases the convergence seems faster
                   than svgd approaches.
+            self_damping (bool): whether to apply the following damping trick:
+                Ba, Jimmy, et al, "Understanding the Variance Collapse of SVGD
+                in High Dimensions." ICLR 2021.
             function_vi (bool): whether to use function value based par_vi.
             num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
@@ -249,6 +253,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             num_particles=num_particles,
             entropy_regularization=entropy_regularization,
             par_vi=par_vi,
+            self_damping=self_damping,
             critic_hidden_layers=critic_hidden_layers,
             critic_l2_weight=critic_l2_weight,
             critic_iter_num=critic_iter_num,

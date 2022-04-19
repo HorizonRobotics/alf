@@ -13,6 +13,7 @@
 # limitations under the License.
 """A generic generator."""
 
+import math
 import numpy as np
 import torch
 
@@ -52,6 +53,7 @@ class ParVIAlgorithm(Algorithm):
                  num_particles=10,
                  entropy_regularization=1.,
                  par_vi="gfsf",
+                 self_damping=True,
                  critic_input_dim=None,
                  critic_hidden_layers=(100, 100),
                  critic_l2_weight=10.,
@@ -75,6 +77,9 @@ class ParVIAlgorithm(Algorithm):
                   involves a kernel matrix inversion, so computationally more
                   expensive, but in some cases the convergence seems faster
                   than svgd approaches.
+            self_damping (bool): whether to apply the following damping trick:
+                Ba, Jimmy, et al, "Understanding the Variance Collapse of SVGD
+                in High Dimensions." ICLR 2021.
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
@@ -94,6 +99,8 @@ class ParVIAlgorithm(Algorithm):
             optimizer=optimizer, debug_summaries=debug_summaries, name=name)
         self._particle_dim = particle_dim
         self._num_particles = num_particles
+        gamma = max(1., particle_dim / num_particles)
+        self._lambda = min(1., (1 + gamma) / (gamma * math.exp(1)))
         self._entropy_regularization = entropy_regularization
         self._particles = None
         self._par_vi = par_vi
@@ -316,7 +323,7 @@ class ParVIAlgorithm(Algorithm):
         kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
             self.num_particles)  # [N, D]
 
-        # kernel_weight.fill_diagonal_(0.6)
+        kernel_weight.fill_diagonal_(self._lambda)
         # kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
         #     self.num_particles - 1)  # [N, D]
 
