@@ -32,7 +32,8 @@ import alf
 from alf.algorithms.algorithm import Algorithm, Loss
 from alf.networks import Network
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.data_transformer import create_data_transformer
+from alf.algorithms.data_transformer import (create_data_transformer,
+                                             IdentityDataTransformer)
 from alf.data_structures import StepType
 from alf.environments.utils import create_environment
 from alf.nest import map_structure
@@ -111,7 +112,16 @@ def _visualize_alf_tree(module: Algorithm):
             'Need "graphviz" installed if you want to visualize modules')
         return None
 
+    def _is_layer(node):
+        class_name = node.__class__.__name__
+        return (isinstance(node, nn.Module) and class_name in dir(alf.layers))
+
     def _visual_style(node: torch.nn.Module) -> Dict[str, str]:
+        """Loss: 'gray',
+           Algorithm: 'blue',
+           Network: 'orange',
+           FC or Conv: 'yellow'
+        """
         if isinstance(node, Loss):
             return {
                 'style': 'filled',
@@ -127,31 +137,74 @@ def _visualize_alf_tree(module: Algorithm):
                 'style': 'filled',
                 'fillcolor': '#FF8C00',
             }
+        elif _is_layer(node):
+            return {'style': 'filled', 'fillcolor': '#ffdc7d', 'fontsize': '8'}
         return {}
+
+    def _generate_node_label(node):
+        """Generate the proper label for a given node.
+        """
+        if _is_layer(node):
+            return repr(node)
+        else:
+            return getattr(node, "name", type(node).__name__)
+
+    def _filter_child(field, child):
+        """A set of rules to filter out certain components in the rendered graph.
+        """
+        conditions = [
+            # Every Algorithm will contain a default identity transformer.
+            (field == "_data_transformer"
+             and isinstance(child, IdentityDataTransformer)),
+        ]
+        return any(conditions)
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='record')
     dot.graph_attr['rankdir'] = 'LR'
 
-    num_nodes = 0
-    q = [(0, module)]
-    reverse_map = {module: 0}
-    while len(q) > 0:
-        node_index, node = q.pop(0)
-        node_records = [f'<caption> {type(node).__name__}']
+    def _visit(node, idx, visited):
+        """Visit a node by depth-first search. For each algorithm node, we create
+        a subgraph that encloses all its children.
+        """
+        idx[0] += 1
+        node_index = idx[0]
+        visited[node] = node_index
+        label = _generate_node_label(node)
+        node_records = ["<caption> " + label + f"({node_index})"]
+        edges = []
+
         for field, child in node.named_children():
-            if child not in reverse_map:
-                num_nodes += 1
-                q.append((num_nodes, child))
-                reverse_map[child] = num_nodes
-                child_index = num_nodes
-            child_index = reverse_map[child]
+            if _filter_child(field, child):
+                continue
+            if child not in visited:
+                edges += _visit(child, idx, visited)
+            child_idx = visited[child]
             node_records.append(f'<{field}> ({field})')
-            dot.edge(f'{node_index}:{field}', f'{child_index}:caption')
+            edge = (f'{node_index}:{field}', f'{child_idx}:caption')
+            #dot.edge(*edge)
+            edges.append(edge)
+
         dot.node(
             str(node_index),
             label='|'.join(node_records),
             **_visual_style(node))
+
+        if isinstance(node, Algorithm):
+            # NOTE: the subgraph name needs to begin with 'cluster' (all lowercase)
+            #       so that Graphviz recognizes it as a special cluster subgraph
+            with dot.subgraph(name=f'cluster_{node_index}') as c:
+                c.attr(color='green')
+                if node_index != 0:
+                    # Do not draw duplicate edges for subgraphs
+                    c.edge_attr['style'] = 'invis'
+                c.edges(edges)
+                c.attr(label=label)
+
+        return edges
+
+    _visit(module, idx=[-1], visited={})
+
     return dot
 
 

@@ -462,6 +462,18 @@ class FC(nn.Module):
         """
         return ParallelFC(n=n, **self._kwargs)
 
+    def __repr__(self):
+        ret = (f"FC(in={self._input_size},\n"
+               f"   out={self._output_size},\n"
+               f"   activation={self._activation.__name__},\n")
+        if self._use_bias:
+            ret += "   bias=True,\n"
+        if self._use_bn:
+            ret += "   batch_norm=True,\n"
+        if self._use_ln:
+            ret += "   layer_norm=True,\n"
+        return ret + "  )"
+
 
 @alf.configurable
 class FCBatchEnsemble(FC):
@@ -790,6 +802,19 @@ class ParallelFC(nn.Module):
                 the same ``input_size`` and ``output_size``
         """
         return self._bias
+
+    def __repr__(self):
+        ret = (f"FC(n={self._n},\n"
+               f"   in={self._input_size},\n"
+               f"   out={self._output_size},\n"
+               f"   activation={self._activation.__name__},\n")
+        if self._use_bias:
+            ret += "   bias=True,\n"
+        if self._use_bn:
+            ret += "   batch_norm=True,\n"
+        if self._use_ln:
+            ret += "   layer_norm=True,\n"
+        return ret + "  )"
 
 
 @alf.configurable

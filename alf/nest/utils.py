@@ -135,6 +135,10 @@ class NestConcat(NestCombiner):
         """
         return NestConcat(self._nest_mask, self._dim, "parallel_" + self._name)
 
+    def __repr__(self):
+        return (f"NestConcat(dim={self._dim},\n"
+                f"           mask={self._nest_mask})")
+
 
 @alf.configurable
 class NestSum(NestCombiner):
@@ -229,7 +233,7 @@ class NestOuterProduct(NestCombiner):
         """
         super(NestOuterProduct, self).__init__(name, batch_dims=batch_dims)
         if activation is None:
-            activation = lambda x: x
+            activation = alf.layers.identity
         self._activation = activation
         self._padding = padding
 
@@ -259,6 +263,11 @@ class NestOuterProduct(NestCombiner):
     def make_parallel(self, n):
         return NestOuterProduct(self._activation, self._batch_dims + 1,
                                 self._padding, "parallel_" + self._name)
+
+    def __repr__(self):
+        return (f"NestOuterProduct(batch_dims={self._batch_dims},\n"
+                f"                 activation={self._activation.__name__},\n"
+                f"                 padding={self._padding})")
 
 
 def stack_nests(nests, dim=0):
