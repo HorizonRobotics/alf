@@ -205,9 +205,15 @@ returns the modified data.
 It is a useful abstraction to organize all kinds of data processing. For example,
 ``ObservationNormalizer`` normalizes input data to be zero mean and one std.
 
-However, it is important to note that ``HindsightExperienceTransformer``,
-``FrameStacker`` or any data transformer that need to access the replay buffer
-directly for data needs to happen before all other data transformers.
+However, it is important to note that when combining multiple data transformers
+into a ``SequentialDataTransformer``, certain rules on the order must be
+followed:
+
+1. If ``UntransformedTimeStep`` is used to save a reference to the original
+   ``TimeStep``, it must be the very first data transformer in the list.
+2. ``HindsightExperienceTransformer``, ``FrameStacker`` or any data transformer
+   that need to access the replay buffer directly for data needs to happen
+   before all other data transformers that are not ``UntransformedTimeStep``.
 
 The reason is the following: In off policy training, the replay buffer stores
 raw input w/o being processed by any data transformer.  If say
