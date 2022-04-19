@@ -171,7 +171,7 @@ def _visualize_alf_tree(module: Algorithm):
         node_index = idx[0]
         visited[node] = node_index
         label = _generate_node_label(node)
-        node_records = ["<caption> " + label + f"({node_index})"]
+        node_records = ["<caption> " + label + f"(id={node_index})"]
         edges = []
 
         for field, child in node.named_children():
