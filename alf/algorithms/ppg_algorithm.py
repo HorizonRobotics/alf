@@ -14,6 +14,7 @@
 """Phasic Policy Gradient Algorithm."""
 
 from __future__ import annotations
+from alf.algorithms.data_transformer import SequentialDataTransformer, UntransformedTimeStep
 import torch
 
 from typing import Optional, Tuple
@@ -99,6 +100,9 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
 
         """
+        assert self._validate_data_transformer(config.data_transformer), (
+            'PPGAlgorithms requires UntransformedTimeStep as the first data '
+            'transformer')
 
         dual_actor_value_network = DisjointPolicyValueNetwork(
             observation_spec=observation_spec,
@@ -144,6 +148,18 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def _trainable_attributes_to_ignore(self):
         return ['_aux_algorithm']
+
+    @staticmethod
+    def _validate_data_transformer(data_transformer):
+        """Returns True if UntransformedTimeStep is present and is applied
+        before all other data transformers.
+
+        """
+        if type(data_transformer) is UntransformedTimeStep:
+            return True
+        if type(data_transformer) is SequentialDataTransformer:
+            return type(data_transformer.members()[0]) is UntransformedTimeStep
+        return False
 
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
