@@ -84,6 +84,7 @@ class NestCombiner(abc.ABC, nn.Module):
 
 
 @alf.configurable
+@alf.config_util.repr_wrapper
 class NestConcat(NestCombiner):
     def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
         """A combiner for selecting from the tensors in a nest and then
@@ -134,10 +135,6 @@ class NestConcat(NestCombiner):
             a ``NestConcat`` layer to handle parallel batch.
         """
         return NestConcat(self._nest_mask, self._dim, "parallel_" + self._name)
-
-    def __repr__(self):
-        return (f"NestConcat(dim={self._dim},\n"
-                f"           mask={self._nest_mask})")
 
 
 @alf.configurable
@@ -195,6 +192,7 @@ class NestMultiply(NestCombiner):
 
 
 @alf.configurable
+@alf.config_util.repr_wrapper
 class NestOuterProduct(NestCombiner):
     def __init__(self,
                  activation: Callable = None,
@@ -263,11 +261,6 @@ class NestOuterProduct(NestCombiner):
     def make_parallel(self, n):
         return NestOuterProduct(self._activation, self._batch_dims + 1,
                                 self._padding, "parallel_" + self._name)
-
-    def __repr__(self):
-        return (f"NestOuterProduct(batch_dims={self._batch_dims},\n"
-                f"                 activation={self._activation.__name__},\n"
-                f"                 padding={self._padding})")
 
 
 def stack_nests(nests, dim=0):

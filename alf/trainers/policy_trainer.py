@@ -20,6 +20,7 @@ import math
 import os
 import pprint
 from pathlib import Path
+import re
 import signal
 import sys
 import time
@@ -120,7 +121,7 @@ def _visualize_alf_tree(module: Algorithm):
         """Loss: 'gray',
            Algorithm: 'blue',
            Network: 'orange',
-           FC or Conv: 'yellow'
+           Layer: 'yellow'
         """
         if isinstance(node, Loss):
             return {
@@ -144,8 +145,17 @@ def _visualize_alf_tree(module: Algorithm):
     def _generate_node_label(node):
         """Generate the proper label for a given node.
         """
+
+        def _get_func_name(match_obj):
+            # Further extract the function or method name
+            res = re.match(r'<built-in method (\w+) of.*>|<function (\w+) .*>',
+                           match_obj.group())
+            return res.group(1) or res.group(2)
+
         if _is_layer(node):
-            return repr(node)
+            # We need to parse function repr with pattern <... at 0x???> because
+            # graphviz doesn't support '<' or '>' in the label
+            return re.sub("<[^<]*>", _get_func_name, repr(node))
         else:
             return getattr(node, "name", type(node).__name__)
 

@@ -313,6 +313,7 @@ class FixedDecodingLayer(nn.Module):
 
 
 @alf.configurable
+@alf.config_util.repr_wrapper
 class FC(nn.Module):
     """Fully connected layer."""
 
@@ -461,18 +462,6 @@ class FC(nn.Module):
         The initialized layer parameters will be different.
         """
         return ParallelFC(n=n, **self._kwargs)
-
-    def __repr__(self):
-        ret = (f"FC(in={self._input_size},\n"
-               f"   out={self._output_size},\n"
-               f"   activation={self._activation.__name__},\n")
-        if self._use_bias:
-            ret += "   bias=True,\n"
-        if self._use_bn:
-            ret += "   batch_norm=True,\n"
-        if self._use_ln:
-            ret += "   layer_norm=True,\n"
-        return ret + "  )"
 
 
 @alf.configurable
@@ -640,6 +629,7 @@ class FCBatchEnsemble(FC):
 
 
 @alf.configurable
+@alf.config_util.repr_wrapper
 class ParallelFC(nn.Module):
     """Parallel FC layer."""
 
@@ -802,19 +792,6 @@ class ParallelFC(nn.Module):
                 the same ``input_size`` and ``output_size``
         """
         return self._bias
-
-    def __repr__(self):
-        ret = (f"FC(n={self._n},\n"
-               f"   in={self._input_size},\n"
-               f"   out={self._output_size},\n"
-               f"   activation={self._activation.__name__},\n")
-        if self._use_bias:
-            ret += "   bias=True,\n"
-        if self._use_bn:
-            ret += "   batch_norm=True,\n"
-        if self._use_ln:
-            ret += "   layer_norm=True,\n"
-        return ret + "  )"
 
 
 @alf.configurable
