@@ -84,6 +84,7 @@ class NestCombiner(abc.ABC, nn.Module):
 
 
 @alf.configurable
+@alf.repr_wrapper
 class NestConcat(NestCombiner):
     def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
         """A combiner for selecting from the tensors in a nest and then
@@ -191,6 +192,7 @@ class NestMultiply(NestCombiner):
 
 
 @alf.configurable
+@alf.repr_wrapper
 class NestOuterProduct(NestCombiner):
     def __init__(self,
                  activation: Callable = None,
@@ -229,7 +231,7 @@ class NestOuterProduct(NestCombiner):
         """
         super(NestOuterProduct, self).__init__(name, batch_dims=batch_dims)
         if activation is None:
-            activation = lambda x: x
+            activation = alf.layers.identity
         self._activation = activation
         self._padding = padding
 

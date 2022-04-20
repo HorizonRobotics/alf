@@ -313,6 +313,7 @@ class FixedDecodingLayer(nn.Module):
 
 
 @alf.configurable
+@alf.repr_wrapper
 class FC(nn.Module):
     """Fully connected layer."""
 
@@ -628,6 +629,7 @@ class FCBatchEnsemble(FC):
 
 
 @alf.configurable
+@alf.repr_wrapper
 class ParallelFC(nn.Module):
     """Parallel FC layer."""
 
