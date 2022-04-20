@@ -19,6 +19,8 @@ import torch
 from torch import nn
 import warnings
 
+import alf
+
 
 def is_checkpoint_enabled(module):
     """Whether ``module`` will checkpointed.
@@ -77,6 +79,7 @@ class Checkpointer(object):
 
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
+    @alf.configurable
     def load(self,
              global_step="latest",
              ignored_parameter_prefixes=[],

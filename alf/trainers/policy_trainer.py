@@ -366,8 +366,7 @@ class Trainer(object):
             self._algorithm.train_iter()
 
         try:
-            recovered_global_step = checkpointer.load(
-                **self._config.load_checkpoint_options)
+            recovered_global_step = checkpointer.load()
             self._trainer_progress.update()
         except RuntimeError as e:
             raise RuntimeError(
