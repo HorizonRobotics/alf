@@ -192,7 +192,6 @@ def _visualize_alf_tree(module: Algorithm):
             child_idx = visited[child]
             node_records.append(f'<{field}> ({field})')
             edge = (f'{node_index}:{field}', f'{child_idx}:caption')
-            #dot.edge(*edge)
             edges.append(edge)
 
         dot.node(
