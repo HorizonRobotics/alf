@@ -161,7 +161,7 @@ class CollisionSensor(SensorBase):
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor
             max_num_collisions (int): maximal number of collisions to be included
-            _include_collision_location (bool): whether to include collision
+            include_collision_location (bool): whether to include collision
             location into the observation. If True, will include the position
             (x, y, z) of the other actor relative to the ego actor
             (``parent_actor``).
