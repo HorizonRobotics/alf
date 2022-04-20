@@ -141,8 +141,7 @@ def play():
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
-                ",") if FLAGS.ignored_parameter_prefixes else [],
-            load_checkpoint_strict=config.load_checkpoint_strict)
+                ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
         alf.close_env()
 
