@@ -155,8 +155,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         before all other data transformers.
 
         """
-        if type(data_transformer) is UntransformedTimeStep:
-            return True
         if type(data_transformer) is SequentialDataTransformer:
             return type(data_transformer.members()[0]) is UntransformedTimeStep
         return False
