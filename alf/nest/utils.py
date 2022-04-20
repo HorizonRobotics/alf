@@ -84,7 +84,7 @@ class NestCombiner(abc.ABC, nn.Module):
 
 
 @alf.configurable
-@alf.config_util.repr_wrapper
+@alf.repr_wrapper
 class NestConcat(NestCombiner):
     def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
         """A combiner for selecting from the tensors in a nest and then
@@ -192,7 +192,7 @@ class NestMultiply(NestCombiner):
 
 
 @alf.configurable
-@alf.config_util.repr_wrapper
+@alf.repr_wrapper
 class NestOuterProduct(NestCombiner):
     def __init__(self,
                  activation: Callable = None,
