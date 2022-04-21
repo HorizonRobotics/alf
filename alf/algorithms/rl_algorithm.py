@@ -519,9 +519,10 @@ class RLAlgorithm(Algorithm):
 
             exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
-            t0 = time.time()
-            self.observe_for_replay(exp)
-            store_exp_time += time.time() - t0
+            if not self.on_policy:
+                t0 = time.time()
+                self.observe_for_replay(exp)
+                store_exp_time += time.time() - t0
 
             exp_for_training = Experience(
                 time_step=transformed_time_step,
