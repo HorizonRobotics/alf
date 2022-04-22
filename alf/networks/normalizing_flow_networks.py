@@ -392,13 +392,14 @@ def _prepare_conditional_flow_inputs(
 
     if z is not None:
         z_outer_rank = alf.nest.utils.get_outer_rank(z, z_spec)
-        z_batch_shape = z.shape[:z_outer_rank]
+        z_batch_shape = alf.nest.get_nest_shape(z)[:z_outer_rank]
         assert z_batch_shape == xy_batch_shape[-z_outer_rank:], (
             "xy batch shape is incompatible with z batch shape. "
             f"{xy_batch_shape} vs. {z_batch_shape}")
 
         if z_outer_rank > 1:
-            z = alf.utils.tensor_utils.BatchSquash(z_outer_rank).flatten(z)
+            bs = alf.utils.tensor_utils.BatchSquash(z_outer_rank)
+            z = alf.nest.map_structure(bs.flatten, z)
 
         B = alf.nest.get_nest_batch_size(z)
         if B < ret.shape[0]:

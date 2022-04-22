@@ -381,8 +381,7 @@ class LatentActorDistributionNetwork(Network):
                 flow nets that support this option.
             scale_distribution: Whether or not to scale the output
                 distribution to ensure that the output aciton fits within the
-                ``action_spec``. Note that this is different from ``mean_transform``
-                which merely squashes the mean to fit within the spec.
+                ``action_spec``.
             dist_squashing_transform:  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to
                 ``dist_utils.StableTanh()``
