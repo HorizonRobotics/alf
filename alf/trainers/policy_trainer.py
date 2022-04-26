@@ -147,10 +147,26 @@ def _visualize_alf_tree(module: Algorithm):
         """
 
         def _get_func_name(match_obj):
-            # Further extract the function or method name
-            res = re.match(r'<built-in method (\w+) of.*>|<function (\w+) .*>',
-                           match_obj.group())
-            return res.group(1) or res.group(2)
+            """Further extract the function name from the <...> representation.
+
+            For example, if the match_obj corresponds to a string like below:
+
+                <built-in method relu_ of type object at 0x7ff7a790f620>
+            
+            This function extracts "relu_" out of it.
+            """
+            # Such representation can start with either "bound method",
+            # "built-in method" or "function".
+            res = re.match(
+                r'<(bound method|built-in method|function) (\S+) .*>',
+                match_obj.group())
+            if res is None:
+                # In case there is an outlier, return "NOT_PARSED" instead.
+                return 'NOT_PARSED'
+            if len(res.group(2)) > 10:
+                # Shorten the function name if it is very long.
+                return f'{res.group(2)[:10]}...'
+            return res.group(2)
 
         if _is_layer(node):
             # We need to parse function repr with pattern <... at 0x???> because
@@ -379,14 +395,21 @@ class Trainer(object):
             # directory.
             algorithm_structure_graph = _visualize_alf_tree(self._algorithm)
             if algorithm_structure_graph is not None:
-                algorithm_structure_graph.render(
-                    Path(self._root_dir, 'algorithm_sturcture'), format='png')
-                # Also put it on the tensorboard
-                img = np.array(
-                    Image.open(
-                        Path(self._root_dir, 'algorithm_sturcture.png')))
-                alf.summary.images(
-                    'algorithm_structure', img, dataformat='HWC', step=0)
+                import graphviz
+                try:
+                    algorithm_structure_graph.render(
+                        Path(self._root_dir, 'algorithm_sturcture'),
+                        format='png',
+                        quiet=True)
+                except graphviz.backend.CalledProcessError as e:
+                    # graphviz will treat any warning in the rendering as error
+                    # and panic. We should just warn instead.
+                    logging.warn(f'Graphviz rendering: {str(e)}')
+                image_path = Path(self._root_dir, 'algorithm_sturcture.png')
+                if image_path.exists():
+                    img = np.array(Image.open(image_path))
+                    alf.summary.images(
+                        'algorithm_structure', img, dataformat='HWC', step=0)
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
