@@ -68,6 +68,7 @@ alf.config(
     root_exploration_fraction=0.,
     pb_c_init=0.5,
     pb_c_base=19652,
+    discount=0.99,
     is_two_player_game=False,
     visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress(),
     act_with_exploration_policy=True,
