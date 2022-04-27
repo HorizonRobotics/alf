@@ -249,7 +249,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 'Must specify reanalyze_algorithm_ctor when reanalyze_ratio > 0'
             )
             self._reanalyze_algorithm = reanalyze_algorithm_ctor(
-                observation_spec=observation_spec,
+                observation_spec=self._model.repr_spec,
                 action_spec=action_spec,
                 discount=discount,
                 debug_summaries=debug_summaries,
@@ -528,7 +528,12 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             if type(self._data_transformer) == IdentityDataTransformer:
                 observation = replay_buffer.get_field(
                     'observation', folded_env_ids, folded_positions)
-                observation = _unfold1_adapting_episode_ends(observation)
+                # [B, T, R + 1, ...]
+                observation = alf.nest.map_structure(
+                    _unfold1_adapting_episode_ends, observation)
+                # [B * T, R + 1, ...]
+                observation = alf.nest.map_structure(
+                    lambda x: x.reshape(-1, *x.shape[2:]), observation)
             else:
                 # In contrast to the preceding case, where we can first extract
                 # observation and then unfold it, certain data transformers,
@@ -540,9 +545,11 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
                 # Unfold (and reshape)
                 # [B, T, R+1, ...]
-                observation = _unfold1_adapting_episode_ends(observation)
+                observation = alf.nest.map_structure(
+                    _unfold1_adapting_episode_ends, observation)
                 # [B*T, R+1, ...]
-                observation = observation.reshape(-1, *observation.shape[2:])
+                observation = alf.nest.map_structure(
+                    lambda x: x.reshape(-1, *x.shape[2:]), observation)
                 step_type = _unfold1_adapting_episode_ends(step_type)
                 step_type = step_type.reshape(-1, *step_type.shape[2:])
 
@@ -826,7 +833,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                     exp1.observation)
                 exp1 = exp1._replace(
                     time_step=exp1.time_step._replace(observation=latent))
-                policy_step = self._reanalyze_algorithm.predict_step(
+                policy_step = self._reanalyze_algorithm.rollout_step(
                     exp1, alf.nest.get_field(exp1, policy_state_field))
 
             def _reshape(x):
@@ -891,7 +898,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
     def calc_loss(self, info: LossInfo):
         if self._calculate_priority:
-            priority = self._priority_func(info.loss)
+            # Make sure that priority is float32 so that replay buffer will not
+            # complain when updating the priority.
+            priority = self._priority_func(info.loss).to(torch.float32)
         else:
             priority = ()
 

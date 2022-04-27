@@ -111,6 +111,9 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
                 value=model_output.value,
             ))
 
+    def rollout_step(self, time_step, state):
+        return self.predict_step(time_step, state)
+
 
 class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     def _step_types(self):

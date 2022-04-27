@@ -128,7 +128,7 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
         self._current_observation = observation
 
-        discount = [0.0 if done else 1.0]
+        discount = 0.0 if done else 1.0
 
         self._last_step_is_done = done
 
