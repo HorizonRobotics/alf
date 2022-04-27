@@ -24,8 +24,8 @@ import weakref
 import threading
 from unittest.mock import Mock
 
-from alf.environments.carla_env.carla_utils import (TrafficLightHandler,
-                                                    MapHandler)
+from alf.environments.carla_env.carla_utils import (
+    TrafficLightHandler, MapHandler, _calculate_relative_position)
 
 try:
     import carla
@@ -148,16 +148,24 @@ class SensorBase(abc.ABC):
 class CollisionSensor(SensorBase):
     """CollisionSensor for getting collision signal.
 
-    It gets the impulses from the collisions during the last tick.
+    It gets the impulses and optionally the locations for the collisions
+    during the last tick.
 
-    TODO: include event.other_actor in the sensor result.
     """
 
-    def __init__(self, parent_actor, max_num_collisions=4):
+    def __init__(self,
+                 parent_actor,
+                 max_num_collisions=4,
+                 include_collision_location=False):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor
             max_num_collisions (int): maximal number of collisions to be included
+            include_collision_location (bool): whether to include collision
+            location into the observation. If True, will include the position
+            (x, y, z) of the other actor relative to the ego actor
+            (``parent_actor``).
+
         """
         super().__init__(parent_actor)
         self._max_num_collisions = max_num_collisions
@@ -178,8 +186,16 @@ class CollisionSensor(SensorBase):
         self._collisions = []
         self._lock = threading.Lock()
 
+        self._include_collision_location = include_collision_location
+        self._collision_locations = []
+        self._dummy_location = np.zeros([max_num_collisions, 3],
+                                        dtype=np.float32)
+
     @staticmethod
     def _on_collision(weak_self, event):
+        actor_collide_against = event.other_actor
+        other_loc = actor_collide_against.get_location()
+
         self = weak_self()
         if not self:
             return
@@ -187,16 +203,25 @@ class CollisionSensor(SensorBase):
         self._frame = event.frame
         with self._lock:
             self._collisions.append([impulse.x, impulse.y, impulse.z])
+            self._collision_locations.append(
+                [other_loc.x, other_loc.y, other_loc.z])
 
     def observation_spec(self):
-        return alf.TensorSpec([self._max_num_collisions, 3])
+        if self._include_collision_location:
+            # [impulse, position] along dim-1
+            return alf.TensorSpec([self._max_num_collisions, 2, 3])
+        else:
+            return alf.TensorSpec([self._max_num_collisions, 3])
 
     def observation_desc(self):
         return (
             "Impulses from collision during the last tick. Each impulse is "
             "a 3-D vector. At most %d collisions are used. The result is padded "
-            "with zeros if there are less than %d collisions" %
-            (self._max_num_collisions, self._max_num_collisions))
+            "with zeros if there are less than %d collisions. "
+            "If include_other_actor is True, the observation will also include "
+            "the position (x, y, z) of the other actor relative to the ego "
+            "actor in a new array dimension" % (self._max_num_collisions,
+                                                self._max_num_collisions))
 
     def get_current_observation(self, current_frame):
         """Get the current observation.
@@ -210,11 +235,19 @@ class CollisionSensor(SensorBase):
             np.ndarray: Impulses from collision during the last tick. Each
                 impulse is a 3-D vector. At most ``max_num_collisions``
                 collisions are used. The result is padded with zeros if there
-                are less than ``max_num_collisions`` collisions
+                are less than ``max_num_collisions`` collisions.
+                If ``include_other_actor`` is True, the observation will have
+                the shape of [max_num_collisions, 2, 3], by stacking
+                the impulses and corresponding collision locations (in
+                ego-coordinate) along dim-1.
+
 
         """
         if current_frame == self._prev_cached_frame:
-            return self._cached_impulse
+            observation = self._cached_impulse
+            if self._include_collision_location:
+                observation = np.stack(
+                    [observation, self._cached_collision_locations], axis=1)
 
         assert current_frame > self._prev_cached_frame, (
             "Cannot get frames %d older than previously cached one %d!" %
@@ -223,6 +256,17 @@ class CollisionSensor(SensorBase):
         with self._lock:
             impulses = np.array(self._collisions, dtype=np.float32)
             self._collisions = []
+
+            if self._include_collision_location:
+                collision_locations = self._collision_locations
+                if len(collision_locations) > 0:
+                    for i, loc in enumerate(collision_locations):
+                        collision_locations[i] = _calculate_relative_position(
+                            self._parent.get_transform(), loc)
+
+                collision_locations = np.array(
+                    collision_locations, dtype=np.float32)
+                self._collision_locations = []
 
         n = impulses.shape[0]
         if n == 0:
@@ -236,9 +280,28 @@ class CollisionSensor(SensorBase):
         elif n > self._max_num_collisions:
             impulses = impulses[-self._max_num_collisions:]
 
+        observation = impulses
+
+        if self._include_collision_location:
+            n = collision_locations.shape[0]
+            if n == 0:
+                collision_locations = self._dummy_location
+            elif n < self._max_num_collisions:
+                collision_locations = np.concatenate([
+                    np.zeros([self._max_num_collisions - n, 3],
+                             dtype=np.float32), collision_locations
+                ],
+                                                     axis=0)
+            elif n > self._max_num_collisions:
+                collision_locations = collision_locations[-self.
+                                                          _max_num_collisions:]
+
+            observation = np.stack([observation, collision_locations], axis=1)
+
         self._cached_impulse = impulses
+        self._cached_collision_locations = collision_locations
         self._prev_cached_frame = current_frame
-        return impulses
+        return observation
 
 
 # ==============================================================================
@@ -1279,7 +1342,7 @@ class World(object):
 
         violated_red_light_id = None
         encountered_red_light_id = None
-        encountered_red_light_distance = DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE
+        encountered_red_light_distance = self.DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE
         for index in candidate_light_index:
             wp_dir = _get_forward_vector(waypoints.rotation[index])
             dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)

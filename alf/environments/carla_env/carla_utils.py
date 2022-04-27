@@ -16,6 +16,7 @@
 
 import cv2
 from enum import IntEnum
+import math
 import numpy as np
 from pathlib import Path
 from typing import NamedTuple
@@ -28,6 +29,91 @@ try:
 except ImportError:
     # create 'carla' as a mock to not break python argument type hints
     carla = Mock()
+
+# ==============================================================================
+# -- Utility Functions ---------------------------------------------------------
+# ==============================================================================
+
+
+def _to_numpy_loc(loc: carla.Location):
+    return np.array([loc.x, loc.y, loc.z])
+
+
+def _calculate_relative_position(self_transform, location):
+    """
+    Args:
+        self_transform (carla.Transform): transform of self actor
+        location (np.ndarray): shape is [3] or [N, 3]
+    Returns:
+        np.ndarray: shape is same as location
+    """
+    trans = self_transform
+    self_loc = trans.location
+    yaw = math.radians(trans.rotation.yaw)
+
+    self_loc = np.array([self_loc.x, self_loc.y, self_loc.z])
+    cos, sin = np.cos(yaw), np.sin(yaw)
+    rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
+    return np.matmul(location - self_loc, rot).astype(np.float32)
+
+
+def _calculate_relative_velocity(self_transform, velocity):
+    """
+    Args:
+        self_transform (carla.Transform): transform of self actor
+        velocity (np.ndarray): shape is [3] or [N, 3]
+    Returns:
+        np.ndarray: shape is same as location
+    """
+    trans = self_transform
+    yaw = math.radians(trans.rotation.yaw)
+
+    cos, sin = np.cos(yaw), np.sin(yaw)
+    rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
+    return np.matmul(velocity, rot).astype(np.float32)
+
+
+def _get_self_pose(self_transform):
+    """
+    Args:
+        self_transform (carla.Transform): transform of self actor
+        velocity (np.ndarray): shape is [3] or [N, 3]
+    Returns:
+        np.ndarray: shape is same as location
+    """
+    trans = self_transform
+    self_loc = trans.location
+    self_loc = np.array([self_loc.x, self_loc.y, self_loc.z])
+
+    yaw = math.radians(trans.rotation.yaw)
+
+    pose = np.concatenate((self_loc, np.array([yaw])),
+                          axis=0).astype(np.float32)
+    return pose
+
+
+def geo_distance(loc1, loc2):
+    """
+    Args:
+        loc1 (np.array): [latitude, longitude, altitude]. The units for altitude
+            is meter.
+        loc2 (np.array):
+    Returns:
+        float: distance in meters
+    """
+    earth_radius = 6371 * 1000
+    d2r = math.pi / 180
+
+    d = loc1 - loc2
+    dlat = d[0] * d2r
+    dlon = d[1] * d2r
+    lat1 = loc1[0] * d2r
+    lat2 = loc2[0] * d2r
+    a = np.sin(
+        0.5 * dlat)**2 + np.sin(0.5 * dlon)**2 * np.cos(lat1) * np.cos(lat2)
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    c = earth_radius * c
+    return np.sqrt(c * c + d[2] * d[2])
 
 
 # ==============================================================================
