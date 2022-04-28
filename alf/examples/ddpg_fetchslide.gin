@@ -1,4 +1,0 @@
-include 'ddpg_fetchreach.gin'
-create_environment.env_name='FetchSlide-v1'
-
-TrainerConfig.num_checkpoints=5

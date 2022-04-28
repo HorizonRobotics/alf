@@ -45,6 +45,8 @@ alf.config(
 
 gamma = 0.98
 alf.config('OneStepTDLoss', gamma=gamma)
+# The gamma in ReplayBuffer is only used to compute future discounted return,
+# to be used e.g. as lower bounds for value training.
 alf.config('ReplayBuffer', gamma=gamma)
 
 hidden_layers = (256, 256, 256)
