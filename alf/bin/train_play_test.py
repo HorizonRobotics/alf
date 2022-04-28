@@ -136,8 +136,8 @@ ON_POLICY_TRAIN_PARAMS = _to_conf_params(ON_POLICY_TRAIN_CONF)
 OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     # Make sure initial_collect_steps <= (num_iterations - 1) * unroll_length * num_parallel_environments
     # so there are some real training
-    'TrainerConfig.unroll_length=2',
-    'TrainerConfig.initial_collect_steps=2',
+    'TrainerConfig.unroll_length=8',
+    'TrainerConfig.initial_collect_steps=8',
     'TrainerConfig.num_updates_per_train_iter=1',
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
