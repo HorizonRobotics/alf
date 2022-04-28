@@ -22,6 +22,8 @@ from alf.examples import atari_conf, ppo_conf
 discount = 0.988
 num_envs = 64
 
+alf.config("AverageDiscountedReturnMetric", discount=discount)
+
 # From OpenAI gym wiki:
 # "v0 vs v4: v0 has repeat_action_probability of 0.25
 #  (meaning 25% of the time the previous action will be used instead of the new action),
