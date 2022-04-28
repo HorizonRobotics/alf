@@ -415,9 +415,15 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_sac_breakout(self):
+        self._test(
+            conf_file='sac_breakout_conf.py',
+            skip_checker=self._skip_if_atari_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_her_target_navigation(self):
         self._test(
-            conf_file='her_target_navigation_states.gin',
+            conf_file='her_target_navigation_states_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
@@ -426,17 +432,18 @@ class TrainPlayTest(alf.test.TestCase):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
-        self._test(conf_file='ddpg_pendulum.gin', test_perf_func=_test_func)
+        self._test(
+            conf_file='ddpg_pendulum_conf.py', test_perf_func=_test_func)
 
     def test_ddpg_fetchslide(self):
         self._test(
-            conf_file="ddpg_fetchslide.gin",
+            conf_file="ddpg_fetchslide_conf.py",
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_her_fetchpush(self):
         self._test(
-            conf_file='her_fetchpush.gin',
+            conf_file='her_fetchpush_conf.py',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
