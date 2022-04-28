@@ -21,7 +21,7 @@ import os
 import sys
 import time
 import torch
-from typing import Optional
+from typing import Dict, Optional
 
 import alf
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -34,7 +34,7 @@ from alf.trainers import policy_trainer
 from collections import namedtuple
 
 EvalJob = namedtuple(
-    "EvalJob", ["type", "global_counter", "env_steps", "state_dict"],
+    "EvalJob", ["type", "global_counter", "step_metrics", "state_dict"],
     defaults=[None] * 4)
 
 
@@ -62,7 +62,7 @@ class AsyncEvaluator(object):
                   root_dir, seed))
         self._worker.start()
 
-    def eval(self, algorithm: RLAlgorithm, current_env_steps: int):
+    def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
         """Do one round of evaluation.
 
         This function will return once the evaluator worker makes a copy of the
@@ -74,11 +74,13 @@ class AsyncEvaluator(object):
 
         Args:
             algorithm: the training algorithm
-            current_env_steps: current total number of environment steps.
+            step_metric_values: a dictionary of step metric values to generate
+                the evaluation summaries against. Note that it needs to contain
+                "EnvironmentSteps" at least.
         """
         job = EvalJob(
             type="eval",
-            env_steps=int(current_env_steps),
+            step_metrics=step_metric_values,
             global_counter=int(alf.summary.get_global_counter()),
             state_dict=algorithm.state_dict())
         self._job_queue.put(job)
@@ -167,9 +169,13 @@ def _worker(job_queue: mp.Queue,
                 job = job_queue.get()
                 if job.type == "eval":
                     logging.info("Start evaluation")
+                    # Some algorithms use scheduler depending on the global counter
+                    # or the training progress. So we make sure they are same as
+                    # the training process.
                     alf.summary.set_global_counter(job.global_counter)
+                    env_steps = job.step_metrics["EnvironmentSteps"]
                     policy_trainer.Trainer._trainer_progress.update(
-                        job.global_counter, job.env_steps)
+                        job.global_counter, env_steps)
                     algorithm.load_state_dict(job.state_dict)
                     done_queue.put(None)
                     metrics = evaluate(env, algorithm,
@@ -177,8 +183,8 @@ def _worker(job_queue: mp.Queue,
                     common.log_metrics(metrics)
                     for metric in metrics:
                         metric.gen_summaries(
-                            train_step=alf.summary.get_global_counter(),
-                            other_steps=dict(EnvironmentSteps=job.env_steps))
+                            train_step=job.global_counter,
+                            other_steps=job.step_metrics)
                 elif job.type == "stop":
                     break
                 else:

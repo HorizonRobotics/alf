@@ -17,7 +17,6 @@ Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/met
 """
 
 import alf
-from numbers import Number
 import os
 from typing import Dict
 
@@ -63,7 +62,7 @@ class StepMetric(nn.Module):
     def gen_summaries(self,
                       train_step=None,
                       step_metrics=(),
-                      other_steps: Dict[str, Number] = dict()):
+                      other_steps: Dict[str, int] = dict()):
         """Generates summaries against train_step and all step_metrics.
 
         Args:

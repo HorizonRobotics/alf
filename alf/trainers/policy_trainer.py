@@ -476,9 +476,9 @@ class RLTrainer(Trainer):
         super()._restore_checkpoint(checkpointer)
 
     def _eval(self):
-        env_steps_metric = self._algorithm.get_step_metrics()[1]
-        total_time_steps = env_steps_metric.result()
-        self._evaluator.eval(self._algorithm, total_time_steps)
+        step_metrics = self._algorithm.get_step_metrics()
+        step_metrics = dict((m.name, int(m.result())) for m in step_metrics)
+        self._evaluator.eval(self._algorithm, step_metrics)
 
 
 class SLTrainer(Trainer):
