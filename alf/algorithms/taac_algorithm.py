@@ -475,14 +475,13 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                         mode=Mode.rollout):
 
         observation = time_step.observation
-        obs_shape = alf.nest.get_nest_shape(observation)
 
         ap_out = self._compute_beta_and_tau(observation, state, epsilon_greedy,
                                             mode)
 
         if not common.is_eval() and not self._training_started:
-            b = self._b_spec.sample(obs_shape[:1])
-            b1_a = self._action_spec.sample(obs_shape[:1])
+            b = self._b_spec.sample(time_step.step_type.shape)
+            b1_a = self._action_spec.sample(time_step.step_type.shape)
             b1_tau = self._action2tau(b1_a, state.tau)
             ap_out = ap_out._replace(b=b, taus=(ap_out.taus[0], b1_tau))
 
