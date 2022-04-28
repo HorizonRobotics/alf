@@ -18,6 +18,7 @@ Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/met
 
 import alf
 import os
+from typing import Dict
 
 import torch
 from torch import nn
@@ -58,7 +59,10 @@ class StepMetric(nn.Module):
         raise NotImplementedError(
             'Metrics must define a result() member function')
 
-    def gen_summaries(self, train_step=None, step_metrics=()):
+    def gen_summaries(self,
+                      train_step=None,
+                      step_metrics=(),
+                      other_steps: Dict[str, int] = dict()):
         """Generates summaries against train_step and all step_metrics.
 
         Args:
@@ -66,6 +70,7 @@ class StepMetric(nn.Module):
                 metric is generated against the global step.
             step_metrics: (Optional) Iterable of step metrics to generate summaries
                 against.
+            other_steps: A dictionary of steps to generate summaries against.
         """
         prefix = self._prefix
         result = self.result()
@@ -84,6 +89,9 @@ class StepMetric(nn.Module):
                 step_tag = '{}_vs_{}/{}'.format(prefix, step_metric.name, name)
                 # Summaries expect the step value to be an int64.
                 step = step_metric.result().to(torch.int64)
+                alf.summary.scalar(name=step_tag, data=res, step=step)
+            for other_name, step in other_steps.items():
+                step_tag = '{}_vs_{}/{}'.format(prefix, other_name, name)
                 alf.summary.scalar(name=step_tag, data=res, step=step)
 
         alf.nest.py_map_structure_with_path(_gen_summary, result)

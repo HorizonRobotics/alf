@@ -45,6 +45,7 @@ from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
+from .evaluator import Evaluator
 
 
 class _TrainerProgress(nn.Module):
@@ -530,7 +531,6 @@ class RLTrainer(Trainer):
             # Activate the DDP training
             self._algorithm.activate_ddp(ddp_rank)
 
-        self._eval_env = None
         # Create a thread env to expose subprocess gin/alf configurations
         # which otherwise will be marked as "inoperative". Only created when
         # ``TrainerConfig.no_thread_env_for_conf=False``.
@@ -538,55 +538,24 @@ class RLTrainer(Trainer):
 
         # See ``alf/docs/notes/knowledge_base.rst```
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
-        if config.no_thread_env_for_conf:
-            if self._evaluate:
-                self._eval_env = create_environment(
-                    num_parallel_environments=1, seed=self._random_seed)
-        else:
-            if self._evaluate or isinstance(
-                    env, alf.environments.parallel_environment.
-                    ParallelAlfEnvironment):
-                self._thread_env = create_environment(
-                    nonparallel=True, seed=self._random_seed)
-            if self._evaluate:
-                self._eval_env = self._thread_env
+        if not config.no_thread_env_for_conf and isinstance(
+                env,
+                alf.environments.parallel_environment.ParallelAlfEnvironment):
+            self._thread_env = create_environment(
+                nonparallel=True, seed=self._random_seed)
 
-        self._eval_metrics = None
-        self._eval_summary_writer = None
         if self._evaluate:
-            example_time_step = self._eval_env.reset()
-            self._eval_metrics = [
-                alf.metrics.AverageReturnMetric(
-                    buffer_size=self._num_eval_episodes,
-                    example_time_step=example_time_step),
-                alf.metrics.AverageEpisodeLengthMetric(
-                    example_time_step=example_time_step,
-                    buffer_size=self._num_eval_episodes),
-                alf.metrics.AverageEnvInfoMetric(
-                    example_time_step=example_time_step,
-                    buffer_size=self._num_eval_episodes),
-                alf.metrics.AverageDiscountedReturnMetric(
-                    buffer_size=self._num_eval_episodes,
-                    example_time_step=example_time_step),
-            ]
-            self._eval_summary_writer = alf.summary.create_summary_writer(
-                self._eval_dir, flush_secs=config.summaries_flush_secs)
+            self._evaluator = Evaluator(self._config, common.get_conf_file())
 
     def _close_envs(self):
         """Close all envs to release their resources."""
         alf.close_env()
-        if self._eval_env is not None:
-            self._eval_env.close()
-        if (self._thread_env is not None
-                and self._thread_env is not self._eval_env):
+        if self._thread_env is not None:
             self._thread_env.close()
 
     def _train(self):
         env = alf.get_env()
         env.reset()
-        if self._eval_env:
-            self._eval_env.reset()
-
         iter_num = int(self._trainer_progress._iter_num)
         training_setting_summarized = False
 
@@ -598,6 +567,9 @@ class RLTrainer(Trainer):
             time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
         else:
             time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
+
+        if self._evaluate and iter_num == 0:
+            self._eval()
 
         while True:
             t0 = time.time()
@@ -653,6 +625,8 @@ class RLTrainer(Trainer):
     def _close(self):
         """Closing operations after training. """
         self._close_envs()
+        if self._evaluate:
+            self._evaluator.close()
 
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
@@ -663,37 +637,10 @@ class RLTrainer(Trainer):
 
         super()._restore_checkpoint(checkpointer)
 
-    @common.mark_eval
     def _eval(self):
-        self._algorithm.eval()
-        time_step = common.get_initial_time_step(self._eval_env)
-        policy_state = self._algorithm.get_initial_predict_state(
-            self._eval_env.batch_size)
-        trans_state = self._algorithm.get_initial_transform_state(
-            self._eval_env.batch_size)
-        episodes = 0
-        while episodes < self._num_eval_episodes:
-            time_step, policy_step, trans_state = _step(
-                algorithm=self._algorithm,
-                env=self._eval_env,
-                time_step=time_step,
-                policy_state=policy_state,
-                trans_state=trans_state,
-                metrics=self._eval_metrics)
-            policy_state = policy_step.state
-
-            if time_step.is_last():
-                episodes += 1
-
         step_metrics = self._algorithm.get_step_metrics()
-        with alf.summary.push_summary_writer(self._eval_summary_writer):
-            for metric in self._eval_metrics:
-                metric.gen_summaries(
-                    train_step=alf.summary.get_global_counter(),
-                    step_metrics=step_metrics)
-
-        common.log_metrics(self._eval_metrics)
-        self._algorithm.train()
+        step_metrics = dict((m.name, int(m.result())) for m in step_metrics)
+        self._evaluator.eval(self._algorithm, step_metrics)
 
 
 class SLTrainer(Trainer):

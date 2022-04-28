@@ -243,17 +243,12 @@ def get_env():
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.
         seed = set_random_seed(random_seed)
-        # We need to re-set 'TrainerConfig.random_seed' to record the actual
-        # random seed we are using.
-        if random_seed is None:
-            config1('TrainerConfig.random_seed', seed, raise_if_used=False)
-
         # In case when running in multi-process mode, the number of environments
         # per process need to be adjusted (divided by number of processes).
         adjust_config_by_multi_process_divider(
             PerProcessContext().ddp_rank,
             PerProcessContext().num_processes)
-        _env = create_environment(seed=random_seed)
+        _env = create_environment(seed=seed)
     return _env
 
 

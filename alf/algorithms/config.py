@@ -41,6 +41,8 @@ class TrainerConfig(object):
                  epsilon_greedy=0.,
                  eval_uncertainty=False,
                  num_eval_episodes=10,
+                 num_eval_environments: int = 1,
+                 async_eval: bool = True,
                  num_summaries=None,
                  summary_interval=50,
                  summarize_first_interval=True,
@@ -155,7 +157,10 @@ class TrainerConfig(object):
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
             eval_uncertainty (bool): whether to evluate uncertainty after training.
-            num_eval_episodes (int) : number of episodes for one evaluation
+            num_eval_episodes (int) : number of episodes for one evaluation.
+            num_eval_environments: the number of environments for evaluation.
+            async_eval: whether to do evaluation asynchronously in a different
+                process. Note that this may use more memory.
             num_summaries (int): how many summary calls are needed throughout the
                 training. If not None, an automatically calculated ``summary_interval``
                 will replace ``config.summary_interval``. Note that this number
@@ -275,6 +280,8 @@ class TrainerConfig(object):
         self.epsilon_greedy = epsilon_greedy
         self.eval_uncertainty = eval_uncertainty
         self.num_eval_episodes = num_eval_episodes
+        self.num_eval_environments = num_eval_environments
+        self.async_eval = async_eval
         self.num_summaries = num_summaries
         self.summary_interval = summary_interval
         self.summarize_first_interval = summarize_first_interval
