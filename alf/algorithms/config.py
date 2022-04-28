@@ -167,7 +167,7 @@ class TrainerConfig(object):
             num_eval_episodes (int) : number of episodes for one evaluation.
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
-                process. Note that this more use more memory.
+                process. Note that this may use more memory.
             num_summaries (int): how many summary calls are needed throughout the
                 training. If not None, an automatically calculated ``summary_interval``
                 will replace ``config.summary_interval``. Note that this number

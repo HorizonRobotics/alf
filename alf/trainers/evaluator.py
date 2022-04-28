@@ -21,7 +21,7 @@ import os
 import sys
 import time
 import torch
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -41,7 +41,13 @@ EvalJob = namedtuple(
 
 
 class Evaluator(object):
-    """Evaluate algorithm performance asynchronously in a different process.
+    """Evaluator for performing evaluation on the current algorithm.
+
+    If ``config.async_eval`` is True, the evaluation is performed asynchronously
+    in a different process.
+
+    For each round of evaluation, it will play ``config.num_eval_episodes`` using
+    ``config.num_eval_environments`` parallel environments.
 
     Args:
         config: the training config
@@ -69,9 +75,10 @@ class Evaluator(object):
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
         """Do one round of evaluation.
 
-        This function will return once the evaluator worker makes a copy of the
-        state_dict of ``algorithm``. However, if the previous evaluation has not
-        been finished, it will wait until it is finished.
+        If ``config.async_eval`` is True, this function will return once the
+        evaluator worker makes a copy of the state_dict of ``algorithm``.
+        However, if the previous evaluation has not been finished, it will wait
+        until it is finished.
 
         The evaluation result will be written to log file and tensorboard by the
         evaluation worker.
@@ -116,6 +123,12 @@ FLAGS = flags.FLAGS
 
 
 class SyncEvaluator(object):
+    """Evaluator for performing evaluation on the current algorithm.
+
+    For each round of evaluation, it will play ``config.num_eval_episodes`` using
+    ``config.num_eval_environments`` parallel environments.
+    """
+
     def __init__(self, env, config):
         self._env = env
         self._config = config
@@ -234,12 +247,16 @@ def _worker(job_queue: mp.Queue,
 
 
 @common.mark_eval
-def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm, num_episodes: int):
-    """
+def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
+             num_episodes: int) -> List[alf.metrics.StepMetric]:
+    """Perform one round of evaluation.
+
     Args:
         env: the environment
         algorithm: the training algorithm
         num_episodes: number of episodes to evaluate
+    Returns:
+        a list of metrics from the evaluation
     """
     batch_size = env.batch_size
     env.reset()
