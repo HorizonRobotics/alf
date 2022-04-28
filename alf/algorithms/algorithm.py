@@ -570,7 +570,12 @@ class Algorithm(AlgorithmInterface):
             if isinstance(child, Algorithm):
                 params, child_handled = child._setup_optimizers_(param_to_name)
                 if child.force_params_visible_to_parent:
-                    params = list(set(params + child_handled))
+                    merged = set(params)
+                    for p in child_handled:
+                        if p in merged:
+                            continue
+                        params.append(p)
+                        merged.add(p)
                 else:
                     for m in child_handled:
                         assert m not in handled, duplicate_error % param_to_name.get(
