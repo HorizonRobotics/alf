@@ -505,7 +505,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         if valid_action_mask is not None:
             # mask out invalid actions
-            assert model_output.actions is ()
+            assert model_output.actions == ()
             model_output = model_output._replace(
                 action_probs=model_output.action_probs *
                 valid_action_mask.to(torch.float32))
@@ -553,6 +553,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         action, info = self._select_action(trees, steps)
         return AlgStep(
             output=action, state=MCTSState(steps=state.steps + 1), info=info)
+
+    @torch.no_grad()
+    def rollout_step(self, time_step: TimeStep, state: MCTSState):
+        return self.predict_step(time_step, state)
 
     def _get_best_child_index(self, trees, B, nodes, i):
         if self._parallel and not self._search_with_exploration_policy:

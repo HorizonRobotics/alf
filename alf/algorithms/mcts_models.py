@@ -735,7 +735,7 @@ class SimpleMCTSModel(MCTSModel):
             assert num_sampled_actions is not None, (
                 "num_sampled_actions needs "
                 "to be provided for continuous actions or multi-dimensional "
-                "discrete actions: action_spec=" % action_spec)
+                f"discrete actions: action_spec={action_spec}")
 
         if not action_spec.is_continuous:
             num_actions = action_spec.maximum - action_spec.minimum + 1

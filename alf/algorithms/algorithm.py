@@ -1067,8 +1067,8 @@ class Algorithm(AlgorithmInterface):
         masks = None
         if (batch_info is not None and batch_info.importance_weights != ()
                 and self._config.priority_replay):
-            if (loss_info.loss is () or loss_info.loss.ndim != 2
-                    or loss_info.scalar_loss is not ()):
+            if (loss_info.loss == () or loss_info.loss.ndim != 2
+                    or loss_info.scalar_loss != ()):
                 common.warning_once(
                     "The importance_weights of priority "
                     "sampling cannnot be applied to LossInfo.scalar_loss or "
