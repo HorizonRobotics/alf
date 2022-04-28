@@ -38,7 +38,7 @@ from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
-from .evaluator import AsyncEvaluator
+from .evaluator import Evaluator
 
 
 class _TrainerProgress(nn.Module):
@@ -381,9 +381,7 @@ class RLTrainer(Trainer):
                 nonparallel=True, seed=self._random_seed)
 
         if self._evaluate:
-            self._evaluator = AsyncEvaluator(
-                common.get_conf_file(), self._root_dir,
-                config.num_eval_environments, self._random_seed)
+            self._evaluator = Evaluator(self._config, common.get_conf_file())
 
     def _close_envs(self):
         """Close all envs to release their resources."""

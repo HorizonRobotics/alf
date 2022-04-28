@@ -24,9 +24,11 @@ import torch
 from typing import Dict, Optional
 
 import alf
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.environments.alf_environment import AlfEnvironment
 from alf.utils import common
+from alf.utils.summary_utils import record_time
 from alf.data_structures import StepType
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
@@ -38,29 +40,31 @@ EvalJob = namedtuple(
     defaults=[None] * 4)
 
 
-class AsyncEvaluator(object):
+class Evaluator(object):
     """Evaluate algorithm performance asynchronously in a different process.
 
     Args:
+        config: the training config
         conf_file: path of the config file
-        root_dir: directory for saving summary and checkpoints
-        num_evns: the number of environments for evaluating
-        seed: random seed
     """
 
-    def __init__(self,
-                 conf_file: str,
-                 root_dir: str,
-                 num_envs: int,
-                 seed: Optional[int] = None):
-        ctx = mp.get_context('spawn')
-        self._job_queue = ctx.Queue()
-        self._done_queue = ctx.Queue()
-        self._worker = ctx.Process(
-            target=_worker,
-            args=(self._job_queue, self._done_queue, conf_file, num_envs,
-                  root_dir, seed))
-        self._worker.start()
+    def __init__(self, config: TrainerConfig, conf_file: str):
+        self._async = config.async_eval
+        num_envs = config.num_eval_environments
+        seed = config.random_seed
+        if self._async:
+            ctx = mp.get_context('spawn')
+            self._job_queue = ctx.Queue()
+            self._done_queue = ctx.Queue()
+            self._worker = ctx.Process(
+                target=_worker,
+                args=(self._job_queue, self._done_queue, conf_file, num_envs,
+                      config.root_dir, seed))
+            self._worker.start()
+        else:
+            self._env = create_environment(
+                num_parallel_environments=num_envs, seed=seed)
+            self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
         """Do one round of evaluation.
@@ -78,19 +82,27 @@ class AsyncEvaluator(object):
                 the evaluation summaries against. Note that it needs to contain
                 "EnvironmentSteps" at least.
         """
-        job = EvalJob(
-            type="eval",
-            step_metrics=step_metric_values,
-            global_counter=int(alf.summary.get_global_counter()),
-            state_dict=algorithm.state_dict())
-        self._job_queue.put(job)
-        self._done_queue.get()
+        with alf.summary.record_if(lambda: True):
+            with record_time("time/evaluation"):
+                if self._async:
+                    job = EvalJob(
+                        type="eval",
+                        step_metrics=step_metric_values,
+                        global_counter=int(alf.summary.get_global_counter()),
+                        state_dict=algorithm.state_dict())
+                    self._job_queue.put(job)
+                    self._done_queue.get()
+                else:
+                    self._evaluator.eval(algorithm, step_metric_values)
 
     def close(self):
-        job = EvalJob(type="stop")
-        self._job_queue.put(job)
-        self._done_queue.get()
-        self._worker.join()
+        if self._async:
+            job = EvalJob(type="stop")
+            self._job_queue.put(job)
+            self._done_queue.get()
+            self._worker.join()
+        else:
+            self._env.close()
 
 
 def _define_flags():
@@ -101,6 +113,39 @@ def _define_flags():
 
 
 FLAGS = flags.FLAGS
+
+
+class SyncEvaluator(object):
+    def __init__(self, env, config):
+        self._env = env
+        self._config = config
+        eval_dir = os.path.join(config.root_dir, 'eval')
+        self._summary_writer = alf.summary.create_summary_writer(
+            eval_dir, flush_secs=config.summaries_flush_secs)
+
+    def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
+        """Do one round of evaluation.
+
+        This function will return after finishing the evaluation.
+
+        The evaluation result will be written to log file and tensorboard by the
+        evaluation worker.
+
+        Args:
+            algorithm: the training algorithm
+            step_metric_values: a dictionary of step metric values to generate
+                the evaluation summaries against. Note that it needs to contain
+                "EnvironmentSteps" at least.
+        """
+        with alf.summary.push_summary_writer(self._summary_writer):
+            logging.info("Start evaluation")
+            metrics = evaluate(self._env, algorithm,
+                               self._config.num_eval_episodes)
+            common.log_metrics(metrics)
+            for metric in metrics:
+                metric.gen_summaries(
+                    train_step=alf.summary.get_global_counter(),
+                    other_steps=step_metric_values)
 
 
 def _worker(job_queue: mp.Queue,
@@ -114,6 +159,8 @@ def _worker(job_queue: mp.Queue,
         FLAGS(sys.argv, known_only=True)
         FLAGS.mark_as_parsed()
         FLAGS.alsologtostderr = True
+        # TODO: redirect the log to the training process. Currently, all the logs
+        # are written to a different log file.
         logging.set_verbosity(logging.INFO)
         logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
         logging.use_absl_handler()
@@ -158,38 +205,27 @@ def _worker(job_queue: mp.Queue,
         algorithm.set_path('')
         policy_trainer.Trainer._trainer_progress.set_termination_criterion(
             config.num_iterations, config.num_env_steps)
-
-        eval_dir = os.path.join(root_dir, 'eval')
-        summary_writer = alf.summary.create_summary_writer(
-            eval_dir, flush_secs=config.summaries_flush_secs)
         alf.summary.enable_summary()
+        evaluator = SyncEvaluator(env, config)
         logging.info("Evaluator started")
-        with alf.summary.push_summary_writer(summary_writer):
-            while True:
-                job = job_queue.get()
-                if job.type == "eval":
-                    logging.info("Start evaluation")
-                    # Some algorithms use scheduler depending on the global counter
-                    # or the training progress. So we make sure they are same as
-                    # the training process.
-                    alf.summary.set_global_counter(job.global_counter)
-                    env_steps = job.step_metrics["EnvironmentSteps"]
-                    policy_trainer.Trainer._trainer_progress.update(
-                        job.global_counter, env_steps)
-                    algorithm.load_state_dict(job.state_dict)
-                    done_queue.put(None)
-                    metrics = evaluate(env, algorithm,
-                                       config.num_eval_episodes)
-                    common.log_metrics(metrics)
-                    for metric in metrics:
-                        metric.gen_summaries(
-                            train_step=job.global_counter,
-                            other_steps=job.step_metrics)
-                elif job.type == "stop":
-                    break
-                else:
-                    raise KeyError(
-                        'Received message of unknown type {}'.format(job.type))
+        while True:
+            job = job_queue.get()
+            if job.type == "eval":
+                # Some algorithms use scheduler depending on the global counter
+                # or the training progress. So we make sure they are same as
+                # the training process.
+                alf.summary.set_global_counter(job.global_counter)
+                env_steps = job.step_metrics["EnvironmentSteps"]
+                policy_trainer.Trainer._trainer_progress.update(
+                    job.global_counter, env_steps)
+                algorithm.load_state_dict(job.state_dict)
+                done_queue.put(None)
+                evaluator.eval(algorithm, job.step_metrics)
+            elif job.type == "stop":
+                break
+            else:
+                raise KeyError('Received message of unknown type {}'.format(
+                    job.type))
 
         env.close()
         done_queue.put(None)
