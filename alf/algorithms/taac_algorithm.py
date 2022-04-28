@@ -424,10 +424,10 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         tau_spec = nest.map_structure(lambda m: action_spec if m else (),
                                       tau_mask)
+        obs_dim = sum([spec.numel for spec in nest.flatten(observation_spec)])
         tau_embedding = nest.map_structure(
             lambda _: torch.nn.Sequential(
-                alf.layers.FC(action_spec.numel, observation_spec.numel)),
-            tau_spec)
+                alf.layers.FC(action_spec.numel, obs_dim)), tau_spec)
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
@@ -475,13 +475,14 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                         mode=Mode.rollout):
 
         observation = time_step.observation
+        obs_shape = alf.nest.get_nest_shape(observation)
 
         ap_out = self._compute_beta_and_tau(observation, state, epsilon_greedy,
                                             mode)
 
         if not common.is_eval() and not self._training_started:
-            b = self._b_spec.sample(observation.shape[:1])
-            b1_a = self._action_spec.sample(observation.shape[:1])
+            b = self._b_spec.sample(obs_shape[:1])
+            b1_a = self._action_spec.sample(obs_shape[:1])
             b1_tau = self._action2tau(b1_a, state.tau)
             ap_out = ap_out._replace(b=b, taus=(ap_out.taus[0], b1_tau))
 
