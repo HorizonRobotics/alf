@@ -56,7 +56,7 @@ class TransformerNetwork(PreprocessorNetwork):
                  input_tensor_spec,
                  num_prememory_layers,
                  num_attention_heads,
-                 d_ff,
+                 d_ff=None,
                  core_size=1,
                  use_core_embedding=True,
                  memory_size=0,
@@ -149,6 +149,7 @@ class TransformerNetwork(PreprocessorNetwork):
             self._transformers.append(
                 alf.layers.TransformerBlock(
                     d_model=d_model,
+                    d_ff=d_ff,
                     num_heads=num_attention_heads,
                     memory_size=input_size + core_size,
                     positional_encoding='abs' if i == 0 else 'none'))
@@ -157,6 +158,7 @@ class TransformerNetwork(PreprocessorNetwork):
             self._transformers.append(
                 alf.layers.TransformerBlock(
                     d_model=d_model,
+                    d_ff=d_ff,
                     num_heads=num_attention_heads,
                     memory_size=memory_size + input_size + core_size,
                     positional_encoding='abs' if i == 0 else 'none'))
