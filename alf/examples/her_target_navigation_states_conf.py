@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# NOTE: this config doesn't work due to alf.config not available for SocialRobot.GoalTask etc.
+# Use the .gin config for now.
+
 import functools
 
 import alf
