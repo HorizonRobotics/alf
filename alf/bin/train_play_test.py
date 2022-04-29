@@ -423,7 +423,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_her_target_navigation(self):
         self._test(
-            conf_file='her_target_navigation_states_conf.py',
+            conf_file='her_target_navigation_states.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
