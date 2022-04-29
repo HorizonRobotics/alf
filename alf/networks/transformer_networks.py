@@ -77,7 +77,8 @@ class TransformerNetwork(PreprocessorNetwork):
             num_attention_heads (int): number of attention heads for each
                 ``TransformerBlock``
             d_ff (int): the size of the hidden layer of the feedforward network
-                in each ``TransformerBlock``
+                in each ``TransformerBlock``. If None, ``TransformerBlock`` will
+                calculate it as ``4*d_model``.
             memory_size (int): size of memory.
             num_memory_layers (int): number of TransformerBlock calculation
                 using memory
