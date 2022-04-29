@@ -62,6 +62,7 @@ class VideoRecorder(GymVideoRecorder):
 
         self._append_blank_frames = append_blank_frames
         self._blank_frame = None
+        self._pred_info_img_shapes = None
 
     def capture_frame(self, pred_info=None, is_last_step=False):
         """Render ``self.env`` and add the resulting frame to the video. Also
@@ -139,6 +140,18 @@ class VideoRecorder(GymVideoRecorder):
             i for i in alf.nest.flatten(pred_info)
             if isinstance(i, render.Image)
         ]
+        if self._pred_info_img_shapes is None:
+            self._pred_info_img_shapes = [i.shape for i in imgs]
+        else:
+            # Sometimes pyplot will automatically calculate figure sizes if no
+            # image height and widths are provided when rendering, which
+            # could result in a different rectangle packing result.
+            # In order to not break the video encoder, we need to make sure each
+            # pred info img has the same size with before.
+            for i, shape in zip(imgs, self._pred_info_img_shapes):
+                if i.shape != shape:
+                    i.resize(*shape[:2])
+
         frame = render.Image(env_frame)
 
         if imgs:

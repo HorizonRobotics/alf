@@ -244,7 +244,7 @@ def _rendering_wrapper(rendering_func):
     return wrapper
 
 
-def _convert_to_image(name, fig, dpi, height, width):
+def _convert_to_image(name, fig, dpi, height=None, width=None):
     """First putting the rendering identifier on top of the figure and then
     convert it to an instance of ``Image``. Also release the resources of
     ``fig``.
@@ -258,7 +258,8 @@ def _convert_to_image(name, fig, dpi, height, width):
     """
     fig.suptitle(name)
     img = Image.from_pyplot_fig(fig, dpi=dpi)
-    img.resize(height=height, width=width)
+    if height is not None and width is not None:
+        img.resize(height=height, width=width)
     plt.close(fig)
     return img
 
@@ -403,8 +404,8 @@ def render_heatmap(name,
                    cbar_kw={},
                    annotate_format="%.2f",
                    font_size=7,
-                   img_height=256,
-                   img_width=256,
+                   img_height=None,
+                   img_width=None,
                    dpi=300,
                    figsize=(2, 2),
                    **kwargs):
@@ -470,8 +471,8 @@ def render_contour(name,
                    x_label=None,
                    y_label=None,
                    font_size=7,
-                   img_height=256,
-                   img_width=256,
+                   img_height=None,
+                   img_width=None,
                    dpi=300,
                    figsize=(2, 2),
                    flip_y_axis=True,
@@ -537,8 +538,8 @@ def render_curve(name,
                  y_label=None,
                  legends=None,
                  legend_kwargs={},
-                 img_height=256,
-                 img_width=256,
+                 img_height=None,
+                 img_width=None,
                  dpi=300,
                  figsize=(2, 2),
                  **kwargs):
@@ -611,8 +612,8 @@ def render_bar(name,
                legends=None,
                legend_kwargs={},
                annotate_format="%.2f",
-               img_height=256,
-               img_width=256,
+               img_height=None,
+               img_width=None,
                dpi=300,
                figsize=(2, 2),
                **kwargs):
@@ -684,6 +685,37 @@ def render_bar(name,
     return _convert_to_image(name, fig, dpi, img_height, img_width)
 
 
+@_rendering_wrapper
+def render_text(name: str,
+                data: str,
+                font_size: int = 10,
+                fig_width_per_char: float = 0.1,
+                fig_height: float = 0.4,
+                img_height: int = None,
+                img_width: int = None,
+                **kwargs):
+    """Render a text string.
+
+    Args:
+        name: name of the text
+        data: the string to be rendered
+        font_size: text font size
+        fig_width_per_char: the width of each character measured by ``figsize``
+            of ``plt.subplots()``.
+        fig_height: the height of the text label measured by ``figsize`` of
+            ``plt.subplots()``.
+        img_height (int): height of the output image
+        img_width (int): width of the output image
+        **kwargs: extra arguments forwarded to ``ax.text``.
+    """
+    fig, ax = plt.subplots(
+        figsize=(len(data) * fig_width_per_char, fig_height))
+    kwargs['fontsize'] = font_size
+    ax.text(0, 0, data, **kwargs)
+    ax.axis('off')
+    return _convert_to_image(name, fig, dpi, img_height, img_width)
+
+
 def render_action(name, action, action_spec, **kwargs):
     """An action renderer that plots agent's action at one time step in a
     bar plot.
@@ -701,7 +733,12 @@ def render_action(name, action, action_spec, **kwargs):
     """
 
     def _render_action(path, act, spec):
-        y_range = (np.min(spec.minimum), np.max(spec.maximum))
+        y_range = None
+        if isinstance(spec, alf.tensor_specs.BoundedTensorSpec):
+            bound = (np.min(spec.minimum), np.max(spec.maximum))
+            if all(map(np.isfinite, bound)):
+                y_range = bound
+
         if spec.is_discrete:
             fmt = "%d"
         else:
