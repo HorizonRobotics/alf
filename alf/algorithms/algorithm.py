@@ -141,6 +141,8 @@ class Algorithm(AlgorithmInterface):
         self._prioritized_sampling = None
 
         self._use_rollout_state = False
+        # See the ``force_params_visible_to_parent`` property below for details.
+        self._force_params_visible_to_parent = False
         self._grad_scaler = None
         if config:
             self.use_rollout_state = config.use_rollout_state
@@ -246,6 +248,29 @@ class Algorithm(AlgorithmInterface):
     def use_rollout_state(self, flag):
         self._use_rollout_state = flag
         self._set_children_property('use_rollout_state', flag)
+
+    @property
+    def force_params_visible_to_parent(self) -> bool:
+        """Whether the already optimizer-handled parameters are seen by the paranet
+        algorithm.
+
+        Normally, when the parameters of this algorithm is handled by its
+        optimizer, ``_setup_optimizers_`` will prevent the parent algorithm's
+        optimizer to see and more importantly, handle them. Setting this value
+        to true will force the parameters to be seen and handled by the parent
+        algorithm, even if they are already handled by this algorithm.
+
+        Note that parameters ignored by ``_trainable_attributes_to_ignore()``
+        will stay invisible to the parent algorithm.
+
+        It is by default False, and can be changed with the following setter.
+
+        """
+        return self._force_params_visible_to_parent
+
+    @force_params_visible_to_parent.setter
+    def force_params_visible_to_parent(self, flag: bool):
+        self._force_params_visible_to_parent = flag
 
     def set_replay_buffer(self,
                           num_envs,
@@ -544,10 +569,13 @@ class Algorithm(AlgorithmInterface):
             assert id(child) != id(self), "Child should not be self"
             if isinstance(child, Algorithm):
                 params, child_handled = child._setup_optimizers_(param_to_name)
-                for m in child_handled:
-                    assert m not in handled, duplicate_error % param_to_name.get(
-                        m)
-                    handled[m] = 1
+                if child.force_params_visible_to_parent:
+                    params += child_handled
+                else:
+                    for m in child_handled:
+                        assert m not in handled, duplicate_error % param_to_name.get(
+                            m)
+                        handled[m] = 1
             elif isinstance(child, nn.Module):
                 params = list(child.parameters())
             elif isinstance(child, nn.Parameter):
