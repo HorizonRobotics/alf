@@ -1,0 +1,103 @@
+# WARNING: In general, alf.config is preferred over gin config, but in this case, alf.config isn't available for SocialRobot.
+
+include 'ddpg.gin'
+import alf.algorithms.agent
+import alf.environments.suite_socialbot
+
+batch_size=30
+create_environment.num_parallel_environments=%batch_size
+create_environment.env_load_fn=@suite_socialbot.load
+create_environment.env_name='SocialBot-PlayGround-v0'
+suite_gym.wrap_env.image_channel_first=False
+
+suite_socialbot.load.gym_env_wrappers=[]
+
+import alf.utils.math_ops
+
+ac/AdamTF.lr=2e-4
+ac/AdamTF.gradient_clipping=0.5
+Agent.optimizer=@ac/AdamTF()
+
+# Episodic limits
+suite_socialbot.load.max_episode_steps=50
+GoalTask.fail_distance_thresh=1000
+
+# Goal & distraction object setup
+GoalTask.random_goal=False
+GoalTask.goal_name="target_ball"
+GoalTask.distraction_list=['coke_can', 'car_wheel']
+GoalTask.distraction_penalty = 20
+GoalTask.distraction_penalty_distance_thresh=0.4
+GoalTask.random_range=5
+
+# Observation
+GoalTask.polar_coord=True
+PlayGround.use_image_observation=False
+PlayGround.with_language=False
+
+# Goal conditioned task setup
+GoalTask.success_with_angle_requirement=False
+GazeboAgent.goal_conditioned=True
+GoalTask.goal_conditioned=True
+GoalTask.distraction_penalty_distance_thresh=0.4
+GoalTask.end_episode_after_success=0
+GoalTask.end_on_hitting_distraction=0
+GoalTask.max_steps=50
+GoalTask.move_goal_during_episode=0
+GoalTask.reset_time_limit_on_success=0
+GoalTask.use_aux_achieved=True
+GoalTask.use_curriculum_training=0
+PlayGround.max_steps=50
+
+# Networks
+import alf.nest.utils
+actor/ActorNetwork.preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.output_tensor_spec=@get_reward_spec()
+critic/CriticNetwork.use_naive_parallel_network=True
+
+hidden_layers=(256,256,256)
+
+actor/ActorNetwork.fc_layer_params=%hidden_layers
+critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
+
+Agent.rl_algorithm_cls=@DdpgAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
+DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
+DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork
+DdpgAlgorithm.rollout_random_action=0.3
+DdpgAlgorithm.target_update_period=8
+
+# GoalGenerator
+observation_spec=@get_observation_spec()
+
+# TrainerConfig
+TrainerConfig.unroll_length=100
+TrainerConfig.initial_collect_steps=10000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.mini_batch_size=5000
+TrainerConfig.num_updates_per_train_iter=40
+TrainerConfig.replay_buffer_length=200000
+
+TrainerConfig.summary_interval=20
+TrainerConfig.num_iterations=1500
+TrainerConfig.num_checkpoints=10
+TrainerConfig.evaluate=True
+TrainerConfig.eval_interval=500
+TrainerConfig.num_eval_episodes=50
+
+# HER
+ReplayBuffer.keep_episodic_info=True
+HindsightExperienceTransformer.her_proportion=0.8
+l2_dist_close_reward_fn.threshold=0.5
+TrainerConfig.data_transformer_ctor=@HindsightExperienceTransformer
+
+# Finer grain tensorboard summaries plus local action distribution
+# TrainerConfig.summarize_action_distributions=True
+# TrainerConfig.summary_interval=1
+# TrainerConfig.update_counter_every_mini_batch=True
+# TrainerConfig.summarize_grads_and_vars=1
+# TrainerConfig.summarize_output=True
+# summarize_gradients.with_histogram=False
+# summarize_variables.with_histogram=False
