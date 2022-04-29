@@ -136,8 +136,8 @@ ON_POLICY_TRAIN_PARAMS = _to_conf_params(ON_POLICY_TRAIN_CONF)
 OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     # Make sure initial_collect_steps <= (num_iterations - 1) * unroll_length * num_parallel_environments
     # so there are some real training
-    'TrainerConfig.unroll_length=8',
-    'TrainerConfig.initial_collect_steps=8',
+    'TrainerConfig.unroll_length=4',
+    'TrainerConfig.initial_collect_steps=4',
     'TrainerConfig.num_updates_per_train_iter=1',
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
@@ -415,11 +415,11 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_sac_breakout(self):
-        self._test(
-            conf_file='sac_breakout_conf.py',
-            skip_checker=self._skip_if_atari_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_breakout(self):
+    #     self._test(
+    #         conf_file='sac_breakout_conf.py',
+    #         skip_checker=self._skip_if_atari_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_her_target_navigation(self):
         self._test(
