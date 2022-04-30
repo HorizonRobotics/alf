@@ -13,7 +13,7 @@
 # limitations under the License.
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.data_transformer import FrameStacker, UntransformedTimeStep
-from alf.optimizers.adam_tf import AdamTF
+from alf.optimizers import AdamTF
 from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, MuzeroRepresentationImpl, MuzeroRepresentationLearner, MuzeroRepresentationTrainingOptions
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.utils.summary_utils import summarize_tensor_gradients

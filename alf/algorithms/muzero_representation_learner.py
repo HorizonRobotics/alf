@@ -965,8 +965,9 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 training_options: MuzeroRepresentationTrainingOptions,
                  config: TrainerConfig,
+                 training_options: Optional[
+                     MuzeroRepresentationTrainingOptions] = None,
                  reward_spec=TensorSpec(()),
                  impl_cls: Callable[
                      ..., MuzeroRepresentationImpl] = MuzeroRepresentationImpl,
@@ -977,11 +978,12 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
         Args:
             observation_spec (TensorSpec): representing the observations.
             action_spec (BoundedTensorSpec): representing the actions.
-            training_options: The representation learner trains its underlying
-                model independent of the RL algorithm, and therefore will need a
-                separate set of parameters for the training options. See
-                ``MuzeroRepresentationTrainingOptions`` above for details.
             config: The trainer config, usually passed down from ``Agent``.
+            training_options: The representation learner trains its underlying model
+                independent of the RL algorithm, and therefore will need a separate
+                set of parameters for the training options. See
+                ``MuzeroRepresentationTrainingOptions`` above for details. If not
+                set, training will not happen.
             reward_spec: a rank-1 or rank-0 tensor spec representing the
                 reward(s). Will passed down to the underlying wrapped
                 ``MuzeroRepresentationImpl``.
@@ -1008,18 +1010,19 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
         # ``training_options`` is explicitly provided. This is done before
         # calling the ``__init__`` of the super class.
         updated = copy.copy(config)
-        updated.whole_replay_buffer_training = False
-        updated.clear_replay_buffer = False
-        updated.mini_batch_length = training_options.mini_batch_length
-        updated.mini_batch_size = training_options.mini_batch_size
-        updated.num_updates_per_train_iter = training_options.num_updates_per_train_iter
-        updated.replay_buffer_length = training_options.replay_buffer_length
-        updated.initial_collect_steps = training_options.initial_collect_steps
-        updated.priority_replay = training_options.priority_replay
-        updated.priority_replay_alpha = as_scheduler(
-            training_options.priority_replay_alpha)
-        updated.priority_replay_beta = as_scheduler(
-            training_options.priority_replay_beta)
+        if training_options is not None:
+            updated.whole_replay_buffer_training = False
+            updated.clear_replay_buffer = False
+            updated.mini_batch_length = training_options.mini_batch_length
+            updated.mini_batch_size = training_options.mini_batch_size
+            updated.num_updates_per_train_iter = training_options.num_updates_per_train_iter
+            updated.replay_buffer_length = training_options.replay_buffer_length
+            updated.initial_collect_steps = training_options.initial_collect_steps
+            updated.priority_replay = training_options.priority_replay
+            updated.priority_replay_alpha = as_scheduler(
+                training_options.priority_replay_alpha)
+            updated.priority_replay_beta = as_scheduler(
+                training_options.priority_replay_beta)
 
         self._impl = impl_cls(
             observation_spec=observation_spec,
@@ -1049,20 +1052,21 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
 
     def rollout_step(self, time_step: TimeStep, state):
         repr_step = self._impl.rollout_step(time_step, state)
-        # Save in the representation learner's own replay buffer. Note that
-        # ``observe_for_replay`` when called for the first time will have the
-        # side effect of creating the replay buffer.
-        if self._impl._replay_buffer is None:
-            self._impl.set_replay_buffer(
-                time_step.env_id.shape[0],
-                self._training_options.replay_buffer_length,
-                self._training_options.priority_replay)
-        exp = make_experience(time_step.untransformed, repr_step, state)
-        self._impl.observe_for_replay(exp)
+        if self._training_options is not None:
+            # Save in the representation learner's own replay buffer. Note that
+            # ``observe_for_replay`` when called for the first time will have the
+            # side effect of creating the replay buffer.
+            if self._impl._replay_buffer is None:
+                self._impl.set_replay_buffer(
+                    time_step.env_id.shape[0],
+                    self._training_options.replay_buffer_length,
+                    self._training_options.priority_replay)
+            exp = make_experience(time_step.untransformed, repr_step, state)
+            self._impl.observe_for_replay(exp)
         return repr_step
 
     def train_step(self, exp: TimeStep, state, rollout_info):
-        return self._impl.predict_step(exp, state)
+        return self._impl.rollout_step(exp, state)
 
     def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
                               batch_info):
