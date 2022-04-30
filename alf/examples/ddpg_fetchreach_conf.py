@@ -37,12 +37,6 @@ alf.config(
     env_name='FetchReach-v1',
     num_parallel_environments=38)
 
-alf.config('suite_robotics.SuccessWrapper', since_episode_steps=50)
-alf.config(
-    'suite_robotics.load',
-    use_success_wrapper=False,
-    gym_env_wrappers=(suite_robotics.SuccessWrapper, ))
-
 gamma = 0.98
 alf.config('OneStepTDLoss', gamma=gamma)
 # The gamma in ReplayBuffer is only used to compute future discounted return,

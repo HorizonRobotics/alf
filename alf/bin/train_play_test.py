@@ -415,6 +415,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    # The current OFF_POLICY_TRAIN_PARAMS setup will result in not enough data error
+    # reported during training.  Increasing initial collect steps to 8 and unroll length
+    # to 8 fixes this problem, but it results in another test config failing:
+    # during playing, test_dyna_actrepeat_sac_bipedal_walker:
+    # AssertionError: Conf file not found! Check your root_dir.
+    #
     # def test_sac_breakout(self):
     #     self._test(
     #         conf_file='sac_breakout_conf.py',
