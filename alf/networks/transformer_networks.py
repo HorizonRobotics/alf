@@ -56,7 +56,7 @@ class TransformerNetwork(PreprocessorNetwork):
                  input_tensor_spec,
                  num_prememory_layers,
                  num_attention_heads,
-                 d_ff,
+                 d_ff=None,
                  core_size=1,
                  use_core_embedding=True,
                  memory_size=0,
@@ -77,7 +77,8 @@ class TransformerNetwork(PreprocessorNetwork):
             num_attention_heads (int): number of attention heads for each
                 ``TransformerBlock``
             d_ff (int): the size of the hidden layer of the feedforward network
-                in each ``TransformerBlock``
+                in each ``TransformerBlock``. If None, ``TransformerBlock`` will
+                calculate it as ``4*d_model``.
             memory_size (int): size of memory.
             num_memory_layers (int): number of TransformerBlock calculation
                 using memory
@@ -149,6 +150,7 @@ class TransformerNetwork(PreprocessorNetwork):
             self._transformers.append(
                 alf.layers.TransformerBlock(
                     d_model=d_model,
+                    d_ff=d_ff,
                     num_heads=num_attention_heads,
                     memory_size=input_size + core_size,
                     positional_encoding='abs' if i == 0 else 'none'))
@@ -157,6 +159,7 @@ class TransformerNetwork(PreprocessorNetwork):
             self._transformers.append(
                 alf.layers.TransformerBlock(
                     d_model=d_model,
+                    d_ff=d_ff,
                     num_heads=num_attention_heads,
                     memory_size=memory_size + input_size + core_size,
                     positional_encoding='abs' if i == 0 else 'none'))
