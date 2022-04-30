@@ -72,15 +72,12 @@ class _TrainerProgress(nn.Module):
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
                         "You must first call set_terimination_criterion()!")
-        iter_progress, env_steps_progress = 0, 0
         if self._num_iterations > 0:
-            iter_progress = float(
+            self._progress = float(
                 self._iter_num.to(torch.float64) / self._num_iterations)
-        if self._num_env_steps > 0:
-            env_steps_progress = float(
+        else:
+            self._progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
-        # If either criterion is met, the training ends
-        self._progress = max(iter_progress, env_steps_progress)
 
     def set_progress(self, value: float):
         """Manually set the current progress.
@@ -485,9 +482,19 @@ class RLTrainer(Trainer):
 
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
-        assert (self._num_iterations + self._num_env_steps > 0
-                and self._num_iterations * self._num_env_steps == 0), \
-            "Must provide #iterations or #env_steps exclusively for training!"
+        assert self._num_iterations + self._num_env_steps > 0, \
+            "Must provide #iterations or #env_steps for training!"
+        if self._num_iterations > 0 and self._num_env_steps > 0:
+            num_envs = alf.get_config_value(
+                "create_environment.num_parallel_environments")
+            num_iterations_with_env_interations = config.num_env_steps / (
+                num_envs * config.unroll_length)
+            pure_train_iters = self._num_iterations - num_iterations_with_env_interations
+            assert pure_train_iters >= 0, (
+                f"num_iterations={self._num_iterations} is not enough for "
+                f"num_env_steps={self._num_env_steps}")
+            logging.info("There is no environmental interation in the last"
+                         f"{pure_train_iters} iterations")
         self._trainer_progress.set_termination_criterion(
             self._num_iterations, self._num_env_steps)
 
@@ -606,7 +613,7 @@ class RLTrainer(Trainer):
             self._trainer_progress.update(iter_num, total_time_steps)
 
             if ((self._num_iterations and iter_num >= self._num_iterations)
-                    or (self._num_env_steps
+                    or (not self._num_iterations and self._num_env_steps
                         and total_time_steps >= self._num_env_steps)):
                 # Evaluate before exiting so that the eval curve shown in TB
                 # will align with the final iter/env_step.
@@ -615,7 +622,7 @@ class RLTrainer(Trainer):
                 break
 
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
-                    or (self._num_env_steps
+                    or (not self._num_iterations and self._num_env_steps
                         and total_time_steps >= time_to_checkpoint)):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
