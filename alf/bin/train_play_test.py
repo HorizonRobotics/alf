@@ -142,6 +142,7 @@ OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
     'TrainerConfig.replay_buffer_length=64',
+    'FrameStacker.stack_size=1'
 ]
 OFF_POLICY_TRAIN_PARAMS = _to_conf_params(OFF_POLICY_TRAIN_CONF)
 
@@ -421,11 +422,11 @@ class TrainPlayTest(alf.test.TestCase):
     # during playing, test_dyna_actrepeat_sac_bipedal_walker:
     # AssertionError: Conf file not found! Check your root_dir.
     #
-    # def test_sac_breakout(self):
-    #     self._test(
-    #         conf_file='sac_breakout_conf.py',
-    #         skip_checker=self._skip_if_atari_unavailable,
-    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    def test_sac_breakout(self):
+        self._test(
+            conf_file='sac_breakout_conf.py',
+            skip_checker=self._skip_if_atari_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_her_target_navigation(self):
         self._test(

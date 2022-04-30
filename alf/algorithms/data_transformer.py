@@ -267,7 +267,7 @@ class FrameStacker(DataTransformer):
 
     def transform_timestep(self, time_step, state):
         if self._stack_size == 1:
-            return time_step
+            return time_step, ()
 
         is_first = time_step.step_type == StepType.FIRST
         steps = state.steps + 1
