@@ -883,3 +883,36 @@ def set_field(nested, field, new_value):
     """
 
     return transform_nest(nested, field, lambda _: new_value)
+
+
+def transpose(nested, shallow_nest):
+    """Given a nest and its shallow nest structure ``B``, assuming that each leaf
+    under the shallow nest has the same child nest structure ``A``, this function
+    returns a new nest whose shallow nest structure is ``A`` and each leaf has
+    a structure of ``B``. For example,
+
+    .. code-block:: python
+
+        x = [(0, 1), (2, 3), (4, 5)]
+        y = transpose(x, shallow_nest=[None, None, None])
+        # y will be ``([0, 2, 4], [1, 3, 5])``
+
+        x = NTuple(a=dict(x=3, y=1), b=[dict(x=5, y=10)])
+        shallow_nest = NTuple(a=None, b=[False])
+        y = transpose(x, shallow_nest)
+        # y will be ``dict(x=NTuple(a=3, b=[5]), y=NTuple(a=1, b=[10]))``
+    """
+    leaves = flatten_up_to(shallow_nest, nested)
+    for leaf in leaves:
+        assert_same_structure(leaves[0], leaf), (
+            "All leaves under the shallow nest should have the same structure!"
+            " Got %s vs. %s" % (leaves[0], leaf))
+
+    new_shallow_structure = leaves[0]
+    matrix = [flatten(leaf) for leaf in leaves]
+    transposed_matrix = list(zip(*matrix))
+    new_nest = pack_sequence_as(new_shallow_structure, transposed_matrix)
+    new_nest = map_structure_up_to(
+        new_shallow_structure, lambda flat: pack_sequence_as(
+            shallow_nest, flat), new_nest)
+    return new_nest

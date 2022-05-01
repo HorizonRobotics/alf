@@ -478,5 +478,14 @@ class TestExtractAnyLeaf(alf.test.TestCase):
         self.assertEqual(nest.extract_any_leaf_from_nest(2), 2)
 
 
+class TestTransposeNest(alf.test.TestCase):
+    def test_transpose_nest(self):
+        nested = NTuple(a=dict(x=3, y=1), b=[dict(x=5, y=10)])
+        shallow_nest = NTuple(a=None, b=[False])
+        transposed_nest = nest.transpose(nested, shallow_nest)
+        self.assertEqual(transposed_nest,
+                         dict(x=NTuple(a=3, b=[5]), y=NTuple(a=1, b=[10])))
+
+
 if __name__ == '__main__':
     alf.test.main()
