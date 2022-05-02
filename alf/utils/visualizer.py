@@ -14,6 +14,7 @@
 """Various functions related to visualizations of networks etc."""
 
 import torch
+import alf.nest as nest
 
 
 def critic_network_visualizer(net,
@@ -22,7 +23,8 @@ def critic_network_visualizer(net,
                               action_upper_right,
                               action_lower_left,
                               H=20,
-                              W=20):
+                              W=20,
+                              batch_size=None):
     """Generate a batched network response image within the rectangular range
     of actions (referred to as probing region) specified by ``action_top_left``,
     ``action_top_right``, ``action_bottom_left`` as shown below:
@@ -86,17 +88,22 @@ def critic_network_visualizer(net,
         W (int): number of samples to be used for creating visualization along
             the direction of ``action_upper_right - action_upper_left``.
             The total number of samples is H * W.
+        batch_size (int): the batch size of the input ``observation``. If None,
+
 
     Returns:
         The network response image of the shape [B, K, H, W], where K denotes
         the dimensionality of the network output for the non-batch dimension.
     """
+    if batch_size is None:
+        batch_size = nest.flatten(observation)[0].shape[0]
 
-    batch_size = observation.shape[0]
     # total number of anchors for probing the network
     num_anchors = H * W
     # expand observation from [B, ...] to [B * num_anchors, ...]
-    ext_obs = torch.repeat_interleave(observation, num_anchors, dim=0)
+    ext_obs = nest.map_structure(
+        lambda obs: torch.repeat_interleave(obs, num_anchors, dim=0),
+        observation)
     action_lower_right = action_upper_right + action_lower_left - action_upper_left
 
     # create the mini-image: [action_dim, 2, 2]
