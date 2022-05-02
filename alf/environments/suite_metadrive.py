@@ -134,8 +134,8 @@ class AlfMetaDriveWrapper(AlfEnvironment):
 
         return ds.TimeStep(
             step_type=ds.StepType.LAST if done else ds.StepType.MID,
-            reward=reward,
-            discount=discount,
+            reward=np.float32(reward),
+            discount=np.float32(discount),
             observation=observation,
             env_id=self._env_id,
             prev_action=action,
