@@ -153,7 +153,7 @@ def _visualize_alf_tree(module: Algorithm):
             For example, if the match_obj corresponds to a string like below:
 
                 <built-in method relu_ of type object at 0x7ff7a790f620>
-            
+
             This function extracts "relu_" out of it.
             """
             # Such representation can start with either "bound method",
@@ -585,8 +585,15 @@ class RLTrainer(Trainer):
                  int(train_steps) / t),
                 n_seconds=1)
 
+            just_evaluated = False
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
-                self._eval()
+                if (self._config.num_evals is None
+                        or (iter_num + 1) // self._eval_interval <
+                        self._config.num_evals):
+                    # If num_evals is specified, the last evaluation will be
+                    # performed after training finishes.
+                    self._eval()
+                    just_evaluated = True
             if not training_setting_summarized and train_steps > 0:
                 self._summarize_training_setting()
                 training_setting_summarized = True
@@ -603,7 +610,7 @@ class RLTrainer(Trainer):
                         and total_time_steps >= self._num_env_steps)):
                 # Evaluate before exiting so that the eval curve shown in TB
                 # will align with the final iter/env_step.
-                if self._evaluate:
+                if self._evaluate and not just_evaluated:
                     self._eval()
                 break
 
