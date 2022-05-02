@@ -1,3 +1,6 @@
+# WARNING: In general, alf.config is preferred over gin config, but in this case, alf.config isn't available for SocialRobot.
+# her_target_navigation_states.gin depends on ddpg.gin.
+
 # default ddpg config
 
 import alf

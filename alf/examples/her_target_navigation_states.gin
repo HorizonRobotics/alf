@@ -1,3 +1,5 @@
+# WARNING: In general, alf.config is preferred over gin config, but in this case, alf.config isn't available for SocialRobot.
+
 include 'ddpg.gin'
 import alf.algorithms.agent
 import alf.environments.suite_socialbot
