@@ -936,9 +936,7 @@ def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
     """
     leaves = flatten_up_to(shallow_nest, nested)
     for leaf in leaves:
-        assert_same_structure(leaves[0], leaf), (
-            "All leaves under the shallow nest should have the same structure!"
-            " Got %s vs. %s" % (leaves[0], leaf))
+        assert_same_structure(leaves[0], leaf)
 
     if new_shallow_nest is None:
         new_shallow_nest = leaves[0]
