@@ -885,11 +885,11 @@ def set_field(nested, field, new_value):
     return transform_nest(nested, field, lambda _: new_value)
 
 
-def transpose(nested, shallow_nest):
-    """Given a nest and its shallow nest structure ``B``, assuming that each leaf
-    under the shallow nest has the same child nest structure ``A``, this function
-    returns a new nest whose shallow nest structure is ``A`` and each leaf has
-    a structure of ``B``. For example,
+def transpose(nested: Nest, top_level: Nest, new_top_level: Nest = None):
+    """Given a nest and a top-level structure ``B``, assuming that each leaf
+    under the top level has the same child nest structure ``A``, this function
+    returns a new nest whose top level is ``A`` or a specified one, and
+    each leaf has a top level of ``B``. For example,
 
     .. code-block:: python
 
@@ -901,18 +901,56 @@ def transpose(nested, shallow_nest):
         shallow_nest = NTuple(a=None, b=[False])
         y = transpose(x, shallow_nest)
         # y will be ``dict(x=NTuple(a=3, b=[5]), y=NTuple(a=1, b=[10]))``
+
+        x = NTuple(a=dict(x=3, y=dict(n=1, m=2)),
+                   b=dict(x=5, y=dict(n=1, m=3)))
+        transposed_nest1 = nest.transpose(
+            x, top_level=NTuple(),
+            new_top_level=dict(x=None, y=None))
+        # Because we've specified a new top level, NTuple isn't put down to the
+        # lowest level of the tree
+        self.assertEqual(transposed_nest1,
+                         dict(x=NTuple(a=3, b=5), y=NTuple(a=dict(n=1, m=2),
+                                                           b=dict(n=1, m=3))))
+
+    Args:
+        nested: a nested structure
+        top_level: a nested structure indicating the first "axis" for the transpose
+        new_top_level: a nested structure indicating the second "axis" for the
+            transpose. If not provided, then it will be set as the leaf under ``top_level``
+            of ``nested``. In this case, the returned nest will have ``top_level``
+            as every leaf.
+
+    Returns:
+        nested: a transposed nested structure
     """
-    leaves = flatten_up_to(shallow_nest, nested)
+    leaves = flatten_up_to(top_level, nested)
     for leaf in leaves:
         assert_same_structure(leaves[0], leaf), (
             "All leaves under the shallow nest should have the same structure!"
             " Got %s vs. %s" % (leaves[0], leaf))
 
-    new_shallow_structure = leaves[0]
-    matrix = [flatten(leaf) for leaf in leaves]
+    if new_top_level is None:
+        new_top_level = leaves[0]
+    matrix = [flatten_up_to(new_top_level, leaf) for leaf in leaves]
     transposed_matrix = list(zip(*matrix))
-    new_nest = pack_sequence_as(new_shallow_structure, transposed_matrix)
+    new_nest = pack_sequence_as(new_top_level, transposed_matrix)
     new_nest = map_structure_up_to(
-        new_shallow_structure, lambda flat: pack_sequence_as(
-            shallow_nest, flat), new_nest)
+        new_top_level, lambda flat: pack_sequence_as(top_level, flat),
+        new_nest)
     return new_nest
+
+
+def nest_top_level(nested: Nest):
+    """Given a nest, return its top-level structure, where the values are set to
+    ``None``.
+
+    Args:
+        nested: a nested structure
+    """
+    if not is_nested(nested):
+        return nested
+    if isinstance(nested, list) or is_unnamedtuple(nested):
+        return type(nested)([None] * len(nested))
+    fields_vals = extract_fields_from_nest(nested)
+    return type(nested)(**{field: None for field, _ in fields_vals})
