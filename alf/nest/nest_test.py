@@ -496,7 +496,7 @@ class TestTransposeNest(alf.test.TestCase):
                 x=NTuple(a=3, b=5),
                 y=dict(n=NTuple(a=1, b=1), m=NTuple(a=2, b=3))))
         transposed_nest1 = nest.transpose(
-            nested, shallow_nest, new_top_level=dict(x=None, y=None))
+            nested, shallow_nest, new_shallow_nest=dict(x=None, y=None))
         self.assertEqual(
             transposed_nest1,
             dict(
