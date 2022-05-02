@@ -259,7 +259,7 @@ class NeroPlus(Optimizer):
                 state['exp_avg_sq'].lerp_(sq, 1 - beta2)
                 denom = state['exp_avg_sq'].sqrt().add_(eps)
                 if pweight_decay > 0:
-                    p.mul_(1 - lr_scale * lr)
+                    p.mul_(1 - lr_scale * lr * pweight_decay)
                 # the exponential moving average of exp_avg and exp_avg_sq are not
                 # unbiased estimate of the mean. Correct them using bas_correction1
                 # and bias_correct2 as suggest by the original Adam paper.
