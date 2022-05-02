@@ -89,14 +89,14 @@ def critic_network_visualizer(net,
             the direction of ``action_upper_right - action_upper_left``.
             The total number of samples is H * W.
         batch_size (int): the batch size of the input ``observation``. If None,
-
+            will be inferred from the input ``observation``.
 
     Returns:
         The network response image of the shape [B, K, H, W], where K denotes
         the dimensionality of the network output for the non-batch dimension.
     """
     if batch_size is None:
-        batch_size = nest.flatten(observation)[0].shape[0]
+        batch_size = nest.get_nest_size(observation, dim=0)
 
     # total number of anchors for probing the network
     num_anchors = H * W
