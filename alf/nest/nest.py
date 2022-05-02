@@ -886,10 +886,11 @@ def set_field(nested, field, new_value):
 
 
 def transpose(nested: Nest, top_level: Nest, new_top_level: Nest = None):
-    """Given a nest and a top-level structure ``B``, assuming that each leaf
-    under the top level has the same child nest structure ``A``, this function
+    """Given a nest and a top-level structure ``B``, assuming that each subtree
+    under ``B`` has the same nest structure ``A``, this function
     returns a new nest whose top level is ``A`` or a specified one, and
-    each leaf has a top level of ``B``. For example,
+    each subtree under the new top level has a top-level structure ``B``. For
+    example,
 
     .. code-block:: python
 
@@ -917,9 +918,10 @@ def transpose(nested: Nest, top_level: Nest, new_top_level: Nest = None):
         nested: a nested structure
         top_level: a nested structure indicating the first "axis" for the transpose
         new_top_level: a nested structure indicating the second "axis" for the
-            transpose. If not provided, then it will be set as the leaf under ``top_level``
-            of ``nested``. In this case, the returned nest will have ``top_level``
-            as every leaf.
+            transpose. Note that this top level is w.r.t. each subtree under
+            ``top_level`` of ``nested``. If not provided, then it will be set as
+            the subtree under ``top_level`` of ``nested``. In this case, the
+            returned nest will have ``top_level`` as the lowest level.
 
     Returns:
         nested: a transposed nested structure
