@@ -273,7 +273,7 @@ class TDLoss(nn.Module):
                     torch.mean(value[:-1][:, episode_ended[0, :]]))
 
         if self._lb_target_q > 0 and disc_ret != ():
-            her_cond = info.batch_info.her
+            her_cond = info.her
             mask = torch.ones(returns.shape, dtype=torch.bool)
             if her_cond != () and torch.any(~her_cond):
                 mask = ~her_cond[:-1]
@@ -294,9 +294,9 @@ class TDLoss(nn.Module):
 
         if self._improve_w_goal_return:
             batch_length, batch_size = returns.shape[:2]
-            her_cond = info.batch_info.her
+            her_cond = info.her
             if her_cond != () and torch.any(her_cond):
-                dist = info.batch_info.future_distance
+                dist = info.future_distance
                 if self._positive_reward:
                     goal_return = torch.pow(
                         self._gamma * torch.ones(her_cond.shape), dist)

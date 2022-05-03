@@ -57,7 +57,8 @@ SacActorInfo = namedtuple(
 SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return"
+        "actor", "critic", "alpha", "log_pi", "discounted_return",
+        "future_distance", "her"
     ],
     default_value=())
 
@@ -938,7 +939,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             replay_buffer=(), importance_weights=())
         batch_info = alf.nest.map_structure(
             lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
-        return exp, rollout_info._replace(batch_info=batch_info)
+        return exp, rollout_info._replace(
+            discounted_return=batch_info.discounted_return,
+            future_distance=batch_info.future_distance,
+            her=batch_info.her)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks']
