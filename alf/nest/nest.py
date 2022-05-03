@@ -895,9 +895,9 @@ def transpose(nested: Nest,
 
     An illustrative graph shows the transpose operation::
 
-        A = aB = abc (--transpose-->) bac
+        A = a-B = a-b-C (transpose->) b-a-C
 
-    where ``c`` is every (same) child of ``b``.
+    where ``C`` is every (same) child of ``b`` (could be empty).
 
     .. note::
 
