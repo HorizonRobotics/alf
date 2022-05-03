@@ -939,10 +939,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             replay_buffer=(), importance_weights=())
         batch_info = alf.nest.map_structure(
             lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
-        return exp, rollout_info._replace(
-            discounted_return=batch_info.discounted_return,
-            future_distance=batch_info.future_distance,
-            her=batch_info.her)
+        if hasattr(batch_info, "discounted_return"):
+            rollout_info = rollout_info._replace(
+                discounted_return=batch_info.discounted_return,
+                future_distance=batch_info.future_distance,
+                her=batch_info.her)
+        return exp, rollout_info
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks']
