@@ -171,7 +171,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             td_steps=td_steps,
             train_game_over_function=True,
             train_reward_function=train_reward_function,
-            reanalyze_algorithm_ctor=MockMCTSAlgorithm,
+            reanalyze_algorithm_ctor=partial(MockMCTSAlgorithm, discount=0.5),
             reanalyze_ratio=reanalyze_ratio,
             reanalyze_td_steps=reanalyze_td_steps,
             data_transformer_ctor=partial(FrameStacker, stack_size=2))
@@ -181,7 +181,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             action_spec,
             discount=0.5,
             representation_learner_ctor=create_repr_learner,
-            mcts_algorithm_ctor=MockMCTSAlgorithm)
+            mcts_algorithm_ctor=partial(MockMCTSAlgorithm, discount=0.5))
 
         data_transformer = FrameStacker(observation_spec, stack_size=2)
         time_step = common.zero_tensor_from_nested_spec(
@@ -295,35 +295,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 [[0, 0, 0, 0]],
                 [[0, 0, 0, 0]],
                 [[0, 0, 0, 0]]]),
-            value=torch.tensor([
-                [0.0000],
-                [0.5000],
-                [1.0000],
-                [1.5000],
-                [2.0000],
-                [2.5000],
-                [3.0000],
-                [3.5000],
-                [4.0000],
-                [4.5000],
-                [5.0000],
-                [5.5000],
-                [6.0000],
-                [6.5000],
-                [0.0000],
-                [0.5000],
-                [1.0000],
-                [1.5000],
-                [2.0000],
-                [2.5000],
-                [3.0000],
-                [3.5000],
-                [4.0000],
-                [4.5000],
-                [5.0000],
-                [5.5000],
-                [6.0000],
-                [6.5000]]),
+            value=(),
             target=ModelTarget(
                 is_partial_trajectory=torch.tensor([
                     [False],

@@ -13,11 +13,13 @@
 # limitations under the License.
 """PredictiveRepresentationLearner."""
 
+from typing import Optional
 from functools import partial
 import torch
 
 import alf
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, TimeStep, LossInfo, namedtuple
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.nest.utils import convert_device
@@ -25,6 +27,7 @@ from alf.networks import Network, LSTMEncodingNetwork, wrap_as_network
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
+from alf.tensor_specs import TensorSpec
 
 PredictiveRepresentationLearnerInfo = namedtuple(
     'PredictiveRepresentationLearnerInfo',
@@ -207,6 +210,8 @@ class PredictiveRepresentationLearner(Algorithm):
                  decoder_ctor,
                  encoding_net_ctor,
                  dynamics_net_ctor,
+                 reward_spec=TensorSpec(()),
+                 config: Optional[TrainerConfig] = None,
                  postprocessor=None,
                  encoding_optimizer=None,
                  dynamics_optimizer=None,
@@ -240,6 +245,10 @@ class PredictiveRepresentationLearner(Algorithm):
                 dynamics net. Otherwise, a linear projection will be used to
                 convert the current latent represenation to the initial state for
                 the dynamics net.
+            reward_spec: NOT USED. Only present as representation learner
+                interface to be used with ``Agent``.
+            config: The trainer config. Present as representation learner
+                interface to be used with ``Agent``.
             postprocessor (None|Callable): If provided, will be called as
                 ``postprocessor(latent)`` to get the actual representation,
                 where ``latent`` is the output from encoding_net.
@@ -251,10 +260,12 @@ class PredictiveRepresentationLearner(Algorithm):
                 to optimize the parameter for the postprocessor.
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance.
+
         """
         encoding_net = encoding_net_ctor(observation_spec)
         super().__init__(
             train_state_spec=encoding_net.state_spec,
+            config=config,
             debug_summaries=debug_summaries,
             name=name)
 

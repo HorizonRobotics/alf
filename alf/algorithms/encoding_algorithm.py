@@ -13,6 +13,8 @@
 # limitations under the License.
 """Encoding algorithm."""
 
+from typing import Optional
+from alf.algorithms.config import TrainerConfig
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, TimeStep
@@ -40,6 +42,7 @@ class EncodingAlgorithm(Algorithm):
                  loss_fields=None,
                  loss_weights=None,
                  optimizer=None,
+                 config: Optional[TrainerConfig] = None,
                  debug_summaries=False,
                  name="EncodingAlgorithm"):
         """
@@ -61,6 +64,8 @@ class EncodingAlgorithm(Algorithm):
             loss_weights (None | nested str): if provided, must have the same
                 structure as ``loss_fields`` and will be used as weights for
                 the corresponding loss values.
+            config: The trainer config. Present as representation learner
+                interface to be used with ``Agent``.
             optimizer (torch.optim.Optimizer): if provided, will be used to optimize
                 the parameters of encoder.
             debug_summaries (bool): True if debug summaries should be created.
@@ -75,6 +80,7 @@ class EncodingAlgorithm(Algorithm):
         super().__init__(
             train_state_spec=encoder.state_spec,
             optimizer=optimizer,
+            config=config,
             debug_summaries=debug_summaries,
             name=name)
 

@@ -573,6 +573,7 @@ alf.config(
     "MCTSAlgorithm",
     num_simulations=52,
     num_parallel_sims=2,
+    discount=discount,
     root_dirichlet_alpha=0.3,
     root_exploration_fraction=0.,
     pb_c_init=0.75,
