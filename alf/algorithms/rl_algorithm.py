@@ -230,7 +230,7 @@ class RLAlgorithm(Algorithm):
                 # the training, which will most likely happen in the 2nd
                 # iteration. The total_replay_size guarantees that.
                 if config.initial_collect_steps < total_replay_size:
-                    logging.warn(
+                    common.info(
                         'Set the initial_collect_steps to minimum required '
                         f'value {total_replay_size} because '
                         'whole_replay_buffer_training is on.')

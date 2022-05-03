@@ -141,7 +141,7 @@ OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.num_updates_per_train_iter=1',
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
-    'TrainerConfig.replay_buffer_length=64',
+    'TrainerConfig.replay_buffer_length=4',
     'FrameStacker.stack_size=1'
 ]
 OFF_POLICY_TRAIN_PARAMS = _to_conf_params(OFF_POLICY_TRAIN_CONF)
