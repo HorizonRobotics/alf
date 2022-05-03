@@ -99,8 +99,8 @@ class AgentPerception(object):
 
         # Handle Frame Skip
         H = self._history_window_size
-        self._sampled_index = np.arange(H)[(
-            (H - 1) % self._history_frame_skip)::self._history_frame_skip]
+        self._sampled_index = np.arange((H - 1) % self._history_frame_skip, H,
+                                        self._history_frame_skip)
         self._spec = TensorSpec(
             shape=(self._agent_limit, self._sampled_index.shape[0],
                    self._unit_feature_size),
@@ -165,7 +165,7 @@ class AgentPerception(object):
     def observe(self) -> Tuple[np.ndarray, int]:
         """Called upon every observation to produce the feature vectors describing the
         dynamic agents that are visible to the ego car. The vectors are
-        transformed so that they are in eog car's body frame.
+        transformed so that they are in ego car's body frame.
 
         Returns:
 
@@ -208,8 +208,8 @@ class AgentPerception(object):
         sampled_heading = transformed_heading[:, self._sampled_index]
 
         # Shape is [B,]. Denote whether a car is picked to show in the final
-        # feature tensor or not. The criterion is that the car has be visible in
-        # at least 1 step within the latest H steps.
+        # feature tensor or not. The criterion is that the car has been visible
+        # in at least 1 step within the latest H steps.
         picked = np.any(sampled_visible, axis=-1)
         picked_position = sampled_position[picked]
         picked_heading = sampled_heading[picked]

@@ -149,8 +149,8 @@ def encoding_network_ctor(input_tensor_spec):
                         hidden=(32, )),
                     d_model=d_model),
                 input_tensor_spec=input_tensor_spec), lambda x:
-            (x['map_mask'], x['agent_mask'])), lambda x: (x[0], x[1][0], x[1][
-                1]),
+            (~x['map_mask'], ~x['agent_mask'])), lambda x: (x[0], x[1][0], x[1]
+                                                            [1]),
         MaskedTransformer(
             d_model=d_model,
             num_heads=num_heads,

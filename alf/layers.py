@@ -2581,7 +2581,7 @@ class BottleneckBlock(nn.Module):
 
 def _masked_softmax(logits, mask, dim=-1):
     if mask is not None:
-        logits.masked_fill_(~mask, -float('inf'))
+        logits.masked_fill_(mask, -float('inf'))
     return nn.functional.softmax(logits, dim=dim)
 
 
