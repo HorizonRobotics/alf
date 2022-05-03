@@ -1007,8 +1007,8 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
         self._training_options = training_options
 
         # Override the training behavior related parameters in the config when
-        # ``training_options`` is explicitly provided. This is done before
-        # calling the ``__init__`` of the super class.
+        # ``training_options`` is explicitly provided, and pass it as the
+        # configuration for the underlying implementation ``self._impl``.
         updated = copy.copy(config)
         if training_options is not None:
             updated.whole_replay_buffer_training = False
@@ -1049,6 +1049,9 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
 
         """
         return self._impl._model.repr_spec
+
+    def predict_step(self, time_step: TimeStep, state):
+        return self._impl.rollout_step(time_step, state)
 
     def rollout_step(self, time_step: TimeStep, state):
         repr_step = self._impl.rollout_step(time_step, state)

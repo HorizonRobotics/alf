@@ -13,7 +13,6 @@
 # limitations under the License.
 """Encoding algorithm."""
 
-from alf.tensor_specs import TensorSpec
 from typing import Optional
 from alf.algorithms.config import TrainerConfig
 import alf

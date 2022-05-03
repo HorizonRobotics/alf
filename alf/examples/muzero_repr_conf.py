@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from alf.optimizers import AdamTF
 import alf
 from alf.algorithms.mcts_models import SimpleMCTSModel
 from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, MuzeroRepresentationImpl, MuzeroRepresentationLearner
