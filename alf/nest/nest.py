@@ -883,3 +883,82 @@ def set_field(nested, field, new_value):
     """
 
     return transform_nest(nested, field, lambda _: new_value)
+
+
+def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
+    """Given a nest and its shallow nest ``B``, assuming that each child
+    of ``B`` has the same nest structure ``A``, this function
+    returns a new nest whose shallow nest is ``A`` or a specified one, and
+    each child of the new shallow nest has a shallow nest ``B``.
+
+    .. note::
+
+        ALF defines the "shallow nest" of a nest as the subtree that starts from
+        the nest root and contains at least all the direct children of the nest.
+        It can optionally contain more descendants of the nest.
+
+    For example,
+
+    .. code-block:: python
+
+        x = [(0, 1), (2, 3), (4, 5)]
+        y = transpose(x, shallow_nest=[None, None, None])
+        # y will be ``([0, 2, 4], [1, 3, 5])``
+
+        x = NTuple(a=dict(x=3, y=1), b=[dict(x=5, y=10)])
+        shallow_nest = NTuple(a=None, b=[False])
+        y = transpose(x, shallow_nest)
+        # y will be ``dict(x=NTuple(a=3, b=[5]), y=NTuple(a=1, b=[10]))``
+
+        x = NTuple(a=dict(x=3, y=dict(n=1, m=2)),
+                   b=dict(x=5, y=dict(n=1, m=3)))
+        transposed_nest1 = nest.transpose(
+            x, shallow_nest=NTuple(),
+            new_shallow_nest=dict(x=None, y=None))
+        # Because we've specified a new shallow_nest, NTuple won't be put to the
+        # lowest level of the tree
+        self.assertEqual(transposed_nest1,
+                         dict(x=NTuple(a=3, b=5), y=NTuple(a=dict(n=1, m=2),
+                                                           b=dict(n=1, m=3))))
+
+    Args:
+        nested: a nested structure
+        shallow_nest: a nested structure indicating the first "axis" for the
+            transpose
+        new_shallow_nest: a nested structure indicating the second "axis" for
+            the transpose. Note that this shallow nest is w.r.t. each child of
+            ``shallow_nest`` of ``nested``. If not provided, then it will be set as
+            the child itself. In this case, the returned nest will have
+            ``shallow_nest`` at the lowest level.
+
+    Returns:
+        nested: a transposed nested structure
+    """
+    leaves = flatten_up_to(shallow_nest, nested)
+    for leaf in leaves:
+        assert_same_structure(leaves[0], leaf)
+
+    if new_shallow_nest is None:
+        new_shallow_nest = leaves[0]
+    matrix = [flatten_up_to(new_shallow_nest, leaf) for leaf in leaves]
+    transposed_matrix = list(zip(*matrix))
+    new_nest = pack_sequence_as(new_shallow_nest, transposed_matrix)
+    new_nest = map_structure_up_to(
+        new_shallow_nest, lambda flat: pack_sequence_as(shallow_nest, flat),
+        new_nest)
+    return new_nest
+
+
+def nest_top_level(nested: Nest):
+    """Given a nest, return its top-level structure, where the values are set to
+    ``None``.
+
+    Args:
+        nested: a nested structure
+    """
+    if not is_nested(nested):
+        return nested
+    if isinstance(nested, list) or is_unnamedtuple(nested):
+        return type(nested)([None] * len(nested))
+    fields_vals = extract_fields_from_nest(nested)
+    return type(nested)(**{field: None for field, _ in fields_vals})
