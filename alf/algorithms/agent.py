@@ -55,6 +55,7 @@ class Agent(RLAlgorithm):
                  rl_algorithm_cls=ActorCriticAlgorithm,
                  reward_weight_algorithm_cls=None,
                  representation_learner_cls=None,
+                 representation_use_rl_state: bool = False,
                  goal_generator=None,
                  intrinsic_reward_module=None,
                  intrinsic_reward_coef=1.0,
@@ -64,8 +65,7 @@ class Agent(RLAlgorithm):
                  optimizer=None,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
-        """
-        Args:
+        """Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
@@ -80,6 +80,8 @@ class Agent(RLAlgorithm):
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
+                It will be called as ``rl_algorithm_cls(observation_spec=?,
+                action_spec=?, reward_spec=?, config=?, debug_summaries=?)``.
             reward_weight_algorithm_cls (type): The algorithm class for adjusting
                 reward weights when multi-dim rewards are used. If provided, the
                 the default ``reward_weights`` of ``rl_algorithm`` will be
@@ -87,7 +89,16 @@ class Agent(RLAlgorithm):
             representation_learner_cls (type): The algorithm class for learning
                 the representation. If provided, the constructed learner will
                 calculate the representation from the original observation as
-                the observation for downstream algorithms such as ``rl_algorithm``.
+                the observation for downstream algorithms such as
+                ``rl_algorithm``. Similar to rl_algorithm_cls, it will be called
+                as ``rl_algorithm_cls(observation_spec=?, action_spec=?,
+                reward_spec=?, config=?, debug_summaries=?)``.
+            representation_use_rl_state: When set to True, representation learner
+                will receive (previous) state from the RL algorithm as input instead
+                of its own state for ``rollout_step()`` and ``predict_step()``. This
+                is particularly useful for algorithm such as MuZero representation
+                learner, whose reanalyze component requires access to the RL
+                algorithm's state.
             intrinsic_reward_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward.
             goal_generator (Algorithm): an algorithm which outputs a tuple of goal
@@ -107,7 +118,8 @@ class Agent(RLAlgorithm):
             optimizer (optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
-            """
+
+        """
         agent_helper = AgentHelper(AgentState)
 
         rl_observation_spec = observation_spec
@@ -118,9 +130,12 @@ class Agent(RLAlgorithm):
             representation_learner = representation_learner_cls(
                 observation_spec=rl_observation_spec,
                 action_spec=action_spec,
+                reward_spec=reward_spec,
+                config=config,
                 debug_summaries=debug_summaries)
             rl_observation_spec = representation_learner.output_spec
             agent_helper.register_algorithm(representation_learner, "repr")
+        self._representation_use_rl_state = representation_use_rl_state
 
         ## 1. goal generator
         if goal_generator is not None:
@@ -215,8 +230,9 @@ class Agent(RLAlgorithm):
         info = AgentInfo()
 
         if self._representation_learner is not None:
+            input_state = state.rl if self._representation_use_rl_state else state.repr
             repr_step = self._representation_learner.predict_step(
-                time_step, state.repr)
+                time_step, input_state)
             new_state = new_state._replace(repr=repr_step.state)
             info = info._replace(repr=repr_step.info)
             observation = repr_step.output
@@ -244,8 +260,9 @@ class Agent(RLAlgorithm):
         observation = time_step.observation
 
         if self._representation_learner is not None:
+            input_state = state.rl if self._representation_use_rl_state else state.repr
             repr_step = self._representation_learner.rollout_step(
-                time_step, state.repr)
+                time_step, input_state)
             new_state = new_state._replace(repr=repr_step.state)
             info = info._replace(repr=repr_step.info)
             observation = repr_step.output

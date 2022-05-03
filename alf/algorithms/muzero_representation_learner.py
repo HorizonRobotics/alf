@@ -14,9 +14,10 @@
 """MuZero algorithm."""
 
 from functools import partial
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, NamedTuple
+import copy
+
 import torch
-import typing
 
 import alf
 from alf.algorithms.data_transformer import (
@@ -24,13 +25,14 @@ from alf.algorithms.data_transformer import (
     SequentialDataTransformer)
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
-from alf.data_structures import AlgStep, Experience, LossInfo, namedtuple, TimeStep
+from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, make_experience
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.algorithms.mcts_algorithm import MCTSInfo
-from alf.algorithms.mcts_models import MCTSModel, ModelOutput, ModelTarget
+from alf.algorithms.mcts_models import ModelTarget
 from alf.nest.utils import convert_device
 from alf.utils import common, dist_utils
 from alf.utils.tensor_utils import scale_gradient
+from alf.utils.schedulers import as_scheduler
 from alf.tensor_specs import TensorSpec
 from alf.trainers.policy_trainer import Trainer
 
@@ -113,8 +115,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             config: Optional[TrainerConfig] = None,
             enable_amp: bool = True,
             random_action_after_episode_end=False,
+            optimizer: Optional[torch.optim.Optimizer] = None,
             debug_summaries=False,
-            name="MuZeroRepresentationLearner"):
+            name="MuzeroRepresentationImpl"):
         """
         Args:
             observation_spec (TensorSpec): representing the observations.
@@ -193,6 +196,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             random_action_after_episode_end: If False, the actions used to predict
                 future states after the end of an episode will be the same as the
                 last action. If True, they will be uniformly sampled.
+            optimizer: the optimizer for independently training the representation.
             debug_summaries (bool):
             name (str):
 
@@ -218,6 +222,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=(),
             config=config,
+            optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
         self._enable_amp = enable_amp
@@ -251,7 +256,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             self._reanalyze_algorithm = reanalyze_algorithm_ctor(
                 observation_spec=self._model.repr_spec,
                 action_spec=action_spec,
-                discount=discount,
                 debug_summaries=debug_summaries,
                 name="reanalyze_algorithm")
             self._target_model = model_ctor(
@@ -364,7 +368,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         replay_buffer: ReplayBuffer = batch_info.replay_buffer
         info_path: str = "rollout_info"
         info_path += "." + self.path if self.path else ""
-        rollout_value = rollout_info.value
         value_field = info_path + '.value'
         candidate_actions_field = info_path + '.candidate_actions'
         candidate_action_policy_field = (
@@ -522,7 +525,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 if rand_mask_size > 0:
                     alf.nest.map_structure(_set_rand_action, action,
                                            self._action_spec)
-
         observation = ()
         if self._train_repr_prediction:
             if type(self._data_transformer) == IdentityDataTransformer:
@@ -594,7 +596,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
         rollout_info = MuzeroInfo(
             action=action,
-            value=rollout_value,
             target=ModelTarget(
                 is_partial_trajectory=is_partial_trajectory,
                 beyond_episode_end=beyond_episode_end,
@@ -930,3 +931,167 @@ class LinearTdStepFunc(object):
         td_steps = self._min_td_steps + (max_td_steps - self._min_td_steps) * (
             1 - age / self._max_bootstrap_age).relu()
         return td_steps.ceil().to(torch.int64)
+
+
+class MuzeroRepresentationTrainingOptions(NamedTuple):
+    """The options for training the Muzero Representation.
+
+    When used together with an RL algorithm, the representation training does
+    not necessarily share the training options with the RL algorithm. Therefore,
+    we use this class to hold the training options private to the Muzero
+    representation learner.
+
+    """
+    interval: int = 1  # Update the model every this number of iterations.
+    mini_batch_length: int = 1
+    mini_batch_size: int = 256
+    num_updates_per_train_iter: int = 10
+    replay_buffer_length: int = 100000
+    initial_collect_steps: int = 2000
+    priority_replay: bool = True
+    priority_replay_alpha: float = 1.2
+    priority_replay_beta: float = 0.0
+
+
+@alf.configurable
+class MuzeroRepresentationLearner(OffPolicyAlgorithm):
+    """Learn represenation following the MuZero style.
+
+    This is a thin wrapper over the MuzeroRepresentationImpl, so as to make it
+    possible to work in combination with an RL algorithm (within ``Agent``).
+
+    """
+
+    def __init__(self,
+                 observation_spec,
+                 action_spec,
+                 config: TrainerConfig,
+                 training_options: Optional[
+                     MuzeroRepresentationTrainingOptions] = None,
+                 reward_spec=TensorSpec(()),
+                 impl_cls: Callable[
+                     ..., MuzeroRepresentationImpl] = MuzeroRepresentationImpl,
+                 debug_summaries: bool = False,
+                 name: str = "MuZeroRepresentationLearner"):
+        """Construct a MuzeroRepresentationLearner.
+
+        Args:
+            observation_spec (TensorSpec): representing the observations.
+            action_spec (BoundedTensorSpec): representing the actions.
+            config: The trainer config, usually passed down from ``Agent``.
+            training_options: The representation learner trains its underlying model
+                independent of the RL algorithm, and therefore will need a separate
+                set of parameters for the training options. See
+                ``MuzeroRepresentationTrainingOptions`` above for details. If not
+                set, training will not happen.
+            reward_spec: a rank-1 or rank-0 tensor spec representing the
+                reward(s). Will passed down to the underlying wrapped
+                ``MuzeroRepresentationImpl``.
+            impl_cls: a callable to construct the underlying
+                ``MuzeroRepresentationImpl``. It will be called as ``impl_cls(
+                observation_spec=?, action_spec=?, reward_spec=?, config=?,
+                debug_summaries=?)``.
+            debug_summaries:
+            name:
+
+        """
+        super().__init__(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            reward_spec=reward_spec,
+            train_state_spec=(),
+            config=None,
+            debug_summaries=debug_summaries,
+            name=name)
+
+        self._training_options = training_options
+
+        # Override the training behavior related parameters in the config when
+        # ``training_options`` is explicitly provided, and pass it as the
+        # configuration for the underlying implementation ``self._impl``.
+        updated = copy.copy(config)
+        if training_options is not None:
+            updated.whole_replay_buffer_training = False
+            updated.clear_replay_buffer = False
+            updated.mini_batch_length = training_options.mini_batch_length
+            updated.mini_batch_size = training_options.mini_batch_size
+            updated.num_updates_per_train_iter = training_options.num_updates_per_train_iter
+            updated.replay_buffer_length = training_options.replay_buffer_length
+            updated.initial_collect_steps = training_options.initial_collect_steps
+            updated.priority_replay = training_options.priority_replay
+            updated.priority_replay_alpha = as_scheduler(
+                training_options.priority_replay_alpha)
+            updated.priority_replay_beta = as_scheduler(
+                training_options.priority_replay_beta)
+
+        self._impl = impl_cls(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            reward_spec=reward_spec,
+            config=updated,
+            debug_summaries=debug_summaries)
+        self._impl.force_params_visible_to_parent = True
+        assert self._impl._reanalyze_ratio in [
+            0.0, 1.0
+        ], ('Currently MuzeroRepresentationLearner only support reanalyze ratio 0.0 or 1.0'
+            )
+
+        if self._impl._reanalyze_ratio > 0:
+            assert config.use_rollout_state, (
+                'use_rollout_state needs to be True when reanalyze is used.')
+
+    @property
+    def output_spec(self):
+        """Access the spec of the produced representation.
+
+        This will be used as the obervation spec for the subsequent RL
+        algorithm.
+
+        """
+        return self._impl._model.repr_spec
+
+    def predict_step(self, time_step: TimeStep, state):
+        return self._impl.rollout_step(time_step, state)
+
+    def rollout_step(self, time_step: TimeStep, state):
+        repr_step = self._impl.rollout_step(time_step, state)
+        if self._training_options is not None:
+            # Save in the representation learner's own replay buffer. Note that
+            # ``observe_for_replay`` when called for the first time will have the
+            # side effect of creating the replay buffer.
+            if self._impl._replay_buffer is None:
+                self._impl.set_replay_buffer(
+                    time_step.env_id.shape[0],
+                    self._training_options.replay_buffer_length,
+                    self._training_options.priority_replay)
+            exp = make_experience(time_step.untransformed, repr_step, state)
+            self._impl.observe_for_replay(exp)
+        return repr_step
+
+    def train_step(self, exp: TimeStep, state, rollout_info):
+        return self._impl.rollout_step(exp, state)
+
+    def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
+                              batch_info):
+        return root_inputs, ()
+
+    def calc_loss(self, info):
+        # The calc_loss() here does nothing so that ``Agent`` will only handle
+        # the loss from other sub algorithm such as RL algorithm.
+        #
+        # The actual loss for training the representation itself is within
+        # ``self._impl``.
+        return LossInfo(loss=(), extra={})
+
+    def after_update(self, root_inputs, info):
+        pass
+
+    def after_train_iter(self, experience, info):
+        if self._training_options is None:
+            return
+
+        # Independently run the training logic for the MuZero representation
+        # learner's implementation.
+        if alf.summary.get_global_counter(
+        ) % self._training_options.interval == 0:
+            self._impl.train_from_replay_buffer(update_global_counter=False)
