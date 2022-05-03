@@ -885,11 +885,19 @@ def set_field(nested, field, new_value):
     return transform_nest(nested, field, lambda _: new_value)
 
 
-def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
-    """Given a nest and its shallow nest ``B``, assuming that each child
-    of ``B`` has the same nest structure ``A``, this function
-    returns a new nest whose shallow nest is ``A`` or a specified one, and
-    each child of the new shallow nest has a shallow nest ``B``.
+def transpose(nested: Nest,
+              shallow_nest: Nest = None,
+              new_shallow_nest: Nest = None):
+    """Given a nest ``A`` and its shallow nest ``a``, assuming that each child
+    of ``a`` has the same nest structure ``B``, this function
+    returns a new nest whose shallow nest ``b`` is a shallow nest of ``B``,
+    and each child of ``b`` has a shallow nest ``a``.
+
+    An illustrative graph shows the transpose operation::
+
+        A = aB = abc (--transpose-->) bac
+
+    where ``c`` is every (same) child of ``b``.
 
     .. note::
 
@@ -904,6 +912,8 @@ def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
         x = [(0, 1), (2, 3), (4, 5)]
         y = transpose(x, shallow_nest=[None, None, None])
         # y will be ``([0, 2, 4], [1, 3, 5])``
+        y1 = transpose(x)
+        # y1 will be the same with y
 
         x = NTuple(a=dict(x=3, y=1), b=[dict(x=5, y=10)])
         shallow_nest = NTuple(a=None, b=[False])
@@ -912,11 +922,7 @@ def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
 
         x = NTuple(a=dict(x=3, y=dict(n=1, m=2)),
                    b=dict(x=5, y=dict(n=1, m=3)))
-        transposed_nest1 = nest.transpose(
-            x, shallow_nest=NTuple(),
-            new_shallow_nest=dict(x=None, y=None))
-        # Because we've specified a new shallow_nest, NTuple won't be put to the
-        # lowest level of the tree
+        transposed_nest1 = nest.transpose(x)
         self.assertEqual(transposed_nest1,
                          dict(x=NTuple(a=3, b=5), y=NTuple(a=dict(n=1, m=2),
                                                            b=dict(n=1, m=3))))
@@ -924,22 +930,28 @@ def transpose(nested: Nest, shallow_nest: Nest, new_shallow_nest: Nest = None):
     Args:
         nested: a nested structure
         shallow_nest: a nested structure indicating the first "axis" for the
-            transpose
+            transpose. If None, then ``nest_top_level(nested)`` will be used.
         new_shallow_nest: a nested structure indicating the second "axis" for
-            the transpose. Note that this shallow nest is w.r.t. each child of
-            ``shallow_nest`` of ``nested``. If not provided, then it will be set as
-            the child itself. In this case, the returned nest will have
-            ``shallow_nest`` at the lowest level.
+            the transpose. Note that this shallow nest is w.r.t. each child ``B``.
+            If not provided, then ``nest_top_level(B)`` will be used.
 
     Returns:
         nested: a transposed nested structure
     """
+    if not is_nested(nested):
+        return nested
+
+    if shallow_nest is None:
+        shallow_nest = nest_top_level(nested)
+
+    # ``nested`` is ``A`` and each leaf is ``B`` in the docstring
     leaves = flatten_up_to(shallow_nest, nested)
     for leaf in leaves:
         assert_same_structure(leaves[0], leaf)
 
     if new_shallow_nest is None:
-        new_shallow_nest = leaves[0]
+        # this is ``b`` in the docstring
+        new_shallow_nest = nest_top_level(leaves[0])
     matrix = [flatten_up_to(new_shallow_nest, leaf) for leaf in leaves]
     transposed_matrix = list(zip(*matrix))
     new_nest = pack_sequence_as(new_shallow_nest, transposed_matrix)
