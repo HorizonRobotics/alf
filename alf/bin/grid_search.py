@@ -334,7 +334,7 @@ class GridSearch(object):
             else:
                 os.environ["CUDA_VISIBLE_DEVICES"] = ""  # run on cpu
 
-            if torch.cuda.is_available():
+            if common.cuda_is_available():
                 alf.set_default_device("cuda")
             logging.set_verbosity(logging.INFO)
 

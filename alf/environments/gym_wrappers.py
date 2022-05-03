@@ -390,7 +390,8 @@ class DMAtariPreprocessing(gym.Wrapper):
                  frame_skip=4,
                  noop_max=30,
                  screen_size=84,
-                 gray_scale=True):
+                 gray_scale=True,
+                 terminal_on_life_loss=False):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
@@ -440,6 +441,7 @@ class DMAtariPreprocessing(gym.Wrapper):
             shape=(self.screen_size, self.screen_size, num_channels),
             dtype=np.uint8)
 
+        self._terminal_on_life_loss = terminal_on_life_loss
         self._lives = 0
 
     def _reset_with_random_noops(self):
@@ -508,6 +510,8 @@ class DMAtariPreprocessing(gym.Wrapper):
             # grayscale image from the ALE. This is a little faster.
             _, reward, game_over, info = self.env.step(action)
             life_lost = self.env.ale.lives() < self._lives
+            if self._terminal_on_life_loss:
+                game_over = game_over or life_lost
             self._lives = self.env.ale.lives()
             accumulated_reward += reward
             if 'num_env_frames' in info:
@@ -714,3 +718,46 @@ class NonEpisodicEnv(gym.Wrapper):
     def step(self, action):
         ob, reward, done, info = self.env.step(action)
         return ob, reward, False, info
+
+
+@alf.configurable
+class StepsSinceEpisodeStart(BaseObservationWrapper):
+    def __init__(self, env, repeat=1):
+        """Add new field with name "nstep".
+
+        Args:
+             env (gym.Env): the gym environment
+        """
+        self._repeat = repeat
+        super().__init__(env)
+        self._num_steps = 0
+
+    def reset(self):
+        self._num_steps = 0
+        return super().reset()
+
+    def step(self, action):
+        self._num_steps += 1
+        return super().step(action)
+
+    def transform_space(self, observation_space):
+        obs = gym.spaces.Dict({
+            "nstep":
+                gym.spaces.Box(
+                    low=0, high=1, shape=(16 * self._repeat, ),
+                    dtype=np.uint8),
+            "obs":
+                observation_space
+        })
+        return obs
+
+    def transform_observation(self, observation):
+        obs = {
+            "nstep":
+                np.resize(
+                    ((self._num_steps & (1 << np.arange(16))) > 0).astype(int),
+                    16 * self._repeat),
+            "obs":
+                observation
+        }
+        return obs

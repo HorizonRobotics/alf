@@ -48,6 +48,11 @@ from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
 
 
+def cuda_is_available():
+    cuda_dev = os.getenv("CUDA_VISIBLE_DEVICES", default=None)
+    return (cuda_dev is None or cuda_dev != "") and torch.cuda.is_available()
+
+
 def add_method(cls):
     """A decorator for adding a method to a class (cls).
     Example usage:
@@ -996,11 +1001,11 @@ def set_random_seed(seed):
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+        # torch.use_deterministic_algorithms(True)  # causes RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
-    if torch.cuda.is_available():
+    if cuda_is_available():
         torch.cuda.manual_seed_all(seed)
     return seed
 

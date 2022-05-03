@@ -546,6 +546,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
+@alf.configurable
 def get_unique_num_actions(action_spec):
     unique_num_actions = np.unique(action_spec.maximum - action_spec.minimum +
                                    1)

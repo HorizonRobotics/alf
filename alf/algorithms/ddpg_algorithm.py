@@ -240,7 +240,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=noisy_action,
             state=state,
-            info=DdpgInfo(action=noisy_action, action_distribution=action))
+            info=DdpgInfo(action=noisy_action, action_distribution=()))
 
     def rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
@@ -330,6 +330,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 reward=inputs.reward,
                 step_type=inputs.step_type,
                 discount=inputs.discount,
+                action=policy_step.output,
                 action_distribution=policy_step.output,
                 critic=critic_info,
                 actor_loss=policy_step.info,
@@ -355,10 +356,23 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = info.actor_loss
 
+        if self._critic_losses[0]._improve_w_nstep_bootstrap:
+            actor_loss.loss[1:] = 0
+            actor_loss.extra[1:] = 0
+
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
             priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
+
+    def preprocess_experience(self, exp, rollout_info, batch_info):
+        """Add batch_info into rollout_info.
+        """
+        batch_info = batch_info._replace(
+            replay_buffer=(), importance_weights=())
+        batch_info = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(exp.reward.shape[:2]), batch_info)
+        return exp, rollout_info._replace(batch_info=batch_info)
 
     def after_update(self, root_inputs, info: DdpgInfo):
         self._update_target()

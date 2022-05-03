@@ -107,7 +107,7 @@ def _setup_device(rank: int = 0):
         rank (int): The ID of the process among all of the DDP processes
 
     """
-    if torch.cuda.is_available():
+    if common.cuda_is_available():
         alf.set_default_device('cuda')
         torch.cuda.set_device(rank)
 

@@ -23,23 +23,46 @@ class DiscountedReturnTest(unittest.TestCase):
     """Tests for alf.utils.value_ops.discounted_return
     """
 
-    def _check(self, rewards, values, step_types, discounts, expected):
-        np.testing.assert_array_almost_equal(
-            value_ops.discounted_return(
+    def _check(self,
+               rewards,
+               values,
+               step_types,
+               discounts,
+               expected,
+               future=False):
+        if future:
+            res = value_ops.first_step_future_discounted_returns(
                 rewards=rewards,
                 values=values,
                 step_types=step_types,
                 discounts=discounts,
-                time_major=False), expected)
+                time_major=False)
+        else:
+            res = value_ops.discounted_return(
+                rewards=rewards,
+                values=values,
+                step_types=step_types,
+                discounts=discounts,
+                time_major=False)
 
-        np.testing.assert_array_almost_equal(
-            value_ops.discounted_return(
+        np.testing.assert_array_almost_equal(res, expected)
+
+        if future:
+            res = value_ops.first_step_future_discounted_returns(
                 rewards=torch.stack([rewards, 2 * rewards], dim=2),
                 values=torch.stack([values, 2 * values], dim=2),
                 step_types=step_types,
                 discounts=discounts,
-                time_major=False), torch.stack([expected, 2 * expected],
-                                               dim=2))
+                time_major=False)
+        else:
+            res = value_ops.discounted_return(
+                rewards=torch.stack([rewards, 2 * rewards], dim=2),
+                values=torch.stack([values, 2 * values], dim=2),
+                step_types=step_types,
+                discounts=discounts,
+                time_major=False)
+        np.testing.assert_array_almost_equal(
+            res, torch.stack([expected, 2 * expected], dim=2))
 
     def test_discounted_return(self):
         values = torch.tensor([[1.] * 5], dtype=torch.float32)
@@ -74,7 +97,7 @@ class DiscountedReturnTest(unittest.TestCase):
             discounts=discounts,
             expected=expected)
 
-        # tow episodes, and end normal (discount=0)
+        # two episodes, and end normal (discount=0)
         step_types = torch.tensor([[
             StepType.MID, StepType.MID, StepType.LAST, StepType.MID,
             StepType.MID
@@ -90,6 +113,100 @@ class DiscountedReturnTest(unittest.TestCase):
             step_types=step_types,
             discounts=discounts,
             expected=expected)
+
+    def test_first_step_future_discounted_returns(self):
+        values = torch.tensor([[1.] * 5], dtype=torch.float32)
+        step_types = torch.tensor([[StepType.MID] * 5], dtype=torch.int64)
+        rewards = torch.tensor([[2.] * 5], dtype=torch.float32)
+        discounts = torch.tensor([[0.9] * 5], dtype=torch.float32)
+        expected = torch.tensor([[
+            2 + 0.9, 2 + 0.9 * (2 + 0.9), 2 + 0.9 * (2 + 0.9 * (2 + 0.9)),
+            2 + 0.9 * (2 + 0.9 * (2 + 0.9 * (2 + 0.9)))
+        ]],
+                                dtype=torch.float32)
+        self._check(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            expected=expected,
+            future=True)
+
+        # two episodes, and exceed by time limit (discount=1)
+        step_types = torch.tensor([[
+            StepType.MID, StepType.MID, StepType.LAST, StepType.MID,
+            StepType.MID
+        ]],
+                                  dtype=torch.int32)
+        expected = torch.tensor([[
+            2 + 0.9, 2 + 0.9 * (2 + 0.9), 2 + 0.9 * (2 + 0.9),
+            2 + 0.9 * (2 + 0.9)
+        ]],
+                                dtype=torch.float32)
+        self._check(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            expected=expected,
+            future=True)
+
+        # two episodes, and end normal (discount=0)
+        step_types = torch.tensor([[
+            StepType.MID, StepType.MID, StepType.LAST, StepType.MID,
+            StepType.MID
+        ]],
+                                  dtype=torch.int32)
+        discounts = torch.tensor([[0.9, 0.9, 0.0, 0.9, 0.9]])
+        expected = torch.tensor(
+            [[2 + 0.9, 2 + 0.9 * 2, 2 + 0.9 * 2, 2 + 0.9 * 2]],
+            dtype=torch.float32)
+
+        self._check(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            expected=expected,
+            future=True)
+
+        # two episodes with discount 0 LAST.
+        values = torch.tensor([[1.] * 5], dtype=torch.float32)
+        step_types = torch.tensor([[
+            StepType.MID, StepType.LAST, StepType.LAST, StepType.MID,
+            StepType.MID
+        ]],
+                                  dtype=torch.int32)
+        rewards = torch.tensor([[2.] * 5], dtype=torch.float32)
+        discounts = torch.tensor([[0.9, 0.0, 0.0, 0.9, 0.9]])
+        expected = torch.tensor([[2, 2, 2, 2]], dtype=torch.float32)
+
+        self._check(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            expected=expected,
+            future=True)
+
+        # two episodes with discount 0 LAST.
+        values = torch.tensor([[1.] * 5], dtype=torch.float32)
+        step_types = torch.tensor([[
+            StepType.LAST, StepType.LAST, StepType.LAST, StepType.MID,
+            StepType.MID
+        ]],
+                                  dtype=torch.int32)
+        rewards = torch.tensor([[2.] * 5], dtype=torch.float32)
+        discounts = torch.tensor([[0.0, 0.0, 0.0, 0.9, 0.9]])
+        expected = torch.tensor([[0, 0, 0, 0]], dtype=torch.float32)
+
+        self._check(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            expected=expected,
+            future=True)
 
 
 class GeneralizedAdvantageTest(unittest.TestCase):

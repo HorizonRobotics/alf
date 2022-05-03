@@ -43,19 +43,42 @@ def is_available():
     return mujoco_py is not None
 
 
+@alf.configurable
 class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self, env):
+    def __init__(self,
+                 env,
+                 reward_cap=1.,
+                 positive_reward=True,
+                 append_reward_dim=False):
         gym.Wrapper.__init__(self, env)
+        self._reward_cap = reward_cap
+        self._positive_reward = positive_reward
+        self._append_reward_dim = append_reward_dim
 
     def step(self, action):
         # openai Robotics env will always return ``done=False``
         ob, reward, done, info = self.env.step(action)
         if reward == 0:
             done = True
-        return ob, reward + 1, done, info
+        if self._positive_reward:
+            return_reward = reward + 1
+        else:
+            return_reward = reward
+        return_reward *= self._reward_cap
+        if self._append_reward_dim:
+            return_reward = np.array([return_reward, 0])
+        return ob, return_reward, done, info
+
+    @property
+    def reward_space(self):
+        if self._append_reward_dim:
+            return gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(2, ), dtype=np.float32)
+        else:
+            return self.env.reward_space()
 
 
 @alf.configurable
@@ -85,6 +108,41 @@ class SuccessWrapper(gym.Wrapper):
 
 
 @alf.configurable
+class TransformGoals(gym.Wrapper):
+    """Convert the original achieved_goal and desired_goal to first two dims, and produce sparse reward.
+
+    It ignores original reward which is a multi dimensional negative distance to goal.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        goal_space = gym.spaces.Box(
+            env.observation_space["achieved_goal"].low[:2],
+            env.observation_space["achieved_goal"].high[:2])
+        self.observation_space = gym.spaces.Dict({
+            "achieved_goal": goal_space,
+            "desired_goal": goal_space,
+            "observation": env.observation_space["observation"]
+        })
+
+    def reset(self):
+        ob = self.env.reset()
+        ob["achieved_goal"] = ob["achieved_goal"][:2]
+        ob["desired_goal"] = ob["desired_goal"][:2]
+        return ob
+
+    def step(self, action):
+        # openai Robotics env will always return ``done=False``
+        ob, reward, done, info = self.env.step(action)
+        ob["achieved_goal"] = ob["achieved_goal"][:2]
+        ob["desired_goal"] = ob["desired_goal"][:2]
+        return_reward = alf.utils.math_ops.l2_dist_close_reward_fn_np(
+            ob["achieved_goal"], ob["desired_goal"])
+        return_reward = return_reward[0]
+        return ob, return_reward, done, info
+
+
+@alf.configurable
 class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
@@ -103,6 +161,16 @@ class ObservationClipWrapper(gym.ObservationWrapper):
             return observation
         else:
             return np.clip(observation, self.min_v, self.max_v)
+
+
+@alf.configurable
+class RemoveInfoWrapper(gym.Wrapper):
+    """Remove all the info from environment return.
+    """
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        return obs, reward, done, {}
 
 
 @alf.configurable
@@ -141,14 +209,28 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
-    assert (environment_name.startswith("Fetch")
-            or environment_name.startswith("HandManipulate")), (
-                "This suite only supports OpenAI's Fetch and ShadowHand envs!")
+    assert (
+        environment_name.startswith("Fetch")
+        or environment_name.startswith("HandManipulate")
+        or environment_name.startswith("Ant")
+    ), ("This suite only supports OpenAI's Fetch, ShadowHand and multiworld Ant envs!"
+        )
 
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
+    kwargs = {}
+    if environment_name.startswith("Ant"):
+        from multiworld.envs.mujoco import register_custom_envs
+        register_custom_envs()
+
     gym_spec = gym.spec(environment_name)
-    env = gym_spec.make()
+    env = gym_spec.make(**kwargs)
+    if environment_name.startswith("Ant"):
+        from gym.wrappers import FilterObservation
+        env = RemoveInfoWrapper(
+            FilterObservation(
+                env, ["desired_goal", "achieved_goal", "observation"]))
+        env = TransformGoals(env)
 
     if max_episode_steps is None:
         if gym_spec.max_episode_steps is not None:

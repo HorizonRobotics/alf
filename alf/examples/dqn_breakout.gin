@@ -1,0 +1,15 @@
+include 'sac_breakout.gin'
+
+suite_gym.load.alf_env_wrappers=[@AtariTerminalOnLifeLossWrapper]
+
+SacAlgorithm.max_target_action=True
+SacAlgorithm.rollout_epsilon_greedy=0.1
+SacAlgorithm.use_entropy_reward=0
+SacAlgorithm.use_epsilon_schedule=0.1
+
+import alf.utils.dist_utils
+
+# override algorithm and training config
+AdamTF.lr=5e-4
+
+SacAlgorithm.alpha_optimizer=None

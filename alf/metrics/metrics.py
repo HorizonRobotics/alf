@@ -315,7 +315,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
     Note that if the last step is not due to time limit, the discounted return
     calculated form the formula above is unbiased. If the last step is due to
     time limit, it is a biased estimate and its expectation is lower than the
-    ground-truth one.
+    ground-truth (when rewards are non-negative).
     """
 
     def __init__(self,
@@ -325,7 +325,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                  dtype=torch.float32,
                  discount=0.99,
                  reward_transformer=None,
-                 buffer_size=10):
+                 buffer_size=10,
+                 reward_clip=None):
         """
         Args:
             discount (float): the discount factor for calculating the discounted
@@ -339,6 +340,9 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
         self._timestep_discount = torch.zeros(batch_size, device='cpu')
         self._reward_transformer = reward_transformer
+
+        self._current_step = torch.zeros(batch_size, device='cpu')
+        self._reward_clip = reward_clip
 
         super().__init__(
             name=name,
@@ -361,6 +365,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
             old_mode = common.set_exe_mode(common.EXE_MODE_OTHER)
             reward = self._reward_transformer(reward)
             common.set_exe_mode(old_mode)
+        if self._reward_clip is not None:
+            reward = torch.clamp(reward, *self._reward_clip)
         if time_step.reward.ndim == ndim:
             discounted_reward = reward * self._accumulated_discount
         else:
@@ -406,6 +412,118 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         """
         return acc[last_episode_indices] / self._current_step[
             last_episode_indices]
+
+
+@alf.configurable
+class EpisodicStartAverageDiscountedReturnMetric(
+        AverageDiscountedReturnMetric):
+    """Metric for computing the discounted return from episode start states.
+    It is calculated according to the following formula:
+
+    .. math::
+        \begin{array}{ll}
+            R &=r_1 + \gamma r_2 + \gamma^2 r_3 + \cdots \\
+            &= \sum_{l=1}^L \gamma^{l-1} r_l,
+        \end{array}
+    where :math:`\gamma` is the reward discount, and :math:`r_1` denotes the
+    reward due to the first action, which is received at the second time step.
+    :math:`L` equals to the episode length - 1.
+
+
+    Note that if the last step is not due to time limit, the discounted return
+    calculated form the formula above is unbiased. If the last step is due to
+    time limit, it is a biased estimate and its expectation is lower than the
+    ground-truth (when rewards are non-negative).
+    """
+
+    def __init__(self,
+                 example_time_step: TimeStep,
+                 name='EpisodicStartAverageDiscountedReturn',
+                 prefix='Metrics',
+                 buffer_size=10,
+                 reward_clip=None):
+        super(EpisodicStartAverageDiscountedReturnMetric, self).__init__(
+            name=name,
+            prefix=prefix,
+            buffer_size=buffer_size,
+            example_time_step=example_time_step,
+            reward_clip=reward_clip)
+
+    def _extract_metric_values(self, time_step):
+        """Accumulate discounted immediate rewards to get discounted episodic
+        return. It also updates the accumulated discount and step count.
+        """
+        self._update_discount_and_step_count(time_step)
+
+        ndim = time_step.step_type.ndim
+        if time_step.reward.ndim == ndim:
+            discounted_reward = time_step.reward * self._accumulated_discount
+        else:
+            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            discounted_reward = [
+                reward[..., i] * self._accumulated_discount
+                for i in range(reward.shape[-1])
+            ]
+
+        return discounted_reward
+
+    def _update_discount_and_step_count(self, time_step):
+        """Set/Update the values of ``self._accumulated_discount`` and
+        the value of ``self._current_step``.
+        If this is the first step, ``self._accumulated_discount`` will be set
+        to zero. Otherwise, it is multiplied by ``discount`` and added by one.
+        The updated accumulated discount will be used for computing the
+        accumulated contribution of the the reward received at the current step
+        to the discounted return.
+        ``self._current_step`` will be set to zero for the first step, and
+        is added by one otherwise. Therefore, at the episode end, its value
+        equals to episode length - 1.
+
+        Args:
+            time_step (alf.data_structures.TimeStep): batched tensor
+        """
+        is_first = time_step.is_first()
+
+        # update discount for the next time step
+        self._accumulated_discount = (
+            self._discount * self._accumulated_discount)
+        self._accumulated_discount = torch.where(
+            self._accumulated_discount == 0,
+            torch.ones_like(self._accumulated_discount),
+            self._accumulated_discount)
+        self._accumulated_discount = torch.where(
+            is_first, torch.zeros_like(self._accumulated_discount),
+            self._accumulated_discount)
+
+    def _extract_and_process_acc_value(self, acc, last_episode_indices):
+        """Extract the final accumulated value and divide by the number of
+        steps of an episode.
+        Args:
+            acc (Tensor): batched tensor representing an accumulator
+            last_episode_indices (Tensor): indices representing the location
+                of the position of the last step
+        Returns:
+            The value of the accumulator at the episode end.
+        """
+        return acc[last_episode_indices]
+
+
+@alf.configurable
+class AverageRewardMetric(AverageDiscountedReturnMetric):
+    """Metric for computing the average reward per time step for each episode.
+    """
+
+    def __init__(self,
+                 example_time_step: TimeStep,
+                 name='AverageReward',
+                 prefix='Metrics',
+                 buffer_size=10):
+        super(AverageRewardMetric, self).__init__(
+            example_time_step=example_time_step,
+            name=name,
+            prefix=prefix,
+            buffer_size=buffer_size,
+            discount=0)
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):

@@ -14,6 +14,8 @@
 """Various math ops."""
 
 import functools
+import gin
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -457,3 +459,36 @@ class Log1pTransform(InvertibleTransform):
 
     def inverse_transform(self, y):
         return y.sign() * ((y / self._alpha).abs().exp() - 1)
+
+
+@alf.configurable
+def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
+    """Giving -1/0 reward based on how close the achieved state is to the goal state.
+
+    Args:
+        achieved_goal (Tensor): achieved state, of shape ``[batch_size, batch_length, ...]``
+        goal (Tensor): goal state, of shape ``[batch_size, batch_length, ...]``
+        threshold (float): L2 distance threshold for the reward.
+
+    Returns:
+        Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
+    """
+
+    if goal.dim() == 2:  # when goals are 1-dimentional
+        assert achieved_goal.dim() == goal.dim()
+        achieved_goal = achieved_goal.unsqueeze(2)
+        goal = goal.unsqueeze(2)
+    return -(torch.norm(achieved_goal - goal, dim=2) >= threshold).to(
+        torch.float32)
+
+
+@alf.configurable
+def l2_dist_close_reward_fn_np(achieved_goal, goal, threshold=.05):
+    # Only used in non batched cases.
+    return l2_dist_close_np(achieved_goal, goal, threshold)
+
+
+def l2_dist_close_np(achieved_goal, goal, threshold):
+    return np.where(
+        np.linalg.norm(achieved_goal - goal) < threshold,
+        np.zeros(1, dtype=np.float32), -np.ones(1, dtype=np.float32))

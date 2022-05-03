@@ -1,0 +1,4 @@
+include 'ddpg_target_navigation_states.gin'
+
+import social_bot.tasks
+PlayGround.tasks=[@PushReachTask]

@@ -88,7 +88,7 @@ FLAGS = flags.FLAGS
 
 
 def play():
-    if torch.cuda.is_available():
+    if common.cuda_is_available():
         alf.set_default_device("cuda")
 
     render.enable_rendering(FLAGS.alg_render)

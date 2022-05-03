@@ -77,6 +77,7 @@ class CriticNetwork(EncodingNetwork):
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 last_bias_init_value=0.0,
                  use_fc_bn=False,
                  use_naive_parallel_network=False,
                  name="CriticNetwork"):
@@ -174,8 +175,33 @@ class CriticNetwork(EncodingNetwork):
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
             last_kernel_initializer=last_kernel_initializer,
-            name=name)
+            last_bias_init_value=last_bias_init_value,
+            name=name + ".joint_encoder")
         self._use_naive_parallel_network = use_naive_parallel_network
+
+        self._output_spec = output_tensor_spec
+
+    def forward(self, inputs, state=()):
+        """Computes action-value given an observation.
+
+        Args:
+            inputs:  A tuple of Tensors consistent with ``input_tensor_spec``
+            state: empty for API consistent with ``CriticRNNNetwork``
+
+        Returns:
+            tuple:
+            - action_value (torch.Tensor): a tensor of the size ``[batch_size]``
+            - state: empty
+        """
+        observations, actions = inputs
+
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
+        joint = torch.cat([encoded_obs, encoded_action], -1)
+        action_value, _ = self._joint_encoder(joint)
+        action_value = action_value.reshape(action_value.shape[0],
+                                            *self._output_spec.shape)
+        return action_value, state
 
     def make_parallel(self, n):
         """Create a parallel critic network using ``n`` replicas of ``self``.
