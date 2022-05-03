@@ -529,7 +529,8 @@ class ObservationNormalizer(SimpleDataTransformer):
             update_rate (float): the update rate of ``EMNormalizer``.
             speed (float): the speed of updating for ``AdaptiveNormalizer``.
             zero_mean (bool): whether to make the normalized value be zero-mean
-            update_mode (str): update stats during either "replay" or "rollout".
+            update_mode (str): update stats during specified mode in ["replay",
+                "rollout", "pretrain"].
             mode (str): a value in ["adaptive", "window", "em"] indicates which
                 normalizer to use.
         """
@@ -575,7 +576,8 @@ class ObservationNormalizer(SimpleDataTransformer):
             obs = dict([(field, alf.nest.get_field(observation, field))
                         for field in self._fields])
         if ((self._update_mode == "replay" and common.is_replay())
-                or (self._update_mode == "rollout" and common.is_rollout())):
+                or (self._update_mode == "rollout" and common.is_rollout())
+                or (self._update_mode == "pretrain" and common.is_pretrain())):
             self._normalizer.update(obs)
         obs = self._normalizer.normalize(obs, self._clipping)
         if self._fields is None:

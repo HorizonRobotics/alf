@@ -16,6 +16,7 @@
 from absl import logging
 import copy
 from collections import OrderedDict
+from contextlib import nullcontext
 import itertools
 import json
 import numpy as np
@@ -1856,12 +1857,17 @@ class Algorithm(AlgorithmInterface):
 
             self._processed_experience_spec = processed_exp_spec
 
-        # TODO: use a different mini_batch_length for offline training
-        (offline_experience, _, offline_batch_info, length, mini_batch_length,
-         batch_size) = self._prepare_experience_data(
-             offline_experience, self._offline_experience_spec,
-             offline_batch_info, mini_batch_length,
-             self._offline_replay_buffer)
+        if self._pre_train:
+            context = common.pretrain_context()
+        else:
+            context = nullcontext()
+        with context:
+            # TODO: use a different mini_batch_length for offline training
+            (offline_experience, _, offline_batch_info, length,
+             mini_batch_length, batch_size) = self._prepare_experience_data(
+                 offline_experience, self._offline_experience_spec,
+                 offline_batch_info, mini_batch_length,
+                 self._offline_replay_buffer)
 
         indices = None
         for u in range(num_updates):
@@ -1941,27 +1947,33 @@ class Algorithm(AlgorithmInterface):
             train_info = None
             loss_info = None
 
-        offline_train_info = self._collect_train_info_offline(
-            offline_experience, self._pre_train)
-
-        offline_loss_info = self.calc_loss_offline(offline_train_info,
-                                                   self._pre_train)
-
-        self._update_priority(offline_loss_info, offline_batch_info,
-                              self._offline_replay_buffer)
-
-        if self.is_rl():
-            offline_valid_masks = (offline_experience.step_type !=
-                                   StepType.LAST).to(torch.float32)
+        if self._pre_train:
+            context = common.pretrain_context()
         else:
-            offline_valid_masks = None
+            context = nullcontext()
+        with context:
+            offline_train_info = self._collect_train_info_offline(
+                offline_experience, self._pre_train)
 
-        if self._debug_summaries:
-            with alf.summary.scope("offline"):
-                summary_utils.summarize_per_category_loss(offline_loss_info)
+            offline_loss_info = self.calc_loss_offline(offline_train_info,
+                                                       self._pre_train)
 
-        offline_loss_info = self._aggregate_loss(
-            offline_loss_info, offline_valid_masks, offline_batch_info)
+            self._update_priority(offline_loss_info, offline_batch_info,
+                                  self._offline_replay_buffer)
+
+            if self.is_rl():
+                offline_valid_masks = (offline_experience.step_type !=
+                                       StepType.LAST).to(torch.float32)
+            else:
+                offline_valid_masks = None
+
+            if self._debug_summaries:
+                with alf.summary.scope("offline"):
+                    summary_utils.summarize_per_category_loss(
+                        offline_loss_info)
+
+            offline_loss_info = self._aggregate_loss(
+                offline_loss_info, offline_valid_masks, offline_batch_info)
 
         if loss_info is not None:
             if self.is_rl():
