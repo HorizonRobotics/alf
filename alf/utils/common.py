@@ -1062,6 +1062,8 @@ EXE_MODE_ROLLOUT = 1
 EXE_MODE_REPLAY = 2
 # Evaluation / testing or playing a learned model
 EXE_MODE_EVAL = 3
+# pretrain mode
+EXE_MODE_PRETRAIN = 4
 
 # Global execution mode to track where the program is in the RL training process.
 # This is used currently for observation normalization to only update statistics
@@ -1069,7 +1071,7 @@ EXE_MODE_EVAL = 3
 # network output values, evaluation of the same network during rollout vs eval vs
 # replay will be plotted to different graphs.
 _exe_mode = EXE_MODE_OTHER
-_exe_mode_strs = ["other", "rollout", "replay", "eval"]
+_exe_mode_strs = ["other", "rollout", "replay", "eval", "pretrain"]
 
 
 def set_exe_mode(mode):
@@ -1120,6 +1122,15 @@ def is_eval():
     evaluation or playing a learned model.
     """
     return _exe_mode == EXE_MODE_EVAL
+
+
+def is_pretrain():
+    """Return a bool value indicating whether the current code belongs to
+    pre-train. The code within a function that is decorated by ``mark_pretrain``
+    is flagged as ``pretrain``. A code block that is within a ``pretrain_context``
+    is also flagged as ``pretrain``.
+    """
+    return _exe_mode == EXE_MODE_PRETRAIN
 
 
 def is_training(alg):
@@ -1191,6 +1202,92 @@ def mark_rollout(func):
         return ret
 
     return _func
+
+
+def mark_pretrain(func):
+    """A decorator that will automatically mark the ``_exe_mode`` flag when
+    entering/exiting a pretrain function.
+
+    Args:
+        func (Callable): a function
+    """
+
+    def _func(*args, **kwargs):
+        old_mode = _exe_mode
+        set_exe_mode(EXE_MODE_PRETRAIN)
+        ret = func(*args, **kwargs)
+        set_exe_mode(old_mode)
+        return ret
+
+    return _func
+
+
+class eval_context(object):
+    """A context manager that will automatically mark the ``_exe_mode`` flag
+    as ``EXE_MODE_EVAL`` when entering a context and revert to the original
+    ``_exe_mode`` when exiting the context.
+    """
+
+    def __init__(self):
+        self._old_mode = _exe_mode
+
+    def __enter__(self):
+        set_exe_mode(EXE_MODE_EVAL)
+
+    def __exit__(self, type, value, traceback):
+        set_exe_mode(self._old_mode)
+        return True
+
+
+class replay_context(object):
+    """A context manager that will automatically mark the ``_exe_mode`` flag
+    as ``EXE_MODE_REPLAY`` when entering a context and revert to the original
+    ``_exe_mode`` when exiting the context.
+    """
+
+    def __init__(self):
+        self._old_mode = _exe_mode
+
+    def __enter__(self):
+        set_exe_mode(EXE_MODE_REPLAY)
+
+    def __exit__(self, type, value, traceback):
+        set_exe_mode(self._old_mode)
+        return True
+
+
+class rollout_context(object):
+    """A context manager that will automatically mark the ``_exe_mode`` flag
+    as ``EXE_MODE_ROLLOUT`` when entering a context and revert to the original
+    ``_exe_mode`` when exiting the context.
+    """
+
+    def __init__(self):
+        self._old_mode = _exe_mode
+
+    def __enter__(self):
+        set_exe_mode(EXE_MODE_ROLLOUT)
+
+    def __exit__(self, type, value, traceback):
+        set_exe_mode(self._old_mode)
+        return True
+
+
+class pretrain_context(object):
+    """A context manager that will automatically mark the ``_exe_mode`` flag
+    as ``EXE_MODE_PRETRAIN`` when entering a context and revert to the original
+    ``_exe_mode`` when exiting the context.
+    """
+
+    def __init__(self):
+        self._old_mode = _exe_mode
+
+    def __enter__(self):
+        set_exe_mode(EXE_MODE_PRETRAIN)
+
+    def __exit__(self, type, value, traceback):
+        set_exe_mode(self._old_mode)
+        return True
 
 
 @alf.configurable
