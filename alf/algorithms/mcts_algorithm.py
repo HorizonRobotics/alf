@@ -310,6 +310,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discount: float,
             is_two_player_game: bool,
             visit_softmax_temperature_fn: Callable,
+            epsilon_greedy: float = 1.0,
             learn_policy_temperature=1.0,
             reward_spec=TensorSpec(()),
             expand_all_children: bool = False,
@@ -361,6 +362,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 where ``steps`` is a vector representing the number of steps in
                 the games. And it is expected to return a float vector of the same
                 shape as ``steps``.
+            epsilon_greedy: a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax.
             learn_policy_temperature (float): transform the policy p found by
                 MCTS by :math:`p^{1/learn_policy_temperature} / Z` as policy
                 target for model learning, where Z is a normalization factor so
@@ -436,6 +439,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             self._max_allowed_depth = max_unroll_length - 1
         else:
             self._max_allowed_depth = max_unroll_length
+        self._epsilon_greedy = epsilon_greedy
 
         assert not expand_all_children or num_parallel_sims == 1, (
             "num_parallel_sim > 1 is not supported when expand_all_children=True"
@@ -480,7 +484,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         return self._discount
 
     @torch.no_grad()
-    def predict_step(self, time_step: TimeStep, state: MCTSState):
+    def rollout_step(self, time_step: TimeStep, state: MCTSState):
         """Predict the action.
 
         Args:
@@ -557,9 +561,19 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=action, state=MCTSState(steps=state.steps + 1), info=info)
 
-    @torch.no_grad()
-    def rollout_step(self, time_step: TimeStep, state: MCTSState):
-        return self.predict_step(time_step, state)
+    def predict_step(self, time_step: TimeStep, state: MCTSState):
+        alg_step = self.rollout_step(time_step, state)
+        if self._epsilon_greedy < 1:
+            greedy_action = alg_step.info.candidate_action_policy.argmax(dim=1)
+            if alg_step.info.candidate_actions != ():
+                greedy_action = alg_step.info.candidate_actions[torch.arange(
+                    greedy_action.shape[0]), greedy_action]
+            if self._epsilon_greedy > 0:
+                r = torch.rand(greedy_action.shape) >= self._epsilon_greedy
+                alg_step.output[r] = greedy_action[r]
+            else:
+                alg_step = alg_step._replace(output=greedy_action)
+        return alg_step
 
     def _get_best_child_index(self, trees, B, nodes, i):
         if self._parallel and not self._search_with_exploration_policy:
@@ -684,7 +698,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("avg_tree_size",
                                    unique_node_i.numel() / B.shape[0])
 
-        avg_depth = avg_depth / self._num_simulations
+        if self._num_simulations > 0:
+            avg_depth = avg_depth / self._num_simulations
         self._summarize(max_depth - 1, avg_depth - 1)
 
     def _summarize(self, max_unroll_length, avg_unroll_length):
