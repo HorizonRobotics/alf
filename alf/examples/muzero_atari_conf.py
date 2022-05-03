@@ -457,6 +457,10 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         partial(_summarize_grad, name='value_grad'),
         *_make_trunk(),
         *_scale_grad(1 / num_quantiles if scale_grad_by_num_quantiles else 1),
+        # The parameters of the last FC is initialized such that the initial
+        # expectation from the discrete distribution is close to 0. But fp16 is
+        # not accurate enough to make it close to 0. So we explicitly disable
+        # AMP
         alf.layers.AMPWrapper(
             False,
             alf.layers.FC(
@@ -617,6 +621,8 @@ alf.config(
     "MuzeroAlgorithm",
     discount=discount,
     enable_amp=True,
+    # use a bigger num_simulations for rollout to get better samples from
+    # interaction.
     mcts_algorithm_ctor=partial(
         MCTSAlgorithm, num_parallel_sims=8, num_simulations=200),
     reward_transformer=reward_transformer)

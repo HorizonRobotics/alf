@@ -2416,7 +2416,7 @@ class ResidueBlock(nn.Module):
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
         bias = not with_batch_normalization
-        relu = activation
+        self._activation = activation
         padding = (kernel_size - 1) // 2
 
         conv1 = conv_fn(
@@ -2461,9 +2461,9 @@ class ResidueBlock(nn.Module):
                 bn2 = bn_ctor(channels, fixed_weight_norm=False)
             else:
                 bn2 = bn_ctor(channels)
-            core_layers = nn.Sequential(conv1, bn1, relu, conv2, bn2)
+            core_layers = nn.Sequential(conv1, bn1, activation, conv2, bn2)
         else:
-            core_layers = nn.Sequential(conv1, relu, conv2)
+            core_layers = nn.Sequential(conv1, activation, conv2)
         self._core_layers = core_layers
         self._shortcut_layers = shortcut_layers
 
@@ -2474,7 +2474,7 @@ class ResidueBlock(nn.Module):
         else:
             shortcut = inputs
 
-        return torch.relu_(core + shortcut)
+        return self._activation(core + shortcut)
 
 
 @alf.configurable(whitelist=['v1_5', 'with_batch_normalization', 'bn_ctor'])
