@@ -69,7 +69,6 @@ class Renderer(TopDownRenderer):
         self._render_canvas.fill((255, 255, 120))
         self._observation_renderer = observation_renderer
         pygame.init()
-        self.img = pygame.image.load('/home/breakds/Downloads/omnisaia.jpg')
 
     def _append_frame_objects(self, objects):
         ego = self.engine.agent_manager.active_agents['default_agent']
