@@ -975,7 +975,7 @@ class HindsightExperienceTransformer(DataTransformer):
                                                final_relabeled_rewards)
 
         result = alf.nest.transform_nest(
-            result, self._desired_goal_field, lambda _: relabed_goal)
+            result, self._desired_goal_field, lambda _: relabeled_goal)
 
         info = info._replace(her=her_cond, future_distance=future_dist)
         if alf.get_default_device() != buffer.device:
