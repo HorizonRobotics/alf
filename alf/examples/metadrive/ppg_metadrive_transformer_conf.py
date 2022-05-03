@@ -121,7 +121,7 @@ class MaskedTransformer(torch.nn.Module):
     def forward(self, inputs):
         x, map_mask, agent_mask = inputs
         B = x.shape[0]
-        mask = torch.hstack((torch.ones(B, 1, dtype=bool), map_mask,
+        mask = torch.hstack((torch.zeros(B, 1, dtype=bool), map_mask,
                              agent_mask))
         for layer in self._tf_layers:
             x = layer(memory=x, mask=mask)
@@ -133,6 +133,7 @@ def encoding_network_ctor(input_tensor_spec):
     d_model = 128
     num_heads = 8
 
+    # yapf: disable
     layers = [
         alf.nn.Branch(
             alf.nn.Sequential(
@@ -148,9 +149,11 @@ def encoding_network_ctor(input_tensor_spec):
                         input_tensor_spec['agents'].shape[2],
                         hidden=(32, )),
                     d_model=d_model),
-                input_tensor_spec=input_tensor_spec), lambda x:
-            (~x['map_mask'], ~x['agent_mask'])), lambda x: (x[0], x[1][0], x[1]
-                                                            [1]),
+                input_tensor_spec=input_tensor_spec),
+            lambda x: (~x['map_mask'], ~x['agent_mask'])),
+
+        lambda x: (x[0], x[1][0], x[1][1]),
+
         MaskedTransformer(
             d_model=d_model,
             num_heads=num_heads,
@@ -158,6 +161,7 @@ def encoding_network_ctor(input_tensor_spec):
             map_limit=input_tensor_spec['map'].shape[0],
             agent_limit=input_tensor_spec['agents'].shape[0])
     ]
+    # yapf: enable
 
     # Take the corresponding transformer output of the first vector in the
     # sequence (corresponding to "ego") as the final output of the encoder.
