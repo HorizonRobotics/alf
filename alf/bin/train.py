@@ -74,6 +74,9 @@ def _define_flags():
     flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
     flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+    flags.DEFINE_bool(
+        'force_torch_deterministic', True,
+        'torch.use_deterministic_algorithms when random_seed is set')
     flags.DEFINE_bool('store_snapshot', True,
                       'Whether store an ALF snapshot before training')
     flags.DEFINE_enum(
@@ -107,7 +110,7 @@ def _setup_device(rank: int = 0):
         rank (int): The ID of the process among all of the DDP processes
 
     """
-    if torch.cuda.is_available():
+    if common.cuda_is_available():
         alf.set_default_device('cuda')
         torch.cuda.set_device(rank)
 
