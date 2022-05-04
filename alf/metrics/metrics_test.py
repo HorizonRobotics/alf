@@ -18,7 +18,8 @@ import alf
 from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
                          AverageReturnMetric, AverageDiscountedReturnMetric,
                          AverageEpisodeLengthMetric, AverageEnvInfoMetric,
-                         AverageEpisodicAggregationMetric)
+                         AverageEpisodicAggregationMetric,
+                         EpisodicStartAverageDiscountedReturnMetric)
 from alf.utils.tensor_utils import to_tensor
 from alf.data_structures import TimeStep, StepType
 
@@ -124,6 +125,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
           dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)), False),
          ('testAverageDiscountedReturnMetric', AverageDiscountedReturnMetric,
           6, 7.2225, False),
+         ('testEpisodicStartAverageDiscountedReturnMetric',
+          EpisodicStartAverageDiscountedReturnMetric, 6, 8.945, False),
          ('testAverageReturnVectorReward', AverageReturnMetric, 6, [9.0, 9.0],
           True),
          ('testAverageDiscountedReturnMetricVectorReward',
@@ -133,7 +136,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         trajectories = self._create_trajectories(vector_reward)
         if metric_class in [
                 AverageEpisodeLengthMetric, AverageReturnMetric,
-                AverageDiscountedReturnMetric, AverageEnvInfoMetric
+                AverageDiscountedReturnMetric, AverageEnvInfoMetric,
+                EpisodicStartAverageDiscountedReturnMetric
         ]:
             metric = metric_class(example_time_step=trajectories[0])
         else:
