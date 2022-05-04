@@ -26,6 +26,7 @@ class TrainerConfig(object):
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
+                 skip_torch_deterministic=False,
                  num_iterations=1000,
                  num_env_steps=0,
                  unroll_length=8,
@@ -62,6 +63,7 @@ class TrainerConfig(object):
                  mini_batch_length=None,
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
+                 convert_only_minibatch_to_device=False,
                  replay_buffer_length=1024,
                  priority_replay=False,
                  priority_replay_alpha=0.7,
@@ -97,6 +99,8 @@ class TrainerConfig(object):
                 will not be normalized.  Data will be in mismatch, causing training to
                 suffer and potentially fail.
             random_seed (None|int): random seed, a random seed is used if None
+            skip_torch_deterministic (bool): if True, turns of
+                ``torch.use_deterministic_algorithms`` even when a random_seed is set.
             num_iterations (int): For RL trainer, indicates number of update
                 iterations (ignored if 0). Note that for off-policy algorithms, if
                 ``initial_collect_steps>0``, then the first
@@ -207,6 +211,8 @@ class TrainerConfig(object):
                 sample in the minibatch. Only used by ``OffPolicyAlgorithm``.
             whole_replay_buffer_training (bool): whether use all data in replay
                 buffer to perform one update. Only used by ``OffPolicyAlgorithm``.
+            convert_only_minibatch_to_device (bool): whether to convert only the
+                minibatch or the whole batch of data to the default device.
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean. Only used by
                 ``OffPolicyAlgorithm``.
@@ -265,6 +271,7 @@ class TrainerConfig(object):
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
         self.random_seed = random_seed
+        self.skip_torch_deterministic = skip_torch_deterministic
         self.num_iterations = num_iterations
         self.num_env_steps = num_env_steps
         self.unroll_length = unroll_length
@@ -301,6 +308,7 @@ class TrainerConfig(object):
         self.mini_batch_length = mini_batch_length
         self.mini_batch_size = mini_batch_size
         self.whole_replay_buffer_training = whole_replay_buffer_training
+        self.convert_only_minibatch_to_device = convert_only_minibatch_to_device
         self.clear_replay_buffer = clear_replay_buffer
         self.replay_buffer_length = replay_buffer_length
         self.priority_replay = priority_replay
