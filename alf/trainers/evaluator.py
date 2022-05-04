@@ -275,7 +275,11 @@ def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
         alf.metrics.AverageEnvInfoMetric(
             example_time_step=time_step, buffer_size=num_episodes),
         alf.metrics.AverageDiscountedReturnMetric(
-            buffer_size=num_episodes, example_time_step=time_step)
+            buffer_size=num_episodes, example_time_step=time_step),
+        alf.metrics.EpisodicStartAverageDiscountedReturnMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
+        alf.metrics.AverageRewardMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
     ]
     time_step = common.get_initial_time_step(env)
     while episodes < num_episodes:
