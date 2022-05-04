@@ -51,6 +51,9 @@ def _define_flags():
         "specify the checkpoint to be loaded. If None, the latest checkpoint under "
         "train_dir will be used.")
     flags.DEFINE_integer('random_seed', None, "random seed")
+    flags.DEFINE_bool(
+        'force_torch_deterministic', True,
+        'torch.use_deterministic_algorithms when random_seed is set')
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
         'append_blank_frames', 0,
@@ -88,7 +91,7 @@ FLAGS = flags.FLAGS
 
 
 def play():
-    if torch.cuda.is_available():
+    if common.cuda_is_available():
         alf.set_default_device("cuda")
 
     render.enable_rendering(FLAGS.alg_render)
