@@ -26,6 +26,7 @@ class TrainerConfig(object):
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
+                 skip_torch_deterministic=False,
                  num_iterations=1000,
                  num_env_steps=0,
                  unroll_length=8,
@@ -98,6 +99,8 @@ class TrainerConfig(object):
                 will not be normalized.  Data will be in mismatch, causing training to
                 suffer and potentially fail.
             random_seed (None|int): random seed, a random seed is used if None
+            skip_torch_deterministic (bool): if True, turns of
+                ``torch.use_deterministic_algorithms`` even when a random_seed is set.
             num_iterations (int): For RL trainer, indicates number of update
                 iterations (ignored if 0). Note that for off-policy algorithms, if
                 ``initial_collect_steps>0``, then the first
@@ -268,6 +271,7 @@ class TrainerConfig(object):
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
         self.random_seed = random_seed
+        self.skip_torch_deterministic = skip_torch_deterministic
         self.num_iterations = num_iterations
         self.num_env_steps = num_env_steps
         self.unroll_length = unroll_length

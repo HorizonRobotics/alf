@@ -983,6 +983,13 @@ class HindsightExperienceTransformer(DataTransformer):
                 result = alf.nest.transform_nest(
                     result, f, lambda t: convert_device(t))
             info = convert_device(info)
+        if hasattr(info, "future_distance") and info.future_distance != ():
+            future_distance = info.future_distance.unsqueeze(1).expand(
+                exp.reward.shape[:2])
+            info = info._replace(future_distance=future_distance)
+        if hasattr(info, "her") and info.her != ():
+            her = info.her.unsqueeze(1).expand(exp.reward.shape[:2])
+            info = info._replace(her=her)
         info = info._replace(replay_buffer=buffer)
         result = alf.data_structures.add_batch_info(result, info)
         return result

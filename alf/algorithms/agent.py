@@ -483,14 +483,6 @@ class Agent(RLAlgorithm):
             discounted_return = batch_info.discounted_return.unsqueeze(
                 1).expand(exp.reward.shape[:2])
             rl_info = rl_info._replace(discounted_return=discounted_return)
-        if hasattr(rl_info,
-                   "future_distance") and batch_info.future_distance != ():
-            future_distance = batch_info.future_distance.unsqueeze(1).expand(
-                exp.reward.shape[:2])
-            rl_info = rl_info._replace(future_distance=future_distance)
-        if hasattr(rl_info, "her") and batch_info.her != ():
-            her = batch_info.her.unsqueeze(1).expand(exp.reward.shape[:2])
-            rl_info = rl_info._replace(her=her)
 
         return exp, rollout_info._replace(rl=rl_info)
 
