@@ -320,7 +320,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
         return ret
 
     def initialize_bias(self, bias: torch.Tensor):
-        """Initialize the bias of the last FC layer for the prediction properly.
+        r"""Initialize the bias of the last FC layer for the prediction properly.
 
         This function set the bias so that the initial distribution of the prediction
         in the original domain of target is approximatedly Cauchy: :math:`p(x) \propto \frac{1}{1+x^2}`
@@ -426,7 +426,8 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         n = bias.shape[0]
         upper_bound = n // 2
         lower_bound = -((n - 1) // 2)
-        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float32)
+        # Use float64 to prevent precision loss due to cumsum
+        x = torch.arange(lower_bound, upper_bound + 1, dtype=torch.float64)
         x1 = x - 0.5
         x2 = x + 0.5
         if self._transform is not None:
@@ -436,9 +437,10 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         probs = (x2 - x1) / (x**2 + 1)
         probs = probs / probs.sum()
         probs = probs.cumsum(dim=0)
-        probs = torch.cat([torch.tensor([1e-6]), probs[:-1]], dim=0)
+        probs = torch.cat(
+            [torch.tensor([1e-20], dtype=torch.float64), probs[:-1]], dim=0)
         with torch.no_grad():
-            bias.copy_(((1 - probs) / probs).log())
+            bias.copy_(((1 - probs) / probs).log().to(torch.float32))
 
 
 @alf.repr_wrapper
@@ -536,6 +538,9 @@ class AsymmetricSimSiamLoss(nn.Module):
             proj_net. Only useful if ``proj_net`` is not provided
         eps: the ``eps`` for calling ``F.normalize()`` when calculating the
             normalized vector in order to calculate cosine.
+        fixed_weight_norm: whether to fix the norm of the weight parameter of
+            the FC layers.
+        lr: learning rate. If None, the default learning rate will be used.
         debug_summaries: whether to write debug summaries
         name: name of this loss
     """
@@ -549,6 +554,8 @@ class AsymmetricSimSiamLoss(nn.Module):
                  output_size: int = 256,
                  proj_last_use_bn: bool = False,
                  eps: float = 1e-5,
+                 fixed_weight_norm: bool = False,
+                 lr: Optional[float] = None,
                  debug_summaries: bool = True,
                  name: str = "SimSiamLoss"):
         super().__init__()
@@ -560,14 +567,21 @@ class AsymmetricSimSiamLoss(nn.Module):
                     input_size,
                     proj_hidden_size,
                     activation=torch.relu_,
-                    use_bn=True),
+                    use_bn=True,
+                    weight_opt_args=dict(fixed_norm=fixed_weight_norm, lr=lr)),
                 alf.layers.FC(
                     proj_hidden_size,
                     proj_hidden_size,
                     activation=torch.relu_,
-                    use_bn=True),
+                    use_bn=True,
+                    weight_opt_args=dict(fixed_norm=fixed_weight_norm, lr=lr)),
                 alf.layers.FC(
-                    proj_hidden_size, output_size, use_bn=proj_last_use_bn),
+                    proj_hidden_size,
+                    output_size,
+                    use_bn=proj_last_use_bn,
+                    weight_opt_args=dict(
+                        lr=lr,
+                        fixed_norm=fixed_weight_norm and proj_last_use_bn)),
                 input_tensor_spec=alf.TensorSpec((input_size, )))
         output_size = proj_net.output_spec.numel
         if pred_net is None:
@@ -576,7 +590,12 @@ class AsymmetricSimSiamLoss(nn.Module):
                     output_size,
                     pred_hidden_size,
                     activation=torch.relu_,
-                    use_bn=True), alf.layers.FC(pred_hidden_size, output_size))
+                    use_bn=True,
+                    weight_opt_args=dict(lr=lr, fixed_norm=fixed_weight_norm)),
+                alf.layers.FC(
+                    pred_hidden_size,
+                    output_size,
+                    weight_opt_args=dict(lr=lr, fixed_norm=False)))
         self._proj_net = proj_net
         self._pred_net = pred_net
         self._eps = eps

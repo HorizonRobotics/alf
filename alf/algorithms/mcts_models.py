@@ -138,7 +138,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             alpha_adjust_rate=0.001,
             initial_loss_weight: Optional[float] = 1,
             predict_initial_reward: bool = True,
-            reset_reward_sum_period: bool = False,
+            reset_reward_sum_period: int = 0,
             apply_beyond_episode_end_mask: bool = False,
             apply_partial_trajectory_mask: bool = False,
             debug_summaries=False,
@@ -192,7 +192,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 used.
             predict_initial_reward: whether to predict the reward at the initial
                 step.
-            reset_reward_sum_period: reset the reward sum every so many steps
+            reset_reward_sum_period: reset the reward sum every so many steps.
+                Do not reset the reward sum if this is 0.
             apply_beyond_episode_end_mask: If True, the steps after the end of
                 an episode is ignored for the representation prediction loss.
             apply_partial_trajectory_mask: If True, the steps after an unfinished

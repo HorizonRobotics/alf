@@ -31,6 +31,7 @@ class _NormBase(nn.Module):
                  eps: float = 1e-5,
                  momentum: float = 0.1,
                  affine: bool = True,
+                 fixed_weight_norm=False,
                  use_bias: bool = True,
                  track_running_stats: bool = True):
         super().__init__()
@@ -42,6 +43,10 @@ class _NormBase(nn.Module):
         if affine:
             self._weight = nn.Parameter(torch.Tensor(num_features))
             use_bias = True
+            if fixed_weight_norm:
+                self._weight.opt_args = dict(
+                    max_norm=math.sqrt(num_features),
+                    fixed_norm=fixed_weight_norm)
         else:
             self._weight = None
         if use_bias:
@@ -235,6 +240,8 @@ class BatchNorm1d(_NormBase):
             (i.e. simple average). Default: 0.1
         affine: a boolean value that when set to ``True``, this module has
             learnable affine parameters. Default: ``True``
+        fixed_weight_norm: whether to fix the norm of the affine weight parameter.
+            The norm will be fixed at ``sqrt(num_features).
         use_bias: whether to use bias. Note that if ``affine`` is True, this
             argument is ignored and bias will be used.
         track_running_stats: a boolean value that when set to ``True``, this
@@ -289,6 +296,8 @@ class BatchNorm2d(_NormBase):
             (i.e. simple average). Default: 0.1
         affine: a boolean value that when set to ``True``, this module has
             learnable affine parameters. Default: ``True``
+        fixed_weight_norm: whether to fix the norm of the affine weight parameter.
+            The norm will be fixed at ``sqrt(num_features).
         use_bias: whether to use bias. Note that if ``affine`` is True, this
             argument is ignored and bias will be used.
         track_running_stats: a boolean value that when set to ``True``, this
@@ -373,9 +382,9 @@ class ParamLayerNorm(nn.Module):
     """
 
     def __init__(self, n_groups: int, output_channels: int, eps: float = 1e-5):
-        """A general Layer Normalization layer that does not maintain learnable 
-        affine parameters (weight and bias), but accepts both from users. 
-        If ``n_groups`` is greater than 1, it performs parallel Layer Normalization 
+        """A general Layer Normalization layer that does not maintain learnable
+        affine parameters (weight and bias), but accepts both from users.
+        If ``n_groups`` is greater than 1, it performs parallel Layer Normalization
         operation.
         Args:
             n_groups: number of parallel groups

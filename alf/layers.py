@@ -2371,8 +2371,9 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
-@alf.configurable(
-    whitelist=['with_batch_normalization', 'bn_ctor', 'weight_opt_args'])
+@alf.configurable(whitelist=[
+    'with_batch_normalization', 'bn_ctor', 'weight_opt_args', 'activation'
+])
 class ResidueBlock(nn.Module):
     """The ResidueBlock for ResNet.
 
@@ -2389,6 +2390,7 @@ class ResidueBlock(nn.Module):
                  kernel_size: Union[int, Tuple[int, int]],
                  stride: Union[int, Tuple[int, int]],
                  transpose: bool = False,
+                 activation: nn.Module = nn.ReLU(inplace=True),
                  with_batch_normalization: bool = True,
                  weight_opt_args: Optional[Dict] = None,
                  bn_ctor: Callable[[int], nn.Module] = nn.BatchNorm2d):
@@ -2403,6 +2405,7 @@ class ResidueBlock(nn.Module):
                 with the same arguments except ``transpose``, it is guaranteed that
                 ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
                 by ``stride``.
+            activation: activation function.
             with_batch_normalization: whether to include batch normalization.
                 Note that standard ResNet uses batch normalization.
             weight_opt_args: optimizer arguments for weights (not for bias)
@@ -2413,7 +2416,7 @@ class ResidueBlock(nn.Module):
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
         bias = not with_batch_normalization
-        relu = nn.ReLU(inplace=True)
+        self._activation = activation
         padding = (kernel_size - 1) // 2
 
         conv1 = conv_fn(
@@ -2447,10 +2450,20 @@ class ResidueBlock(nn.Module):
             shortcut_layers = None
 
         if with_batch_normalization:
-            core_layers = nn.Sequential(conv1, bn_ctor(channels), relu, conv2,
-                                        bn_ctor(channels))
+            bn1 = bn_ctor(channels)
+            if isinstance(bn1, BatchNorm2d):
+                # When alf.layers.BatchNorm2d is used, it may be configured
+                # as fixed_weight_norm=True. That is reasonable if it is followed
+                # by conv+bn, since the result is invariant to its overall scale
+                # However, bn2 is followed by a sum with shortcut. The result
+                # is not invariant to its scale. So we explicitly set
+                # fixed_weight_norm=False
+                bn2 = bn_ctor(channels, fixed_weight_norm=False)
+            else:
+                bn2 = bn_ctor(channels)
+            core_layers = nn.Sequential(conv1, bn1, activation, conv2, bn2)
         else:
-            core_layers = nn.Sequential(conv1, relu, conv2)
+            core_layers = nn.Sequential(conv1, activation, conv2)
         self._core_layers = core_layers
         self._shortcut_layers = shortcut_layers
 
@@ -2461,7 +2474,7 @@ class ResidueBlock(nn.Module):
         else:
             shortcut = inputs
 
-        return torch.relu_(core + shortcut)
+        return self._activation(core + shortcut)
 
 
 @alf.configurable(whitelist=['v1_5', 'with_batch_normalization', 'bn_ctor'])
