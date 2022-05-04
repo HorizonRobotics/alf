@@ -21,7 +21,7 @@ class DeviceCtxTest(alf.test.TestCase):
         with alf.device("cpu"):
             self.assertEqual(alf.get_default_device(), "cpu")
             self.assertEqual(torch.tensor([1]).device.type, "cpu")
-            if torch.cuda.is_available():
+            if alf.utils.common.cuda_is_available():
                 with alf.device("cuda"):
                     self.assertEqual(alf.get_default_device(), "cuda")
                     self.assertEqual(torch.tensor([1]).device.type, "cuda")

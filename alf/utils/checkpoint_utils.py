@@ -201,7 +201,7 @@ class Checkpointer(object):
             return self._global_step
 
         map_location = None
-        if not torch.cuda.is_available():
+        if not alf.utils.common.cuda_is_available():
             map_location = torch.device('cpu')
 
         checkpoint = torch.load(f_path, map_location=map_location)

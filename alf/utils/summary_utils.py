@@ -24,7 +24,7 @@ import torch.distributions as td
 import alf
 from alf.data_structures import LossInfo
 from alf.nest import is_namedtuple, is_nested, py_map_structure_with_path, map_structure
-from alf.utils import dist_utils
+from alf.utils import common, dist_utils
 from alf.summary import should_record_summaries, get_global_counter
 from typing import List, Optional
 
@@ -430,12 +430,12 @@ class record_time(object):
         self._counter = _contexts[token]
 
     def __enter__(self):
-        if self._sync and torch.cuda.is_available():
+        if self._sync and common.cuda_is_available():
             torch.cuda.synchronize()
         self._t0 = time.time()
 
     def __exit__(self, type, value, traceback):
-        if self._sync and torch.cuda.is_available():
+        if self._sync and common.cuda_is_available():
             torch.cuda.synchronize()
         self._counter['time'] += time.time() - self._t0
         if should_record_summaries():

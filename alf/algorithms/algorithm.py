@@ -149,7 +149,7 @@ class Algorithm(AlgorithmInterface):
             if config.temporally_independent_train_step is None:
                 config.temporally_independent_train_step = (len(
                     alf.nest.flatten(self.train_state_spec)) == 0)
-            if config.enable_amp and torch.cuda.is_available():
+            if config.enable_amp and common.cuda_is_available():
                 self._grad_scaler = torch.cuda.amp.GradScaler()
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
@@ -319,6 +319,8 @@ class Algorithm(AlgorithmInterface):
             max_length=self._replay_buffer_max_length,
             prioritized_sampling=self._prioritized_sampling,
             num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+            convert_only_minibatch_to_device=self._config.
+            convert_only_minibatch_to_device,
             name=f'{self._name}_replay_buffer')
         self._observers.append(lambda exp: self._replay_buffer.add_batch(
             exp, exp.env_id))
@@ -416,7 +418,7 @@ class Algorithm(AlgorithmInterface):
 
         mem = self._proc.memory_info().rss // 1e6
         alf.summary.scalar(name='memory/cpu', data=mem)
-        if torch.cuda.is_available():
+        if common.cuda_is_available():
             mem = torch.cuda.memory_allocated() // 1e6
             alf.summary.scalar(name='memory/gpu_allocated', data=mem)
             mem = torch.cuda.memory_reserved() // 1e6
@@ -1523,7 +1525,8 @@ class Algorithm(AlgorithmInterface):
             experience, experience_spec)
         experience = alf.data_structures.add_batch_info(
             experience, batch_info, replay_buffer)
-        experience = self.transform_experience(experience)
+        with record_time("time/train_transform_exp"):
+            experience = self.transform_experience(experience)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
         # experience that better handles the similar and distinct part of
