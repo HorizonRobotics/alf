@@ -237,6 +237,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                           noisy_action, self._action_spec)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critics=()))
+        # action_distribution is not supported for continuous actions for now.
+        # Returns empty action_distribution to fail early.
         return AlgStep(
             output=noisy_action,
             state=state,
@@ -331,7 +333,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 step_type=inputs.step_type,
                 discount=inputs.discount,
                 action=policy_step.output,
-                action_distribution=policy_step.output,
+                action_distribution=(),
                 critic=critic_info,
                 actor_loss=policy_step.info,
                 discounted_return=rollout_info.discounted_return))
@@ -357,6 +359,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         actor_loss = info.actor_loss
 
         if self._critic_losses[0]._improve_w_nstep_bootstrap:
+            # Ignore 2nd - nth step actor losses.
             actor_loss.loss[1:] = 0
             actor_loss.extra[1:] = 0
 

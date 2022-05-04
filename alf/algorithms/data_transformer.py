@@ -819,7 +819,7 @@ class HindsightExperienceTransformer(DataTransformer):
             has_her = torch.any(her_cond)
             last_step_pos = start_pos + batch_length - 1
             last_env_ids = env_ids
-            # Get x, y indices of LAST steps
+            # Get x, y indices of LAST steps for the whole batch, not just the HER part.
             dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
             if alf.summary.should_record_summaries():
                 alf.summary.scalar(
@@ -983,14 +983,11 @@ class HindsightExperienceTransformer(DataTransformer):
                 result = alf.nest.transform_nest(
                     result, f, lambda t: convert_device(t))
             info = convert_device(info)
-        if hasattr(info, "future_distance") and info.future_distance != ():
-            future_distance = info.future_distance.unsqueeze(1).expand(
-                exp.reward.shape[:2])
-            info = info._replace(future_distance=future_distance)
-        if hasattr(info, "her") and info.her != ():
-            her = info.her.unsqueeze(1).expand(exp.reward.shape[:2])
-            info = info._replace(her=her)
-        info = info._replace(replay_buffer=buffer)
+        info = info._replace(
+            her=info.her.unsqueeze(1).expand(exp.reward.shape[:2]),
+            future_distance=info.future_distance.unsqueeze(1).expand(
+                exp.reward.shape[:2]),
+            replay_buffer=buffer)
         result = alf.data_structures.add_batch_info(result, info)
         return result
 

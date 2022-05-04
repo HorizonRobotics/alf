@@ -91,6 +91,7 @@ class TDLoss(nn.Module):
             td_error_loss_fn: A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
+            clip: When positive, loss clipping to the range [-clip, clip].
             td_lambda: Lambda parameter for TD-lambda computation.
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The critic
@@ -98,6 +99,27 @@ class TDLoss(nn.Module):
             use_retrace: turn on retrace loss
                 :math:`\mathcal{R} Q(x, a):=Q(x, a)+\mathbb{E}_{\mu}\left[\sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)\left(r_{t}+\gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)\right)\right]`
                 copied from PR #695.
+            lb_target_q: between 0 and 1.  When not zero, use this mixing rate for the
+                lower bounded value target.  Only supports batch_length == 2, one step td.
+            default_return: Keep it the same as replay_buffer.default_return to plot to
+                tensorboard episodic_discounted_return only for the timesteps whose
+                episode already ended.
+            improve_w_goal_return: Use return calculated from the distance to hindsight
+                goals.  Only supports batch_length == 2, one step td.
+            improve_w_nstep_bootstrap: Look ahead 2 to n steps, and take the largest
+                bootstrapped return to lower bound the value target of the 1st step.
+            improve_w_nstep_only: Only use the n-th step bootstrapped return as
+                value target lower bound.
+            lower_bound_constraint: Use n-step bootstrapped return as lower bound
+                constraints of the value.  See reference:
+                He, F. S., Liu, Y., Schwing, A. G., and Peng, J.
+                Learning to play in a day: Faster deep reinforcement learning
+                by optimality tightening.  In 5th International Conference
+                on Learning Representations, ICLR 2017, Toulon, France,
+                April 24-26, 2017.  https://openreview.net/forum?id=rJ8Je4clg
+            lb_loss_scale: Parameter for lower_bound_constraint.
+            reward_multiplier: Weight on the hindsight goal return.
+            positive_reward: If True, assumes 0/1 goal reward, otherwise, -1/0.
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -109,7 +131,7 @@ class TDLoss(nn.Module):
         self._clip = clip
         self._lambda = td_lambda
         self._lb_target_q = lb_target_q
-        self._default_return = default_return  #  need to be lower than replay_buffer.default_return
+        self._default_return = default_return
         self._improve_w_goal_return = improve_w_goal_return
         self._improve_w_nstep_bootstrap = improve_w_nstep_bootstrap
         self._improve_w_nstep_only = improve_w_nstep_only
@@ -153,11 +175,12 @@ class TDLoss(nn.Module):
                 back to the caller.
             target_value (torch.Tensor): the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
-                can be same as ``value``.
+                can be same as ``value``, except for Retrace.
         Returns:
             td_target, updated value, optional constraint_loss
         """
         if not qr and info.reward.ndim == 3:
+            # Multi-dim reward, not quantile regression.
             # [T, B, D] or [T, B, 1]
             discounts = info.discount.unsqueeze(-1) * self._gamma
         else:
@@ -184,7 +207,7 @@ class TDLoss(nn.Module):
                 discounts=discounts,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
-        else:
+        else:  # Retrace
             scope = alf.summary.scope(self.__class__.__name__)
             assert info.rollout_info.action_distribution != (), \
                 "Algorithm does not provide rollout action_distribution"
@@ -392,6 +415,7 @@ class TDLoss(nn.Module):
             loss = loss.mean(dim=2)
 
         if self._improve_w_nstep_bootstrap:
+            # Ignore 2nd to n-th step losses.
             loss[1:] = 0
             if self._lower_bound_constraint > 0:
                 assert constraint_loss.shape == loss.shape[1:], \

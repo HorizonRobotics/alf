@@ -313,7 +313,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
 
 
     Note that if the last step is not due to time limit, the discounted return
-    calculated form the formula above is unbiased. If the last step is due to
+    calculated from the formula above is unbiased. If the last step is due to
     time limit, it is a biased estimate and its expectation is lower than the
     ground-truth (when rewards are non-negative).
     """
@@ -334,6 +334,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
             reward_transformer (Callable): if provided, will calculate the
                 discounted return using the transformed reward. It will be called
                 as ``transformed_reward = reward_transformer(original_reward)``.
+            reward_clip (tuple): in the format (min, max), to optionally plot
+                return based on clipped reward when environment isn't clipping.
         """
         self._discount = discount
         batch_size = alf.nest.get_nest_batch_size(example_time_step)
@@ -431,7 +433,7 @@ class EpisodicStartAverageDiscountedReturnMetric(
 
 
     Note that if the last step is not due to time limit, the discounted return
-    calculated form the formula above is unbiased. If the last step is due to
+    calculated from the formula above is unbiased. If the last step is due to
     time limit, it is a biased estimate and its expectation is lower than the
     ground-truth (when rewards are non-negative).
     """

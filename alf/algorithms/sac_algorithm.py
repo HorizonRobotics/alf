@@ -208,6 +208,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
+            rollout_epsilon_greedy (float): epsilon greedy policy for rollout.
+                Together with the following three parameters, the Sac algorithm
+                can be converted to a DQN algorithm.
+            use_epsilon_schedule (float): training schedule for
+                rollout_epsilon_greedy.
+            max_target_action (bool): whether to use the action with the highest
+                target value as the target action for computing bootstrapped value.
+                To mimic the DQN algorithm, set this to True.
             use_entropy_reward (bool): whether to include entropy as reward
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
@@ -387,7 +395,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_models=[self._target_critic_networks],
             tau=target_update_tau,
             period=target_update_period)
-        self._y_range = (0, 3)
+        # initial q value range for rendering; adjusted as playing progresses
+        self._q_range = (0, 3)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
@@ -552,8 +561,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if (alf.summary.render.is_rendering_enabled()
                 and self._act_type == ActionType.Discrete):
             num_acts = q_values.shape[-1]
-            self._y_range = (min(self._y_range[0], int(q_values.min())),
-                             max(self._y_range[1],
+            self._q_range = (min(self._q_range[0], int(q_values.min())),
+                             max(self._q_range[1],
                                  int(q_values.max()) + 1))
             info = dict(
                 sac=info,
@@ -568,7 +577,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 q_img=render.render_bar(
                     "q_values",
                     q_values,
-                    y_range=self._y_range,
+                    y_range=self._q_range,
                     annotate_format="%.2f",
                     x_ticks=range(num_acts)))
         return AlgStep(
@@ -839,6 +848,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_loss = info.actor
 
         if self._critic_losses[0]._improve_w_nstep_bootstrap:
+            # Ignore 2nd - n-th step losses in this mode.
             alpha_loss[1:] = 0
             if actor_loss.loss != ():
                 actor_loss.loss[1:] = 0
@@ -897,6 +907,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             with torch.no_grad():
                 log_pi = info.log_pi
                 if self._critic_losses[0]._improve_w_nstep_bootstrap:
+                    # Ignore 2nd - n-th step entropy in this mode.
                     log_pi[1:] = 0
                 if self._entropy_normalizer is not None:
                     log_pi = self._entropy_normalizer.normalize(log_pi)

@@ -976,7 +976,7 @@ class DistractionAndPenaltyWrapper(AlfEnvironmentBaseWrapper):
                  reward_fn=l2_dist_close_reward_fn_np,
                  range=0.5,
                  scale=10.):
-        """Add distraction coordinates and reward to timestep.
+        """Add fake/simulated distraction coordinates and reward to timestep.
         Assumes ``timestep.observation['achieved_goal']`` exists.
         Adds ``timestep.observation['distraction']`` tensor shaped as the
         ``'achieved_goal'``, and adds hit penalty as a separate reward dimension.

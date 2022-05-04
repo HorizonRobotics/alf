@@ -179,30 +179,6 @@ class CriticNetwork(EncodingNetwork):
             name=name + ".joint_encoder")
         self._use_naive_parallel_network = use_naive_parallel_network
 
-        self._output_spec = output_tensor_spec
-
-    def forward(self, inputs, state=()):
-        """Computes action-value given an observation.
-
-        Args:
-            inputs:  A tuple of Tensors consistent with ``input_tensor_spec``
-            state: empty for API consistent with ``CriticRNNNetwork``
-
-        Returns:
-            tuple:
-            - action_value (torch.Tensor): a tensor of the size ``[batch_size]``
-            - state: empty
-        """
-        observations, actions = inputs
-
-        encoded_obs, _ = self._obs_encoder(observations)
-        encoded_action, _ = self._action_encoder(actions)
-        joint = torch.cat([encoded_obs, encoded_action], -1)
-        action_value, _ = self._joint_encoder(joint)
-        action_value = action_value.reshape(action_value.shape[0],
-                                            *self._output_spec.shape)
-        return action_value, state
-
     def make_parallel(self, n):
         """Create a parallel critic network using ``n`` replicas of ``self``.
         The initialized network parameters will be different.

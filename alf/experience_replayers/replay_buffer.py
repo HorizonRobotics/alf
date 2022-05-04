@@ -29,11 +29,12 @@ from alf.utils import checkpoint_utils
 
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
-# her (Tensor): of shape (batch_size, ) indicating which transitions are relabeled
+# her (Tensor): of shape (batch_size, batch_length) indicating which transitions are relabeled
 #   with hindsight.
 # future_distance (Tensor): of shape (batch_size, batch_length), is the distance from
 #   the transition's end state to the sampled future state in terms of number of
-#   environment steps.
+#   environment steps.  future_distance[:, 0] == future_distance[:, n], so only the first step
+#   is accurate.
 BatchInfo = namedtuple(
     "BatchInfo", [
         "env_ids",

@@ -390,8 +390,7 @@ class DMAtariPreprocessing(gym.Wrapper):
                  frame_skip=4,
                  noop_max=30,
                  screen_size=84,
-                 gray_scale=True,
-                 terminal_on_life_loss=False):
+                 gray_scale=True):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
@@ -441,7 +440,6 @@ class DMAtariPreprocessing(gym.Wrapper):
             shape=(self.screen_size, self.screen_size, num_channels),
             dtype=np.uint8)
 
-        self._terminal_on_life_loss = terminal_on_life_loss
         self._lives = 0
 
     def _reset_with_random_noops(self):
@@ -510,8 +508,6 @@ class DMAtariPreprocessing(gym.Wrapper):
             # grayscale image from the ALE. This is a little faster.
             _, reward, game_over, info = self.env.step(action)
             life_lost = self.env.ale.lives() < self._lives
-            if self._terminal_on_life_loss:
-                game_over = game_over or life_lost
             self._lives = self.env.ale.lives()
             accumulated_reward += reward
             if 'num_env_frames' in info:
