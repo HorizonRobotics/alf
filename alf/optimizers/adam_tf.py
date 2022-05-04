@@ -77,11 +77,32 @@ class AdamTF(Optimizer):
             weight_decay=weight_decay,
             amsgrad=amsgrad)
         super().__init__(params, defaults)
+        self._state_ready = False
 
     def __setstate__(self, state):
         super().__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
+
+    def reset_state(self):
+        """Performs reset to all the states of the AdamTF optimizer, including
+        exponential moving average of gradients and squared gradients etc.
+        """
+        for group in self.param_groups:
+            amsgrad = group['amsgrad']
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = 0
+                # Exponential moving average of gradient values
+                state['exp_avg'] = torch.zeros_like(
+                    p, memory_format=torch.preserve_format)
+                # Exponential moving average of squared gradient values
+                state['exp_avg_sq'] = torch.zeros_like(
+                    p, memory_format=torch.preserve_format)
+                if amsgrad:
+                    # Maintains max of all exp. moving avg. of sq. grad. values
+                    state['max_exp_avg_sq'] = torch.zeros_like(
+                        p, memory_format=torch.preserve_format)
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -91,6 +112,10 @@ class AdamTF(Optimizer):
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
         """
+        if not self._state_ready:
+            self.reset_state()
+            self._state_ready = True
+
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -108,20 +133,6 @@ class AdamTF(Optimizer):
                 amsgrad = group['amsgrad']
 
                 state = self.state[p]
-
-                # State initialization
-                if len(state) == 0:
-                    state['step'] = 0
-                    # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(
-                        p, memory_format=torch.preserve_format)
-                    # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(
-                        p, memory_format=torch.preserve_format)
-                    if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
-                        state['max_exp_avg_sq'] = torch.zeros_like(
-                            p, memory_format=torch.preserve_format)
 
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 if amsgrad:
@@ -150,7 +161,6 @@ class AdamTF(Optimizer):
 
                 step_size = group['lr'] * (
                     math.sqrt(bias_correction2) / bias_correction1)
-
                 p.addcdiv_(exp_avg, denom, value=-step_size)
 
         return loss
