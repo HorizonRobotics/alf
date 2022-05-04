@@ -14,6 +14,7 @@
 """Monte-Carlo Tree Search."""
 from absl import logging
 
+import numpy as np
 import torch
 import torch.distributions as td
 import torch.nn.functional as F
@@ -74,6 +75,8 @@ class _MCTSTrees(object):
 
         # value for player 0
         self.value_sum = torch.zeros(parent_shape)
+        self.original_value = torch.zeros_like(
+            self.value_sum, dtype=model_output.value.dtype)
 
         # 0 for not expanded, value in range [0, num_expansions)
         self.children_index = torch.zeros(children_shape, dtype=torch.int64)
@@ -761,17 +764,32 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
     def _print_tree(self, trees: _MCTSTrees, b):
         """Helper function to visualize the b-th search tree."""
-        nodes = [(b, 0)]
+        nodes = [((b, 0), 0, 0)]
+        np.set_printoptions(precision=4)
+
+        def _get_item(nested, i):
+            return alf.nest.map_structure(lambda x: x[i], nested)
+
         while len(nodes) > 0:
-            node = nodes.pop(0)
-            print(trees.model_state[node],
-                  trees.calc_value(node) + trees.reward[node],
-                  trees.prior[node], trees.ucb_score[node],
-                  trees.visit_count[node].item(), node[1])
+            node, action, depth = nodes.pop(0)
+            print(
+                '| ' * depth + "a=%s" % action, "node=%-3d" % node[1],
+                "state=%-4d" %
+                (hash(str(_get_item(trees.model_state, node))) % 10000), '--' *
+                (self._max_allowed_depth - depth) + "original_value=%-7.4f" %
+                trees.original_value[node].cpu().numpy(),
+                "v=%-7.4f" % trees.calc_value(node).cpu().numpy(),
+                "r=%-7.4f" % trees.reward[node].cpu().numpy(),
+                "prior=%s" % trees.prior[node].cpu().numpy(),
+                "policy=%s" % self._calculate_policy(trees, (torch.tensor(
+                    [node[0]]), torch.tensor([node[1]]))).cpu().numpy()[0],
+                "visit_count=%s" % trees.visit_count[node].item())
             children = list(trees.children_index[node])
             prior = list(trees.prior[node])
-            nodes.extend([(b, int(c)) for c, p in zip(children, prior)
-                          if c != 0 and p != 0])
+            new_nodes = [((b, int(c)), a, depth + 1)
+                         for a, (c, p) in enumerate(zip(children, prior))
+                         if c != 0 and p != 0]
+            nodes = new_nodes + nodes
 
     def _search(self, trees, to_plays):
         """
@@ -1201,6 +1219,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         children = (nodes[0].unsqueeze(-1), children_index)
         trees.value_sum[children] = model_output.value.to(
             trees.value_sum.dtype)
+        trees.original_value[children] = model_output.value
         trees.visit_count[children] += 1
         trees.update_value_stats((children[0].t(), children[1].t()))
         if self._is_two_player_game:
@@ -1261,6 +1280,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 1 - exploration_fraction) * prior
 
         trees.prior[:, n] = prior
+        trees.original_value[:, n] = model_output.value
 
 
 def calculate_exploration_policy(value, prior, c, tol=1e-6):
@@ -1508,7 +1528,7 @@ def create_control_mcts(observation_spec,
         debug_summaries=debug_summaries)
 
 
-@alf.configurable
+@alf.repr_wrapper
 class VisitSoftmaxTemperatureByProgress(object):
     def __init__(self,
                  progress_temperature_pairs=[(0.5, 1.0), (0.75, 0.5), (1,
