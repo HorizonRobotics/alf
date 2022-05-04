@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# NOTE: to use this on a different atari game, add this flag:
+# --conf_param='create_environment.env_name="QbertNoFrameskip-v4"'
+
+# NOTE: for lower bound value target improvement, add these flags:
+# --conf_param='ReplayBuffer.keep_episodic_info=True'
+# --conf_param='ReplayBuffer.record_episodic_return=True'
+# --conf_param='TDLoss.lb_target_q=True'
+
 import functools
 
 import alf
@@ -82,7 +90,8 @@ alf.config(
     num_env_steps=12000000,
     evaluate=True,
     num_eval_episodes=100,
-    num_evals=10,
+    num_evals=50,
+    num_eval_environments=20,
     num_checkpoints=5,
     num_summaries=100,
     debug_summaries=True,
