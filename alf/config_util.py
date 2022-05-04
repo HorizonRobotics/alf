@@ -337,7 +337,8 @@ def pre_config(configs):
         try:
             config1(name, value, mutable=False)
             _HANDLED_PRE_CONFIGS.append((name, value))
-        except ValueError:
+        except ValueError as e:
+            logging.warning("pre_config potential error: %s", e)
             _PRE_CONFIGS.append((name, value))
 
 
