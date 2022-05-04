@@ -77,6 +77,7 @@ class CriticNetwork(EncodingNetwork):
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 last_bias_init_value=0.0,
                  use_fc_bn=False,
                  use_naive_parallel_network=False,
                  name="CriticNetwork"):
@@ -174,7 +175,8 @@ class CriticNetwork(EncodingNetwork):
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
             last_kernel_initializer=last_kernel_initializer,
-            name=name)
+            last_bias_init_value=last_bias_init_value,
+            name=name + ".joint_encoder")
         self._use_naive_parallel_network = use_naive_parallel_network
 
     def make_parallel(self, n):

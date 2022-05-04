@@ -337,7 +337,11 @@ def pre_config(configs):
         try:
             config1(name, value, mutable=False)
             _HANDLED_PRE_CONFIGS.append((name, value))
-        except ValueError:
+        except ValueError as e:
+            # Most of the times, for command line flags, this warning is a false alarm.
+            # This can be useful in other failures, e.g. when the Config has already been used,
+            # before configuring its value.
+            logging.warning("pre_config potential error: %s", e)
             _PRE_CONFIGS.append((name, value))
 
 
