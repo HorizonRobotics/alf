@@ -714,3 +714,46 @@ class NonEpisodicEnv(gym.Wrapper):
     def step(self, action):
         ob, reward, done, info = self.env.step(action)
         return ob, reward, False, info
+
+
+@alf.configurable
+class StepsSinceEpisodeStart(BaseObservationWrapper):
+    def __init__(self, env, repeat=1):
+        """Add new field with name "nstep".
+
+        Args:
+             env (gym.Env): the gym environment
+        """
+        self._repeat = repeat
+        super().__init__(env)
+        self._num_steps = 0
+
+    def reset(self):
+        self._num_steps = 0
+        return super().reset()
+
+    def step(self, action):
+        self._num_steps += 1
+        return super().step(action)
+
+    def transform_space(self, observation_space):
+        obs = gym.spaces.Dict({
+            "nstep":
+                gym.spaces.Box(
+                    low=0, high=1, shape=(16 * self._repeat, ),
+                    dtype=np.uint8),
+            "obs":
+                observation_space
+        })
+        return obs
+
+    def transform_observation(self, observation):
+        obs = {
+            "nstep":
+                np.resize(
+                    ((self._num_steps & (1 << np.arange(16))) > 0).astype(int),
+                    16 * self._repeat),
+            "obs":
+                observation
+        }
+        return obs
