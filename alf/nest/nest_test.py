@@ -480,6 +480,8 @@ class TestExtractAnyLeaf(alf.test.TestCase):
 
 class TestTransposeNest(alf.test.TestCase):
     def test_transpose_nest(self):
+        self.assertEqual(1, nest.transpose(1))
+
         nested = NTuple(a=dict(x=3, y=1), b=[dict(x=5, y=10)])
         shallow_nest = NTuple(b=[False])
         transposed_nest = nest.transpose(nested, shallow_nest)
@@ -488,20 +490,19 @@ class TestTransposeNest(alf.test.TestCase):
 
         nested = NTuple(
             a=dict(x=3, y=dict(n=1, m=2)), b=dict(x=5, y=dict(n=1, m=3)))
-        shallow_nest = NTuple()
-        transposed_nest = nest.transpose(nested, shallow_nest)
-        self.assertEqual(
-            transposed_nest,
-            dict(
-                x=NTuple(a=3, b=5),
-                y=dict(n=NTuple(a=1, b=1), m=NTuple(a=2, b=3))))
-        transposed_nest1 = nest.transpose(
-            nested, shallow_nest, new_shallow_nest=dict(x=None, y=None))
+        transposed_nest1 = nest.transpose(nested)
         self.assertEqual(
             transposed_nest1,
             dict(
                 x=NTuple(a=3, b=5),
                 y=NTuple(a=dict(n=1, m=2), b=dict(n=1, m=3))))
+
+        transposed_nest2 = nest.transpose(nested, new_shallow_nest=nested.a)
+        self.assertEqual(
+            transposed_nest2,
+            dict(
+                x=NTuple(a=3, b=5),
+                y=dict(n=NTuple(a=1, b=1), m=NTuple(a=2, b=3))))
 
 
 if __name__ == '__main__':
