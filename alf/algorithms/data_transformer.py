@@ -984,9 +984,9 @@ class HindsightExperienceTransformer(DataTransformer):
                     result, f, lambda t: convert_device(t))
             info = convert_device(info)
         info = info._replace(
-            her=info.her.unsqueeze(1).expand(exp.reward.shape[:2]),
+            her=info.her.unsqueeze(1).expand(result.reward.shape[:2]),
             future_distance=info.future_distance.unsqueeze(1).expand(
-                exp.reward.shape[:2]),
+                result.reward.shape[:2]),
             replay_buffer=buffer)
         result = alf.data_structures.add_batch_info(result, info)
         return result
