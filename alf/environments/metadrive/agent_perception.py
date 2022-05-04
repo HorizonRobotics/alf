@@ -59,6 +59,7 @@ class AgentPerception(object):
     def __init__(self,
                  fov: FieldOfView,
                  history_window_size: int,
+                 history_frame_skip: int = 4,
                  agent_limit: int = 16):
         """Construct an AgentPerception instance.
 
@@ -68,7 +69,9 @@ class AgentPerception(object):
                 generating the agent features, only those agent who is within
                 the FOV result in the feature.
             history_window_size: The feature only tracks this number of
-                historical steps (current step included).
+                historical frames (current frame included).
+            history_frame_skip: Pick every this number of frames to form the historical
+                trajectories for the agents.
             agent_limit: The maximum number of agents shown in the feature. If
                 the number of visible agents exceeds this limit, the farthest
                 ones are filtered out until this limit is satisfied.
@@ -78,10 +81,7 @@ class AgentPerception(object):
         self._fov = fov
         self._agent_limit = agent_limit
         self._unit_feature_size = 7
-        self._spec = TensorSpec(
-            shape=(self._agent_limit, self._history_window_size,
-                   self._unit_feature_size),
-            dtype=torch.float32)
+        self._history_frame_skip = history_frame_skip
 
         self._engine = None
         self._ego = None
@@ -96,6 +96,15 @@ class AgentPerception(object):
         self._visible = None  # 1 = visible, 0 = invisible
         self._history_position = None
         self._history_heading = None
+
+        # Handle Frame Skip
+        H = self._history_window_size
+        self._sampled_index = np.arange((H - 1) % self._history_frame_skip, H,
+                                        self._history_frame_skip)
+        self._spec = TensorSpec(
+            shape=(self._agent_limit, self._sampled_index.shape[0],
+                   self._unit_feature_size),
+            dtype=torch.float32)
 
     @property
     def observation_spec(self):
@@ -153,15 +162,19 @@ class AgentPerception(object):
         self._history_heading = np.zeros(
             (self._num_agents, self._history_window_size), dtype=np.float32)
 
-    def observe(self) -> np.ndarray:
+    def observe(self) -> Tuple[np.ndarray, int]:
         """Called upon every observation to produce the feature vectors describing the
         dynamic agents that are visible to the ego car. The vectors are
-        transformed so that they are in eog car's body frame.
+        transformed so that they are in ego car's body frame.
 
         Returns:
 
-            A 3D feature tensor of shape [B, H, F]. See class docstring for the
-            meaning of B, H and F.
+            A tuple of 2:
+
+            1. A 3D feature tensor of shape [B, H, F]. See class docstring for
+               the meaning of B, H and F.
+
+            2. An integer indicating how many agents are actually filled.
 
         """
 
@@ -190,15 +203,18 @@ class AgentPerception(object):
         self._visible[:, -1] = self._fov.within(
             transformed_position.point[:, -1])
         self._visible[~alive, -1] = False
+        sampled_visible = self._visible[:, self._sampled_index]
+        sampled_position = transformed_position.point[:, self._sampled_index]
+        sampled_heading = transformed_heading[:, self._sampled_index]
 
         # Shape is [B,]. Denote whether a car is picked to show in the final
-        # feature tensor or not. The criterion is that the car has be visible in
-        # at least 1 step within the latest H steps.
-        picked = np.any(self._visible, axis=-1)
-        picked_position = transformed_position.point[picked]
-        picked_heading = transformed_heading[picked]
+        # feature tensor or not. The criterion is that the car has been visible
+        # in at least 1 step within the latest H steps.
+        picked = np.any(sampled_visible, axis=-1)
+        picked_position = sampled_position[picked]
+        picked_heading = sampled_heading[picked]
         picked_dimension = self._dimension[picked]
-        picked_visible = self._visible[picked]
+        picked_visible = sampled_visible[picked]
 
         # Filter out the farthest agents in case the total number of visible
         # agents exceeds the limit.
@@ -231,4 +247,4 @@ class AgentPerception(object):
         feature_view[:, :, 6] = sin
         feature_view[~picked_visible] = 0.0
 
-        return feature
+        return feature, size

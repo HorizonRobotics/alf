@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import NamedTuple, Tuple
 
 from functools import partial
 
@@ -34,7 +35,25 @@ alf.config(
     'metadrive.sensors.VectorizedObservation',
     segment_resolution=2.0,
     polyline_size=4,
-    polyline_limit=128)
+    polyline_limit=128,
+    history_window_size=24)
+
+
+class EmbeddingConfig(NamedTuple):
+    d_input: int = 1
+    hidden: Tuple = ()
+
+    def make_embedding_net(self, d_output: int):
+        assert all([isinstance(h, int) and h > 0 for h in self.hidden])
+
+        layers = []
+        d_input = self.d_input
+        for h in self.hidden:
+            layers.append(alf.layers.FC(d_input, h, activation=torch.relu_))
+            d_input = h
+        layers.append(alf.layers.FC(d_input, d_output, activation=torch.relu_))
+
+        return torch.nn.Sequential(*layers)
 
 
 class ObservationCombiner(torch.nn.Module):
@@ -61,56 +80,88 @@ class ObservationCombiner(torch.nn.Module):
 
     """
 
-    def __init__(self, d_map_feature: int, d_ego_feature: int,
-                 d_agent_feature: int, d_model: int):
+    def __init__(self, map_feature: EmbeddingConfig,
+                 ego_feature: EmbeddingConfig, agent_feature: EmbeddingConfig,
+                 d_model: int):
         super().__init__()
 
-        self._map_fc = alf.layers.FC(
-            d_map_feature, d_model, activation=torch.relu_)
-
-        self._agent_fc = alf.layers.FC(
-            d_agent_feature, d_model, activation=torch.relu_)
-
-        self._ego_fc = alf.layers.FC(
-            d_ego_feature, d_model, activation=torch.relu_)
+        self._map_eb = map_feature.make_embedding_net(d_model)
+        self._agent_eb = agent_feature.make_embedding_net(d_model)
+        self._ego_eb = ego_feature.make_embedding_net(d_model)
 
     def forward(self, inputs):
         map_sequence, ego, agents = inputs
 
-        x0 = self._ego_fc(ego).unsqueeze(1)  # [B, 1, d_model]
+        x0 = self._ego_eb(ego).unsqueeze(1)  # [B, 1, d_model]
 
         # The input ``sequence`` is [B, L, d_map_feature]
-        x1 = self._map_fc(map_sequence)  # [B, L, d_model]
+        x1 = self._map_eb(map_sequence)  # [B, L, d_model]
 
         x2 = agents.view(*agents.shape[:2], -1)
-        x2 = self._agent_fc(x2)  # [B, A, d_model]
+        x2 = self._agent_eb(x2)  # [B, A, d_model]
 
         return torch.cat([x0, x1, x2], dim=1)
+
+
+class MaskedTransformer(torch.nn.Module):
+    def __init__(self, d_model, num_heads, num_layers, map_limit, agent_limit):
+        super().__init__()
+        self._memory_size = 1 + map_limit + agent_limit
+
+        tf_layers = []
+        for i in range(num_layers):
+            tf_layers.append(
+                alf.layers.TransformerBlock(
+                    d_model=d_model,
+                    num_heads=num_heads,
+                    memory_size=self._memory_size,
+                    positional_encoding='none'))
+        self._tf_layers = torch.nn.ModuleList(tf_layers)
+
+    def forward(self, inputs):
+        x, map_mask, agent_mask = inputs
+        B = x.shape[0]
+        mask = torch.hstack((torch.zeros(B, 1, dtype=bool), map_mask,
+                             agent_mask))
+        for layer in self._tf_layers:
+            x = layer(memory=x, mask=mask)
+
+        return x
 
 
 def encoding_network_ctor(input_tensor_spec):
     d_model = 128
     num_heads = 8
-    memory_size = (input_tensor_spec['map'].shape[0] +
-                   input_tensor_spec['agents'].shape[0] + 1)
 
+    # yapf: disable
     layers = [
-        lambda x: (x['map'], x['ego'], x['agents']),
-        ObservationCombiner(
-            d_map_feature=input_tensor_spec['map'].shape[-1],
-            d_ego_feature=input_tensor_spec['ego'].shape[-1],
-            d_agent_feature=input_tensor_spec['agents'].shape[1] *
-            input_tensor_spec['agents'].shape[2],
-            d_model=d_model),
-    ]
+        alf.nn.Branch(
+            alf.nn.Sequential(
+                lambda x: (x['map'], x['ego'], x['agents']),
+                ObservationCombiner(
+                    map_feature=EmbeddingConfig(
+                        d_input=input_tensor_spec['map'].shape[-1]),
+                    ego_feature=EmbeddingConfig(
+                        d_input=input_tensor_spec['ego'].shape[-1],
+                        hidden=(32, )),
+                    agent_feature=EmbeddingConfig(
+                        d_input=input_tensor_spec['agents'].shape[1] *
+                        input_tensor_spec['agents'].shape[2],
+                        hidden=(32, )),
+                    d_model=d_model),
+                input_tensor_spec=input_tensor_spec),
+            lambda x: (~x['map_mask'], ~x['agent_mask'])),
 
-    for i in range(3):
-        layers.append(
-            alf.layers.TransformerBlock(
-                d_model=d_model,
-                num_heads=num_heads,
-                memory_size=memory_size,
-                positional_encoding='none'))
+        lambda x: (x[0], x[1][0], x[1][1]),
+
+        MaskedTransformer(
+            d_model=d_model,
+            num_heads=num_heads,
+            num_layers=3,
+            map_limit=input_tensor_spec['map'].shape[0],
+            agent_limit=input_tensor_spec['agents'].shape[0])
+    ]
+    # yapf: enable
 
     # Take the corresponding transformer output of the first vector in the
     # sequence (corresponding to "ego") as the final output of the encoder.
@@ -153,7 +204,7 @@ alf.config(
 alf.config(
     'PPOLoss',
     compute_advantages_internally=True,
-    entropy_regularization=0.01,
+    entropy_regularization=0.005,
     gamma=0.999,
     td_lambda=0.95,
     td_loss_weight=0.5)
