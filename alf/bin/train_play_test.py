@@ -397,349 +397,349 @@ class TrainPlayTest(alf.test.TestCase):
             eval_dir)
         test_func(episode_returns, episode_lengths)
 
-    def test_ac_breakout(self):
-        self._test(
-            conf_file='ac_breakout_conf.py',
-            skip_checker=self._skip_if_atari_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_ac_breakout(self):
+    #     self._test(
+    #         conf_file='ac_breakout_conf.py',
+    #         skip_checker=self._skip_if_atari_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_ac_cart_pole(self):
-        def _test_func(returns, lengths):
-            self.assertGreater(returns[-1], 195)
-            self.assertGreater(lengths[-1], 195)
+    # def test_ac_cart_pole(self):
+    #     def _test_func(returns, lengths):
+    #         self.assertGreater(returns[-1], 195)
+    #         self.assertGreater(lengths[-1], 195)
 
-        self._test(
-            conf_file='ac_cart_pole_conf.py',
-            test_perf_func=_test_func,
-            test_video_recording=True)
+    #     self._test(
+    #         conf_file='ac_cart_pole_conf.py',
+    #         test_perf_func=_test_func,
+    #         test_video_recording=True)
 
-    def test_ac_simple_navigation(self):
-        self._test(
-            conf_file='ac_simple_navigation.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_ac_simple_navigation(self):
+    #     self._test(
+    #         conf_file='ac_simple_navigation.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_sac_breakout(self):
-        self._test(
-            conf_file='sac_breakout_conf.py',
-            skip_checker=self._skip_if_atari_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_breakout(self):
+    #     self._test(
+    #         conf_file='sac_breakout_conf.py',
+    #         skip_checker=self._skip_if_atari_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_her_target_navigation(self):
-        self._test(
-            conf_file='her_target_navigation_states.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_her_target_navigation(self):
+    #     self._test(
+    #         conf_file='her_target_navigation_states.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_ddpg_pendulum(self):
-        def _test_func(returns, lengths):
-            self.assertGreater(returns[-1], -200)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_ddpg_pendulum(self):
+    #     def _test_func(returns, lengths):
+    #         self.assertGreater(returns[-1], -200)
 
-        self._test(
-            conf_file='ddpg_pendulum_conf.py', test_perf_func=_test_func)
+    #     self._test(
+    #         conf_file='ddpg_pendulum_conf.py', test_perf_func=_test_func)
 
-    def test_ddpg_fetchslide(self):
-        self._test(
-            conf_file="ddpg_fetchslide_conf.py",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_ddpg_fetchslide(self):
+    #     self._test(
+    #         conf_file="ddpg_fetchslide_conf.py",
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_her_fetchpush(self):
-        self._test(
-            conf_file='her_fetchpush_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_her_fetchpush(self):
+    #     self._test(
+    #         conf_file='her_fetchpush_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_diayn_pendulum(self):
         self._test(
             conf_file='diayn_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_dyna_actrepeat_sac_bipedal_walker(self):
-        self._test(
-            conf_file='dyna_actrepeat_sac_bipedalwalker_conf.py',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_dyna_actrepeat_sac_bipedal_walker(self):
+    #     self._test(
+    #         conf_file='dyna_actrepeat_sac_bipedalwalker_conf.py',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_dyna_actrepeat_sac_pickplace(self):
-        self._test(
-            conf_file="dyna_actrepeat_sac_pickplace.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_dyna_actrepeat_sac_pickplace(self):
+    #     self._test(
+    #         conf_file="dyna_actrepeat_sac_pickplace.gin",
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_icm_mountain_car(self):
-        self._test(
-            conf_file='icm_mountain_car.gin',
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_icm_mountain_car(self):
+    #     self._test(
+    #         conf_file='icm_mountain_car.gin',
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_icm_playground(self):
-        self._test(
-            conf_file='icm_playground.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_icm_playground(self):
+    #     self._test(
+    #         conf_file='icm_playground.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_icm_super_mario(self):
-        self._test(
-            conf_file='icm_super_mario.gin',
-            skip_checker=self._skip_if_mario_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_icm_super_mario(self):
+    #     self._test(
+    #         conf_file='icm_super_mario.gin',
+    #         skip_checker=self._skip_if_mario_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_icm_super_mario_intrinsic_only(self):
-        self._test(
-            conf_file="icm_super_mario_intrinsic_only.gin",
-            skip_checker=self._skip_if_mario_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_icm_super_mario_intrinsic_only(self):
+    #     self._test(
+    #         conf_file="icm_super_mario_intrinsic_only.gin",
+    #         skip_checker=self._skip_if_mario_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_mbrl_pendulum(self):
-        self._test(
-            conf_file='mbrl_pendulum.gin',
-            extra_train_params=MBRL_TRAIN_PARAMS)
+    # def test_mbrl_pendulum(self):
+    #     self._test(
+    #         conf_file='mbrl_pendulum.gin',
+    #         extra_train_params=MBRL_TRAIN_PARAMS)
 
-    def test_mbrl_latent_pendulum(self):
-        self._test(
-            conf_file='mbrl_latent_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_mbrl_latent_pendulum(self):
+    #     self._test(
+    #         conf_file='mbrl_latent_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_mdq_pendulum(self):
-        self._test(
-            conf_file='mdq_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_mdq_pendulum(self):
+    #     self._test(
+    #         conf_file='mdq_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_mdq_halfcheetah(self):
-        self._test(
-            conf_file="mdq_halfcheetah.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_mdq_halfcheetah(self):
+    #     self._test(
+    #         conf_file="mdq_halfcheetah.gin",
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_merlin_dmlab_collect_good_objects(self):
-        self._test(
-            conf_file='merlin_dmlab_collect_good_objects.gin',
-            skip_checker=self._skip_if_dmlab_unavailable,
-            test_play=False,  # render mode 'human' is not implemented
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # def test_merlin_dmlab_collect_good_objects(self):
+    #     self._test(
+    #         conf_file='merlin_dmlab_collect_good_objects.gin',
+    #         skip_checker=self._skip_if_dmlab_unavailable,
+    #         test_play=False,  # render mode 'human' is not implemented
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_muzero_tic_tac_toe(self):
-        self._test(
-            conf_file='muzero_tic_tac_toe.gin',
-            extra_train_params=MUZERO_TRAIN_PARAMS)
+    # def test_muzero_tic_tac_toe(self):
+    #     self._test(
+    #         conf_file='muzero_tic_tac_toe.gin',
+    #         extra_train_params=MUZERO_TRAIN_PARAMS)
 
-    def test_muzero_pendulum(self):
-        self._test(
-            conf_file='muzero_pendulum_conf.py',
-            extra_train_params=MUZERO_TRAIN_PARAMS)
+    # def test_muzero_pendulum(self):
+    #     self._test(
+    #         conf_file='muzero_pendulum_conf.py',
+    #         extra_train_params=MUZERO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_off_policy_ac_breakout(self):
-        self._test(
-            conf_file='off_policy_ac_breakout.gin',
-            skip_checker=self._skip_if_atari_unavailable,
-            extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_off_policy_ac_breakout(self):
+    #     self._test(
+    #         conf_file='off_policy_ac_breakout.gin',
+    #         skip_checker=self._skip_if_atari_unavailable,
+    #         extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_off_policy_ac_cart_pole(self):
-        self._test(
-            conf_file='off_policy_ac_cart_pole.gin',
-            extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_off_policy_ac_cart_pole(self):
+    #     self._test(
+    #         conf_file='off_policy_ac_cart_pole.gin',
+    #         extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
-    def test_taacl_fetch(self):
-        self._test(
-            conf_file='taacl_fetch_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_taacl_fetch(self):
+    #     self._test(
+    #         conf_file='taacl_fetch_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_ppo_bullet_humanoid(self):
-        self._test(
-            conf_file='ppo_bullet_humanoid.gin',
-            skip_checker=self._skip_if_bullet_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+    # def test_ppo_bullet_humanoid(self):
+    #     self._test(
+    #         conf_file='ppo_bullet_humanoid.gin',
+    #         skip_checker=self._skip_if_bullet_unavailable,
+    #         extra_train_params=PPO_TRAIN_PARAMS)
 
-    def test_ppo_cart_pole(self):
-        def _test_func(returns, lengths):
-            self.assertGreater(returns[-1], 195)
+    # def test_ppo_cart_pole(self):
+    #     def _test_func(returns, lengths):
+    #         self.assertGreater(returns[-1], 195)
 
-        self._test(
-            conf_file='ppo_cart_pole_conf.py', test_perf_func=_test_func)
+    #     self._test(
+    #         conf_file='ppo_cart_pole_conf.py', test_perf_func=_test_func)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_ppo_icm_super_mario_intrinsic_only(self):
-        self._test(
-            conf_file='ppo_icm_super_mario_intrinsic_only.gin',
-            skip_checker=self._skip_if_mario_unavailable(),
-            extra_train_params=PPO_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_ppo_icm_super_mario_intrinsic_only(self):
+    #     self._test(
+    #         conf_file='ppo_icm_super_mario_intrinsic_only.gin',
+    #         skip_checker=self._skip_if_mario_unavailable(),
+    #         extra_train_params=PPO_TRAIN_PARAMS)
 
-    def test_ppo_icubwalk(self):
-        self._test(
-            conf_file='ppo_icubwalk.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+    # def test_ppo_icubwalk(self):
+    #     self._test(
+    #         conf_file='ppo_icubwalk.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=PPO_TRAIN_PARAMS)
 
-    def test_ppo_pr2(self):
-        self._test(
-            conf_file='ppo_pr2.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+    # def test_ppo_pr2(self):
+    #     self._test(
+    #         conf_file='ppo_pr2.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=PPO_TRAIN_PARAMS)
 
-    def test_ppo_rnd_mrevenge(self):
-        self._test(
-            conf_file='ppo_rnd_mrevenge_conf.py',
-            extra_train_params=PPO_RND_ATARI_TRAIN_PARAMS)
+    # def test_ppo_rnd_mrevenge(self):
+    #     self._test(
+    #         conf_file='ppo_rnd_mrevenge_conf.py',
+    #         extra_train_params=PPO_RND_ATARI_TRAIN_PARAMS)
 
-    def test_taacq_fetch(self):
-        self._test(
-            conf_file='taacq_fetch_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_taacq_fetch(self):
+    #     self._test(
+    #         conf_file='taacq_fetch_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_rnd_super_mario(self):
-        self._test(
-            conf_file='rnd_super_mario.gin',
-            skip_checker=self._skip_if_mario_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_rnd_super_mario(self):
+    #     self._test(
+    #         conf_file='rnd_super_mario.gin',
+    #         skip_checker=self._skip_if_mario_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_sac_bipedal_walker(self):
-        self._test(
-            conf_file='sac_bipedal_walker_conf.py',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_bipedal_walker(self):
+    #     self._test(
+    #         conf_file='sac_bipedal_walker_conf.py',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_carla(self):
-        self._test(
-            conf_file="sac_carla_conf.py",
-            skip_checker=self._skip_if_carla_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_carla(self):
+    #     self._test(
+    #         conf_file="sac_carla_conf.py",
+    #         skip_checker=self._skip_if_carla_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_cart_pole(self):
-        self._test(
-            conf_file='sac_cart_pole_conf.py',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_cart_pole(self):
+    #     self._test(
+    #         conf_file='sac_cart_pole_conf.py',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_fetchreach(self):
-        self._test(
-            conf_file="sac_fetchreach.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_fetchreach(self):
+    #     self._test(
+    #         conf_file="sac_fetchreach.gin",
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_fetchslide(self):
-        self._test(
-            conf_file="sac_fetchslide.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_fetchslide(self):
+    #     self._test(
+    #         conf_file="sac_fetchslide.gin",
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_sac_humanoid(self):
-        self._test(
-            conf_file='sac_humanoid.gin',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_sac_humanoid(self):
+    #     self._test(
+    #         conf_file='sac_humanoid.gin',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_lagrw_cargoal1(self):
-        self._test(
-            conf_file='sac_lagrw_cargoal1_conf.py',
-            skip_checker=self._skip_if_safety_gym_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sac_lagrw_cargoal1(self):
+    #     self._test(
+    #         conf_file='sac_lagrw_cargoal1_conf.py',
+    #         skip_checker=self._skip_if_safety_gym_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_sac_pendulum(self):
-        def _test_func(returns, lengths):
-            self.assertGreater(returns[-1], -200)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_sac_pendulum(self):
+    #     def _test_func(returns, lengths):
+    #         self.assertGreater(returns[-1], -200)
 
-        self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
+    #     self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
 
-    def test_sac_pendulum_latent_actor(self):
-        def _test_func(returns, lengths):
-            self.assertGreater(returns[-1], -200)
+    # def test_sac_pendulum_latent_actor(self):
+    #     def _test_func(returns, lengths):
+    #         self.assertGreater(returns[-1], -200)
 
-        self._test(
-            conf_file='sac_pendulum_latent_actor_conf.py',
-            test_perf_func=_test_func)
+    #     self._test(
+    #         conf_file='sac_pendulum_latent_actor_conf.py',
+    #         test_perf_func=_test_func)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_sac_fishswim(self):
-        self._test(
-            conf_file='sac_fishswim_conf.py',
-            skip_checker=self._skip_if_dmc_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_sac_fishswim(self):
+    #     self._test(
+    #         conf_file='sac_fishswim_conf.py',
+    #         skip_checker=self._skip_if_dmc_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sarsa_ddpg_pendulum(self):
-        self._test(
-            conf_file='sarsa_ddpg_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sarsa_ddpg_pendulum(self):
+    #     self._test(
+    #         conf_file='sarsa_ddpg_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_sarsa_pendulum(self):
-        self._test(
-            conf_file='sarsa_pendulum.gin',
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_sarsa_pendulum(self):
+    #     self._test(
+    #         conf_file='sarsa_pendulum.gin',
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_sarsa_sac_bipedal_walker(self):
-        self._test(
-            conf_file='sarsa_sac_bipedal_walker.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sarsa_sac_bipedal_walker(self):
+    #     self._test(
+    #         conf_file='sarsa_sac_bipedal_walker.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sarsa_sac_pendulum(self):
-        self._test(
-            conf_file='sarsa_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_sarsa_sac_pendulum(self):
+    #     self._test(
+    #         conf_file='sarsa_sac_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_hybrid_sac_pendulum(self):
-        self._test(
-            conf_file='./hybrid_rl/hybrid_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_hybrid_sac_pendulum(self):
+    #     self._test(
+    #         conf_file='./hybrid_rl/hybrid_sac_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_hybrid_sac_pendulum_muzero_buffer(self):
-        self._test(
-            conf_file='./hybrid_rl/hybrid_sac_pendulum_muzero_buffer.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_hybrid_sac_pendulum_muzero_buffer(self):
+    #     self._test(
+    #         conf_file='./hybrid_rl/hybrid_sac_pendulum_muzero_buffer.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_taac_bipedal_walker(self):
-        self._test(
-            conf_file='taac_bipedal_walker_conf.py',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_taac_bipedal_walker(self):
+    #     self._test(
+    #         conf_file='taac_bipedal_walker_conf.py',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_taac_fetch(self):
-        self._test(
-            conf_file='taac_fetch_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_taac_fetch(self):
+    #     self._test(
+    #         conf_file='taac_fetch_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_trac_breakout(self):
-        self._test(
-            conf_file='trac_breakout.gin',
-            skip_checker=self._skip_if_atari_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_trac_breakout(self):
+    #     self._test(
+    #         conf_file='trac_breakout.gin',
+    #         skip_checker=self._skip_if_atari_unavailable,
+    #         extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_trac_ddpg_pendulum(self):
-        self._test(
-            conf_file='trac_ddpg_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_trac_ddpg_pendulum(self):
+    #     self._test(
+    #         conf_file='trac_ddpg_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_trac_ppo_pr2(self):
-        self._test(
-            conf_file='trac_ppo_pr2.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_trac_ppo_pr2(self):
+    #     self._test(
+    #         conf_file='trac_ppo_pr2.gin',
+    #         skip_checker=self._skip_if_socialbot_unavailable,
+    #         extra_train_params=PPO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
-    def test_trac_sac_pendulum(self):
-        self._test(
-            conf_file='trac_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # @unittest.skip(SKIP_TODO_MESSAGE)
+    # def test_trac_sac_pendulum(self):
+    #     self._test(
+    #         conf_file='trac_sac_pendulum.gin',
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_oac_halfcheetah(self):
-        self._test(
-            conf_file='oac_halfcheetah_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_oac_halfcheetah(self):
+    #     self._test(
+    #         conf_file='oac_halfcheetah_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_oac_humanoid(self):
-        self._test(
-            conf_file='oac_humanoid_conf.py',
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+    # def test_oac_humanoid(self):
+    #     self._test(
+    #         conf_file='oac_humanoid_conf.py',
+    #         skip_checker=self._skip_if_mujoco_unavailable,
+    #         extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @classmethod
     def tearDownClass(cls):
