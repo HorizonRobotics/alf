@@ -906,9 +906,10 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
     def _reset(self):
         time_step = self._env.reset()
         if _is_numpy_array(time_step.prev_action):
-            prev_action = np.zeros_like(time_step.step_type)
+            prev_action = np.zeros_like(time_step.step_type, dtype=np.int64)
         else:
-            prev_action = torch.zeros_like(time_step.step_type)
+            prev_action = torch.zeros_like(
+                time_step.step_type, dtype=torch.int64)
         return time_step._replace(prev_action=prev_action)
 
     def _step(self, action):
