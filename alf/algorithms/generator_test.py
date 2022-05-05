@@ -69,7 +69,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dict(entropy_regularization=1.0, par_vi='svgd'),
         dict(entropy_regularization=1.0, par_vi='svgd2'),
         dict(entropy_regularization=1.0, par_vi='svgd3'),
-        dict(entropy_regularization=1.0, par_vi='minmax'),
+        # dict(entropy_regularization=1.0, par_vi='minmax'),
         dict(
             entropy_regularization=1.0,
             par_vi='svgd',
@@ -114,6 +114,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             mi_weight=mi_weight,
             par_vi=par_vi,
             functional_gradient=functional_gradient,
+            use_relu_mlp=False,
             inverse_mvp_hidden_size=10,
             inverse_mvp_solve_iters=1,
             inverse_mvp_hidden_layers=3,

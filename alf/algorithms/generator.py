@@ -301,6 +301,7 @@ class Generator(Algorithm):
                  par_vi=None,
                  use_kernel_averager=False,
                  functional_gradient=False,
+                 use_relu_mlp=True,
                  init_lambda=1.,
                  lambda_trainable=False,
                  block_inverse_mvp=False,
@@ -369,6 +370,8 @@ class Generator(Algorithm):
                 forwarding the first ``noise_dim`` components. We then add the
                 full noise vector to the output, multiplied by the
                 ``fullrank_diag_weight``.
+            use_relu_mlp (bool): whether or not to use relu_mlp for the generator,
+                when False, Swish/SiLU MLP will be used instead.
             init_lambda (float): weight on direct input-output link added to
                 the generator output. Only used for GPVI and GPVI_Plus when
                 forcing full rank Jacobian.
@@ -412,6 +415,7 @@ class Generator(Algorithm):
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
         self._functional_gradient = functional_gradient
+        self._use_relu_mlp = use_relu_mlp
         self._par_vi = par_vi
         self._direct_jac_inverse = direct_jac_inverse
         if entropy_regularization == 0:
@@ -443,10 +447,10 @@ class Generator(Algorithm):
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
             if functional_gradient:
-                if net is not None:
-                    assert isinstance(net, ReluMLP), (
-                        "only ReluMLP generator is supported for functional_gradient."
-                    )
+                # if net is not None:
+                #     assert isinstance(net, ReluMLP), (
+                #         "only ReluMLP generator is supported for functional_gradient."
+                #     )
                 if noise_dim == output_dim:
                     force_fullrank = False
                     block_inverse_mvp = False
@@ -496,7 +500,7 @@ class Generator(Algorithm):
 
         if net is None:
             net_input_spec = noise_spec
-            if functional_gradient:
+            if functional_gradient and (use_relu_mlp or direct_jac_inverse):
                 net = ReluMLP(
                     net_input_spec,
                     output_size=output_dim,
@@ -508,6 +512,7 @@ class Generator(Algorithm):
                 net = EncodingNetwork(
                     input_tensor_spec=net_input_spec,
                     fc_layer_params=hidden_layers,
+                    activation=torch.nn.functional.silu,
                     last_layer_size=output_dim,
                     last_activation=math_ops.identity,
                     name="Generator")
@@ -1038,11 +1043,21 @@ class Generator(Algorithm):
         vec_1 = vec[:, :, :self._noise_dim]  # [N2, N, K]
         vec_2 = vec[:, :, self._noise_dim:]  # [N2, N, D-K]
         z_repeat = torch.repeat_interleave(z, vec.shape[1], dim=0)  # [N2*N, K]
-        vjp, _ = self._net.compute_vjp(
-            z_repeat,
-            vec_2.reshape(-1, vec_2.shape[-1]),
-            output_partial_idx=torch.arange(
-                start=self._noise_dim, end=self._output_dim))  # [N2*N, K]
+        if self._use_relu_mlp:
+            vjp, _ = self._net.compute_vjp(
+                z_repeat,
+                vec_2.reshape(-1, vec_2.shape[-1]),
+                output_partial_idx=torch.arange(
+                    start=self._noise_dim, end=self._output_dim))  # [N2*N, K]
+        else:
+            z_repeat.requires_grad = True
+            outputs = self._net(z_repeat)[0]
+            vec_2 = vec_2.reshape(-1, vec_2.shape[-1])  # [N2*N, D-K]
+            vec_zero = torch.zeros(vec_2.shape[0],
+                                   self._noise_dim)  # [N2*N, K]
+            vec_2 = torch.cat([vec_zero, vec_2], dim=-1)  # [N2*N, D]
+            vjp = torch.autograd.grad(
+                outputs, z_repeat, grad_outputs=vec_2)[0]  # [N2*N, K]
         vec = vec_1.reshape(
             -1, self._noise_dim) - vjp / self.get_lambda()  # [N2*N, K]
         return vec, z_repeat  # [N2*N, K]
@@ -1081,13 +1096,25 @@ class Generator(Algorithm):
             y, z_inputs = self._inverse_mvp.predict_step((z, vec)).output
             vec = vec.reshape(-1, self._output_dim)  # [N2*N, D]
 
-        if self._block_inverse_mvp:
-            partial_idx = torch.arange(self._noise_dim)
+        if self._use_relu_mlp:
+            if self._block_inverse_mvp:
+                partial_idx = torch.arange(self._noise_dim)
+            else:
+                partial_idx = None
+            jac_y, _ = self._net.compute_vjp(
+                z_inputs, y,
+                output_partial_idx=partial_idx)  # [N2*N, D] or [N2*N, K]
         else:
-            partial_idx = None
-        jac_y, _ = self._net.compute_vjp(
-            z_inputs, y,
-            output_partial_idx=partial_idx)  # [N2*N, D] or [N2*N, K]
+            if self._block_inverse_mvp:
+                y_zero = torch.zeros(y.shape[0],
+                                     self._output_dim - self._noise_dim)
+                y_vec = torch.cat([y, y_zero], dim=-1)
+            else:
+                y_vec = y
+            z_inputs.requires_grad = True
+            outputs = self._net(z_inputs)[0]
+            jac_y = torch.autograd.grad(
+                outputs, z_inputs, grad_outputs=y_vec, create_graph=True)[0]
 
         if self._force_fullrank:
             if not self._block_inverse_mvp:
@@ -1223,11 +1250,22 @@ class Generator(Algorithm):
             vec_2 = vec[:, :, self._noise_dim:]  # [N2, N, D-K]
             z_repeat = torch.repeat_interleave(z, N, dim=0)  # [N2*N, K]
 
-            vjp, _ = self._net.compute_vjp(
-                z_repeat,
-                vec_2.reshape(-1, vec_2.shape[-1]),
-                output_partial_idx=torch.arange(
-                    start=self._noise_dim, end=self._output_dim))
+            if self._use_relu_mlp:
+                vjp, _ = self._net.compute_vjp(
+                    z_repeat,
+                    vec_2.reshape(-1, vec_2.shape[-1]),
+                    output_partial_idx=torch.arange(
+                        start=self._noise_dim, end=self._output_dim))
+            else:
+                z_repeat.requires_grad = True
+                outputs = self._net(z_repeat)[0]
+                vec_2 = vec_2.reshape(-1, vec_2.shape[-1])  # [N2*N, D-K]
+                vec_zero = torch.zeros(vec_2.shape[0],
+                                       self._noise_dim)  # [N2*N, K]
+                vec_2 = torch.cat([vec_zero, vec_2], dim=-1)  # [N2*N, D]
+                vjp = torch.autograd.grad(
+                    outputs, z_repeat, grad_outputs=vec_2)[0]  # [N2*N, K]
+
             vjp = vjp.reshape(N2, N, -1)  # [N2, N, K]
 
             J_inv_vec_1 = J_inv_vec_1 - vjp / fullrank_diag_weight

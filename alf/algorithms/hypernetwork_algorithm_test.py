@@ -261,6 +261,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_training=False,
             function_vi=False,
             functional_gradient=functional_gradient,
+            use_relu_mlp=False,
             init_lambda=1.,
             lambda_trainable=lambda_trainable,
             block_inverse_mvp=block_inverse_mvp,

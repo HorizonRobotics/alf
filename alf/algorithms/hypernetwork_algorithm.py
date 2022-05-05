@@ -84,6 +84,7 @@ class HyperNetwork(Algorithm):
                  critic_iter_num=2,
                  critic_l2_weight=10.,
                  functional_gradient=False,
+                 use_relu_mlp=True,
                  init_lambda=1.,
                  lambda_trainable=False,
                  block_inverse_mvp=False,
@@ -154,6 +155,8 @@ class HyperNetwork(Algorithm):
                 boundednesss
 
             functional_gradient (bool): whether or not to use GPVI.
+            use_relu_mlp (bool): whether or not to use relu_mlp for the generator,
+                when False, Swish/SiLU MLP will be used instead.
             log_lambda (float): logarithm of the weight on "extra" dimensions when 
                 forcing full rank Jacobian
             block_inverse_mvp(bool): whether to use the more efficient block form
@@ -257,7 +260,7 @@ class HyperNetwork(Algorithm):
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
 
-        if functional_gradient:
+        if functional_gradient and (use_relu_mlp or direct_jac_inverse):
             net = ReluMLP(
                 noise_spec,
                 hidden_layers=hidden_layers,
@@ -267,6 +270,7 @@ class HyperNetwork(Algorithm):
             net = EncodingNetwork(
                 noise_spec,
                 fc_layer_params=hidden_layers,
+                activation=F.silu,
                 use_fc_bn=generator_use_fc_bn,
                 last_layer_size=gen_output_dim,
                 last_activation=math_ops.identity,
@@ -313,6 +317,7 @@ class HyperNetwork(Algorithm):
             critic_iter_num=critic_iter_num,
             critic_l2_weight=critic_l2_weight,
             functional_gradient=functional_gradient,
+            use_relu_mlp=use_relu_mlp,
             init_lambda=init_lambda,
             lambda_trainable=lambda_trainable,
             block_inverse_mvp=block_inverse_mvp,
