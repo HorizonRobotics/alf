@@ -48,6 +48,13 @@ from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
 
 
+def cuda_is_available():
+    # When CUDA_VISIBLE_DEVICES= (empty), simply skip the check.
+    # This is useful during hardware issues when the check hangs forever.
+    cuda_dev = os.getenv("CUDA_VISIBLE_DEVICES", default=None)
+    return (cuda_dev is None or cuda_dev != "") and torch.cuda.is_available()
+
+
 def add_method(cls):
     """A decorator for adding a method to a class (cls).
     Example usage:
