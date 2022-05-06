@@ -324,9 +324,10 @@ class DiscreteWrapperTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(torch.all(time_step.prev_action == 0))
         actual_actions = []
         for a in range(actions_num**unwrapped.action_space.shape[0]):
-            a = torch.full_like(time_step.step_type, a)
+            a = torch.full_like(time_step.step_type, a, dtype=torch.int64)
             time_step = env.step(a)
             self.assertTensorEqual(time_step.prev_action, a)  # discrete
+            self.assertEqual(torch.int64, time_step.prev_action.dtype)
             actual_actions.append(time_step.env_info['action'])  # continuous
 
         self.assertTrue(np.allclose(actual_actions[0].cpu().numpy(), low))
