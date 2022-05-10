@@ -18,22 +18,23 @@ import numpy as np
 import torch
 
 import alf
-from alf.algorithms.td_loss import TDLoss
+from alf.algorithms.td_loss import LowerBoundedTDLoss
 from alf.data_structures import TimeStep, StepType, namedtuple
 
 DataItem = namedtuple(
     "DataItem", ["reward", "step_type", "discount"], default_value=())
 
 
-class TDLossTest(unittest.TestCase):
-    """Tests for alf.algorithms.td_loss.TDLoss
+class LowerBoundedTDLossTest(unittest.TestCase):
+    """Tests for alf.algorithms.td_loss.LowerBoundedTDLoss
     """
 
     def _check(self, res, expected):
         np.testing.assert_array_almost_equal(res, expected)
 
     def test_compute_td_target_nstep_bootstrap_lowerbound(self):
-        loss = TDLoss(gamma=1., improve_w_nstep_bootstrap=True, td_lambda=1)
+        loss = LowerBoundedTDLoss(
+            gamma=1., improve_w_nstep_bootstrap=True, td_lambda=1)
         # Tensors are transposed to be time_major [T, B, ...]
         step_types = torch.tensor([[StepType.MID] * 5],
                                   dtype=torch.int64).transpose(0, 1)

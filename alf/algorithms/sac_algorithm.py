@@ -847,6 +847,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         alpha_loss = info.alpha
         actor_loss = info.actor
 
+        # The current implementation is hacky: Instead of using OneStepTD
+        # and pulling additionally a few timesteps from the future to compute
+        # bootstrap values, we here piggyback on n-step TDLoss, but masking
+        # out losses from the 2nd to n-1-th steps.
+        # If this hacky use pattern is to be used frequently in the future,
+        # we should consider refactoring it.
         if self._critic_losses[0]._improve_w_nstep_bootstrap:
             # Ignore 2nd - n-th step losses in this mode.
             alpha_loss[1:] = 0

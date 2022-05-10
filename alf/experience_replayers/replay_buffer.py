@@ -127,6 +127,9 @@ class ReplayBuffer(RingBuffer):
                 Usually consistent with ``TDLoss.gamma``.
             reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
+            convert_only_minibatch_to_device (bool): when True, only convert a minibatch
+                of experience to GPU (if GPU is used), to save GPU memory.  Fractional unroll
+                is also able to save GPU memory, similarly.
             name (string): name of the replay buffer object.
         """
         super().__init__(

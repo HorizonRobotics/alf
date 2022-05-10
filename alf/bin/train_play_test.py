@@ -142,7 +142,8 @@ OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
     # If replay_buffer_length is above 6 (3 iters * 2 unroll length), whole replay buffer training
-    # algorithms (e.g. mbrl_pendulum) will not get enough training data, and will not start training.
+    # algorithms (e.g. mbrl_pendulum) will not get enough training data, because the replay buffer
+    # gets cleared before the buffer is fully filled.  Training never starts.
     # This fails during playing, when the config file isn't generated in root_dir.
     'TrainerConfig.replay_buffer_length=4',
     'FrameStacker.stack_size=1'

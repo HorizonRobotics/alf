@@ -139,13 +139,18 @@ class SequentialDataTransformer(DataTransformer):
 
     @staticmethod
     def _validate_order(data_transformers):
+        # Hindsight should probably not be used together with FrameStacker,
+        # unless done really carefully.  Hindsight after FrameStacker is
+        # simply wrong, because Hindsight would read ``achieved_goal`` field
+        # of a future step directly from the replay buffer without stacking.
         def _tier_of(data_transformer):
             if isinstance(data_transformer, UntransformedTimeStep):
                 return 1
-            if isinstance(data_transformer,
-                          (HindsightExperienceTransformer, FrameStacker)):
+            if isinstance(data_transformer, HindsightExperienceTransformer):
                 return 2
-            return 3
+            if isinstance(data_transformer, FrameStacker):
+                return 3
+            return 4
 
         prev_tier = 0
         for i in range(len(data_transformers)):
@@ -722,14 +727,31 @@ class HindsightExperienceTransformer(DataTransformer):
         of the current timestep.
         The exact field names can be provided via arguments to the class ``__init__``.
 
+        NOTE: When the experience reward is multi-dimensional, the 0th dimension is assumed
+        to be the goal reward dimension, and is relabed by the HindsightExperienceTransformer.
+        All other reward dimensions are untouched.
+        TODO: Change the reward field into a nested field to be able to support multi-dimensional
+        goal rewards.
+
+        NOTE: The HindsightExperienceTransformer has to happen before any transformer which changes
+        reward or achieved_goal fields, e.g. observation normalizer, reward clipper, etc..
+        See `documentation <../../docs/notes/knowledge_base.rst#datatransformers>`_ for details.
+
         To use this class, add it to any existing data transformers, e.g. use this config if
         ``ObservationNormalizer`` is an existing data transformer:
 
         .. code-block:: python
 
-            ReplayBuffer.keep_episodic_info=True
-            HindsightExperienceTransformer.her_proportion=0.8
-            TrainerConfig.data_transformer_ctor=[@HindsightExperienceTransformer, @ObservationNormalizer]
+            alf.config('ReplayBuffer', keep_episodic_info=True)
+            alf.config(
+                'HindsightExperienceTransformer',
+                her_proportion=0.8
+            )
+            alf.config(
+                'TrainerConfig',
+                data_transformer_ctor=[
+                    HindsightExperienceTransformer, ObservationNormalizer
+                ])
 
         See unit test for more details on behavior.
     """
@@ -742,7 +764,8 @@ class HindsightExperienceTransformer(DataTransformer):
                  sparse_reward=False,
                  add_noise_to_goals=False,
                  threshold=.05,
-                 reward_fn=l2_dist_close_reward_fn):
+                 reward_fn=l2_dist_close_reward_fn,
+                 sparse_reward_transform=alf.utils.math_ops.identity):
         """
         Args:
             her_proportion (float): proportion of hindsight relabeled experience.
@@ -751,12 +774,16 @@ class HindsightExperienceTransformer(DataTransformer):
             desired_goal_field (str): path to the desired_goal field in the
                 exp nest.
             sparse_reward (bool): Whether to transform reward from -1/0 to 0/1.
+                This also makes the task episodic by relabeling rewarding step as LAST
+                and setting discount to 0.
             add_noise_to_goals (bool): Whether to add noise around relabeled goal.
             threshold (float): noise added to relabeled goals.
             reward_fn (Callable): function to recompute reward based on
                 achieve_goal and desired_goal.  Default gives reward 0 when
                 L2 distance less than 0.05 and -1 otherwise, same as is done in
                 suite_robotics environments.
+            sparse_reward_transform (Callable): transforms reward from -1/0 to 0/1.
+                Only used when sparse_reward is True.
         """
         super().__init__(
             transformed_observation_spec=transformed_observation_spec,
@@ -876,8 +903,9 @@ class HindsightExperienceTransformer(DataTransformer):
                     ".discount_mean_before_relabel",
                     torch.mean(result.discount[:, 1:]))
             if self._sparse_reward:
+                # Assumes that original reward is -1/0 and 0 when goal is reached.
                 reward_achieved = relabeled_rewards >= 0
-                # Cut off episode for any goal reached.
+                # Cut off episode for any goal reached, making the task episodic.
                 end = reward_achieved
                 discount = torch.where(end, torch.tensor(0.), result.discount)
                 step_type = torch.where(end, torch.tensor(StepType.LAST),
@@ -904,7 +932,7 @@ class HindsightExperienceTransformer(DataTransformer):
 
                 result = result._replace(discount=discount)
                 result = result._replace(step_type=step_type)
-                relabeled_rewards = suite_socialbot.transform_reward_tensor(
+                relabeled_rewards = self._sparse_reward_transform(
                     relabeled_rewards)
 
             non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
@@ -1022,7 +1050,4 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
     if len(data_transformer_ctor) == 1:
         return data_transformer_ctor[0](observation_spec)
 
-    if HindsightExperienceTransformer in data_transformer_ctor:
-        assert HindsightExperienceTransformer == data_transformer_ctor[0], \
-            "Hindsight relabeling should happen before all other transforms."
     return SequentialDataTransformer(data_transformer_ctor, observation_spec)

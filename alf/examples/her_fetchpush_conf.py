@@ -16,7 +16,7 @@ import alf
 from alf.algorithms.data_transformer import HindsightExperienceTransformer, \
     ObservationNormalizer
 from alf.algorithms.ddpg_algorithm import DdpgAlgorithm
-from alf.environments import suite_robotics
+from alf.environments import suite_robotics, suite_socialbot
 from alf.nest.utils import NestConcat
 
 from alf.examples import ddpg_fetchpush_conf
@@ -29,7 +29,10 @@ alf.config(
     action_preprocessing_combiner=NestConcat())
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
-alf.config('HindsightExperienceTransformer', her_proportion=0.8)
+alf.config(
+    'HindsightExperienceTransformer',
+    her_proportion=0.8,
+    sparse_reward_transform=suite_socialbot.transform_reward_tensor)
 alf.config(
     'TrainerConfig',
     data_transformer_ctor=[

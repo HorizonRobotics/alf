@@ -35,15 +35,6 @@ class TDLoss(nn.Module):
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
                  debug_summaries: bool = False,
-                 lb_target_q: float = 0.,
-                 default_return: float = -1000.,
-                 improve_w_goal_return: bool = False,
-                 improve_w_nstep_bootstrap: bool = False,
-                 improve_w_nstep_only: bool = False,
-                 lower_bound_constraint: float = 0.,
-                 lb_loss_scale: bool = False,
-                 reward_multiplier: float = 1.,
-                 positive_reward: bool = True,
                  use_retrace: bool = False,
                  name: str = "TDLoss"):
         r"""
@@ -99,27 +90,6 @@ class TDLoss(nn.Module):
             use_retrace: turn on retrace loss
                 :math:`\mathcal{R} Q(x, a):=Q(x, a)+\mathbb{E}_{\mu}\left[\sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)\left(r_{t}+\gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)\right)\right]`
                 copied from PR #695.
-            lb_target_q: between 0 and 1.  When not zero, use this mixing rate for the
-                lower bounded value target.  Only supports batch_length == 2, one step td.
-            default_return: Keep it the same as replay_buffer.default_return to plot to
-                tensorboard episodic_discounted_return only for the timesteps whose
-                episode already ended.
-            improve_w_goal_return: Use return calculated from the distance to hindsight
-                goals.  Only supports batch_length == 2, one step td.
-            improve_w_nstep_bootstrap: Look ahead 2 to n steps, and take the largest
-                bootstrapped return to lower bound the value target of the 1st step.
-            improve_w_nstep_only: Only use the n-th step bootstrapped return as
-                value target lower bound.
-            lower_bound_constraint: Use n-step bootstrapped return as lower bound
-                constraints of the value.  See reference:
-                He, F. S., Liu, Y., Schwing, A. G., and Peng, J.
-                Learning to play in a day: Faster deep reinforcement learning
-                by optimality tightening.  In 5th International Conference
-                on Learning Representations, ICLR 2017, Toulon, France,
-                April 24-26, 2017.  https://openreview.net/forum?id=rJ8Je4clg
-            lb_loss_scale: Parameter for lower_bound_constraint.
-            reward_multiplier: Weight on the hindsight goal return.
-            positive_reward: If True, assumes 0/1 goal reward, otherwise, -1/0.
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -130,15 +100,6 @@ class TDLoss(nn.Module):
         self._td_error_loss_fn = td_error_loss_fn
         self._clip = clip
         self._lambda = td_lambda
-        self._lb_target_q = lb_target_q
-        self._default_return = default_return
-        self._improve_w_goal_return = improve_w_goal_return
-        self._improve_w_nstep_bootstrap = improve_w_nstep_bootstrap
-        self._improve_w_nstep_only = improve_w_nstep_only
-        self._lower_bound_constraint = lower_bound_constraint
-        self._lb_loss_scale = lb_loss_scale
-        self._reward_multiplier = reward_multiplier
-        self._positive_reward = positive_reward
         self._use_retrace = use_retrace
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
@@ -235,6 +196,195 @@ class TDLoss(nn.Module):
 
             returns = advantages + value[:-1]
             returns = returns.detach()
+
+        return returns, value, None
+
+    def forward(self, info: namedtuple, value: torch.Tensor,
+                target_value: torch.Tensor):
+        """Calculate the loss.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            info: experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            value: the time-major tensor for the value at each time
+                step. The loss is between this and the calculated return.
+            target_value: the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``.
+        Returns:
+            LossInfo: with the ``extra`` field same as ``loss``.
+        """
+        returns, value, constraint_loss = self.compute_td_target(
+            info, value, target_value)
+        value = value[:-1]
+
+        if self._normalize_target:
+            if self._target_normalizer is None:
+                self._target_normalizer = AdaptiveNormalizer(
+                    alf.TensorSpec(value.shape[2:]),
+                    auto_update=False,
+                    debug_summaries=self._debug_summaries,
+                    name=self._name + ".target_normalizer")
+
+            self._target_normalizer.update(returns)
+            returns = self._target_normalizer.normalize(returns)
+            value = self._target_normalizer.normalize(value)
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = info.step_type[:-1] != StepType.LAST
+            with alf.summary.scope(self._name):
+
+                def _summarize(v, r, td, suffix):
+                    alf.summary.scalar(
+                        "explained_variance_of_return_by_value" + suffix,
+                        tensor_utils.explained_variance(v, r, mask))
+                    safe_mean_hist_summary('values' + suffix, v, mask)
+                    safe_mean_hist_summary('returns' + suffix, r, mask)
+                    safe_mean_hist_summary("td_error" + suffix, td, mask)
+
+                if value.ndim == 2:
+                    _summarize(value, returns, returns - value, '')
+                else:
+                    td = returns - value
+                    for i in range(value.shape[2]):
+                        suffix = '/' + str(i)
+                        _summarize(value[..., i], returns[..., i], td[..., i],
+                                   suffix)
+
+        loss = self._td_error_loss_fn(returns.detach(), value)
+        if self._clip > 0:
+            loss = torch.clamp(loss, min=-self._clip, max=self._clip)
+
+        if loss.ndim == 3:
+            # Multidimensional reward. Average over the critic loss for all dimensions
+            loss = loss.mean(dim=2)
+
+        if self._improve_w_nstep_bootstrap:
+            # Ignore 2nd to n-th step losses.
+            loss[1:] = 0
+            if self._lower_bound_constraint > 0:
+                assert constraint_loss.shape == loss.shape[1:], \
+                    f"{constraint_loss.shape} != {loss.shape}[1:]"
+                c_loss = constraint_loss.clone().unsqueeze(0).repeat(
+                    (loss.shape[0], 1))
+                c_loss[1:] = 0
+                if self._lb_loss_scale:
+                    scale = (
+                        torch.sum(loss) / torch.sum(c_loss + loss)).detach()
+                else:
+                    scale = 1
+                loss = (c_loss + loss) * scale
+
+        # The shape of the loss expected by Algorith.update_with_gradient is
+        # [T, B], so we need to augment it with additional zeros.
+        loss = tensor_utils.tensor_extend_zero(loss)
+        return LossInfo(loss=loss, extra=loss)
+
+
+@alf.configurable
+class LowerBoundedTDLoss(TDLoss):
+    """Temporal difference loss with value target lower bounding."""
+
+    def __init__(self,
+                 gamma: Union[float, List[float]] = 0.99,
+                 td_error_loss_fn: Callable = element_wise_squared_loss,
+                 clip: float = 0.,
+                 td_lambda: float = 0.95,
+                 normalize_target: bool = False,
+                 use_retrace: bool = False,
+                 lb_target_q: float = 0.,
+                 default_return: float = -1000.,
+                 improve_w_goal_return: bool = False,
+                 improve_w_nstep_bootstrap: bool = False,
+                 improve_w_nstep_only: bool = False,
+                 lower_bound_constraint: float = 0.,
+                 lb_loss_scale: bool = False,
+                 reward_multiplier: float = 1.,
+                 positive_reward: bool = True,
+                 debug_summaries: bool = False,
+                 name: str = "LbTDLoss"):
+        r"""
+        Args:
+            gamma .. use_retrace: pass through to TDLoss.
+            lb_target_q: between 0 and 1.  When not zero, use this mixing rate for the
+                lower bounded value target.  Only supports batch_length == 2, one step td.
+            default_return: Keep it the same as replay_buffer.default_return to plot to
+                tensorboard episodic_discounted_return only for the timesteps whose
+                episode already ended.
+            improve_w_goal_return: Use return calculated from the distance to hindsight
+                goals.  Only supports batch_length == 2, one step td.
+            improve_w_nstep_bootstrap: Look ahead 2 to n steps, and take the largest
+                bootstrapped return to lower bound the value target of the 1st step.
+            improve_w_nstep_only: Only use the n-th step bootstrapped return as
+                value target lower bound.
+            lower_bound_constraint: Use n-step bootstrapped return as lower bound
+                constraints of the value.  See reference:
+                He, F. S., Liu, Y., Schwing, A. G., and Peng, J.
+                Learning to play in a day: Faster deep reinforcement learning
+                by optimality tightening.  In 5th International Conference
+                on Learning Representations, ICLR 2017, Toulon, France,
+                April 24-26, 2017.  https://openreview.net/forum?id=rJ8Je4clg
+            lb_loss_scale: Parameter for lower_bound_constraint.
+            reward_multiplier: Weight on the hindsight goal return.
+            positive_reward: If True, assumes 0/1 goal reward, otherwise, -1/0.
+            debug_summaries: True if debug summaries should be created.
+            name: The name of this loss.
+        """
+        super().__init__(
+            gamma=gamma,
+            td_error_loss_fn=td_error_loss_fn,
+            clip=clip,
+            td_lambda=td_lambda,
+            normalize_target=normalize_target,
+            use_retrace=use_retrace,
+            name=name,
+            debug_summaries=debug_summaries)
+
+        self._lb_target_q = lb_target_q
+        self._default_return = default_return
+        self._improve_w_goal_return = improve_w_goal_return
+        self._improve_w_nstep_bootstrap = improve_w_nstep_bootstrap
+        self._improve_w_nstep_only = improve_w_nstep_only
+        self._lower_bound_constraint = lower_bound_constraint
+        self._lb_loss_scale = lb_loss_scale
+        self._reward_multiplier = reward_multiplier
+        self._positive_reward = positive_reward
+
+    def compute_td_target(self,
+                          info: namedtuple,
+                          value: torch.Tensor,
+                          target_value: torch.Tensor,
+                          qr: bool = False):
+        """Calculate the td target.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            info (namedtuple): experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            value (torch.Tensor): the time-major tensor for the value at
+                each time step. Some of its value can be overwritten and passed
+                back to the caller.
+            target_value (torch.Tensor): the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``, except for Retrace.
+        Returns:
+            td_target, updated value, optional constraint_loss
+        """
+        returns, value, _ = super().compute_td_target(info, value,
+                                                      target_value, qr)
 
         constraint_loss = None
         if self._improve_w_nstep_bootstrap:
@@ -346,94 +496,6 @@ class TDLoss(nn.Module):
                     returns = returns_0
 
         return returns, value, constraint_loss
-
-    def forward(self, info: namedtuple, value: torch.Tensor,
-                target_value: torch.Tensor):
-        """Calculate the loss.
-
-        The first dimension of all the tensors is time dimension and the second
-        dimesion is the batch dimension.
-
-        Args:
-            info: experience collected from ``unroll()`` or
-                a replay buffer. All tensors are time-major. ``info`` should
-                contain the following fields:
-                - reward:
-                - step_type:
-                - discount:
-            value: the time-major tensor for the value at each time
-                step. The loss is between this and the calculated return.
-            target_value: the time-major tensor for the value at
-                each time step. This is used to calculate return. ``target_value``
-                can be same as ``value``.
-        Returns:
-            LossInfo: with the ``extra`` field same as ``loss``.
-        """
-        returns, value, constraint_loss = self.compute_td_target(
-            info, value, target_value)
-        value = value[:-1]
-
-        if self._normalize_target:
-            if self._target_normalizer is None:
-                self._target_normalizer = AdaptiveNormalizer(
-                    alf.TensorSpec(value.shape[2:]),
-                    auto_update=False,
-                    debug_summaries=self._debug_summaries,
-                    name=self._name + ".target_normalizer")
-
-            self._target_normalizer.update(returns)
-            returns = self._target_normalizer.normalize(returns)
-            value = self._target_normalizer.normalize(value)
-
-        if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = info.step_type[:-1] != StepType.LAST
-            with alf.summary.scope(self._name):
-
-                def _summarize(v, r, td, suffix):
-                    alf.summary.scalar(
-                        "explained_variance_of_return_by_value" + suffix,
-                        tensor_utils.explained_variance(v, r, mask))
-                    safe_mean_hist_summary('values' + suffix, v, mask)
-                    safe_mean_hist_summary('returns' + suffix, r, mask)
-                    safe_mean_hist_summary("td_error" + suffix, td, mask)
-
-                if value.ndim == 2:
-                    _summarize(value, returns, returns - value, '')
-                else:
-                    td = returns - value
-                    for i in range(value.shape[2]):
-                        suffix = '/' + str(i)
-                        _summarize(value[..., i], returns[..., i], td[..., i],
-                                   suffix)
-
-        loss = self._td_error_loss_fn(returns.detach(), value)
-        if self._clip > 0:
-            loss = torch.clamp(loss, min=-self._clip, max=self._clip)
-
-        if loss.ndim == 3:
-            # Multidimensional reward. Average over the critic loss for all dimensions
-            loss = loss.mean(dim=2)
-
-        if self._improve_w_nstep_bootstrap:
-            # Ignore 2nd to n-th step losses.
-            loss[1:] = 0
-            if self._lower_bound_constraint > 0:
-                assert constraint_loss.shape == loss.shape[1:], \
-                    f"{constraint_loss.shape} != {loss.shape}[1:]"
-                c_loss = constraint_loss.clone().unsqueeze(0).repeat(
-                    (loss.shape[0], 1))
-                c_loss[1:] = 0
-                if self._lb_loss_scale:
-                    scale = (
-                        torch.sum(loss) / torch.sum(c_loss + loss)).detach()
-                else:
-                    scale = 1
-                loss = (c_loss + loss) * scale
-
-        # The shape of the loss expected by Algorith.update_with_gradient is
-        # [T, B], so we need to augment it with additional zeros.
-        loss = tensor_utils.tensor_extend_zero(loss)
-        return LossInfo(loss=loss, extra=loss)
 
 
 @alf.configurable

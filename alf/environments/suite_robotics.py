@@ -48,15 +48,16 @@ class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self,
-                 env,
-                 reward_cap=1.,
-                 positive_reward=True,
-                 append_reward_dim=False):
+    def __init__(self, env, reward_weight=1., positive_reward=True):
+        """
+        Args:
+            reward_weight (float): weight of output reward.
+            positive_reward (bool): if True, returns 0/1 reward,
+                otherwise, -1/0 reward.
+        """
         gym.Wrapper.__init__(self, env)
-        self._reward_cap = reward_cap
+        self._reward_weight = reward_weight
         self._positive_reward = positive_reward
-        self._append_reward_dim = append_reward_dim
 
     def step(self, action):
         # openai Robotics env will always return ``done=False``
@@ -67,18 +68,8 @@ class SparseReward(gym.Wrapper):
             return_reward = reward + 1
         else:
             return_reward = reward
-        return_reward *= self._reward_cap
-        if self._append_reward_dim:
-            return_reward = np.array([return_reward, 0])
+        return_reward *= self._reward_weight
         return ob, return_reward, done, info
-
-    @property
-    def reward_space(self):
-        if self._append_reward_dim:
-            return gym.spaces.Box(
-                low=-np.inf, high=np.inf, shape=(2, ), dtype=np.float32)
-        else:
-            return self.env.reward_space()
 
 
 @alf.configurable
@@ -192,6 +183,8 @@ def load(environment_name,
     Args:
         environment_name: Name for the environment to load.
         env_id: A scalar ``Tensor`` of the environment ID of the time step.
+        concat_desired_goal (bool): Whether to concat robot's observation and the goal
+            location.
         discount: Discount to use for the environment.
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
