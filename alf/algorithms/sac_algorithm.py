@@ -853,7 +853,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # out losses from the 2nd to n-1-th steps.
         # If this hacky use pattern is to be used frequently in the future,
         # we should consider refactoring it.
-        if self._critic_losses[0]._improve_w_nstep_bootstrap:
+        if hasattr(self._critic_losses[0],
+                    "_improve_w_nstep_bootstrap") and \
+            self._critic_losses[0]._improve_w_nstep_bootstrap:
             # Ignore 2nd - n-th step losses in this mode.
             alpha_loss[1:] = 0
             if actor_loss.loss != ():
@@ -912,7 +914,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._use_entropy_reward:
             with torch.no_grad():
                 log_pi = info.log_pi
-                if self._critic_losses[0]._improve_w_nstep_bootstrap:
+                if hasattr(self._critic_losses[0],
+                           "_improve_w_nstep_bootstrap") and \
+                    self._critic_losses[0]._improve_w_nstep_bootstrap:
                     # Ignore 2nd - n-th step entropy in this mode.
                     log_pi[1:] = 0
                 if self._entropy_normalizer is not None:

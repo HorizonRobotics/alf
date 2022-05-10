@@ -266,21 +266,18 @@ class TDLoss(nn.Module):
             # Multidimensional reward. Average over the critic loss for all dimensions
             loss = loss.mean(dim=2)
 
-        if self._improve_w_nstep_bootstrap:
-            # Ignore 2nd to n-th step losses.
-            loss[1:] = 0
-            if self._lower_bound_constraint > 0:
-                assert constraint_loss.shape == loss.shape[1:], \
-                    f"{constraint_loss.shape} != {loss.shape}[1:]"
-                c_loss = constraint_loss.clone().unsqueeze(0).repeat(
-                    (loss.shape[0], 1))
-                c_loss[1:] = 0
-                if self._lb_loss_scale:
-                    scale = (
-                        torch.sum(loss) / torch.sum(c_loss + loss)).detach()
-                else:
-                    scale = 1
-                loss = (c_loss + loss) * scale
+        # For the subclass LowerBoundedTDLoss
+        if constraint_loss is not None:
+            assert constraint_loss.shape == loss.shape[1:], \
+                f"{constraint_loss.shape} != {loss.shape}[1:]"
+            c_loss = constraint_loss.clone().unsqueeze(0).repeat(
+                (loss.shape[0], 1))
+            c_loss[1:] = 0
+            if self._lb_loss_scale:
+                scale = (torch.sum(loss) / torch.sum(c_loss + loss)).detach()
+            else:
+                scale = 1
+            loss = (c_loss + loss) * scale
 
         # The shape of the loss expected by Algorith.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
@@ -496,6 +493,36 @@ class LowerBoundedTDLoss(TDLoss):
                     returns = returns_0
 
         return returns, value, constraint_loss
+
+    def forward(self, info: namedtuple, value: torch.Tensor,
+                target_value: torch.Tensor):
+        """Calculate the loss.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            info: experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            value: the time-major tensor for the value at each time
+                step. The loss is between this and the calculated return.
+            target_value: the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``.
+        Returns:
+            LossInfo: with the ``extra`` field same as ``loss``.
+        """
+        loss_info = super().forward(info, value, target_value)
+        loss = loss_info.loss
+        if self._improve_w_nstep_bootstrap:
+            # Ignore 2nd to n-th step losses.
+            loss[1:] = 0
+
+        return LossInfo(loss=loss, extra=loss)
 
 
 @alf.configurable

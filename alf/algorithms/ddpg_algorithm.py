@@ -364,7 +364,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         # out losses from the 2nd to n-1-th steps.
         # If this hacky use pattern is to be used frequently in the future,
         # we should consider refactoring it.
-        if self._critic_losses[0]._improve_w_nstep_bootstrap:
+        if hasattr(self._critic_losses[0],
+                    "_improve_w_nstep_bootstrap") and \
+            self._critic_losses[0]._improve_w_nstep_bootstrap:
             # Ignore 2nd - nth step actor losses.
             actor_loss.loss[1:] = 0
             actor_loss.extra[1:] = 0
