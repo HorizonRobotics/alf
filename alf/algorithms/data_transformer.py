@@ -195,6 +195,8 @@ class FrameStacker(DataTransformer):
             observation_spec (nested TensorSpec): describing the observation in timestep
             stack_size (int): stack so many frames
             stack_axis (int): the dimension to stack the observation.
+            convert_only_minibatch_to_device (bool): whether to convert only the
+                minibatch or the whole batch of data to the default device.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
