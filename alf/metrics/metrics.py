@@ -370,7 +370,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         else:
             reward = reward.reshape(*time_step.step_type.shape, -1)
             discounted_reward = list(
-                (reward * self._accumulated_discount).permute(
+                (reward * self._accumulated_discount.unsqueeze(-1)).permute(
                     reward.ndim - 1, *torch.arange(reward.ndim - 1)))
 
         return discounted_reward
@@ -458,7 +458,7 @@ class EpisodicStartAverageDiscountedReturnMetric(
         else:
             reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
             discounted_reward = list(
-                (reward * self._accumulated_discount).permute(
+                (reward * self._accumulated_discount.unsqueeze(-1)).permute(
                     reward.ndim - 1, *torch.arange(reward.ndim - 1)))
 
         return discounted_reward
