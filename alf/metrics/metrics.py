@@ -325,8 +325,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                  dtype=torch.float32,
                  discount=0.99,
                  reward_transformer=None,
-                 buffer_size=10,
-                 reward_clip=None):
+                 buffer_size=10):
         """
         Args:
             discount (float): the discount factor for calculating the discounted
@@ -344,7 +343,6 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         self._reward_transformer = reward_transformer
 
         self._current_step = torch.zeros(batch_size, device='cpu')
-        self._reward_clip = reward_clip
 
         super().__init__(
             name=name,
@@ -367,16 +365,13 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
             old_mode = common.set_exe_mode(common.EXE_MODE_OTHER)
             reward = self._reward_transformer(reward)
             common.set_exe_mode(old_mode)
-        if self._reward_clip is not None:
-            reward = torch.clamp(reward, *self._reward_clip)
         if time_step.reward.ndim == ndim:
             discounted_reward = reward * self._accumulated_discount
         else:
             reward = reward.reshape(*time_step.step_type.shape, -1)
-            discounted_reward = [
-                reward[..., i] * self._accumulated_discount
-                for i in range(reward.shape[-1])
-            ]
+            discounted_reward = list(
+                (reward * self._accumulated_discount).permute(
+                    reward.ndim - 1, *torch.arange(reward.ndim - 1)))
 
         return discounted_reward
 
@@ -443,13 +438,13 @@ class EpisodicStartAverageDiscountedReturnMetric(
                  name='EpisodicStartAverageDiscountedReturn',
                  prefix='Metrics',
                  buffer_size=10,
-                 reward_clip=None):
-        super(EpisodicStartAverageDiscountedReturnMetric, self).__init__(
+                 reward_transformer=None):
+        super().__init__(
             name=name,
             prefix=prefix,
             buffer_size=buffer_size,
             example_time_step=example_time_step,
-            reward_clip=reward_clip)
+            reward_transformer=reward_transformer)
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
@@ -462,10 +457,9 @@ class EpisodicStartAverageDiscountedReturnMetric(
             discounted_reward = time_step.reward * self._accumulated_discount
         else:
             reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
-            discounted_reward = [
-                reward[..., i] * self._accumulated_discount
-                for i in range(reward.shape[-1])
-            ]
+            discounted_reward = list(
+                (reward * self._accumulated_discount).permute(
+                    reward.ndim - 1, *torch.arange(reward.ndim - 1)))
 
         return discounted_reward
 
@@ -487,19 +481,13 @@ class EpisodicStartAverageDiscountedReturnMetric(
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = (
-            self._discount * self._accumulated_discount)
-        self._accumulated_discount = torch.where(
-            self._accumulated_discount == 0,
-            torch.ones_like(self._accumulated_discount),
-            self._accumulated_discount)
-        self._accumulated_discount = torch.where(
-            is_first, torch.zeros_like(self._accumulated_discount),
-            self._accumulated_discount)
+        self._accumulated_discount *= self._discount
+        self._accumulated_discount.masked_fill_(
+            self._accumulated_discount == 0, 1.)
+        self._accumulated_discount.masked_fill_(is_first, 0.)
 
     def _extract_and_process_acc_value(self, acc, last_episode_indices):
-        """Extract the final accumulated value and divide by the number of
-        steps of an episode.
+        """Extract the final accumulated value.
         Args:
             acc (Tensor): batched tensor representing an accumulator
             last_episode_indices (Tensor): indices representing the location
@@ -520,7 +508,7 @@ class AverageRewardMetric(AverageDiscountedReturnMetric):
                  name='AverageReward',
                  prefix='Metrics',
                  buffer_size=10):
-        super(AverageRewardMetric, self).__init__(
+        super().__init__(
             example_time_step=example_time_step,
             name=name,
             prefix=prefix,
