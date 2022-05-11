@@ -232,5 +232,4 @@ class NestworksTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    NestworksTest().test_noisy_net()
-    #alf.test.main()
+    alf.test.main()

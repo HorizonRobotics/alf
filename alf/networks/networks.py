@@ -320,9 +320,14 @@ class AMPWrapper(Network):
 @alf.configurable
 @alf.repr_wrapper
 class NoisyFC(Network):
-    """The Noisy Linear Layer discribed in
+    r"""The Noisy Linear Layer discribed in
 
     Fortunato et. al. `Noisy Networks for Exploration <https://arxiv.org/abs/1706.10295>`_
+
+    In short, the original weight :math:`w` and bias :math:`b` of FC layer are replaced
+    with :math:`w + w_\sigma \epislon^w` and :math:`b + b_\sigma \epsion^b` where
+    :math:`\epsilon^w` and :math:`\epsilon^b` are noise and :math:`w, w_\sigma, b, b_\sigma`
+    are trainable parameters.
 
     Some details:
 
@@ -337,32 +342,31 @@ class NoisyFC(Network):
 
 
     Args:
-        Args:
-            input_size: input size.
-            output_size: output size.
-            activation: activation function.
-            std_init: the scaling factor for the initial value of weight_sigma
-                and bias_sigma.
-            new_noise_prob: the probability of resample the noise.
-            use_bn: whether use batch normalization.
-            use_ln: whether use layer normalization
-            bn_ctor: will be called as ``bn_ctor(num_features)`` to
-                create the BN layer.
-            kernel_initializer: initializer for the FC layer kernel.
-                If none is provided a ``variance_scaling_initializer`` with gain as
-                ``kernel_init_gain`` will be used.
-            kernel_init_gain: a scaling factor (gain) applied to
-                the std of kernel init distribution. It will be ignored if
-                ``kernel_initializer`` is not None.
-            bias_init_value: a constant for the initial bias value.
-                This is ignored if ``bias_initializer`` is provided.
-            bias_initializer:  initializer for the bias parameter.
-            weight_opt_args: If provided, it will be used as optimizer arguments
-                for weight. And it will be combined with zero_mean=False and
-                fixed_norm=False as optimizer arguments for weight_sigma.
-            bias_opt_args: If provided, it will be used as optimizer arguments
-                for bias. And it will be combined with zero_mean=False as
-                optimizer arguments for bias_sigma.
+        input_size: input size.
+        output_size: output size.
+        activation: activation function.
+        std_init: the scaling factor for the initial value of weight_sigma
+            and bias_sigma.
+        new_noise_prob: the probability of resample the noise.
+        use_bn: whether use batch normalization.
+        use_ln: whether use layer normalization
+        bn_ctor: will be called as ``bn_ctor(num_features)`` to
+            create the BN layer.
+        kernel_initializer: initializer for the FC layer kernel.
+            If none is provided a ``variance_scaling_initializer`` with gain as
+            ``kernel_init_gain`` will be used.
+        kernel_init_gain: a scaling factor (gain) applied to
+            the std of kernel init distribution. It will be ignored if
+            ``kernel_initializer`` is not None.
+        bias_init_value: a constant for the initial bias value.
+            This is ignored if ``bias_initializer`` is provided.
+        bias_initializer:  initializer for the bias parameter.
+        weight_opt_args: If provided, it will be used as optimizer arguments
+            for weight. And it will be combined with zero_mean=False and
+            fixed_norm=False as optimizer arguments for weight_sigma.
+        bias_opt_args: If provided, it will be used as optimizer arguments
+            for bias. And it will be combined with zero_mean=False as
+            optimizer arguments for bias_sigma.
     """
 
     def __init__(self,
