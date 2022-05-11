@@ -15,7 +15,8 @@
 
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
-from typing import Tuple
+from __future__ import annotations
+from typing import Union, Tuple, Dict, List
 
 import numpy as np
 
@@ -380,3 +381,7 @@ class BoundedTensorSpec(TensorSpec):
                 high=self._maximum + 1,
                 size=shape,
                 dtype=torch_dtype_to_str(self._dtype))
+
+
+NestedTensorSpec = Union[TensorSpec, List['NestedTensorSpec'], Tuple[(
+)], Tuple['NestedTensorSpec', ...], Dict[str, 'NestedTensorSpec']]

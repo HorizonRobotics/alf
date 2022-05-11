@@ -40,8 +40,8 @@ class ActorNetworkBase(Network):
     """
 
     def __init__(self,
-                 input_tensor_spec: alf.nest.NestedTensorSpec,
-                 action_spec: alf.nest.NestedTensorSpec,
+                 input_tensor_spec: alf.NestedTensorSpec,
+                 action_spec: alf.NestedTensorSpec,
                  encoding_network_ctor: Callable = EncodingNetwork,
                  squashing_func=torch.tanh,
                  name="ActorNetworkBase",

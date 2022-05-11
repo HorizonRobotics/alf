@@ -50,7 +50,7 @@ class VariationalAutoEncoder(Algorithm):
 
     def __init__(self,
                  z_dim: int,
-                 input_tensor_spec: alf.nest.NestedTensorSpec = None,
+                 input_tensor_spec: alf.NestedTensorSpec = None,
                  preprocess_network: EncodingNetwork = None,
                  z_prior_network: EncodingNetwork = None,
                  beta: float = 1.0,

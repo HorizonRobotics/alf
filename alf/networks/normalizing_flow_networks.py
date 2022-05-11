@@ -44,12 +44,11 @@ class NormalizingFlowNetwork(Network):
     the interface ``make_invertible_transform()``.
     """
 
-    def __init__(
-            self,
-            input_tensor_spec: alf.tensor_specs.TensorSpec,
-            conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
-            use_transform_cache: bool = True,
-            name: str = "NormalizingFlowNetwork"):
+    def __init__(self,
+                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 conditional_input_tensor_spec: alf.NestedTensorSpec = None,
+                 use_transform_cache: bool = True,
+                 name: str = "NormalizingFlowNetwork"):
         """
         Args:
             input_tensor_spec: input tensor spec
@@ -212,22 +211,21 @@ class RealNVPNetwork(NormalizingFlowNetwork):
         range, so their hidden activations default to ``torch.tanh``.
     """
 
-    def __init__(
-            self,
-            input_tensor_spec: alf.tensor_specs.TensorSpec,
-            conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
-            input_preprocessors: alf.nest.Nest = None,
-            preprocessing_combiner: alf.nest.utils.NestCombiner = None,
-            conv_layer_params: Tuple[Tuple[int]] = None,
-            fc_layer_params: Tuple[int] = None,
-            activation: Callable = torch.tanh,
-            transform_scale_nonlinear: Callable = partial(
-                clipped_exp, clip_value_min=-10, clip_value_max=2),
-            sub_dim: int = None,
-            mask_mode: str = "contiguous",
-            num_layers: int = 2,
-            use_transform_cache: bool = True,
-            name: str = "RealNVPNetwork"):
+    def __init__(self,
+                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 conditional_input_tensor_spec: alf.NestedTensorSpec = None,
+                 input_preprocessors: alf.nest.Nest = None,
+                 preprocessing_combiner: alf.nest.utils.NestCombiner = None,
+                 conv_layer_params: Tuple[Tuple[int]] = None,
+                 fc_layer_params: Tuple[int] = None,
+                 activation: Callable = torch.tanh,
+                 transform_scale_nonlinear: Callable = partial(
+                     clipped_exp, clip_value_min=-10, clip_value_max=2),
+                 sub_dim: int = None,
+                 mask_mode: str = "contiguous",
+                 num_layers: int = 2,
+                 use_transform_cache: bool = True,
+                 name: str = "RealNVPNetwork"):
         r"""
         Args:
             input_tensor_spec: input tensor spec
@@ -360,7 +358,7 @@ class RealNVPNetwork(NormalizingFlowNetwork):
 def _prepare_conditional_flow_inputs(
         xy_spec: alf.tensor_specs.TensorSpec,
         xy: torch.Tensor,
-        z_spec: alf.nest.NestedTensorSpec = None,
+        z_spec: alf.NestedTensorSpec = None,
         z: alf.nest.NestedTensor = None
 ) -> Tuple[alf.nest.NestedTensor, alf.utils.tensor_utils.BatchSquash]:
     """A general function for adjusting the shapes of inputs and conditional inputs
@@ -423,15 +421,14 @@ class _RealNVPTransform(td.Transform):
     bijective = True
     sign = +1
 
-    def __init__(
-            self,
-            input_tensor_spec: alf.tensor_specs.TensorSpec,
-            scale_trans_net: EncodingNetwork,
-            mask: torch.Tensor,
-            conditional_input_tensor_spec: alf.nest.NestedTensorSpec = None,
-            z: alf.nest.NestedTensor = None,
-            cache_size: int = 1,
-            scale_nonlinear: Callable = torch.exp):
+    def __init__(self,
+                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 scale_trans_net: EncodingNetwork,
+                 mask: torch.Tensor,
+                 conditional_input_tensor_spec: alf.NestedTensorSpec = None,
+                 z: alf.nest.NestedTensor = None,
+                 cache_size: int = 1,
+                 scale_nonlinear: Callable = torch.exp):
         """
         Args:
             input_tensor_spec: the tensor spec of ``x`` or ``y``

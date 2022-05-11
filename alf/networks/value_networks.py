@@ -36,8 +36,8 @@ class ValueNetworkBase(Network):
     """
 
     def __init__(self,
-                 input_tensor_spec: alf.nest.NestedTensorSpec,
-                 output_tensor_spec: alf.nest.NestedTensorSpec,
+                 input_tensor_spec: alf.NestedTensorSpec,
+                 output_tensor_spec: alf.NestedTensorSpec,
                  encoding_network_ctor: Callable,
                  name="ValueNetworkBase",
                  **encoder_kwargs):

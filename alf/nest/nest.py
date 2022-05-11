@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Functions for handling nest."""
+from typing import Union, List, Tuple, Dict
 
 from absl import logging
 
@@ -23,8 +24,8 @@ from typing import Any
 
 # For easier type annotation with nests
 Nest = Any
-NestedTensor = Any
-NestedTensorSpec = Any
+NestedTensor = Union[torch.Tensor, List['NestedTensor'], Tuple[(
+)], Tuple['NestedTensor'], Dict[str, 'NestedTensor']]
 
 
 def flatten(nest):
