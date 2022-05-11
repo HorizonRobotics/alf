@@ -333,6 +333,8 @@ class NoisyFC(Network):
        for zero state.
     4. If it is running in eval mode (i.e., common.is_eval() is True), noise will
        be disabled (i.e. same as alf.layers.FC).
+    5. The noise is factorized Gaussian noise as described in the paper.
+
 
     Args:
         Args:
