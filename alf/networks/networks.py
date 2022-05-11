@@ -325,7 +325,7 @@ class NoisyFC(Network):
     Fortunato et. al. `Noisy Networks for Exploration <https://arxiv.org/abs/1706.10295>`_
 
     In short, the original weight :math:`w` and bias :math:`b` of FC layer are replaced
-    with :math:`w + w_\sigma \epislon^w` and :math:`b + b_\sigma \epsion^b` where
+    with :math:`w + w_\sigma \odot \epislon^w` and :math:`b + b_\sigma \odot \epsion^b` where
     :math:`\epsilon^w` and :math:`\epsilon^b` are noise and :math:`w, w_\sigma, b, b_\sigma`
     are trainable parameters.
 
