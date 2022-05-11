@@ -112,11 +112,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             observation_spec=representation_learner.model.repr_spec,
             action_spec=action_spec,
             discount=discount,
+            model=representation_learner.model,
             debug_summaries=debug_summaries,
             name="muzero_policy")
-
-        # MCTS algorithm needs access to the underlying model to perform tree search.
-        mcts.set_model(representation_learner.model)
 
         super().__init__(
             observation_spec=observation_spec,
