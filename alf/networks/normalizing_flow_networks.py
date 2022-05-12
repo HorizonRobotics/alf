@@ -45,7 +45,7 @@ class NormalizingFlowNetwork(Network):
     """
 
     def __init__(self,
-                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 input_tensor_spec: alf.TensorSpec,
                  conditional_input_tensor_spec: alf.NestedTensorSpec = None,
                  use_transform_cache: bool = True,
                  name: str = "NormalizingFlowNetwork"):
@@ -212,7 +212,7 @@ class RealNVPNetwork(NormalizingFlowNetwork):
     """
 
     def __init__(self,
-                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 input_tensor_spec: alf.TensorSpec,
                  conditional_input_tensor_spec: alf.NestedTensorSpec = None,
                  input_preprocessors: alf.nest.Nest = None,
                  preprocessing_combiner: alf.nest.utils.NestCombiner = None,
@@ -356,7 +356,7 @@ class RealNVPNetwork(NormalizingFlowNetwork):
 
 
 def _prepare_conditional_flow_inputs(
-        xy_spec: alf.tensor_specs.TensorSpec,
+        xy_spec: alf.TensorSpec,
         xy: torch.Tensor,
         z_spec: alf.NestedTensorSpec = None,
         z: alf.nest.NestedTensor = None
@@ -422,7 +422,7 @@ class _RealNVPTransform(td.Transform):
     sign = +1
 
     def __init__(self,
-                 input_tensor_spec: alf.tensor_specs.TensorSpec,
+                 input_tensor_spec: alf.TensorSpec,
                  scale_trans_net: EncodingNetwork,
                  mask: torch.Tensor,
                  conditional_input_tensor_spec: alf.NestedTensorSpec = None,

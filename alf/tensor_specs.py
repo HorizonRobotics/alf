@@ -383,5 +383,15 @@ class BoundedTensorSpec(TensorSpec):
                 dtype=torch_dtype_to_str(self._dtype))
 
 
-NestedTensorSpec = Union[TensorSpec, List['NestedTensorSpec'], Tuple[(
-)], Tuple['NestedTensorSpec', ...], Dict[str, 'NestedTensorSpec']]
+# yapf: disable
+NestedTensorSpec = Union[
+    TensorSpec,
+    List['NestedTensorSpec'],
+    # An empty tuple is also considered a NestedTensorSpec
+    Tuple[()],
+    # Though Tuple['NestedTensorSpec', ...] is not the tightest specification, it is
+    # here to cover the case of "(named) tuple of NestedTensorSpec".
+    Tuple['NestedTensorSpec', ...],
+    Dict[str, 'NestedTensorSpec']
+]
+# yapf: enable
