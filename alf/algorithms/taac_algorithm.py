@@ -250,6 +250,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
+                 actor_observation_processors=alf.layers.Detach(),
                  reward_weights=None,
                  num_critic_replicas=2,
                  epsilon_greedy=None,
@@ -278,6 +279,11 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 actions.
             critic_network_cls (Callable): is used to construct critic network.
                 for estimating ``Q(s,a)`` given that the action is continuous.
+            actor_observation_processors (Nest): a nest of observation processors
+                applied to the inputs of the actor network. Note that any configured
+                ``input_preprocessors`` of ``actor_network_cls`` will be overwritten
+                by a tuple of this one and a preprocessor of the prev action, for
+                modeling :math:`\pi(a|s,a^-)`.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
@@ -335,7 +341,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         self._tau_spec, critic_networks, actor_network = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
-            critic_network_cls)
+            actor_observation_processors, critic_network_cls)
 
         log_alpha = (nn.Parameter(torch.zeros(())),
                      nn.Parameter(torch.zeros(())))
@@ -404,7 +410,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             period=target_update_period)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
-                       actor_network_cls, critic_network_cls):
+                       actor_network_cls, actor_observation_processors,
+                       critic_network_cls):
         raise NotImplementedError()
 
     def _update_tau(self, tau):
@@ -417,7 +424,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         raise NotImplementedError()
 
     def _make_networks_impl(self, observation_spec, action_spec, reward_spec,
-                            actor_network_cls, critic_network_cls, tau_mask):
+                            actor_network_cls, actor_observation_processors,
+                            critic_network_cls, tau_mask):
         def _make_parallel(net):
             return net.make_parallel(
                 self._num_critic_replicas * reward_spec.numel)
@@ -431,7 +439,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
 
         actor_network = actor_network_cls(
             input_tensor_spec=(observation_spec, tau_spec),
-            input_preprocessors=(alf.layers.Detach(), tau_embedding),
+            input_preprocessors=(actor_observation_processors, tau_embedding),
             preprocessing_combiner=nest_utils.NestConcat(),
             action_spec=action_spec)
         critic_network = critic_network_cls(
