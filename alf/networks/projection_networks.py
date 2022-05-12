@@ -23,7 +23,7 @@ import torch.distributions as td
 import alf
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.networks.network import Network
+from alf.networks.network import Network, wrap_as_network
 from alf.utils import dist_utils
 import alf.utils.math_ops as math_ops
 
@@ -33,6 +33,7 @@ class CategoricalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
                  action_spec,
+                 fc_ctor: Callable = alf.layers.FC,
                  logits_init_output_factor=0.1,
                  weight_opt_args=None,
                  bias_opt_args=None,
@@ -47,15 +48,28 @@ class CategoricalProjectionNetwork(Network):
             input_size (int): the input vector size
             action_spec (BounedTensorSpec): a tensor spec containing the information
                 of the output distribution.
-            weight_opt_args: optimizer arguments for weight
-            bias_opt_args: optimizer arguments for bias
+            fc_ctor: the constructor of FC layer. It is defaulted to `alf.layers.FC`.
+                However, you can use different FC layers such as `alf.nn.NoisyFC`.
+            weight_opt_args: optimizer arguments for weight.
+            bias_opt_args: optimizer arguments for bias.
             name (str):
         """
-        super(CategoricalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
-
         unique_num_actions = np.unique(action_spec.maximum -
                                        action_spec.minimum + 1)
+        output_shape = action_spec.shape + (int(unique_num_actions), )
+        projection_layer = fc_ctor(
+            input_size,
+            np.prod(output_shape),
+            weight_opt_args=weight_opt_args,
+            bias_opt_args=bias_opt_args,
+            kernel_init_gain=logits_init_output_factor)
+        projection_layer = wrap_as_network(projection_layer, None)
+
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )),
+            state_spec=projection_layer.state_spec,
+            name=name)
+
         if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
             raise ValueError(
                 'Bounds on discrete actions must be the same for all '
@@ -64,18 +78,11 @@ class CategoricalProjectionNetwork(Network):
                 'action dimensions. Implement a more general '
                 'categorical projection if you need more flexibility.')
 
-        output_shape = action_spec.shape + (int(unique_num_actions), )
         self._output_shape = output_shape
-
-        self._projection_layer = layers.FC(
-            input_size,
-            np.prod(output_shape),
-            weight_opt_args=weight_opt_args,
-            bias_opt_args=bias_opt_args,
-            kernel_init_gain=logits_init_output_factor)
+        self._projection_layer = projection_layer
 
     def forward(self, inputs, state=()):
-        logits = self._projection_layer(inputs)
+        logits, state = self._projection_layer(inputs, state)
         logits = logits.reshape(inputs.shape[0], *self._output_shape)
         if len(self._output_shape) > 1:
             return td.Independent(
@@ -100,6 +107,7 @@ class ParallelCategoricalProjectionNetwork(Network):
                  input_size,
                  action_spec,
                  n,
+                 fc_ctor=alf.layers.FC,
                  logits_init_output_factor=0.1,
                  name="ParallelCategoricalProjectionNetwork"):
         """Creates an instance of ParallelCategoricalProjectionNetwork.
@@ -110,8 +118,10 @@ class ParallelCategoricalProjectionNetwork(Network):
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
             n (int): number of the parallel networks
+            fc_ctor: must be `alf.layers.FC`
             name (str): name of this network.
         """
+        assert fc_ctor == alf.layers.FC, "fc_ctor must be alf.layers.FC"
         super(ParallelCategoricalProjectionNetwork, self).__init__(
             input_tensor_spec=TensorSpec((input_size, )), name=name)
 

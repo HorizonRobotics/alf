@@ -13,16 +13,23 @@
 # limitations under the License.
 """Various concrete Networks."""
 
+import copy
+import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import typing
+from typing import Callable, Dict, Optional, Tuple
 
 import alf
-from alf.utils.common import expand_dims_as
+from alf.initializers import variance_scaling_init
+from alf.utils.math_ops import identity
+from alf.utils.common import expand_dims_as, is_eval
 from .network import Network, wrap_as_network
 
 __all__ = [
-    'LSTMCell', 'GRUCell', 'Residue', 'TemporalPool', 'Delay', 'AMPWrapper'
+    'LSTMCell', 'GRUCell', 'NoisyFC', 'Residue', 'TemporalPool', 'Delay',
+    'AMPWrapper'
 ]
 
 
@@ -308,3 +315,190 @@ class AMPWrapper(Network):
                 lambda x: x.float() if x.dtype.is_floating_point else x, input)
         with torch.cuda.amp.autocast(self._enabled):
             return self._net(input, state)
+
+
+@alf.configurable
+@alf.repr_wrapper
+class NoisyFC(Network):
+    r"""The Noisy Linear Layer discribed in
+
+    Fortunato et. al. `Noisy Networks for Exploration <https://arxiv.org/abs/1706.10295>`_
+
+    In short, the original weight :math:`w` and bias :math:`b` of FC layer are replaced
+    with :math:`w + w_\sigma \odot \epislon^w` and :math:`b + b_\sigma \odot \epsion^b` where
+    :math:`\epsilon^w` and :math:`\epsilon^b` are noise and :math:`w, w_\sigma, b, b_\sigma`
+    are trainable parameters.
+
+    Some details:
+
+    1. The noise for each sample in a batch is different.
+    2. The noise is maintained as state. It has a probability of `new_noise_prob`
+       to change to new noise.
+    3. Since the initial state is always 0, a new noise will always be generated
+       for zero state.
+    4. If it is running in eval mode (i.e., common.is_eval() is True), noise will
+       be disabled (i.e. same as alf.layers.FC).
+    5. The noise is factorized Gaussian noise as described in the paper.
+
+
+    Args:
+        input_size: input size.
+        output_size: output size.
+        activation: activation function.
+        std_init: the scaling factor for the initial value of weight_sigma
+            and bias_sigma.
+        new_noise_prob: the probability of resample the noise.
+        use_bn: whether use batch normalization.
+        use_ln: whether use layer normalization
+        bn_ctor: will be called as ``bn_ctor(num_features)`` to
+            create the BN layer.
+        kernel_initializer: initializer for the FC layer kernel.
+            If none is provided a ``variance_scaling_initializer`` with gain as
+            ``kernel_init_gain`` will be used.
+        kernel_init_gain: a scaling factor (gain) applied to
+            the std of kernel init distribution. It will be ignored if
+            ``kernel_initializer`` is not None.
+        bias_init_value: a constant for the initial bias value.
+            This is ignored if ``bias_initializer`` is provided.
+        bias_initializer:  initializer for the bias parameter.
+        weight_opt_args: If provided, it will be used as optimizer arguments
+            for weight. And it will be combined with zero_mean=False and
+            fixed_norm=False as optimizer arguments for weight_sigma.
+        bias_opt_args: If provided, it will be used as optimizer arguments
+            for bias. And it will be combined with zero_mean=False as
+            optimizer arguments for bias_sigma.
+    """
+
+    def __init__(self,
+                 input_size: int,
+                 output_size: int,
+                 std_init: float = 0.5,
+                 new_noise_prob: float = 0.01,
+                 activation: Callable = identity,
+                 use_bn: bool = False,
+                 use_ln: bool = False,
+                 bn_ctor: Callable = nn.BatchNorm1d,
+                 kernel_initializer: Optional[Callable] = None,
+                 kernel_init_gain: float = 1.0,
+                 bias_init_value: float = 0.0,
+                 bias_initializer: Optional[Callable] = None,
+                 weight_opt_args: Optional[Dict] = None,
+                 bias_opt_args: Optional[Dict] = None):
+        super().__init__(
+            input_tensor_spec=alf.TensorSpec((input_size, )),
+            state_spec=(alf.TensorSpec((input_size, )),
+                        alf.TensorSpec((output_size, )))),
+        self._input_size = input_size
+        self._output_size = output_size
+        self._activation = activation
+        self._std_init = std_init
+        self._weight = nn.Parameter(torch.empty(output_size, input_size))
+        self._weight_sigma = nn.Parameter(torch.empty(output_size, input_size))
+        self._bias = nn.Parameter(torch.empty(output_size))
+        self._bias_sigma = nn.Parameter(torch.empty(output_size))
+        self._use_bn = use_bn
+        self._use_ln = use_ln
+        if use_bn:
+            self._bn = bn_ctor(output_size)
+        else:
+            self._bn = None
+        if use_ln:
+            self._ln = nn.LayerNorm(output_size)
+        else:
+            self._ln = None
+        self._new_noise_prob = new_noise_prob
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._bias_initializer = bias_initializer
+        self.reset_parameters()
+        if weight_opt_args:
+            self._weight.opt_args = weight_opt_args
+            weight_opt_args = copy.copy(weight_opt_args)
+            weight_opt_args['zero_mean'] = False
+            weight_opt_args['fixed_norm'] = False
+            self._weight_sigma.opt_args = weight_opt_args
+        if bias_opt_args and self._bias is not None:
+            self._bias.opt_args = bias_opt_args
+            bias_opt_args = copy.copy(bias_opt_args)
+            bias_opt_args['zero_mean'] = False
+            self._bias_sigma.opt_args = bias_opt_args
+
+    @property
+    def input_size(self):
+        return self._input_size
+
+    @property
+    def output_size(self):
+        return self._output_size
+
+    @property
+    def weight(self):
+        return self._weight
+
+    @property
+    def bias(self):
+        return self._bias
+
+    def reset_parameters(self):
+        """Initialize the parameters."""
+        if self._kernel_initializer is None:
+            variance_scaling_init(
+                self._weight.data,
+                gain=self._kernel_init_gain,
+                nonlinearity=self._activation)
+        else:
+            self._kernel_initializer(self._weight.data)
+        self._weight_sigma.data.fill_(
+            self._std_init / math.sqrt(self._input_size))
+        if self._bias_initializer is not None:
+            self._bias_initializer(self._bias.data)
+        else:
+            nn.init.constant_(self._bias.data, self._bias_init_value)
+        self._bias_sigma.data.fill_(
+            self._std_init / math.sqrt(self._output_size))
+        if self._use_ln:
+            self._ln.reset_parameters()
+        if self._use_bn:
+            self._bn.reset_parameters()
+
+    def _scale_noise(self, size):
+        x = torch.randn(size)
+        return x.sign().mul_(x.abs().sqrt_())
+
+    def forward(self, input: torch.Tensor, state: Tuple[torch.Tensor]):
+        """Forward computation.
+
+        Args:
+            inputs: its shape should be ``[batch_size, input_size]`
+            state: tuple of noise
+        Returns:
+            Tensor: with shape as ``[batch_size, output_size]``
+        """
+        epsilon_in, epsilon_out = state
+        # y = bias + input @ weight.t()
+        y = torch.addmm(self._bias, input, self._weight.t())
+        if not is_eval():
+            batch_size = input.shape[0]
+            new_epsilon_in = self._scale_noise((batch_size, self._input_size))
+            new_epsilon_out = self._scale_noise((batch_size,
+                                                 self._output_size))
+            new_noise = torch.rand(batch_size) < self._new_noise_prob
+            # The initial state is always 0. So we need to generate new noise
+            # for initial state.
+            new_noise = new_noise | ((epsilon_in == 0).all(dim=1) &
+                                     (epsilon_out == 0).all(dim=1))
+            new_noise = new_noise.unsqueeze(-1)
+            epsilon_in = torch.where(new_noise, new_epsilon_in, epsilon_in)
+            epsilon_out = torch.where(new_noise, new_epsilon_out, epsilon_out)
+            noise_in = input * epsilon_in
+            # x = bias_sigma + noise_in @ weight_sigma.t()
+            x = torch.addmm(self._bias_sigma, noise_in, self._weight_sigma.t())
+            # Although y.addcmul_(x, epsilon_out) is better, it can have problem
+            # of dtype mismatch when AMP is enabled.
+            y = y + x * epsilon_out
+        if self._use_ln:
+            y = self._ln(y)
+        if self._use_bn:
+            y = self._bn(y)
+        return self._activation(y), (epsilon_in, epsilon_out)

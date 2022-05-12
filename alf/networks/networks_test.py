@@ -213,6 +213,23 @@ class NestworksTest(alf.test.TestCase):
         self.assertTensorEqual(state[0], x2)
         self.assertTensorEqual(state[1], x3)
 
+    def test_noisy_net(self):
+        dim0, dim1 = 50, 100
+        l = alf.nn.NoisyFC(50, 100, new_noise_prob=0.1)
+        self.assertEqual(l.state_spec, (alf.TensorSpec(
+            (dim0, )), alf.TensorSpec((dim1, ))))
+        batch_size = 10000
+        x = torch.ones((batch_size, dim0))
+        state = zero_tensor_from_nested_spec(l.state_spec, batch_size)
+        y1, state = l(x, state)
+        y2, state = l(x, state)
+        y3, state = l(x, state)
+        diff1 = batch_size - (y1 == y2).all(dim=1).sum()
+        diff2 = batch_size - (y2 == y3).all(dim=1).sum()
+        print("diff1=", diff1, "diff2=", diff2)
+        self.assertAlmostEqual(diff1 / batch_size, 0.1, delta=0.01)
+        self.assertAlmostEqual(diff2 / batch_size, 0.1, delta=0.01)
+
 
 if __name__ == '__main__':
     alf.test.main()
