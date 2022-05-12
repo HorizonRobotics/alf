@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .config_util import *
+from .tensor_specs import *
 
 from . import metrics
 from . import module
@@ -25,6 +26,5 @@ from . import test
 from .utils import math_ops as math
 
 from .device_ctx import *
-from .tensor_specs import *
 import alf.utils.external_configurables
 from .config_helpers import *

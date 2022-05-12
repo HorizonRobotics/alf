@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Functions for handling nest."""
+from typing import Union, List, Tuple, Dict
 
 from absl import logging
 
@@ -23,8 +24,19 @@ from typing import Any
 
 # For easier type annotation with nests
 Nest = Any
-NestedTensor = Any
-NestedTensorSpec = Any
+
+# yapf: disable
+NestedTensor = Union[
+    torch.Tensor,
+    List['NestedTensor'],
+    # An empty tuple is also considered a NestedTensor
+    Tuple[()],
+    # Though Tuple['NestedTensor', ...] is not the tightest specification, it is here
+    # to cover the case of "(named) tuple of NestedTensor".
+    Tuple['NestedTensor', ...],
+    Dict[str, 'NestedTensor']
+]
+# yapf: enable
 
 
 def flatten(nest):

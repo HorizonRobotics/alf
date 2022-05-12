@@ -337,8 +337,8 @@ class NetworkWrapper(Network):
 
     def __init__(self,
                  module: typing.Callable,
-                 input_tensor_spec: alf.nest.NestedTensorSpec,
-                 state_spec: alf.nest.NestedTensorSpec = (),
+                 input_tensor_spec: alf.NestedTensorSpec,
+                 state_spec: alf.NestedTensorSpec = (),
                  name: str = "NetworkWrapper"):
         """
         Args:

@@ -37,7 +37,7 @@ class QNetworkBase(Network):
     """
 
     def __init__(self,
-                 input_tensor_spec: alf.nest.NestedTensorSpec,
+                 input_tensor_spec: alf.NestedTensorSpec,
                  action_spec: BoundedTensorSpec,
                  encoding_network_ctor: Callable,
                  use_naive_parallel_network: bool = False,
