@@ -405,6 +405,7 @@ class EncodingNetwork(_Sequential):
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
+                 last_use_bias=True,
                  last_use_fc_bn=False,
                  name="EncodingNetwork"):
         """
@@ -453,6 +454,7 @@ class EncodingNetwork(_Sequential):
                 additional layer specified by ``last_layer_size``. Note that if
                 ``last_layer_size`` is not None, ``last_activation`` has to be
                 specified explicitly.
+            last_use_bias (bool): whether use bias for the last layer.
             last_use_fc_bn (bool): whether use Batch Normalization for the last
                 fc layer.
             last_kernel_initializer (Callable): initializer for the the
@@ -539,6 +541,7 @@ class EncodingNetwork(_Sequential):
                     input_size,
                     last_layer_size,
                     activation=last_activation,
+                    use_bias=last_use_bias,
                     use_bn=last_use_fc_bn,
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size

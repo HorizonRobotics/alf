@@ -77,6 +77,7 @@ class HyperNetwork(Algorithm):
                  use_fc_bias=True,
                  use_fc_ln=False,
                  generator_use_fc_bn=False,
+                 generator_last_use_bias=False,
                  num_particles=10,
                  entropy_regularization=1.,
                  mini_batch_training=True,
@@ -141,6 +142,8 @@ class HyperNetwork(Algorithm):
             use_fc_ln (bool): whether use layer normalization for fc layers.
             generator_use_fc_bn (bool): whether use batch normalization for 
                 generator fc layers.
+            generator_last_use_bias (bool): whether to use bias for the last layer
+                of the generator.
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight for par_vi repulsive term. If
                 ``None`` and ``data_creator`` is provided, will be set as the ratio
@@ -263,8 +266,9 @@ class HyperNetwork(Algorithm):
         if functional_gradient and (use_relu_mlp or direct_jac_inverse):
             net = ReluMLP(
                 noise_spec,
-                hidden_layers=hidden_layers,
                 output_size=gen_output_dim,
+                hidden_layers=hidden_layers,
+                last_use_bias=generator_last_use_bias,
                 name='Generator')
         else:
             net = EncodingNetwork(
@@ -273,6 +277,7 @@ class HyperNetwork(Algorithm):
                 activation=F.silu,
                 use_fc_bn=generator_use_fc_bn,
                 last_layer_size=gen_output_dim,
+                last_use_bias=generator_last_use_bias,
                 last_activation=math_ops.identity,
                 name="Generator")
 

@@ -31,17 +31,19 @@ class SimpleFC(nn.Linear):
     of diagonals of input-output Jacobian.
     """
 
-    def __init__(self, input_size, output_size, activation=identity):
+    def __init__(self, input_size, output_size, bias=True,
+                 activation=identity):
         """
         Initialize a SimpleFC layer.
 
         Args:
             input_size (int): input dimension.
             output_size (int): output dimension.
+            bias (bool): wheter to use bias.
             activation (nn.functional): activation used for this layer.
                 Default is math_ops.identity.
         """
-        super().__init__(input_size, output_size)
+        super().__init__(input_size, output_size, bias=bias)
         self._activation = activation
         self._hidden_neurons = None
 
@@ -65,6 +67,8 @@ class ReluMLP(Network):
                  input_tensor_spec,
                  output_size=None,
                  hidden_layers=(64, 64),
+                 use_bias=True,
+                 last_use_bias=False,
                  name="ReluMLP"):
         """Create a ReluMLP.
 
@@ -72,6 +76,8 @@ class ReluMLP(Network):
             input_tensor_spec (TensorSpec):
             output_size (int): output dimension.
             hidden_layers (tuple): size of hidden layers.
+            use_bias (bool): whether to use bias for hidden layers.
+            last_use_bias (bool): whether to use bias for the last layer.
             name (str):
         """
         assert len(input_tensor_spec.shape) == 1, \
@@ -90,11 +96,16 @@ class ReluMLP(Network):
         self._fc_layers = nn.ModuleList()
         input_size = self._input_size
         for size in hidden_layers:
-            fc = SimpleFC(input_size, size, activation=torch.relu_)
+            fc = SimpleFC(
+                input_size, size, bias=use_bias, activation=torch.relu_)
             self._fc_layers.append(fc)
             input_size = size
 
-        last_fc = SimpleFC(input_size, self._output_size, activation=identity)
+        last_fc = SimpleFC(
+            input_size,
+            self._output_size,
+            bias=last_use_bias,
+            activation=identity)
         self._fc_layers.append(last_fc)
 
     def __getitem__(self, i):
