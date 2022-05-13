@@ -340,6 +340,10 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
         log_alpha = (nn.Parameter(torch.zeros(())),
                      nn.Parameter(torch.zeros(())))
 
+        assert (len(alf.nest.flatten(critic_networks.state_spec)) == 0
+                and len(alf.nest.flatten(actor_network.state_spec)) == 0), (
+                    "Don't support stateful critic or actor network!")
+
         train_state_spec = TaacState(
             tau=self._tau_spec,
             repeats=TensorSpec(shape=(), dtype=torch.int64))
