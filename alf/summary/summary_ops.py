@@ -95,8 +95,12 @@ def _summary_wrapper(summary_func):
     """
 
     @functools.wraps(summary_func)
-    def wrapper(name, data, average_over_interval=False, step=None, **kwargs):
-        if average_over_interval:
+    def wrapper(name,
+                data,
+                average_over_summary_interval=False,
+                step=None,
+                **kwargs):
+        if average_over_summary_interval:
             if isinstance(data, torch.Tensor):
                 data = data.detach()
             if name.startswith('/'):

@@ -354,7 +354,7 @@ class RLAlgorithm(Algorithm):
                 alf.summary.scalar(
                     name + "/mean",
                     torch.mean(rewards),
-                    average_over_interval=True)
+                    average_over_summary_interval=True)
             else:
                 for i in range(rewards.shape[2]):
                     r = rewards[..., i]
@@ -362,7 +362,7 @@ class RLAlgorithm(Algorithm):
                     alf.summary.scalar(
                         '%s/%s/mean' % (name, i),
                         torch.mean(r),
-                        average_over_interval=True)
+                        average_over_summary_interval=True)
 
     def summarize_rollout(self, experience):
         """Generate summaries for rollout.
