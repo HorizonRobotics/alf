@@ -56,7 +56,7 @@ class TicTacToeModel(MCTSModel):
     def initial_representation(self, observation):
         return observation
 
-    def initial_predict(self, latent):
+    def initial_predict(self, latent, pred_state=()):
         batch_size = latent.shape[0]
         board = latent
         player = -self._get_current_player(board)

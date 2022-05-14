@@ -218,7 +218,7 @@ class _MCTSTrees(object):
         return dot
 
 
-MCTSState = namedtuple("MCTSState", ["steps", "pred_state"])
+MCTSState = namedtuple("MCTSState", ["steps", "pred_state"], default_value=())
 MCTSInfo = namedtuple(
     "MCTSInfo", ["candidate_actions", "value", "candidate_action_policy"])
 
