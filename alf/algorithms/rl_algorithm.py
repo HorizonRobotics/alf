@@ -277,6 +277,7 @@ class RLAlgorithm(Algorithm):
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
         self._remaining_unroll_length_fraction = 0
+        self._need_to_summarize_rollout = False
         self._offline_replay_buffer = None
 
     def is_rl(self):
@@ -603,14 +604,26 @@ class RLAlgorithm(Algorithm):
             unroll_length)
         unroll_length = int(unroll_length)
 
+        if alf.summary.should_record_summaries():
+            self._need_to_summarize_rollout = True
+
         if (alf.summary.get_global_counter() >=
                 self._rl_train_after_update_steps and unroll_length > 0):
             with torch.set_grad_enabled(config.unroll_with_grad):
                 with record_time("time/unroll"):
                     self.eval()
                     experience = self.unroll(unroll_length)
-                    self.summarize_rollout(experience)
-                    self.summarize_metrics()
+                    # The period of performing unroll may not be an integer
+                    # divider of config.summary_interval if config.unroll_length is not an
+                    # interger. In order to make sure the summary for unroll is
+                    # still written out about every summary_interval steps, we
+                    # need to remember whether summary has been written between
+                    # two unrolls.
+                    if self._need_to_summarize_rollout:
+                        with alf.summary.record_if(lambda: True):
+                            self.summarize_rollout(experience)
+                            self.summarize_metrics()
+                        self._need_to_summarize_rollout = False
 
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
