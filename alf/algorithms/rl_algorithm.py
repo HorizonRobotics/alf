@@ -598,6 +598,9 @@ class RLAlgorithm(Algorithm):
             unroll_length)
         unroll_length = int(unroll_length)
 
+        if alf.summary.should_record_summaries():
+            self._need_to_summarize_rollout = True
+
         if (alf.summary.get_global_counter() >=
                 self._rl_train_after_update_steps and unroll_length > 0):
             with torch.set_grad_enabled(config.unroll_with_grad):
