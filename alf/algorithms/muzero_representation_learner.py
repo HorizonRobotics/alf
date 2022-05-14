@@ -267,8 +267,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 target_models=[self._target_model],
                 tau=target_update_tau,
                 period=target_update_period)
-            assert 'model' in inspect.signature(
-                reanalyze_algorithm_ctor).parameters
             if 'model' in inspect.signature(
                     reanalyze_algorithm_ctor).parameters:
                 model_kwargs = dict(model=self._target_model)
