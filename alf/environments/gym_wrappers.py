@@ -714,3 +714,13 @@ class NonEpisodicEnv(gym.Wrapper):
     def step(self, action):
         ob, reward, done, info = self.env.step(action)
         return ob, reward, False, info
+
+
+@alf.configurable
+class RemoveInfoWrapper(gym.Wrapper):
+    """Remove all the info from environment return.
+    """
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        return obs, reward, done, {}

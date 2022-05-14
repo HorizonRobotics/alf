@@ -32,7 +32,7 @@ alf.config('ReplayBuffer', keep_episodic_info=True)
 alf.config(
     'HindsightExperienceTransformer',
     her_proportion=0.8,
-    sparse_reward_transform=suite_socialbot.transform_reward_tensor)
+    episodic_reward_transform=suite_socialbot.transform_reward_tensor)
 alf.config(
     'TrainerConfig',
     data_transformer_ctor=[

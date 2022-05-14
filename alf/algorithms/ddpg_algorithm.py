@@ -40,9 +40,20 @@ DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
-    "DdpgInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "discounted_return", "future_distance", "her"
+    "DdpgInfo",
+    [
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor_loss",
+        "critic",
+        # Optional fields for value target lower bounding or Hindsight relabeling.
+        # TODO: Extract these into a HerAlgorithm wrapper for easier adoption of HER.
+        "discounted_return",
+        "future_distance",
+        "her"
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
@@ -357,19 +368,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             priority = ()
 
         actor_loss = info.actor_loss
-
-        # The current implementation is hacky: Instead of using OneStepTD
-        # and pulling additionally a few timesteps from the future to compute
-        # bootstrap values, we here piggyback on n-step TDLoss, but masking
-        # out losses from the 2nd to n-1-th steps.
-        # If this hacky use pattern is to be used frequently in the future,
-        # we should consider refactoring it.
-        if hasattr(self._critic_losses[0],
-                    "_improve_w_nstep_bootstrap") and \
-            self._critic_losses[0]._improve_w_nstep_bootstrap:
-            # Ignore 2nd - nth step actor losses.
-            actor_loss.loss[1:] = 0
-            actor_loss.extra[1:] = 0
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,

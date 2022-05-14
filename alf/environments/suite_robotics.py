@@ -34,6 +34,7 @@ import gym
 
 import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
+from alf.environments.gym_wrappers import RemoveInfoWrapper
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -48,12 +49,14 @@ class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self, env, reward_weight=1., positive_reward=True):
+    def __init__(self,
+                 env,
+                 reward_weight: float = 1.,
+                 positive_reward: bool = True):
         """
         Args:
-            reward_weight (float): weight of output reward.
-            positive_reward (bool): if True, returns 0/1 reward,
-                otherwise, -1/0 reward.
+            reward_weight: weight of output reward.
+            positive_reward: if True, returns 0/1 reward, otherwise, -1/0 reward.
         """
         gym.Wrapper.__init__(self, env)
         self._reward_weight = reward_weight
@@ -152,16 +155,6 @@ class ObservationClipWrapper(gym.ObservationWrapper):
             return observation
         else:
             return np.clip(observation, self.min_v, self.max_v)
-
-
-@alf.configurable
-class RemoveInfoWrapper(gym.Wrapper):
-    """Remove all the info from environment return.
-    """
-
-    def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        return obs, reward, done, {}
 
 
 @alf.configurable

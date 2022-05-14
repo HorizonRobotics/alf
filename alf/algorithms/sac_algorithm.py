@@ -34,10 +34,10 @@ from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks import QNetwork, QRNNNetwork
-from alf.summary import render
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.schedulers import as_scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -55,10 +55,22 @@ SacActorInfo = namedtuple(
     "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
-    "SacInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return",
-        "future_distance", "her"
+    "SacInfo",
+    [
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor",
+        "critic",
+        "alpha",
+        "log_pi",
+        # Optional fields for value target lower bounding or Hindsight relabeling.
+        # TODO: Extract these into a HerAlgorithm wrapper for easier adoption of HER.
+        "discounted_return",
+        "future_distance",
+        "her"
     ],
     default_value=())
 
@@ -154,9 +166,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  q_network_cls=QNetwork,
                  reward_weights=None,
                  epsilon_greedy=None,
-                 rollout_epsilon_greedy=1.0,
-                 use_epsilon_schedule=0,
-                 max_target_action=False,
                  use_entropy_reward=True,
                  normalize_entropy_reward=False,
                  calculate_priority=False,
@@ -208,14 +217,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
-            rollout_epsilon_greedy (float): epsilon greedy policy for rollout.
-                Together with the following three parameters, the Sac algorithm
-                can be converted to a DQN algorithm.
-            use_epsilon_schedule (float): training schedule for
-                rollout_epsilon_greedy.
-            max_target_action (bool): whether to use the action with the highest
-                target value as the target action for computing bootstrapped value.
-                To mimic the DQN algorithm, set this to True.
             use_entropy_reward (bool): whether to include entropy as reward
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
@@ -274,9 +275,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
-        self._rollout_epsilon_greedy = rollout_epsilon_greedy
-        self._use_epsilon_schedule = use_epsilon_schedule
-        self._max_target_action = max_target_action
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -290,10 +288,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             )
 
         def _init_log_alpha():
-            alpha = torch.tensor(float(initial_log_alpha))
-            if alpha_optimizer is None:
-                return alpha
-            return nn.Parameter(alpha)
+            return nn.Parameter(torch.tensor(float(initial_log_alpha)))
 
         if self._act_type == ActionType.Mixed:
             # separate alphas for discrete and continuous actions
@@ -333,7 +328,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
 
         self._log_alpha = log_alpha
-        if self._act_type == ActionType.Mixed and alpha_optimizer is not None:
+        if self._act_type == ActionType.Mixed:
             self._log_alpha_paralist = nn.ParameterList(
                 nest.flatten(log_alpha))
 
@@ -395,8 +390,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_models=[self._target_critic_networks],
             tau=target_update_tau,
             period=target_update_period)
-        # initial q value range for rendering; adjusted as playing progresses
-        self._q_range = (0, 3)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
@@ -552,48 +545,22 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return action_dist, action, q_values, new_state
 
     def predict_step(self, inputs: TimeStep, state: SacState):
-        action_dist, action, q_values, action_state = self._predict_action(
+        action_dist, action, _, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
-        info = SacInfo(action_distribution=action_dist)
-        if (alf.summary.render.is_rendering_enabled()
-                and self._act_type == ActionType.Discrete):
-            num_acts = q_values.shape[-1]
-            self._q_range = (min(self._q_range[0], int(q_values.min())),
-                             max(self._q_range[1],
-                                 int(q_values.max()) + 1))
-            info = dict(
-                sac=info,
-                action_img=render.render_action("action", action,
-                                                self._action_spec),
-                action_dist_img=render.render_bar(
-                    "action_dist",
-                    action_dist.probs,
-                    y_range=(0, 1),
-                    annotate_format="%.2f",
-                    x_ticks=range(num_acts)),
-                q_img=render.render_bar(
-                    "q_values",
-                    q_values,
-                    y_range=self._q_range,
-                    annotate_format="%.2f",
-                    x_ticks=range(num_acts)))
         return AlgStep(
-            output=action, state=SacState(action=action_state), info=info)
+            output=action,
+            state=SacState(action=action_state),
+            info=SacInfo(action_distribution=action_dist))
 
-    def rollout_step(self, inputs: TimeStep, state: SacState):
+    def rollout_step(self, inputs: TimeStep, state: SacState, eps: float = 1.):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay
         buffer, then this function also call ``_critic_networks`` and
         ``_target_critic_networks`` to maintain their states.
         """
-        eps = self._rollout_epsilon_greedy
-        if self._use_epsilon_schedule > 0:
-            progress = alf.trainers.policy_trainer.Trainer.progress()
-            if progress < self._use_epsilon_schedule:
-                eps = 1.0 - (1.0 - eps) * progress / self._use_epsilon_schedule
         action_dist, action, _, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
@@ -741,8 +708,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                *self._reward_spec.shape).long()
         return q_values.gather(2, action).squeeze(2)
 
-    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
-                           rollout_info: SacInfo, action, action_distribution):
+    def _critic_train_step(self,
+                           inputs: TimeStep,
+                           state: SacCriticState,
+                           rollout_info: SacInfo,
+                           action,
+                           action_distribution,
+                           target_action_picker: Callable = None):
         critics, critics_state = self._compute_critics(
             self._critic_networks,
             inputs.observation,
@@ -764,8 +736,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             probs = common.expand_dims_as(action_distribution.probs,
                                           target_critics)
             # [B, reward_dim]
-            if self._max_target_action:
-                target_critics = torch.max(target_critics, dim=1)[0]
+            if target_action_picker is not None:
+                target_critics = target_action_picker(target_critics)
             else:
                 target_critics = torch.sum(probs * target_critics, dim=1)
         elif self._act_type == ActionType.Mixed:
@@ -847,20 +819,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         alpha_loss = info.alpha
         actor_loss = info.actor
 
-        # The current implementation is hacky: Instead of using OneStepTD
-        # and pulling additionally a few timesteps from the future to compute
-        # bootstrap values, we here piggyback on n-step TDLoss, but masking
-        # out losses from the 2nd to n-1-th steps.
-        # If this hacky use pattern is to be used frequently in the future,
-        # we should consider refactoring it.
-        if hasattr(self._critic_losses[0],
-                    "_improve_w_nstep_bootstrap") and \
-            self._critic_losses[0]._improve_w_nstep_bootstrap:
-            # Ignore 2nd - n-th step losses in this mode.
-            alpha_loss[1:] = 0
-            if actor_loss.loss != ():
-                actor_loss.loss[1:] = 0
-
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 if self._act_type == ActionType.Mixed:
@@ -914,11 +872,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._use_entropy_reward:
             with torch.no_grad():
                 log_pi = info.log_pi
-                if hasattr(self._critic_losses[0],
-                           "_improve_w_nstep_bootstrap") and \
-                    self._critic_losses[0]._improve_w_nstep_bootstrap:
-                    # Ignore 2nd - n-th step entropy in this mode.
-                    log_pi[1:] = 0
                 if self._entropy_normalizer is not None:
                     log_pi = self._entropy_normalizer.normalize(log_pi)
                 entropy_reward = nest.map_structure(

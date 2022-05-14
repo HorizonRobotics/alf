@@ -18,12 +18,12 @@
 # NOTE: for lower bound value target improvement, add these flags:
 # --conf_param='ReplayBuffer.keep_episodic_info=True'
 # --conf_param='ReplayBuffer.record_episodic_return=True'
-# --conf_param='TDLoss.lb_target_q=True'
+# --conf_param='LowerBoundedTDLoss.lb_target_q=True'
 
 import functools
 
 import alf
-from alf.algorithms.td_loss import TDLoss
+from alf.algorithms.td_loss import LowerBoundedTDLoss
 from alf.environments.alf_wrappers import AtariTerminalOnLifeLossWrapper
 from alf.networks import QNetwork
 from alf.optimizers import AdamTF
@@ -50,7 +50,7 @@ q_network_cls = functools.partial(
     fc_layer_params=FC_LAYER_PARAMS,
     conv_layer_params=CONV_LAYER_PARAMS)
 
-critic_loss_ctor = functools.partial(TDLoss, td_lambda=0.95)
+critic_loss_ctor = functools.partial(LowerBoundedTDLoss, td_lambda=0.95)
 
 lr = define_config('lr', 5e-4)
 critic_optimizer = AdamTF(lr=lr)

@@ -88,8 +88,14 @@ class TDLoss(nn.Module):
                 Note that the effect of this is to change the loss. The critic
                 value itself is not normalized.
             use_retrace: turn on retrace loss
-                :math:`\mathcal{R} Q(x, a):=Q(x, a)+\mathbb{E}_{\mu}\left[\sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)\left(r_{t}+\gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)\right)\right]`
-                copied from PR #695.
+
+                .. math::
+
+                    \mathcal{R} Q(x, a) := Q(x, a) + \mathbb{E}_{\mu}\left[
+                        \sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)
+                            \left(r_{t} + \gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)
+                            \right)\right]
+
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
