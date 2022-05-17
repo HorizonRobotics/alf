@@ -40,9 +40,20 @@ DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
-    "DdpgInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "discounted_return"
+    "DdpgInfo",
+    [
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor_loss",
+        "critic",
+        # Optional fields for value target lower bounding or Hindsight relabeling.
+        # TODO: Extract these into a HerAlgorithm wrapper for easier adoption of HER.
+        "discounted_return",
+        "future_distance",
+        "her"
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
