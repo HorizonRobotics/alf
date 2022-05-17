@@ -16,6 +16,7 @@
 from functools import partial
 from typing import Callable, Optional, Union, NamedTuple
 import copy
+import inspect
 
 import torch
 
@@ -152,7 +153,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             reanalyze_algorithm_ctor (Callable): will be called as
                 ``reanalyze_algorithm_ctor(observation_spec=?,
                 action_spec=?, discount=?, debug_summaries=?, name=?)`` to
-                construct an ``Algorithm`` instance for reanalyze.
+                construct an ``Algorithm`` instance for reanalyze. It can also
+                optionally accept an additional argument 'model'. If so, an
+                model constructed using ``model_ctor`` will be passed to the
+                constructor.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
@@ -253,11 +257,6 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             assert reanalyze_algorithm_ctor is not None, (
                 'Must specify reanalyze_algorithm_ctor when reanalyze_ratio > 0'
             )
-            self._reanalyze_algorithm = reanalyze_algorithm_ctor(
-                observation_spec=self._model.repr_spec,
-                action_spec=action_spec,
-                debug_summaries=debug_summaries,
-                name="reanalyze_algorithm")
             self._target_model = model_ctor(
                 observation_spec,
                 action_spec,
@@ -268,11 +267,17 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 target_models=[self._target_model],
                 tau=target_update_tau,
                 period=target_update_period)
-            # We assume that the algorithm used for reanalyze will implement the
-            # interface ``set_model`` to indicate that it requires access to the
-            # underlying (target) model.
-            if hasattr(self._reanalyze_algorithm, 'set_model'):
-                self._reanalyze_algorithm.set_model(self._target_model)
+            if 'model' in inspect.signature(
+                    reanalyze_algorithm_ctor).parameters:
+                model_kwargs = dict(model=self._target_model)
+            else:
+                model_kwargs = dict()
+            self._reanalyze_algorithm = reanalyze_algorithm_ctor(
+                observation_spec=self._model.repr_spec,
+                action_spec=action_spec,
+                **model_kwargs,
+                debug_summaries=debug_summaries,
+                name="reanalyze_algorithm")
 
     @property
     def model(self):
