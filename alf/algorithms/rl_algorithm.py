@@ -270,6 +270,12 @@ class RLAlgorithm(Algorithm):
                     buffer_size=metric_buf_size),
                 alf.metrics.AverageDiscountedReturnMetric(
                     buffer_size=metric_buf_size,
+                    example_time_step=example_time_step),
+                alf.metrics.AverageRewardMetric(
+                    buffer_size=metric_buf_size,
+                    example_time_step=example_time_step),
+                alf.metrics.EpisodicStartAverageDiscountedReturnMetric(
+                    buffer_size=metric_buf_size,
                     example_time_step=example_time_step)
             ]
 
