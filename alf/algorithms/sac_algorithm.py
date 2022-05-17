@@ -37,6 +37,7 @@ from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.schedulers import as_scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -541,7 +542,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=SacState(action=action_state),
             info=SacInfo(action_distribution=action_dist))
 
-    def rollout_step(self, inputs: TimeStep, state: SacState):
+    def rollout_step(self, inputs: TimeStep, state: SacState, eps: float = 1.):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay
         buffer, then this function also call ``_critic_networks`` and
@@ -550,7 +551,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         action_dist, action, _, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
-            epsilon_greedy=1.0,
+            epsilon_greedy=eps,
             eps_greedy_sampling=True,
             rollout=True)
 
@@ -694,8 +695,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                *self._reward_spec.shape).long()
         return q_values.gather(2, action).squeeze(2)
 
-    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
-                           rollout_info: SacInfo, action, action_distribution):
+    def _critic_train_step(self,
+                           inputs: TimeStep,
+                           state: SacCriticState,
+                           rollout_info: SacInfo,
+                           action,
+                           action_distribution,
+                           target_action_picker: Callable = None):
         critics, critics_state = self._compute_critics(
             self._critic_networks,
             inputs.observation,
@@ -717,7 +723,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             probs = common.expand_dims_as(action_distribution.probs,
                                           target_critics)
             # [B, reward_dim]
-            target_critics = torch.sum(probs * target_critics, dim=1)
+            if target_action_picker is not None:
+                target_critics = target_action_picker(target_critics)
+            else:
+                target_critics = torch.sum(probs * target_critics, dim=1)
         elif self._act_type == ActionType.Mixed:
             critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
