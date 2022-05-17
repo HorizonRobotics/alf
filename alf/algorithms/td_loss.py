@@ -231,6 +231,19 @@ class TDLoss(nn.Module):
             # Multidimensional reward. Average over the critic loss for all dimensions
             loss = loss.mean(dim=2)
 
+        # For the subclass LowerBoundedTDLoss
+        if constraint_loss is not None:
+            assert constraint_loss.shape == loss.shape[1:], \
+                f"{constraint_loss.shape} != {loss.shape}[1:]"
+            c_loss = constraint_loss.clone().unsqueeze(0).repeat(
+                (loss.shape[0], 1))
+            c_loss[1:] = 0
+            if self._lb_loss_scale:
+                scale = (torch.sum(loss) / torch.sum(c_loss + loss)).detach()
+            else:
+                scale = 1
+            loss = (c_loss + loss) * scale
+
         # The shape of the loss expected by Algorith.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
         loss = tensor_utils.tensor_extend_zero(loss)
@@ -251,6 +264,8 @@ class LowerBoundedTDLoss(TDLoss):
                  improve_w_goal_return: bool = False,
                  improve_w_nstep_bootstrap: bool = False,
                  improve_w_nstep_only: bool = False,
+                 lower_bound_constraint: float = 0.,
+                 lb_loss_scale: bool = False,
                  reward_multiplier: float = 1.,
                  positive_reward: bool = True,
                  debug_summaries: bool = False,
@@ -269,6 +284,14 @@ class LowerBoundedTDLoss(TDLoss):
                 bootstrapped return to lower bound the value target of the 1st step.
             improve_w_nstep_only: Only use the n-th step bootstrapped return as
                 value target lower bound.
+            lower_bound_constraint: Use n-step bootstrapped return as lower bound
+                constraints of the value.  See reference:
+                He, F. S., Liu, Y., Schwing, A. G., and Peng, J.
+                Learning to play in a day: Faster deep reinforcement learning
+                by optimality tightening.  In 5th International Conference
+                on Learning Representations, ICLR 2017, Toulon, France,
+                April 24-26, 2017.  https://openreview.net/forum?id=rJ8Je4clg
+            lb_loss_scale: Parameter for lower_bound_constraint.
             reward_multiplier: Weight on the hindsight goal return.
             positive_reward: If True, assumes 0/1 goal reward, otherwise, -1/0.
             debug_summaries: True if debug summaries should be created.
@@ -287,6 +310,8 @@ class LowerBoundedTDLoss(TDLoss):
         self._improve_w_goal_return = improve_w_goal_return
         self._improve_w_nstep_bootstrap = improve_w_nstep_bootstrap
         self._improve_w_nstep_only = improve_w_nstep_only
+        self._lower_bound_constraint = lower_bound_constraint
+        self._lb_loss_scale = lb_loss_scale
         self._reward_multiplier = reward_multiplier
         self._positive_reward = positive_reward
 
@@ -349,10 +374,19 @@ class LowerBoundedTDLoss(TDLoss):
                 alf.summary.scalar(
                     "max_1_to_n_future_return_gt_td",
                     torch.mean((returns[0] < future_returns).float()))
+                if self._lower_bound_constraint > 0:
+                    alf.summary.scalar(
+                        "max_1_to_n_future_return_gt_value",
+                        torch.mean((value[0] < future_returns).float()))
                 alf.summary.scalar("first_step_discounted_return",
                                    torch.mean(returns[0]))
 
-            returns[0] = torch.max(future_returns, returns[0]).detach()
+            if self._lower_bound_constraint > 0:
+                constraint_loss = self._lower_bound_constraint * torch.max(
+                    torch.zeros_like(future_returns),
+                    future_returns.detach() - value[0])**2
+            else:
+                returns[0] = torch.max(future_returns, returns[0]).detach()
             returns[1:] = 0
             value = value.clone()
             value[1:] = 0
