@@ -785,6 +785,37 @@ class HindsightExperienceTransformer(DataTransformer):
     def transform_timestep(self, timestep: TimeStep, state):
         return timestep, state
 
+    def _verify_reward_function(self, her_cond, result, relabeled_rewards,
+                                result_ag, result_desired_goal, env_ids,
+                                start_pos, shape):
+        # Verify reward function is the same as used by the environment.
+
+        # Handle multi dim reward, assumes 0th dim is goal reward.
+        goal_rewards = result.reward
+        if result.reward.ndim > 2:
+            goal_rewards = result.reward[:, :, 0]
+
+        non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
+                                                   StepType.FIRST)
+        if not torch.allclose(relabeled_rewards[non_her_or_fst],
+                              goal_rewards[non_her_or_fst]):
+            not_close = torch.abs(relabeled_rewards[non_her_or_fst] -
+                                  goal_rewards[non_her_or_fst]) > 0.01
+            msg = ("hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
+                   "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
+                   + "\n{}").format(
+                       relabeled_rewards[non_her_or_fst][not_close],
+                       goal_rewards[non_her_or_fst][not_close],
+                       result_ag[non_her_or_fst][not_close],
+                       result_desired_goal[non_her_or_fst][not_close],
+                       env_ids.unsqueeze(1).expand(
+                           shape[:2])[non_her_or_fst][not_close],
+                       start_pos.unsqueeze(1).expand(
+                           shape[:2])[non_her_or_fst][not_close])
+            logging.warning(msg)
+            # assert False, msg
+            # relabeled_rewards[non_her_or_fst] = goal_rewards[non_her_or_fst]
+
     def _add_noise(self, t):
         # rejection sample from unit ball
         if self._relabeled_goal_noise <= 0:
@@ -912,34 +943,25 @@ class HindsightExperienceTransformer(DataTransformer):
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + buffer._name +
+                    ".discount_mean_before_relabel",
+                    torch.mean(result.discount[:, 1:]))
+
+            self._verify_reward_function(her_cond, result, relabeled_rewards,
+                                         result_ag, result_desired_goal,
+                                         env_ids, start_pos, shape)
 
             if self._relabel_with_episodic_rewards:
                 result, relabeled_rewards = self._episodic_relabel(
                     result, relabeled_rewards, buffer)
 
-            non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
-                                                       StepType.FIRST)
-            # assert reward function is the same as used by the environment.
-            if not torch.allclose(relabeled_rewards[non_her_or_fst],
-                                  result.reward[non_her_or_fst]):
-                not_close = torch.abs(relabeled_rewards[non_her_or_fst] -
-                                      result.reward[non_her_or_fst]) > 0.01
-                msg = (
-                    "hindsight_relabel:\nrelabeled_reward\n{}\n!=\n" +
-                    "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:"
-                    + "\n{}").format(
-                        relabeled_rewards[non_her_or_fst][not_close],
-                        result.reward[non_her_or_fst][not_close],
-                        result_ag[non_her_or_fst][not_close],
-                        result_desired_goal[non_her_or_fst][not_close],
-                        env_ids.unsqueeze(1).expand(
-                            shape[:2])[non_her_or_fst][not_close],
-                        start_pos.unsqueeze(1).expand(
-                            shape[:2])[non_her_or_fst][not_close])
-                logging.warning(msg)
-                # assert False, msg
-                relabeled_rewards[non_her_or_fst] = result.reward[
-                    non_her_or_fst]
+            # Multi dimensional env reward.  Assumes 0th dim is goal reward.
+            final_relabeled_rewards = relabeled_rewards
+            if result.reward.ndim > 2:
+                final_relabeled_rewards = result.reward.clone()
+                final_relabeled_rewards[:, :, 0] = relabeled_rewards
 
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
@@ -954,7 +976,8 @@ class HindsightExperienceTransformer(DataTransformer):
 
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabeled_goal)
-        result = result.update_time_step_field('reward', relabeled_rewards)
+        result = result.update_time_step_field('reward',
+                                               final_relabeled_rewards)
         info = info._replace(her=her_cond, future_distance=future_dist)
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
