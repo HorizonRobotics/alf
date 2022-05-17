@@ -71,6 +71,7 @@ class ReplayBuffer(RingBuffer):
                  gamma=.99,
                  reward_clip=None,
                  enable_checkpoint=False,
+                 convert_only_minibatch_to_device=False,
                  name="ReplayBuffer"):
         """
         Args:
@@ -118,6 +119,9 @@ class ReplayBuffer(RingBuffer):
                 Usually consistent with ``TDLoss.gamma``.
             reward_clip (tuple|None): None or (min, max) for reward clipping.
             enable_checkpoint (bool): whether checkpointing this replay buffer.
+            convert_only_minibatch_to_device (bool): when True, only convert a minibatch
+                of experience to GPU (if GPU is used), to save GPU memory.  Fractional unroll
+                is also able to save GPU memory, similarly.
             name (string): name of the replay buffer object.
         """
         super().__init__(
@@ -151,6 +155,7 @@ class ReplayBuffer(RingBuffer):
         self._recent_data_steps = recent_data_steps
         self._recent_data_ratio = recent_data_ratio
         self._with_replacement = with_replacement
+        self._convert_only_minibatch_to_device = convert_only_minibatch_to_device
         if self._keep_episodic_info:
             # _indexed_pos records for each timestep of experience in the
             # buffer the raw position of the first step of the episode in
@@ -426,7 +431,8 @@ class ReplayBuffer(RingBuffer):
             # Taking first timestep's return, to lowerbound training value.
             disc_ret = self._episodic_discounted_return[(env_ids, idx[:, 0])]
             info = info._replace(discounted_return=disc_ret)
-        if alf.get_default_device() != self._device:
+        if (not self._convert_only_minibatch_to_device
+                and alf.get_default_device() != self._device):
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=self)
         return result, info
@@ -836,7 +842,10 @@ class ReplayBuffer(RingBuffer):
             lambda name: alf.nest.get_field(self._buffer, name), field_name)
         indices = (env_ids, self.circular(positions))
         result = alf.nest.map_structure(lambda x: x[indices], field)
-        return convert_device(result)
+        if self._convert_only_minibatch_to_device:
+            return result
+        else:
+            return convert_device(result)
 
     @property
     def total_size(self):

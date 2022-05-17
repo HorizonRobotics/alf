@@ -180,6 +180,7 @@ class FrameStacker(DataTransformer):
                  observation_spec,
                  stack_size=4,
                  stack_axis=0,
+                 convert_only_minibatch_to_device=False,
                  fields=None):
         """Create a FrameStacker object.
 
@@ -187,6 +188,9 @@ class FrameStacker(DataTransformer):
             observation_spec (nested TensorSpec): describing the observation in timestep
             stack_size (int): stack so many frames
             stack_axis (int): the dimension to stack the observation.
+            convert_only_minibatch_to_device (bool): whether to convert only the
+                minibatch or the whole batch of data to GPU.  When True, preprocessing
+                and data transformations are done on CPU.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
@@ -198,6 +202,7 @@ class FrameStacker(DataTransformer):
         self._frames = dict()
         self._fields = fields if (fields is not None) else [None]
         self._exp_fields = []
+        self._convert_only_minibatch_to_device = convert_only_minibatch_to_device
         prev_frames_spec = []
         stacked_observation_spec = observation_spec
         for field in self._fields:
@@ -345,14 +350,21 @@ class FrameStacker(DataTransformer):
         #  [mini_batch_length - 1, ...]]
         #
         # [mini_batch_length, stack_size]
-        obs_index = (torch.arange(self._stack_size).unsqueeze(0) +
-                     torch.arange(mini_batch_length).unsqueeze(1))
-        B = torch.arange(batch_size)
-        obs_index = (B.unsqueeze(-1).unsqueeze(-1), obs_index.unsqueeze(0))
+        device = alf.get_default_device()
+        if self._convert_only_minibatch_to_device:
+            device = replay_buffer.device
+
+        with alf.device(device):
+            obs_index = (torch.arange(self._stack_size).unsqueeze(0) +
+                         torch.arange(mini_batch_length).unsqueeze(1))
+            B = torch.arange(batch_size)
+            obs_index = (B.unsqueeze(-1).unsqueeze(-1), obs_index.unsqueeze(0))
 
         def _stack_frame(obs, i):
             prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
                                                prev_positions)
+            if not self._convert_only_minibatch_to_device:
+                prev_obs = convert_device(prev_obs)
             stacked_shape = alf.nest.get_field(
                 self._transformed_observation_spec, self._fields[i]).shape
             # [batch_size, mini_batch_length + stack_size - 1, ...]
