@@ -248,10 +248,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                           noisy_action, self._action_spec)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critics=()))
+        # action_distribution is not supported for continuous actions for now.
+        # Returns empty action_distribution to fail early.
         return AlgStep(
             output=noisy_action,
             state=state,
-            info=DdpgInfo(action=noisy_action, action_distribution=action))
+            info=DdpgInfo(action=noisy_action, action_distribution=()))
 
     def rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
@@ -341,7 +343,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 reward=inputs.reward,
                 step_type=inputs.step_type,
                 discount=inputs.discount,
-                action_distribution=policy_step.output,
+                action=policy_step.output,
+                action_distribution=(),
                 critic=critic_info,
                 actor_loss=policy_step.info,
                 discounted_return=rollout_info.discounted_return))

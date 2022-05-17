@@ -31,9 +31,11 @@ class TDLoss(nn.Module):
     def __init__(self,
                  gamma: Union[float, List[float]] = 0.99,
                  td_error_loss_fn: Callable = element_wise_squared_loss,
+                 clip: float = 0.,
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
                  debug_summaries: bool = False,
+                 use_retrace: bool = False,
                  name: str = "TDLoss"):
         r"""
         Let :math:`G_{t:T}` be the bootstraped return from t to T:
@@ -80,10 +82,20 @@ class TDLoss(nn.Module):
             td_error_loss_fn: A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
+            clip: When positive, loss clipping to the range [-clip, clip].
             td_lambda: Lambda parameter for TD-lambda computation.
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The critic
                 value itself is not normalized.
+            use_retrace: turn on retrace loss
+
+                .. math::
+
+                    \mathcal{R} Q(x, a) := Q(x, a) + \mathbb{E}_{\mu}\left[
+                        \sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)
+                            \left(r_{t} + \gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)
+                            \right)\right]
+
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -92,7 +104,9 @@ class TDLoss(nn.Module):
         self._name = name
         self._gamma = torch.tensor(gamma)
         self._td_error_loss_fn = td_error_loss_fn
+        self._clip = clip
         self._lambda = td_lambda
+        self._use_retrace = use_retrace
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
@@ -128,7 +142,7 @@ class TDLoss(nn.Module):
                 back to the caller.
             target_value (torch.Tensor): the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
-                can be same as ``value``.
+                can be same as ``value``, except for Retrace.
         Returns:
             td_target, updated value, optional constraint_loss
         """
@@ -152,7 +166,7 @@ class TDLoss(nn.Module):
                 values=target_value,
                 step_types=info.step_type,
                 discounts=discounts)
-        else:
+        elif not self._use_retrace:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=info.reward,
                 values=target_value,
@@ -160,6 +174,31 @@ class TDLoss(nn.Module):
                 discounts=discounts,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
+        else:  # Retrace
+            scope = alf.summary.scope(self.__class__.__name__)
+            assert info.rollout_info.action_distribution != (), \
+                "Algorithm does not provide rollout action_distribution"
+            importance_ratio, importance_ratio_clipped = value_ops. \
+            action_importance_ratio(
+                action_distribution=info.action_distribution,
+                rollout_action_distribution=info.rollout_info.action_distribution,
+                action=info.action,
+                clipping_mode='capping',
+                importance_ratio_clipping=0.0,
+                log_prob_clipping=0.0,
+                scope=scope,
+                check_numerics=False,
+                debug_summaries=self._debug_summaries)
+            advantages = value_ops.generalized_advantage_estimation_retrace(
+                importance_ratio=importance_ratio_clipped,
+                rewards=info.reward,
+                values=value,
+                target_value=target_value,
+                step_types=info.step_type,
+                discounts=discounts,
+                use_retrace=True,
+                time_major=True,
+                td_lambda=self._lambda)
 
             returns = advantages + value[:-1]
             returns = returns.detach()
@@ -226,6 +265,8 @@ class TDLoss(nn.Module):
                                    suffix)
 
         loss = self._td_error_loss_fn(returns.detach(), value)
+        if self._clip > 0:
+            loss = torch.clamp(loss, min=-self._clip, max=self._clip)
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions
@@ -244,8 +285,10 @@ class LowerBoundedTDLoss(TDLoss):
     def __init__(self,
                  gamma: Union[float, List[float]] = 0.99,
                  td_error_loss_fn: Callable = element_wise_squared_loss,
+                 clip: float = 0.,
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
+                 use_retrace: bool = False,
                  lb_target_q: float = 0.,
                  default_return: float = -1000.,
                  improve_w_goal_return: bool = False,
@@ -277,8 +320,10 @@ class LowerBoundedTDLoss(TDLoss):
         super().__init__(
             gamma=gamma,
             td_error_loss_fn=td_error_loss_fn,
+            clip=clip,
             td_lambda=td_lambda,
             normalize_target=normalize_target,
+            use_retrace=use_retrace,
             name=name,
             debug_summaries=debug_summaries)
 
