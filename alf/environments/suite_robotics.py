@@ -34,6 +34,7 @@ import gym
 
 import alf
 from alf.environments import suite_gym, alf_wrappers, process_environment
+from alf.environments.gym_wrappers import RemoveInfoWrapper
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -101,6 +102,41 @@ class SuccessWrapper(gym.Wrapper):
 
 
 @alf.configurable
+class TransformGoals(gym.Wrapper):
+    """Convert the original achieved_goal and desired_goal to first two dims, and produce sparse reward.
+
+    It ignores original reward which is a multi dimensional negative distance to goal.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        goal_space = gym.spaces.Box(
+            env.observation_space["achieved_goal"].low[:2],
+            env.observation_space["achieved_goal"].high[:2])
+        self.observation_space = gym.spaces.Dict({
+            "achieved_goal": goal_space,
+            "desired_goal": goal_space,
+            "observation": env.observation_space["observation"]
+        })
+
+    def reset(self):
+        ob = self.env.reset()
+        ob["achieved_goal"] = ob["achieved_goal"][:2]
+        ob["desired_goal"] = ob["desired_goal"][:2]
+        return ob
+
+    def step(self, action):
+        # openai Robotics env will always return ``done=False``
+        ob, reward, done, info = self.env.step(action)
+        ob["achieved_goal"] = ob["achieved_goal"][:2]
+        ob["desired_goal"] = ob["desired_goal"][:2]
+        return_reward = alf.utils.math_ops.l2_dist_close_reward_fn_np(
+            ob["achieved_goal"], ob["desired_goal"])
+        return_reward = return_reward[0]
+        return ob, return_reward, done, info
+
+
+@alf.configurable
 class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
@@ -140,6 +176,8 @@ def load(environment_name,
     Args:
         environment_name: Name for the environment to load.
         env_id: A scalar ``Tensor`` of the environment ID of the time step.
+        concat_desired_goal (bool): Whether to concat robot's observation and the goal
+            location.
         discount: Discount to use for the environment.
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
@@ -157,14 +195,28 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
-    assert (environment_name.startswith("Fetch")
-            or environment_name.startswith("HandManipulate")), (
-                "This suite only supports OpenAI's Fetch and ShadowHand envs!")
+    assert (
+        environment_name.startswith("Fetch")
+        or environment_name.startswith("HandManipulate")
+        or environment_name.startswith("Ant")
+    ), ("This suite only supports OpenAI's Fetch, ShadowHand and multiworld Ant envs!"
+        )
 
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
+    kwargs = {}
+    if environment_name.startswith("Ant"):
+        from multiworld.envs.mujoco import register_custom_envs
+        register_custom_envs()
+
     gym_spec = gym.spec(environment_name)
-    env = gym_spec.make()
+    env = gym_spec.make(**kwargs)
+    if environment_name.startswith("Ant"):
+        from gym.wrappers import FilterObservation
+        env = RemoveInfoWrapper(
+            FilterObservation(
+                env, ["desired_goal", "achieved_goal", "observation"]))
+        env = TransformGoals(env)
 
     if max_episode_steps is None:
         if gym_spec.max_episode_steps is not None:
