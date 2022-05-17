@@ -22,10 +22,12 @@ from typing import Iterable
 
 import alf
 from alf.data_structures import AlgStep, Experience, namedtuple, StepType, TimeStep
+from alf.environments import suite_socialbot
 from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.nest.utils import convert_device
 from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from alf.utils import common
+from alf.utils.math_ops import l2_dist_close_reward_fn
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 FrameStackState = namedtuple('FrameStackState', ['steps', 'prev_frames'])
@@ -703,27 +705,6 @@ class RewardScaling(RewardTransformer):
 
 
 @alf.configurable
-def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05):
-    """Giving -1/0 reward based on how close the achieved state is to the goal state.
-
-    Args:
-        achieved_goal (Tensor): achieved state, of shape ``[batch_size, batch_length, ...]``
-        goal (Tensor): goal state, of shape ``[batch_size, batch_length, ...]``
-        threshold (float): L2 distance threshold for the reward.
-
-    Returns:
-        Tensor for -1/0 reward of shape ``[batch_size, batch_length]``.
-    """
-
-    if goal.dim() == 2:  # when goals are 1-dimensional
-        assert achieved_goal.dim() == goal.dim()
-        achieved_goal = achieved_goal.unsqueeze(2)
-        goal = goal.unsqueeze(2)
-    return -(torch.norm(achieved_goal - goal, dim=2) >= threshold).to(
-        torch.float32)
-
-
-@alf.configurable
 class HindsightExperienceTransformer(DataTransformer):
     """Randomly transform her_proportion of `batch_size` trajectories with hindsight relabel.
 
@@ -733,6 +714,12 @@ class HindsightExperienceTransformer(DataTransformer):
         The achieved_goal from a future timestep will be used to relabel the desired_goal
         of the current timestep.
         The exact field names can be provided via arguments to the class ``__init__``.
+
+        NOTE: When the experience reward is multi-dimensional, the 0th dimension is assumed
+        to be the goal reward dimension, and is relabeled by the HindsightExperienceTransformer.
+        All other reward dimensions are untouched.
+        TODO: Change the reward field into a nested field to be able to support multi-dimensional
+        goal rewards.
 
         NOTE: The HindsightExperienceTransformer has to happen before any transformer which changes
         reward or achieved_goal fields, e.g. observation normalizer, reward clipper, etc..
@@ -762,7 +749,10 @@ class HindsightExperienceTransformer(DataTransformer):
                  her_proportion=0.8,
                  achieved_goal_field="time_step.observation.achieved_goal",
                  desired_goal_field="time_step.observation.desired_goal",
-                 reward_fn=l2_dist_close_reward_fn):
+                 relabel_with_episodic_rewards=False,
+                 relabeled_goal_noise=0,
+                 reward_fn=l2_dist_close_reward_fn,
+                 episodic_reward_transform=alf.utils.math_ops.identity):
         """
         Args:
             her_proportion (float): proportion of hindsight relabeled experience.
@@ -770,10 +760,16 @@ class HindsightExperienceTransformer(DataTransformer):
                 exp nest.
             desired_goal_field (str): path to the desired_goal field in the
                 exp nest.
+            relabel_with_episodic_rewards (bool): Whether to transform reward from -1/0 to 0/1.
+                This also makes the task episodic by relabeling rewarding step as LAST
+                and setting discount to 0.
+            relabeled_goal_noise (float): if positive, the noise added to relabeled goals.
             reward_fn (Callable): function to recompute reward based on
                 achieve_goal and desired_goal.  Default gives reward 0 when
                 L2 distance less than 0.05 and -1 otherwise, same as is done in
                 suite_robotics environments.
+            episodic_reward_transform (Callable): transforms reward from -1/0 to 0/1.
+                Only used when sparse_reward is True.
         """
         super().__init__(
             transformed_observation_spec=transformed_observation_spec,
@@ -781,10 +777,66 @@ class HindsightExperienceTransformer(DataTransformer):
         self._her_proportion = her_proportion
         self._achieved_goal_field = achieved_goal_field
         self._desired_goal_field = desired_goal_field
+        self._relabel_with_episodic_rewards = relabel_with_episodic_rewards
+        self._relabeled_goal_noise = relabeled_goal_noise
         self._reward_fn = reward_fn
+        self._episodic_reward_transform = episodic_reward_transform
 
     def transform_timestep(self, timestep: TimeStep, state):
         return timestep, state
+
+    def _add_noise(self, t):
+        # rejection sample from unit ball
+        if self._relabeled_goal_noise <= 0:
+            return t
+        bs, bl, dim = t.shape
+        assert dim < 20, "Cannot rejection sample from high dim ball yet."
+        n_samples, i = 0, 0
+        while n_samples == 0:
+            _sample = torch.rand((bs * 2, dim))
+            in_ball = torch.norm(_sample, dim=1) < 1.
+            if torch.any(in_ball):
+                sample = _sample[in_ball]
+                nsample = sample.shape[0]
+                if nsample < bs:
+                    sample = sample.expand(bs // nsample + 1, nsample,
+                                           dim).reshape(-1, dim)
+                if sample.shape[0] > bs:
+                    sample = sample[:bs, :]
+                break
+            assert i < 10, "shouldn't take 10 iterations"
+            i += 1
+        return t + self._relabeled_goal_noise * sample.reshape(bs, 1, dim)
+
+    def _episodic_relabel(self, result, relabeled_rewards, buffer):
+        # Assumes that original reward is -1/0 and 0 when goal is reached.
+        reward_achieved = relabeled_rewards >= 0
+        # Cut off episode for any goal reached, making the task episodic.
+        end = reward_achieved
+        discount = torch.where(end, torch.tensor(0.), result.discount)
+        step_type = torch.where(end, torch.tensor(StepType.LAST),
+                                result.step_type)
+        # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
+        # achieved but env ended episode due to position goal achieved.
+        # -1/0 reward doesn't end episode on achieving position goal, and
+        # doesn't need to do this relabeling.
+        goal_reward = result.reward
+        if len(result.reward.shape) > 2:
+            goal_reward = result.reward[..., 0]
+        mid = (result.step_type == StepType.LAST) & ~reward_achieved & (
+            goal_reward > 0)  # assumes no multi dim goal reward.
+        discount = torch.where(mid, torch.tensor(1.), discount)
+        step_type = torch.where(mid, torch.tensor(StepType.MID), step_type)
+
+        if alf.summary.should_record_summaries():
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".discount_mean_after_relabel",
+                torch.mean(discount[:, 1:]))
+
+        result = result._replace(discount=discount)
+        result = result._replace(step_type=step_type)
+        relabeled_rewards = self._episodic_reward_transform(relabeled_rewards)
+        return result, relabeled_rewards
 
     def transform_experience(self, experience: Experience):
         """Hindsight relabel experience
@@ -844,8 +896,9 @@ class HindsightExperienceTransformer(DataTransformer):
             future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(
                 torch.int64)
             future_idx = last_step_pos + future_dist
-            future_ag = buffer.get_field(self._achieved_goal_field,
-                                         last_env_ids, future_idx).unsqueeze(1)
+            future_ag = self._add_noise(
+                buffer.get_field(self._achieved_goal_field, last_env_ids,
+                                 future_idx).unsqueeze(1))
 
             # relabel desired goal
             result_desired_goal = alf.nest.get_field(result,
@@ -859,6 +912,10 @@ class HindsightExperienceTransformer(DataTransformer):
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
+
+            if self._relabel_with_episodic_rewards:
+                result, relabeled_rewards = self._episodic_relabel(
+                    result, relabeled_rewards, buffer)
 
             non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
                                                        StepType.FIRST)

@@ -43,19 +43,35 @@ def is_available():
     return mujoco_py is not None
 
 
+@alf.configurable
 class SparseReward(gym.Wrapper):
     """Convert the original :math:`-1/0` rewards to :math:`0/1`.
     """
 
-    def __init__(self, env):
+    def __init__(self,
+                 env,
+                 reward_weight: float = 1.,
+                 positive_reward: bool = True):
+        """
+        Args:
+            reward_weight: weight of output reward.
+            positive_reward: if True, returns 0/1 reward, otherwise, -1/0 reward.
+        """
         gym.Wrapper.__init__(self, env)
+        self._reward_weight = reward_weight
+        self._positive_reward = positive_reward
 
     def step(self, action):
         # openai Robotics env will always return ``done=False``
         ob, reward, done, info = self.env.step(action)
         if reward == 0:
             done = True
-        return ob, reward + 1, done, info
+        if self._positive_reward:
+            return_reward = reward + 1
+        else:
+            return_reward = reward
+        return_reward *= self._reward_weight
+        return ob, return_reward, done, info
 
 
 @alf.configurable
