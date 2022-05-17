@@ -1003,7 +1003,7 @@ def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
-    if cuda_is_available():
+    if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
     return seed
 
