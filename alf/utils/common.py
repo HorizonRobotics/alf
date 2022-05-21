@@ -1454,10 +1454,9 @@ def unzip_alf_snapshot(root_dir: str):
     """
     alf_zipped_repo = os.path.join(root_dir, "alf.tar")
     if os.path.isfile(alf_zipped_repo):
-        logging.info("=== Using an ALF snapshot at '%s' ===" % alf_zipped_repo)
+        info("=== Using an ALF snapshot at '%s' ===", alf_zipped_repo)
     else:
-        logging.info(
-            "=== Didn't find a snapshot; using update-to-date ALF ===")
+        info("=== Didn't find a snapshot; using update-to-date ALF ===")
         return
 
     os.system("rm -rf %s/alf" % root_dir)

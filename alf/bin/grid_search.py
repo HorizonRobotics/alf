@@ -423,8 +423,8 @@ def launch_snapshot_gridsearch():
 
     try:
         alf_repo = os.path.join(root_dir, "alf.tar")
-        logging.info(
-            "=== Grid searching using an ALF snapshot at '%s' ===" % alf_repo)
+        common.info("=== Grid searching using an ALF snapshot at '%s' ===",
+                    alf_repo)
         subprocess.check_call(
             " ".join(args),
             env=env_vars,
