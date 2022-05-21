@@ -229,7 +229,7 @@ class GridSearch(object):
                            id,
                            repeat,
                            token_len=20,
-                           max_len=255):
+                           max_len=50):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy comparison between different search runs without going
         into Tensorboard 'text' for run details.
@@ -385,7 +385,6 @@ def launch_snapshot_gridsearch():
     it's actually using the right ALF version.
     """
     root_dir = common.abs_path(FLAGS.root_dir)
-    alf_repo = os.path.join(root_dir, "alf")
 
     # write the current conf file as
     # ``<root_dir>/alf_config.py`` or ``<root_dir>/configured.gin``
@@ -423,6 +422,7 @@ def launch_snapshot_gridsearch():
     args = ['python', '-m', 'alf.bin.grid_search'] + flags
 
     try:
+        alf_repo = os.path.join(root_dir, "alf.tar")
         logging.info(
             "=== Grid searching using an ALF snapshot at '%s' ===" % alf_repo)
         subprocess.check_call(

@@ -164,7 +164,6 @@ def launch_snapshot_play():
         os.getcwd()), ("Play with a snapshot is not allowed under ALF root!")
 
     root_dir = common.abs_path(FLAGS.root_dir)
-    alf_repo = os.path.join(root_dir, "alf")
 
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
 
@@ -173,11 +172,6 @@ def launch_snapshot_play():
 
     args = ['python', '-m', 'alf.bin.play'] + flags
     try:
-        if os.path.isdir(alf_repo):
-            logging.info("=== Using an ALF snapshot at '%s' ===" % alf_repo)
-        else:
-            logging.info(
-                "=== Didn't find a snapshot; using update-to-date ALF ===")
         subprocess.check_call(
             " ".join(args),
             env=env_vars,
