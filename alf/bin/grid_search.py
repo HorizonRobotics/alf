@@ -316,6 +316,11 @@ class GridSearch(object):
         process_pool.close()
         process_pool.join()
 
+        # Remove the alf snapshot so that it won't waste disk space (we only
+        # need snapshots under each search run dir).
+        alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
+        os.system("rm -rf %s*" % alf_repo)
+
     def _worker(self, root_dir, parameters, device_queue):
         # sleep for random seconds to avoid crowded launching
         try:
@@ -422,9 +427,6 @@ def launch_snapshot_gridsearch():
     args = ['python', '-m', 'alf.bin.grid_search'] + flags
 
     try:
-        alf_repo = os.path.join(root_dir, "alf.tar")
-        common.info("=== Grid searching using an ALF snapshot at '%s' ===",
-                    alf_repo)
         subprocess.check_call(
             " ".join(args),
             env=env_vars,
