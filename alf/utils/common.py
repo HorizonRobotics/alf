@@ -1440,11 +1440,36 @@ def generate_alf_root_snapshot(alf_root, dest_path):
     if alf_dirname != "alf":
         os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
 
+    # compress the snapshot repo into a ".tar.gz" file
+    os.system("cd %s; tar -czf alf.tar.gz alf" % dest_path)
+    os.system("rm -rf %s/alf" % dest_path)
+
+
+def unzip_alf_snapshot(root_dir: str):
+    """Restore an ALF snapshot from a job directory by unzipping the snapshot
+    'tar' file.
+
+    Args:
+        root_dir: the tensorboard job directory
+    """
+    alf_zipped_repo = os.path.join(root_dir, "alf.tar.gz")
+    alf_repo = os.path.join(root_dir, "alf")
+    if os.path.isfile(alf_zipped_repo):
+        info("=== Using an ALF snapshot at '%s' ===", alf_zipped_repo)
+        os.system("rm -rf %s/alf" % root_dir)
+        os.system("cd %s; tar -xzf alf.tar.gz" % root_dir)
+    elif os.path.isdir(alf_repo):
+        # To be backward compatible of snapshots as an unzipped dirs
+        info("=== Using an ALF snapshot at '%s' ===", alf_repo)
+    else:
+        info("=== Didn't find a snapshot; using update-to-date ALF ===")
+
 
 def get_alf_snapshot_env_vars(root_dir):
     """Given a ``root_dir``, return modified env variable dict so that ``PYTHONPATH``
     points to the ALF snapshot under this directory.
     """
+    unzip_alf_snapshot(root_dir)
     alf_repo = os.path.join(root_dir, "alf")
     alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
