@@ -87,14 +87,14 @@ class Softplus(td.Transform):
     bijective = True
     sign = +1
 
-    def __init__(self, hinge_softness=1.):
+    def __init__(self, hinge_softness=1., cache_size=1):
         """
         Args:
             hinge_softness (float): this positive parameter changes the transition
                 slope. A higher softness results in a smoother transition from
                 0 to identity.
         """
-        super().__init__(cache_size=1)
+        super().__init__(cache_size=cache_size)
         self._hinge_softness = float(hinge_softness)
         assert self._hinge_softness > 0, "Must be a positive softness number!"
 
@@ -110,6 +110,11 @@ class Softplus(td.Transform):
 
     def log_abs_det_jacobian(self, x, y):
         return -nn.functional.softplus(-x / self._hinge_softness)
+
+    def with_cache(self, cache_size=1):
+        if self._cache_size == cache_size:
+            return self
+        return Softplus(self._hinge_softness, cache_size)
 
 
 @alf.configurable
@@ -198,7 +203,7 @@ class Softclip(td.Transform):
     bijective = True
     sign = +1
 
-    def __init__(self, low, high, hinge_softness=1.):
+    def __init__(self, low, high, hinge_softness=1., cache_size=1):
         """
         Args:
             low (float): the lower bound
@@ -207,7 +212,7 @@ class Softclip(td.Transform):
                 slope. A higher softness results in a smoother transition from
                 ``low`` to ``high``.
         """
-        super().__init__(cache_size=1)
+        super().__init__(cache_size=cache_size)
         self._hinge_softness = float(hinge_softness)
         assert self._hinge_softness > 0, "Must be a positive softness number!"
         self._l = float(low)
@@ -242,6 +247,11 @@ class Softclip(td.Transform):
         return (1 - 1 / (1 + ((x - self._l) / s).exp()) - 1 / (1 + (
             (self._h - x) / s).exp())).log()
 
+    def with_cache(self, cache_size=1):
+        if self._cache_size == cache_size:
+            return self
+        return Softclip(self._l, self._h, self._hinge_softness, cache_size)
+
 
 @alf.configurable
 class Softsign(td.Transform):
@@ -250,8 +260,8 @@ class Softsign(td.Transform):
     bijective = True
     sign = +1
 
-    def __init__(self):
-        super().__init__(cache_size=1)
+    def __init__(self, cache_size=1):
+        super().__init__(cache_size=cache_size)
 
     def __eq__(self, other):
         return isinstance(other, Softsign)
@@ -280,6 +290,11 @@ class Softsign(td.Transform):
             \end{array}
         """
         return -2. * torch.log(1 + x.abs())
+
+    def with_cache(self, cache_size=1):
+        if self._cache_size == cache_size:
+            return self
+        return Softsign(cache_size)
 
 
 @alf.configurable
@@ -332,6 +347,11 @@ class StableTanh(td.Transform):
         return 2.0 * (
             torch.log(torch.tensor(2.0, dtype=x.dtype, requires_grad=False)) -
             x - nn.functional.softplus(-2.0 * x))
+
+    def with_cache(self, cache_size=1):
+        if self._cache_size == cache_size:
+            return self
+        return StableTanh(cache_size)
 
 
 # The pytorch kl_divergence has a bug
