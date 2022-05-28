@@ -27,7 +27,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.utils import dist_utils, summary_utils
 from alf import nest
 from alf.trainers.policy_trainer import Trainer
-from alf.utils import common, tensor_utils
+from alf.utils import common, tensor_utils, action_samplers
 from .mcts_models import MCTSModel, ModelOutput
 
 MAXIMUM_FLOAT_VALUE = float('inf')
@@ -218,7 +218,9 @@ class _MCTSTrees(object):
         return dot
 
 
-MCTSState = namedtuple("MCTSState", ["steps", "pred_state"], default_value=())
+MCTSState = namedtuple(
+    "MCTSState", ["steps", "pred_state", "action_sampler_state"],
+    default_value=())
 MCTSInfo = namedtuple(
     "MCTSInfo", ["candidate_actions", "value", "candidate_action_policy"])
 
@@ -312,7 +314,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             visit_softmax_temperature_fn: Callable,
             model: Optional[MCTSModel] = None,
             keep_model_pred_state: bool = False,
-            epsilon_greedy: float = 1.0,
+            predict_action_sampler=action_samplers.MultinomialSampler(),
+            rollout_action_sampler=action_samplers.MultinomialSampler(),
             learn_policy_temperature=1.0,
             reward_spec=TensorSpec(()),
             expand_all_children: bool = False,
@@ -325,6 +328,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             act_with_exploration_policy=False,
             search_with_exploration_policy=False,
             learn_with_exploration_policy=False,
+            exploration_policy_type: str = 'rkl',
             max_unroll_length=1000000,
             num_parallel_sims=1,
             debug_summaries=False,
@@ -371,8 +375,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 where ``steps`` is a vector representing the number of steps in
                 the games. And it is expected to return a float vector of the same
                 shape as ``steps``.
-            epsilon_greedy: a floating value in [0,1], representing the
-                chance of action sampling instead of taking argmax.
+            predict_action_sampler: available choices include ``CategoricalSeedSampler``,
+                ``EpsilonGreedySampler``, ``MultinomialSampler``
+            rollout_action_sampler: available choices include ``CategoricalSeedSampler``,
+                ``EpsilonGreedySampler``, ``MultinomialSampler``
             learn_policy_temperature (float): transform the policy p found by
                 MCTS by :math:`p^{1/learn_policy_temperature} / Z` as policy
                 target for model learning, where Z is a normalization factor so
@@ -415,6 +421,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 using reverse KL divergence will be used for tree search.
             learn_with_exploration_policy (bool): If True, a policy calculated
                 using reverse KL divergence will be used for learning.
+            exploration_policy_type: Type of exploration policy. Must be one of ('rkl', 'kl')
             max_unroll_length (int): maximal allowed unroll steps when building
                 the search tree. If ``expand_all_children`` is False, the maximal
                 allowed tree depth will be ``max_unroll_length``. Otherwise, the
@@ -440,6 +447,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._root_exploration_fraction = root_exploration_fraction
         self._visit_softmax_temperature_fn = visit_softmax_temperature_fn
         self._learn_policy_temperature = learn_policy_temperature
+        assert exploration_policy_type in ('rkl', 'kl')
+        if exploration_policy_type == 'rkl':
+            self._calc_exploration_policy = calculate_exploration_policy
+        else:
+            self._calc_exploration_policy = calculate_kl_exploration_policy
         self._expand_all_children = expand_all_children
         self._expand_all_root_children = expand_all_root_children
         self._num_parallel_sims = num_parallel_sims
@@ -448,7 +460,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             self._max_allowed_depth = max_unroll_length - 1
         else:
             self._max_allowed_depth = max_unroll_length
-        self._epsilon_greedy = epsilon_greedy
+        predict_action_sampler_state_spec = ()
+        if isinstance(predict_action_sampler, alf.nn.Network):
+            predict_action_sampler_state_spec = predict_action_sampler.state_spec
+        rollout_action_sampler_state_spec = ()
+        if isinstance(rollout_action_sampler, alf.nn.Network):
+            rollout_action_sampler_state_spec = rollout_action_sampler.state_spec
 
         assert not expand_all_children or num_parallel_sims == 1, (
             "num_parallel_sim > 1 is not supported when expand_all_children=True"
@@ -479,16 +496,22 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             pred_state_spec = model.pred_state_spec
         self._keep_model_pred_state = keep_model_pred_state
 
+        state_spec = MCTSState(
+            steps=alf.TensorSpec((), dtype=torch.int64),
+            pred_state=pred_state_spec)
         super().__init__(
             observation_spec,
             action_spec,
             reward_spec=reward_spec,
-            train_state_spec=MCTSState(
-                steps=alf.TensorSpec((), dtype=torch.int64),
-                pred_state=pred_state_spec),
+            predict_state_spec=state_spec._replace(
+                action_sampler_state=predict_action_sampler_state_spec),
+            train_state_spec=state_spec._replace(
+                action_sampler_state=rollout_action_sampler_state_spec),
             debug_summaries=debug_summaries,
             name=name)
         self._model = model
+        self._rollout_action_sampler = rollout_action_sampler
+        self._predict_action_sampler = predict_action_sampler
 
     def set_model(self, model: MCTSModel):
         """Set the model used by the algorithm."""
@@ -499,7 +522,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         return self._discount
 
     @torch.no_grad()
-    def rollout_step(self, time_step: TimeStep, state: MCTSState):
+    def _step(self, time_step: TimeStep, state: MCTSState, action_sampler):
         """Predict the action.
 
         Args:
@@ -573,28 +596,32 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             self._build_tree2(trees, to_plays)
 
-        action, info = self._select_action(trees, steps)
+        action_dist, info = self._select_action(trees, steps)
         pred_state = ()
         if self._keep_model_pred_state:
             pred_state = model_output.state.pred_state
+        if isinstance(action_sampler, alf.nn.Network):
+            action_id, action_sampler_state = action_sampler(
+                action_dist, state.action_sampler_state)
+        else:
+            action_id, action_sampler_state = action_sampler(action_dist), ()
+        if info.candidate_actions != ():
+            action = info.candidate_actions[trees.B, action_id]
+        else:
+            action = action_id
         return AlgStep(
             output=action,
-            state=MCTSState(steps=state.steps + 1, pred_state=pred_state),
+            state=MCTSState(
+                steps=state.steps + 1,
+                pred_state=pred_state,
+                action_sampler_state=action_sampler_state),
             info=info)
 
+    def rollout_step(self, time_step: TimeStep, state: MCTSState):
+        return self._step(time_step, state, self._rollout_action_sampler)
+
     def predict_step(self, time_step: TimeStep, state: MCTSState):
-        alg_step = self.rollout_step(time_step, state)
-        if self._epsilon_greedy < 1:
-            greedy_action = alg_step.info.candidate_action_policy.argmax(dim=1)
-            if alg_step.info.candidate_actions != ():
-                greedy_action = alg_step.info.candidate_actions[torch.arange(
-                    greedy_action.shape[0]), greedy_action]
-            if self._epsilon_greedy > 0:
-                r = torch.rand(greedy_action.shape) >= self._epsilon_greedy
-                alg_step.output[r] = greedy_action[r]
-            else:
-                alg_step = alg_step._replace(output=greedy_action)
-        return alg_step
+        return self._step(time_step, state, self._predict_action_sampler)
 
     def _get_best_child_index(self, trees, B, nodes, i):
         if self._parallel and not self._search_with_exploration_policy:
@@ -902,14 +929,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         t = self._visit_softmax_temperature_fn(steps).unsqueeze(-1)
         probs = F.softmax((probs + 1e-30).log() / t, dim=1)
         probs = probs * (trees.prior[roots] > 0).to(torch.float32)
-        action_id = torch.multinomial(probs, num_samples=1).squeeze(1)
 
         if trees.action is not None:
             candidate_actions = trees.action[roots]
-            action = candidate_actions[trees.B, action_id]
         else:
             candidate_actions = ()
-            action = action_id
 
         if not self._learn_with_exploration_policy:
             parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
@@ -946,7 +970,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                     summary_utils.add_mean_hist_summary(
                         'policy%s' % i, policy[:, i])
 
-        return action, info
+        return probs, info
 
     def _update_best_child(self, trees: _MCTSTrees, parents):
         if self._search_with_exploration_policy:
@@ -1066,7 +1090,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         prior = trees.prior[parents]
         value_score, child_visit_count = self._value_score(trees, parents)
         if self._unexpanded_value_score != 'none':
-            policy, iterations = calculate_exploration_policy(
+            policy, iterations = self._calc_exploration_policy(
                 value_score, prior, c)
         else:
             # For 'none', we keep the policy for the unexpanded children same
@@ -1075,7 +1099,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             expanded_prior = prior * (expanded.to(torch.float32) + 1e-30)
             sum_expanded = expanded_prior.sum(dim=1, keepdim=True)
             expanded_prior = expanded_prior / sum_expanded
-            policy, iterations = calculate_exploration_policy(
+            policy, iterations = self._calc_exploration_policy(
                 value_score, expanded_prior, c)
             policy = torch.where(expanded, policy * sum_expanded, prior)
         if self._ucb_parent_visit_count_minus_one:
@@ -1338,7 +1362,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
 
     .. math::
 
-        p = \arg\min_p \left[ -E_p(v) + c KL(q||p) \right]
+        p = \arg\min_p \left[ -E_p(v) + c KL(q\|p) \right]
 
     which leads to the following solution:
 
@@ -1421,6 +1445,53 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
             "value=%s prior=%s c=%s" % (value[bad], prior[bad], c[bad]))
 
     return p, i
+
+
+def calculate_kl_exploration_policy(value, prior, c):
+    r"""Calculate exploration policy.
+
+    This is similar to ``calculate_exploration_policy``, but using :math:`KL(p\|q)`
+    instead of :math:`KL(q\|p)` for regularization.
+
+    Notation:
+
+        q: prior policy
+
+        p: sampling probability
+
+        v: value
+
+    The exploration policy is found by minimizing the following:
+
+    .. math::
+
+        p = \arg\min_p \left[ -E_p(v) + c KL(p\|q) \right]
+
+    which leads to the following solution:
+
+    .. math::
+
+        p_i = \frac{q_i \exp(v_i/c)}{Z}
+
+    where :math:`Z` is such that :math:`\sum_i p_i = 1`
+
+    Args:
+        value (Tensor): [N, K] Tensor
+        prior (Tensor): [N, K] Tensor
+        c (Tensor): [N, 1] Tensor
+        tol (float): Desired acurracy. The result satisfy :math:`|\sum_i p_i - 1| \le tol`
+    Returns:
+        tuple:
+        - Tensor: [N, K], the exploration policy
+        - int: always 0 (to conform with the signature of calculate_exploration_policy)
+    """
+    batch_size = value.shape[0]
+    assert value.shape == prior.shape
+    assert c.shape == (batch_size, 1)
+    p = prior * (value / c).exp()
+    p = p / p.sum(dim=-1, keepdim=True)
+
+    return p, 0
 
 
 @alf.configurable
