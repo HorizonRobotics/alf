@@ -80,6 +80,15 @@ class LossTest(alf.test.TestCase):
                 logging.info("expectation=%s" % ex.item())
                 self.assertAlmostEqual(ex.item(), 5.0, delta=0.1)
 
+    def test_calc_bin(self):
+        lossf = losses.SymmetricOrderedDiscreteRegressionLoss(
+            alf.math.Sqrt1pTransform(), inverse_after_mean=False)
+        target = torch.full((256, 6), 574.99996)
+        bin1, bin2, w2 = lossf._calc_bin(target, 257)
+        print("target", target, "bin1", bin1, "bin2", bin2, "w2", w2)
+        self.assertTrue((w2 >= 0).all())
+        self.assertTrue((w2 <= 1.0).all())
+
 
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)

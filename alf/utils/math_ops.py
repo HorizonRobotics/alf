@@ -418,16 +418,17 @@ class SqrtLinearTransform(InvertibleTransform):
 
 @alf.repr_wrapper
 class Sqrt1pTransform(InvertibleTransform):
-    """The transformation used by MuZero.
+    """The transformation used by MuZero with epsilon = 0.
 
     .. math::
 
-        y=sign(x) (\sqrt{|x| +1} - 1)
+        y=sign(x) (\sqrt{|x| +1} - 1) = x / (\sqrt{|x|+1} + 1)
 
+    The second form has better numerical precision for small x.
     """
 
     def transform(self, x):
-        return x.sign() * ((x.abs() + 1).sqrt() - 1)
+        return x / ((x.abs() + 1).sqrt() + 1)
 
     def inverse_transform(self, y):
         # y.sign() * ((y.abs() + 1) ** 2 - 1)
@@ -457,3 +458,8 @@ class Log1pTransform(InvertibleTransform):
 
     def inverse_transform(self, y):
         return y.sign() * ((y / self._alpha).abs().exp() - 1)
+
+
+def binary_neg_entropy(p: torch.Tensor):
+    q = 1 - p
+    return p.xlogy(p) + q.xlogy(q)
