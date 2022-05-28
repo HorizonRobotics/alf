@@ -827,7 +827,7 @@ def play(root_dir,
     # progress or global step. So we need to set a valid value for progress
     # and global step
     if recovered_global_step != -1:
-        alf.summary.set_default_writer(recovered_global_step)
+        alf.summary.set_global_counter(recovered_global_step)
     Trainer._trainer_progress.set_termination_criterion(
         alf.get_config_value('TrainerConfig.num_iterations'),
         alf.get_config_value('TrainerConfig.num_env_steps'))
