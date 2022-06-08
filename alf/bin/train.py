@@ -250,5 +250,6 @@ def main(_):
 
 
 if __name__ == '__main__':
+    __spec__ = None  # see https://github.com/HorizonRobotics/alf/pull/1554 for explanation
     _define_flags()
     app.run(main)
