@@ -109,6 +109,39 @@ class VideoRecorder(GymVideoRecorder):
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")
 
+    def capture_env_frame(self):
+        """Return un-encoded env frame
+        """
+        if not self.functional: return
+        logger.debug('Capturing video frame: path=%s', self.path)
+        render_mode = 'rgb_array'
+        frame = self.env.render(mode=render_mode)
+
+        assert frame is not None
+        return frame
+
+    def generate_video_from_frame_set(self, env_frame_set, info_set):
+        """Render ``self.env`` and add the resulting frame to the video. Also
+        plot Image instances extracted from prediction info of ``policy_step``.
+
+        Args:
+            env_frame_set (list): a list of environmental frames
+            info_set (None|nest): prediction step info for displaying: any Image
+                instance in the info nest will be recorded.
+        """
+        for i, (frame, pred_info) in enumerate(zip(env_frame_set, info_set)):
+            frame = self._plot_pred_info(frame, pred_info)
+            self._encode_frame(frame)
+
+        if self._append_blank_frames > 0:
+            if self._blank_frame is None:
+                self._blank_frame = np.zeros_like(frame)
+            for _ in range(self._append_blank_frames):
+                self._encode_frame(self._blank_frame)
+
+            assert not self.broken, (
+                "The output file is broken! Check warning messages.")
+
     def _encode_frame(self, frame):
         """Perform encoding of the input frame
 

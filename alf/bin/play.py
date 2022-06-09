@@ -92,10 +92,9 @@ def _define_flags():
                          'Play so many simulations simultaneously')
 
     flags.DEFINE_bool(
-        'failure_mode', False, "Whether use the failure mode. "
-        "If True, only save the first discoverted failure case "
-        "within `num_episodes` of test episode. If no failure case is "
-        "discovered, only the last episode will be saved. This mode "
+        'selective_mode', False, "Whether use the selective mode. "
+        "If True, only save the discoverted selective cases within"
+        "the `num_episodes` of test episode. This mode "
         "should be used together with the video recording mode.")
 
 
@@ -125,64 +124,46 @@ def play():
         alf.close_env()
         raise e
 
-    total_num_episodes = FLAGS.num_episodes
-    if FLAGS.failure_mode:
-        num_episodes_outer = total_num_episodes
-        num_episodes_inner = 1
+    if FLAGS.selective_mode:
         assert FLAGS.record_file is not None, ("Should provide a valid value "
                                                "for `record_file`")
-    else:
-        num_episodes_outer = 1
-        num_episodes_inner = FLAGS.num_episodes
+
+    config = policy_trainer.TrainerConfig(root_dir="")
+
+    env = alf.get_env()
+    env.reset()
+    data_transformer = create_data_transformer(config.data_transformer_ctor,
+                                               env.observation_spec())
+    config.data_transformer = data_transformer
+
+    # keep compatibility with previous gin based config
+    common.set_global_env(env)
+    observation_spec = data_transformer.transformed_observation_spec
+    common.set_transformed_observation_spec(observation_spec)
+
+    algorithm_ctor = config.algorithm_ctor
+    algorithm = algorithm_ctor(
+        observation_spec=observation_spec,
+        action_spec=env.action_spec(),
+        reward_spec=env.reward_spec(),
+        config=config)
+    algorithm.set_path('')
 
     try:
-        for i in range(num_episodes_outer):
-            if num_episodes_outer > 1:
-                logging.info(
-                    "+++++++++ Failure Mode RUN {} +++++++++++".format(i + 1))
-            config = policy_trainer.TrainerConfig(root_dir="")
+        policy_trainer.play(
+            common.abs_path(FLAGS.root_dir),
+            env,
+            algorithm,
+            checkpoint_step=FLAGS.checkpoint_step or "latest",
+            num_episodes=FLAGS.num_episodes,
+            sleep_time_per_step=FLAGS.sleep_time_per_step,
+            record_file=FLAGS.record_file,
+            append_blank_frames=FLAGS.append_blank_frames,
+            render=FLAGS.render,
+            selective_mode=FLAGS.selective_mode,
+            ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
+                ",") if FLAGS.ignored_parameter_prefixes else [])
 
-            env = alf.get_env()
-            env.reset()
-            data_transformer = create_data_transformer(
-                config.data_transformer_ctor, env.observation_spec())
-            config.data_transformer = data_transformer
-
-            # keep compatibility with previous gin based config
-            common.set_global_env(env)
-            observation_spec = data_transformer.transformed_observation_spec
-            common.set_transformed_observation_spec(observation_spec)
-
-            algorithm_ctor = config.algorithm_ctor
-            algorithm = algorithm_ctor(
-                observation_spec=observation_spec,
-                action_spec=env.action_spec(),
-                reward_spec=env.reward_spec(),
-                config=config)
-            algorithm.set_path('')
-
-            metrics = policy_trainer.play(
-                common.abs_path(FLAGS.root_dir),
-                env,
-                algorithm,
-                checkpoint_step=FLAGS.checkpoint_step or "latest",
-                num_episodes=num_episodes_inner,
-                sleep_time_per_step=FLAGS.sleep_time_per_step,
-                record_file=FLAGS.record_file,
-                append_blank_frames=FLAGS.append_blank_frames,
-                render=FLAGS.render,
-                ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.
-                split(",") if FLAGS.ignored_parameter_prefixes else [])
-
-            if FLAGS.failure_mode:
-                # below is an example failure_criteria based on return.
-                # This should be adjusted according to the particular task.
-                return_value = metrics[1].result().cpu().numpy()
-                failure_criteria = (return_value < 100)
-                if failure_criteria:
-                    logging.info(
-                        "+++++++++ Failure Case Discovered! +++++++++++")
-                    break
     finally:
         alf.close_env()
 
