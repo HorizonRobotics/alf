@@ -996,7 +996,10 @@ def set_random_seed(seed):
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+        force_torch_deterministic = getattr(flags.FLAGS,
+                                            'force_torch_deterministic', True)
+        # causes RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation
+        torch.use_deterministic_algorithms(force_torch_deterministic)
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)

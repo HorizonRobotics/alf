@@ -51,6 +51,14 @@ def _define_flags():
         "specify the checkpoint to be loaded. If None, the latest checkpoint under "
         "train_dir will be used.")
     flags.DEFINE_integer('random_seed', None, "random seed")
+    flags.DEFINE_bool(
+        'force_torch_deterministic', True,
+        'torch.use_deterministic_algorithms when random_seed is set. '
+        'When it is False, deterministic behavior is not guaranteed, '
+        'but could still be deterministic, e.g. for sac_breakout_conf.py. '
+        'Setting a random seed without setting this to False, training '
+        'could throw this error: _scatter_add kernel does not have a '
+        'deterministic implementation.')
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
         'append_blank_frames', 0,
