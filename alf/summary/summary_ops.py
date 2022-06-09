@@ -139,14 +139,15 @@ def scope_name():
     return _scope_stack[-1]
 
 
-def images(name, data, dataformat='NCHW', step=None, walltime=None):
+@_summary_wrapper
+def images(name, data, step=None, dataformat='NCHW', walltime=None):
     """Add image data to summary.
 
     Args:
         name (str): Data identifier
         data (Tensor | numpy.array): image data
-        dataformat (str): one of ('NCHW', 'NHWC', 'CHW', 'HWC', 'HW', 'WH')
         step (int): Global step value to record. None for using ``get_global_counter()``
+        dataformat (str): one of ('NCHW', 'NHWC', 'CHW', 'HWC', 'HW', 'WH')
         walltime (float): Optional override default walltime (time.time())
             seconds after epoch of event
     """
