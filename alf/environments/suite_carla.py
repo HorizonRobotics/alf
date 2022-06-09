@@ -64,8 +64,9 @@ from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
 from .carla_sensors import (
     BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
-    LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor, World,
-    get_scaled_image_size, MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
+    LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor,
+    ObstacleDetectionSensor, World, get_scaled_image_size,
+    MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 from alf.environments.carla_env.carla_utils import (
     _calculate_relative_position, _calculate_relative_velocity, _get_self_pose,
@@ -259,6 +260,7 @@ class Player(object):
                  with_bev_sensor=False,
                  data_collection_mode=False,
                  with_red_light_sensor=False,
+                 with_obstacle_sensor=False,
                  terminate_upon_infraction="",
                  render_waypoints=True):
         """
@@ -325,6 +327,7 @@ class Player(object):
                 to control the Players. This can be used for purposes such as
                 collecting data.
             with_red_light_sensor (bool): whether to use ``RedlightSensor``.
+            with_obstacle_sensor (bool): whether to use ``ObstacleDetectionSensor``.
             terminate_upon_infraction (str): whether to terminate the episode
                 based on the specified mode ("collision", "redlight", "all", ""),
                 when the agent has the corresponding infractions.
@@ -390,6 +393,11 @@ class Player(object):
         if with_red_light_sensor:
             self._red_light_sensor = RedlightSensor(actor, weakref.ref(self))
             self._observation_sensors['redlight'] = self._red_light_sensor
+
+        self._with_obstacle_sensor = with_obstacle_sensor
+        if with_obstacle_sensor:
+            self._obstacle_sensor = ObstacleDetectionSensor(actor)
+            self._observation_sensors['obstacle'] = self._obstacle_sensor
 
         self._success_reward = success_reward
         self._success_distance_thresh = success_distance_thresh

@@ -2050,3 +2050,74 @@ class BEVSensor(SensorBase):
         For example: top leftmost location will be a pixel at (0, 0).
         """
         return self._map_handler.world_to_pixel(location, projective)
+
+
+# ==============================================================================
+# -- Obstacle Detection Sensor -------------------------------------------------
+# ==============================================================================
+
+
+@alf.configurable
+class ObstacleDetectionSensor(SensorBase):
+    """ObstacleDetectionSensor.
+        A sensor that detects the frontal obstacle and use the distance as
+        the observation.
+    """
+
+    def __init__(self,
+                 parent_actor,
+                 distance=250,
+                 hit_radius=1,
+                 only_dynamics=False):
+        self._parent = parent_actor
+        self.distance = None
+        self._event_count = 0
+        world = self._parent.get_world()
+        bp = world.get_blueprint_library().find('sensor.other.obstacle')
+        bp.set_attribute('distance', str(distance))
+        bp.set_attribute('hit_radius', str(hit_radius))
+        bp.set_attribute('debug_linetrace', 'false')
+        if only_dynamics:
+            bp.set_attribute('only_dynamics', 'true')
+        else:
+            bp.set_attribute('only_dynamics', 'false')
+        # Put this sensor on the windshield of the actor to avoid detection
+        # of collision with the actor itself
+        self._sensor_transform = carla.Transform(
+            carla.Location(x=2.0, z=1.7), carla.Rotation(yaw=0))
+        self._sensor = world.spawn_actor(
+            bp, self._sensor_transform, attach_to=self._parent)
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self._sensor.listen(lambda event: ObstacleDetectionSensor._on_obstacle(
+            weak_self, event))
+        self._distance = distance  # init as a large value
+        self._msg = ""
+
+    @staticmethod
+    def _on_obstacle(weak_self, event):
+        self = weak_self()
+        if not self:
+            return
+        self._distance = event.distance
+        self._event_count += 1
+        # the message is useful for debugging purpose
+        self._msg = ("Event %s, in line of sight with %s at distance %u" % (
+            self._event_count, event.other_actor.type_id, event.distance))
+
+    def observation_spec(self):
+        return alf.TensorSpec((1, ))
+
+    def observation_desc(self):
+        return ("obstacle distance in front of the vehicle")
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        Args:
+            current_frame (int): current frame number.
+        Returns:
+            np.ndarray: 1D vector contains the distance to the frontal obstacle.
+        """
+        return np.array([self._distance]).astype(np.float32)
