@@ -831,6 +831,116 @@ class CarlaActionWrapper(AlfEnvironmentBaseWrapper):
         return self._time_step_spec
 
 
+@alf.configurable
+class CarlaMergedActionWrapper(AlfEnvironmentBaseWrapper):
+    """An ALF Environment wrapper for CARLA that merges throttle and brake
+    actions into the same action dimension. Along this dimension, we encode
+    three sub-actions:
+    - brake [-1, -brake_damping], with the absolute value as the brake value
+    - no-op (-brake_damping, throttle_damping): no brake or throttle
+    - throttle [throttle_damping, 1]
+
+    Originally, each dimension represents [throttle, steer, brake, reverse].
+    Then in the merged action space, each dimension represents
+    [throttle/no-op/brake, steer, reverse], respectively.
+    It makes all the action ranges to be [-1, 1].
+
+    The reverse dimension can be further removed setting exclude_reverse as True.
+    """
+
+    def __init__(self,
+                 env,
+                 throttle_damping=0.1,
+                 brake_damping=0.05,
+                 exclude_reverse=True):
+        """
+        env (AlfEnvironment): environment to be wrapped. It needs to be batched.
+        throttle_damping (float): the value for damping the throttle. A throttle
+            smaller than this value will be treated as zero throttle.
+        brake_damping (float): the value for damping the brake. A brake signal
+            (maginatude) smaller than this value will be treated as zero brake.
+        exclude_reverse (bool): whether to exclude reverse. If True, will
+            exclude reverse from the actions for learning and always hard code
+            the reverse value to be zero which corresponds to forward.
+        """
+
+        super().__init__(env)
+
+        self._throttle_damping = throttle_damping
+        self._brake_damping = brake_damping
+        self._exclude_reverse = exclude_reverse
+        self._full_action_dim = env.action_spec().shape[0]
+        if not exclude_reverse:
+            self._merged_action_dim = self._full_action_dim - 1
+        else:
+            self._merged_action_dim = self._full_action_dim - 2
+
+        self._action_spec = alf.BoundedTensorSpec(
+            shape=(self._merged_action_dim, ),
+            dtype=env.action_spec().dtype,
+            minimum=-1.,
+            maximum=1.)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+        self._prev_action_merged = np.zeros(
+            (self.batch_size, *self._action_spec.shape),
+            dtype=self._action_spec.np_dtype)
+
+        self._prev_action_merged_tensor = to_tensor(self._prev_action_merged)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _step(self, action):
+
+        unmerged_action = torch.zeros(*action.shape[0:-1],
+                                      self._full_action_dim)
+        # throttle
+        valid_mask_throttle = (action[..., 0] >=
+                               self._throttle_damping).float()
+        unmerged_action[..., 0] = valid_mask_throttle * action[..., 0]
+        # steer
+        unmerged_action[..., 1] = action[..., 1]
+        # brake
+        valid_mask_brake = (action[..., 0] <= -self._brake_damping).float()
+        unmerged_action[..., 2] = -(valid_mask_brake * action[..., 0])
+        # reverse
+        if not self._exclude_reverse:
+            unmerged_action[..., 3] = torch.clamp(action[..., 2])
+
+        time_step = self._env._step(unmerged_action)
+
+        self._prev_action_merged = action
+        self._prev_action_merged_tensor = to_tensor(self._prev_action_merged)
+
+        # update the prev_action field in time_step.
+        # since the returned time_step is the next time_step, we need to
+        # use the updated prev_action, which is the input action.
+        if torch.is_tensor(time_step.prev_action):
+            time_step = time_step._replace(
+                prev_action=self._prev_action_merged_tensor)
+        else:
+            time_step = time_step._replace(
+                prev_action=self._prev_action_merged)
+
+        return time_step
+
+    def _reset(self):
+        time_step = self._env.reset()
+        if torch.is_tensor(time_step.prev_action):
+            time_step = time_step._replace(
+                prev_action=torch.zeros_like(self._prev_action_merged_tensor))
+        else:
+            time_step = time_step._replace(
+                prev_action=np.zeros_like(self._prev_action_merged))
+
+        return time_step
+
+
 class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
     """Wrapper that converts non-batched numpy-based I/O to batched tensors.
     """
