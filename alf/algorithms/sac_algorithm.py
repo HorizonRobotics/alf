@@ -153,6 +153,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  q_network_cls=QNetwork,
                  reward_weights=None,
                  epsilon_greedy=None,
+                 uniform_epsilon_sample=False,
                  use_entropy_reward=True,
                  normalize_entropy_reward=False,
                  calculate_priority=False,
@@ -204,6 +205,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
+            uniform_epsilon_sample (bool): If True, samples action uniformly,
+                disregarding the current action distribution.  Useful for DQN style
+                algorithms.
             use_entropy_reward (bool): whether to include entropy as reward
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
@@ -262,6 +266,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
+        self._uniform_epsilon_sample = uniform_epsilon_sample
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -495,7 +500,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
                 discrete_action = dist_utils.epsilon_greedy_sample(
-                    discrete_action_dist, epsilon_greedy)
+                    discrete_action_dist, epsilon_greedy,
+                    self._uniform_epsilon_sample)
             else:
                 discrete_action = dist_utils.sample_action_distribution(
                     discrete_action_dist)
@@ -581,6 +587,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=new_state,
             info=SacInfo(action=action, action_distribution=action_dist))
 
+    def _apply_reward_weights(self, critics):
+        critics = critics * self.reward_weights
+        critics = critics.sum(dim=-1)
+        return critics
+
     def _compute_critics(self,
                          critic_net,
                          observation,
@@ -621,8 +632,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critics = critics.min(dim=1)[0]
 
         if apply_reward_weights and self.has_multidim_reward():
-            critics = critics * self.reward_weights
-            critics = critics.sum(dim=-1)
+            critics = self._apply_reward_weights(critics)
 
         # The returns have the following shapes in different circumstances:
         # [replica_min=True, apply_reward_weights=True]
@@ -701,7 +711,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                            rollout_info: SacInfo,
                            action,
                            action_distribution,
-                           target_action_picker: Callable = None):
+                           max_target_action=False):
         critics, critics_state = self._compute_critics(
             self._critic_networks,
             inputs.observation,
@@ -722,9 +732,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # [B, num_actions] -> [B, num_actions, reward_dim]
             probs = common.expand_dims_as(action_distribution.probs,
                                           target_critics)
-            # [B, reward_dim]
-            if target_action_picker is not None:
-                target_critics = target_action_picker(target_critics)
+            # target_critics will be of shape [B, reward_dim]
+            if max_target_action:
+                target_critics_1d_rwd = target_critics
+                if self.has_multidim_reward():
+                    target_critics_1d_rwd = self._apply_reward_weights(
+                        target_critics_1d_rwd)
+                target_action_idx = torch.argmax(target_critics_1d_rwd, dim=1)
+                target_critics = target_critics[(torch.arange(action.shape[0]),
+                                                 target_action_idx)]
             else:
                 target_critics = torch.sum(probs * target_critics, dim=1)
         elif self._act_type == ActionType.Mixed:
