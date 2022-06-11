@@ -920,3 +920,5 @@ def play(root_dir,
     if recorder:
         recorder.close()
     env.reset()
+
+    return metrics
