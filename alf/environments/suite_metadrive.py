@@ -196,7 +196,8 @@ def load(
         map_spec: Union[int, str] = 4,
         crash_penalty: float = 5.0,
         speed_reward_weight: float = 0.1,
-        success_reward: float = 10.0):
+        success_reward: float = 10.0,
+        time_limit: int = 1200):
     """Load the MetaDrive environment and wraps it with AlfMetaDriveWrapper.
     Args:
 
@@ -230,6 +231,8 @@ def load(
             high speed is this weight * the speed in km/h.
         success_reward: the amount of reward will be given (at most 1 time per
             episode) when the ego car reaches the destination.
+        time_limit: the environment will terminate the an episode if it goes
+            beyond this number of steps.
 
     """
     assert env_name in [
@@ -260,6 +263,7 @@ def load(
             'crash_object_penalty': crash_penalty,
             'speed_reward': speed_reward_weight,
             'success_reward': success_reward,
+            'horizon': time_limit,
         })
 
     return AlfMetaDriveWrapper(env, env_id=env_id)
