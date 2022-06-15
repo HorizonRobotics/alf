@@ -40,13 +40,30 @@ def get_opt_arg(p: nn.Parameter, argname: str, default: Any = None):
 
 @alf.configurable
 class GradientNoiseScaleEstimator(nn.Module):
-    """Implement the simple Gradient Noise Scale estimator as detailed in
+    r"""Implement the simple Gradient Noise Scale estimator as detailed in
     Appendix A, "An Empirical Model of Large-Batch Training", McCandlish et al.,
     `arXiv <https://arxiv.org/pdf/1812.06162.pdf>`_, 2018.
+
+    The simplified GNS is defined as:
+
+    .. math::
+
+        B_{simple} = \frac{tr(\Sigma(\theta))}{|G(\theta)|^2},
+
+    where :math:`\Sigma` is the per-sample covariance matrix defined as
+
+    .. math::
+
+        \Sigma(\theta) = cov_{x\sim p} (\Nabla_{\theta} L_x(\theta)),
+
+    and :math:`G(\theta)` is the true gradient given the entire data distribution.
 
     Generally, GNS indicates the noise-to-signal value of SGD. The authors suggest
     that we should choose a batch size close to GNS in order to average out the
     noise in the gradient.
+
+    We would expect a higher GNS for a difficult learning task, especially when
+    different training samples generate opposite gradient directions.
 
     .. note::
 
@@ -95,20 +112,25 @@ class GradientNoiseScaleEstimator(nn.Module):
             loss: a loss tensor *before* taking the mean. Each entry of the tensor
                 represents an individual loss on a single training sample. Ideally,
                 the samples used for computing these losses should be sampled *with*
-                replacement independently. So on-policy algorithms might violate
-                this assumption if the unroll length is large.
+                replacement independently. The loss can have a shape of either
+                ``[T,B]`` or ``[B]``. In the first case, we will only take
+                ``[0,B]`` for computing the gns due to sample correlation along
+                the temporal axis. On-policy algorithms might have noisy estimates
+                if the ``num_parallel_environments`` is small. Similarly, this
+                happens for a small batch size for off-policy algorithms.
             tensors: a nest of tensors whose gradients are considered
 
         Returns:
             gns: the estimated gradient noise scale (a scalar). A smaller value
                 means more effective grad steps.
         """
-        assert loss.ndim > 0, "loss must be a batched tensor!"
-        loss = loss.reshape(-1)
+        assert loss.ndim in [1, 2], "loss must be a rank-1 or -2 tensor!"
+        if loss.ndim == 2:
+            loss = loss[0, :]
         B = loss.shape[0]
         shuffled_loss = loss[torch.randperm(B)]
 
-        b = int(B * self._batch_size_ratio)
+        b = max(1, int(B * self._batch_size_ratio))
         B -= b
 
         B_norm2 = self._calculate_gradient_norm(shuffled_loss[b:], tensors)
