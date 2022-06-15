@@ -74,7 +74,7 @@ class GradientNoiseScaleEstimator(nn.Module):
     def __init__(self,
                  batch_size_ratio: float = 0.1,
                  update_rate: float = 0.01,
-                 gradient_norm_clip: float = 10.,
+                 gradient_norm_clip: float = None,
                  name: str = "GNSEstimator"):
         """
         Args:
@@ -88,7 +88,8 @@ class GradientNoiseScaleEstimator(nn.Module):
                 makes the estimated GNS more biased (because quantities at different
                 training steps are averaged) while a larger value (quicker
                 update) makes it have more variances.
-            gradient_norm_clip: a clipping value for gradient norm outliers
+            gradient_norm_clip: a clipping value for gradient norm outliers. If
+                None, no clipping is performed.
         """
         super().__init__()
         self._name = name
@@ -102,7 +103,9 @@ class GradientNoiseScaleEstimator(nn.Module):
     def _calculate_gradient_norm(self, loss: torch.Tensor,
                                  tensors: alf.nest.NestedTensor):
         grads = alf.nest.utils.grad(tensors, loss.mean(), retain_graph=True)
-        norm2 = torch.clamp(global_norm(grads), max=self._grad_norm_clip)
+        norm2 = global_norm(grads)
+        if self._grad_norm_clip is not None:
+            norm2 = torch.clamp(norm2, max=self._grad_norm_clip)
         return norm2**2
 
     def forward(self, loss: torch.Tensor, tensors: alf.nest.NestedTensor):
