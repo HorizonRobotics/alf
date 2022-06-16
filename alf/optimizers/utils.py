@@ -73,7 +73,7 @@ class GradientNoiseScaleEstimator(nn.Module):
 
     def __init__(self,
                  batch_size_ratio: float = 0.1,
-                 update_rate: float = 0.01,
+                 update_rate: float = 0.001,
                  gradient_norm_clip: float = None,
                  name: str = "GNSEstimator"):
         """
@@ -82,14 +82,19 @@ class GradientNoiseScaleEstimator(nn.Module):
                 batch. In theory, another smaller batch should be sampled *independently*
                 from the data distribution. However, for simplicity, this estimator
                 samples the smaller batch from a batch and uses the remaining as
-                the larger batch. So this ratio should be small (<0.5).
+                the larger batch. So this ratio should be small (<0.5). If the
+                ratio is too small, the calculated smaller batch size will be
+                clipped at 1.
             update_rate: the update rate for computing moving averages of the
                 quantities needed by GNS. Generally, a smaller value (slower update)
                 makes the estimated GNS more biased (because quantities at different
                 training steps are averaged) while a larger value (quicker
                 update) makes it have more variances.
-            gradient_norm_clip: a clipping value for gradient norm outliers. If
-                None, no clipping is performed.
+            gradient_norm_clip: a clipping value for global gradient norm. If
+                None, no clipping is performed. Usually, a clipping value is
+                required for a stable GNS estimate. Depending on how stable the GNS
+                is estimated, this value could also suggest a clipping norm for
+                the optimizer.
         """
         super().__init__()
         self._name = name
@@ -116,11 +121,10 @@ class GradientNoiseScaleEstimator(nn.Module):
                 represents an individual loss on a single training sample. Ideally,
                 the samples used for computing these losses should be sampled *with*
                 replacement independently. The loss can have a shape of either
-                ``[T,B]`` or ``[B]``. In the first case, we will only take
-                ``[0,B]`` for computing the gns due to sample correlation along
-                the temporal axis. On-policy algorithms might have noisy estimates
-                if the ``num_parallel_environments`` is small. Similarly, this
-                happens for a small batch size for off-policy algorithms.
+                ``[T,B]`` or ``[B]``. In the first case, we will randomly select
+                a time step ``t``. The reason is that if the ``T`` steps' gradients
+                are consider together, it will violate the i.i.d. assumption of
+                the estimator. The estimate will be more stable if ``B`` is large.
             tensors: a nest of tensors whose gradients are considered
 
         Returns:
@@ -129,8 +133,10 @@ class GradientNoiseScaleEstimator(nn.Module):
         """
         assert loss.ndim in [1, 2], "loss must be a rank-1 or -2 tensor!"
         if loss.ndim == 2:
-            loss = loss[0, :]
-        B = loss.shape[0]
+            t = torch.randint(high=loss.shape[0], size=())
+            loss = loss[t, ...]
+
+        B = loss.shape[-1]
         shuffled_loss = loss[torch.randperm(B)]
 
         b = max(1, int(B * self._batch_size_ratio))
@@ -141,8 +147,7 @@ class GradientNoiseScaleEstimator(nn.Module):
 
         gradient_norm = (B * B_norm2 - b * b_norm2) / (B - b)
         var_trace = (b_norm2 - B_norm2) / (1. / b - 1. / B)
-
         avg_grad_norm = self._gradient_norm_averager.average(gradient_norm)
         avg_var_trace = self._var_trace_averager.average(var_trace)
         simple_noise_scale = avg_var_trace / avg_grad_norm
-        return simple_noise_scale
+        return simple_noise_scale.detach()
