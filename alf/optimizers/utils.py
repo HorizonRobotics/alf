@@ -69,6 +69,17 @@ class GradientNoiseScaleEstimator(nn.Module):
 
         You can turn on this estimator in ``TrainerConfig``. However, this will
         increase the back-propagation overhead.
+
+        Note that the *expectation* of the estimated GNS is independent with
+        the batch size in theory, but does depend on the learning rate. A good
+        practice of using this estimator given a learning rate is to make sure:
+
+        1. the learning rate is reasonable. If it's too large, then GNS is unstable.
+        1. that the batch size is large enough (smaller variance), and
+        2. the batch data can represent samples from the true data distribution.
+           For example, if your batch is too large but the replay buffer is too
+           small, then the estimate won't make sense (consider increasing the
+           ``initial_collect_steps``).
     """
 
     def __init__(self,
@@ -121,10 +132,9 @@ class GradientNoiseScaleEstimator(nn.Module):
                 represents an individual loss on a single training sample. Ideally,
                 the samples used for computing these losses should be sampled *with*
                 replacement independently. The loss can have a shape of either
-                ``[T,B]`` or ``[B]``. In the first case, we will randomly select
-                a time step ``t``. The reason is that if the ``T`` steps' gradients
-                are consider together, it will violate the i.i.d. assumption of
-                the estimator. The estimate will be more stable if ``B`` is large.
+                ``[T,B]`` or ``[B]``. The estimate will be more stable if ``B``
+                is large and the batch could represent samples from the data
+                distribution well.
             tensors: a nest of tensors whose gradients are considered
 
         Returns:
@@ -132,18 +142,17 @@ class GradientNoiseScaleEstimator(nn.Module):
                 means more effective grad steps.
         """
         assert loss.ndim in [1, 2], "loss must be a rank-1 or -2 tensor!"
-        if loss.ndim == 2:
-            t = torch.randint(high=loss.shape[0], size=())
-            loss = loss[t, ...]
 
         B = loss.shape[-1]
-        shuffled_loss = loss[torch.randperm(B)]
+        shuffled_loss = loss[..., torch.randperm(B)]
 
         b = max(1, int(B * self._batch_size_ratio))
         B -= b
 
-        B_norm2 = self._calculate_gradient_norm(shuffled_loss[b:], tensors)
-        b_norm2 = self._calculate_gradient_norm(shuffled_loss[:b], tensors)
+        B_norm2 = self._calculate_gradient_norm(shuffled_loss[..., b:],
+                                                tensors)
+        b_norm2 = self._calculate_gradient_norm(shuffled_loss[..., :b],
+                                                tensors)
 
         gradient_norm = (B * B_norm2 - b * b_norm2) / (B - b)
         var_trace = (b_norm2 - B_norm2) / (1. / b - 1. / B)
