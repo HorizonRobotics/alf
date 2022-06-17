@@ -60,10 +60,10 @@ class GradientNoiseScaleEstimator(nn.Module):
 
     Generally, GNS indicates the noise-to-signal value of SGD. The authors suggest
     that we should choose a batch size close to GNS in order to average out the
-    noise in the gradient.
-
-    We would expect a higher GNS for a difficult learning task, especially when
-    different training samples generate opposite gradient directions.
+    noise in the gradient. In other words, GNS is positively correlated to the
+    current gradient descent difficulty. We would expect a high GNS for a difficult
+    learning task, especially when different training samples generate opposite
+    gradient directions.
 
     .. note::
 

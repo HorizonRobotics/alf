@@ -45,11 +45,10 @@ alf.config(
     mini_batch_size=64,
     unroll_length=1,
     num_updates_per_train_iter=1,
-    num_iterations=100000,
+    num_iterations=10000,
     num_checkpoints=5,
     evaluate=False,
     eval_interval=100,
     debug_summaries=True,
-    summarize_gradient_noise_scale=True,
     summary_interval=100,
     replay_buffer_length=100000)
