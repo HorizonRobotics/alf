@@ -18,7 +18,7 @@ from typing import Any
 
 import alf
 from alf.utils.averager import ScalarEMAverager
-from alf.utils.tensor_utils import global_norm
+from alf.utils.tensor_utils import global_norm, clip_by_global_norm
 
 
 def get_opt_arg(p: nn.Parameter, argname: str, default: Any = None):
@@ -80,12 +80,26 @@ class GradientNoiseScaleEstimator(nn.Module):
            For example, if your batch is too large but the replay buffer is too
            small, then the estimate won't make sense (consider increasing the
            ``initial_collect_steps``).
+
+    We also provide an alternative way of estimating GNS. Given the gradients of
+    two sampled batches :math:`G_{est1}` and :math:`G_{est2}`, we have
+
+    .. math::
+
+        \begin{array}{l}
+            \alpha\triangleq \mathbb{E}[<G_{est1}\circ G_{est2}>] = |G|^2 \\
+            \beta\triangleq\mathbb{E}[\frac{|G_{est1}|^2 + |G_{est2}|^2}{2}] = \frac{1}{B}tr[\Sigma] + |G|^2 \\
+        \end{array}
+
+    Then we can maintain a moving average of :math:`\bar{\alpha}` and :math:`\bar{\beta}`,
+    and use :math:`(\frac{\bar{\beta}}{\bar{\alpha}}-1)B` as the estimated GNS.
     """
 
     def __init__(self,
                  batch_size_ratio: float = 0.1,
                  update_rate: float = 0.001,
                  gradient_norm_clip: float = None,
+                 mode: str = "alternative",
                  name: str = "GNSEstimator"):
         """
         Args:
@@ -106,23 +120,34 @@ class GradientNoiseScaleEstimator(nn.Module):
                 required for a stable GNS estimate. Depending on how stable the GNS
                 is estimated, this value could also suggest a clipping norm for
                 the optimizer.
+            mode: either "paper" or "alternative". "paper" uses the calculation
+                in the paper. "alternative" is the default mode as its calculation
+                is easier to understand.
+            name:
         """
         super().__init__()
         self._name = name
-        assert 0 < batch_size_ratio < 0.5
+        assert mode in ["paper", "alternative"]
+        if mode == "paper":
+            assert 0 < batch_size_ratio < 0.5
+        else:
+            batch_size_ratio = 0.5
+        self._mode = mode
         self._batch_size_ratio = batch_size_ratio
         self._grad_norm_clip = gradient_norm_clip
         self._gradient_norm_averager = ScalarEMAverager(
             update_rate=update_rate)
         self._var_trace_averager = ScalarEMAverager(update_rate=update_rate)
+        self.register_buffer('_last_valid_gns', torch.zeros(()))
 
     def _calculate_gradient_norm(self, loss: torch.Tensor,
                                  tensors: alf.nest.NestedTensor):
         grads = alf.nest.utils.grad(tensors, loss.mean(), retain_graph=True)
-        norm2 = global_norm(grads)
         if self._grad_norm_clip is not None:
-            norm2 = torch.clamp(norm2, max=self._grad_norm_clip)
-        return norm2**2
+            grads, _ = clip_by_global_norm(grads, self._grad_norm_clip)
+        norm2 = global_norm(grads)
+        grads = torch.cat([g.reshape(-1) for g in alf.nest.flatten(grads)])
+        return norm2**2, grads
 
     def forward(self, loss: torch.Tensor, tensors: alf.nest.NestedTensor):
         """Given a loss tensor and a nest of tensors, return the estimated GNS.
@@ -149,14 +174,31 @@ class GradientNoiseScaleEstimator(nn.Module):
         b = max(1, int(B * self._batch_size_ratio))
         B -= b
 
-        B_norm2 = self._calculate_gradient_norm(shuffled_loss[..., b:],
-                                                tensors)
-        b_norm2 = self._calculate_gradient_norm(shuffled_loss[..., :b],
-                                                tensors)
+        B_norm2, B_grads = self._calculate_gradient_norm(
+            shuffled_loss[..., b:], tensors)
+        b_norm2, b_grads = self._calculate_gradient_norm(
+            shuffled_loss[..., :b], tensors)
 
-        gradient_norm = (B * B_norm2 - b * b_norm2) / (B - b)
-        var_trace = (b_norm2 - B_norm2) / (1. / b - 1. / B)
+        if self._mode == "paper":
+            gradient_norm = (B * B_norm2 - b * b_norm2) / (B - b)
+            var_trace = (b_norm2 - B_norm2) / (1. / b - 1. / B)
+        else:
+            assert B == b, "Check if the batch size is even!"
+            var_trace = (B_norm2 + b_norm2) / 2.
+            gradient_norm = (B_grads * b_grads).sum()
+
         avg_grad_norm = self._gradient_norm_averager.average(gradient_norm)
         avg_var_trace = self._var_trace_averager.average(var_trace)
-        simple_noise_scale = avg_var_trace / avg_grad_norm
+        simple_noise_scale = avg_var_trace / (avg_grad_norm + 1e-8)
+
+        if self._mode == "alternative":
+            simple_noise_scale = (simple_noise_scale - 1) * B
+
+        if simple_noise_scale < 0:
+            # In theory GNS should be non-negative. If the current estimate is
+            # negative, then we simply reuse the last estimate.
+            simple_noise_scale = self._last_valid_gns
+        else:
+            self._last_valid_gns = torch.clone(simple_noise_scale)
+
         return simple_noise_scale.detach()
