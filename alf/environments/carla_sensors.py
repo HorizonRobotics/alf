@@ -2050,3 +2050,105 @@ class BEVSensor(SensorBase):
         For example: top leftmost location will be a pixel at (0, 0).
         """
         return self._map_handler.world_to_pixel(location, projective)
+
+
+# ==============================================================================
+# -- Obstacle Detection Sensor -------------------------------------------------
+# ==============================================================================
+
+
+@alf.configurable
+class ObstacleDetectionSensor(SensorBase):
+    """ObstacleDetectionSensor.
+        A sensor that detects the frontal obstacle and use the distance as
+        the observation.
+        It registers an event every time the parent actor has an obstacle ahead.
+        In order to anticipate obstacles, the sensor creates a capsular shape
+        ahead of the parent vehicle and uses it to check for collisions
+        (https://carla.readthedocs.io/en/latest/ref_sensors/#obstacle-detector).
+        This detection technique is also known as
+        `sphere tracing <https://graphics.stanford.edu/courses/cs348b-20-spring-content/uploads/hart.pdf>`_
+
+    """
+
+    def __init__(self,
+                 parent_actor,
+                 xyz=(2.0, 0., 1.7),
+                 pyr=(0., 0., 0.),
+                 distance=250,
+                 hit_radius=1,
+                 only_dynamics=False,
+                 debug_message=False):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor.
+            xyz (tuple[float]): the attachment position (x, y, z) relative to
+                the parent_actor. This value should be set properly to put the
+                sensor on the windshield of the actor to avoid detection of
+                collision with the actor itself. A default value of (2.0, 0., 1.7)
+                is provided for typical sedan vehicles. For another type of
+                vehicle that is much larger, a larger x value should be used.
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
+                degrees.
+            distance (float): distance within which to be considerred for
+                obstacle detection.
+            hit_radius (float): radius of the trace in sphere tracing.
+            only_dynamics (bool): If True, the trace will only take for dynamic
+                objects into consideration; otherwise, will also consider
+                static objects.
+            debug_message (bool): If True, will log the debug message.
+        """
+
+        self._parent = parent_actor
+        self.distance = None
+        self._event_count = 0
+        world = self._parent.get_world()
+        bp = world.get_blueprint_library().find('sensor.other.obstacle')
+        bp.set_attribute('distance', str(distance))
+        bp.set_attribute('hit_radius', str(hit_radius))
+        bp.set_attribute('debug_linetrace', 'false')
+        if only_dynamics:
+            bp.set_attribute('only_dynamics', 'true')
+        else:
+            bp.set_attribute('only_dynamics', 'false')
+
+        self._sensor_transform = carla.Transform(
+            carla.Location(*xyz), carla.Rotation(*pyr))
+        self._sensor = world.spawn_actor(
+            bp, self._sensor_transform, attach_to=self._parent)
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self._sensor.listen(lambda event: ObstacleDetectionSensor._on_obstacle(
+            weak_self, event))
+        self._distance = distance  # init as a large value
+        self._debug_message = debug_message
+
+    @staticmethod
+    def _on_obstacle(weak_self, event):
+        self = weak_self()
+        if not self:
+            return
+        self._distance = event.distance
+        self._event_count += 1
+
+        if self._debug_message:
+            logging.info(
+                "Event %s, in line of sight with %s at distance %u" %
+                (self._event_count, event.other_actor.type_id, event.distance))
+
+    def observation_spec(self):
+        return alf.TensorSpec((1, ))
+
+    def observation_desc(self):
+        return ("obstacle distance in front of the vehicle")
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        Args:
+            current_frame (int): current frame number.
+        Returns:
+            np.ndarray: 1D vector contains the distance to the frontal obstacle.
+        """
+        return np.array([self._distance]).astype(np.float32)
