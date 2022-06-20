@@ -747,6 +747,10 @@ def _step(algorithm,
           selective_criteria_func=None,
           env_frame_set=[],
           info_set=[]):
+
+    for metric in metrics:
+        metric(time_step.cpu())
+
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
@@ -767,9 +771,9 @@ def _step(algorithm,
             # This should be adjusted according to the particular task at hand.
             if selective_criteria_func(
                     map_structure(lambda x: x.cpu().numpy(),
-                                  metrics[1].result()),
+                                  metrics[1].latest()),
                     map_structure(lambda x: x.cpu().numpy(),
-                                  metrics[3].result())):
+                                  metrics[3].latest())):
                 logging.info(
                     "+++++++++ Selective Case Discovered! +++++++++++")
                 recorder.generate_video_from_frame_set(env_frame_set, info_set)
@@ -785,8 +789,7 @@ def _step(algorithm,
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
-    for metric in metrics:
-        metric(time_step.cpu())
+
     return next_time_step, policy_step, trans_state, env_frame_set, info_set
 
 
@@ -836,7 +839,6 @@ def play(root_dir,
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
     """
-
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
@@ -906,6 +908,13 @@ def play(root_dir,
     env_frame_set = []
     info_set = []
 
+    if selective_mode:
+        # Below is an example selective criteria based on return.
+        # This should be adjusted according to the particular task.
+        selective_criteria_func = lambda return_value, env_info: return_value < 500
+    else:
+        selective_criteria_func = None
+
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statitics) as it can be
@@ -917,13 +926,6 @@ def play(root_dir,
         # these time steps do not affect metrics as the metrics are only updated
         # at StepType.LAST. The metric computation uses cpu version of time_step.
         time_step.cpu().step_type[invalid] = StepType.FIRST
-
-        if selective_mode:
-            # Below is an example selective criteria based on return.
-            # This should be adjusted according to the particular task.
-            selective_criteria_func = lambda return_value, env_info: return_value < 500
-        else:
-            selective_criteria_func = None
 
         next_time_step, policy_step, trans_state, env_frame_set, info_set = _step(
             algorithm=algorithm,
