@@ -37,7 +37,6 @@ from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
-from alf.utils.schedulers import as_scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -153,7 +152,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  q_network_cls=QNetwork,
                  reward_weights=None,
                  epsilon_greedy=None,
-                 uniform_epsilon_sample=False,
                  use_entropy_reward=True,
                  normalize_entropy_reward=False,
                  calculate_priority=False,
@@ -205,9 +203,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
-            uniform_epsilon_sample (bool): If True, samples action uniformly,
-                disregarding the current action distribution.  Useful for DQN style
-                algorithms.
             use_entropy_reward (bool): whether to include entropy as reward
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
@@ -266,7 +261,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
-        self._uniform_epsilon_sample = uniform_epsilon_sample
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -500,8 +494,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
                 discrete_action = dist_utils.epsilon_greedy_sample(
-                    discrete_action_dist, epsilon_greedy,
-                    self._uniform_epsilon_sample)
+                    discrete_action_dist, epsilon_greedy)
             else:
                 discrete_action = dist_utils.sample_action_distribution(
                     discrete_action_dist)
@@ -548,7 +541,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=SacState(action=action_state),
             info=SacInfo(action_distribution=action_dist))
 
-    def rollout_step(self, inputs: TimeStep, state: SacState, eps: float = 1.):
+    def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay
         buffer, then this function also call ``_critic_networks`` and
@@ -557,7 +550,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         action_dist, action, _, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
-            epsilon_greedy=eps,
+            epsilon_greedy=1.0,
             eps_greedy_sampling=True,
             rollout=True)
 
@@ -705,13 +698,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                *self._reward_spec.shape).long()
         return q_values.gather(2, action).squeeze(2)
 
-    def _critic_train_step(self,
-                           inputs: TimeStep,
-                           state: SacCriticState,
-                           rollout_info: SacInfo,
-                           action,
-                           action_distribution,
-                           max_target_action=False):
+    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
+                           rollout_info: SacInfo, action, action_distribution):
         critics, critics_state = self._compute_critics(
             self._critic_networks,
             inputs.observation,
@@ -732,17 +720,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # [B, num_actions] -> [B, num_actions, reward_dim]
             probs = common.expand_dims_as(action_distribution.probs,
                                           target_critics)
-            # target_critics will be of shape [B, reward_dim]
-            if max_target_action:
-                target_critics_1d_rwd = target_critics
-                if self.has_multidim_reward():
-                    target_critics_1d_rwd = self._apply_reward_weights(
-                        target_critics_1d_rwd)
-                target_action_idx = torch.argmax(target_critics_1d_rwd, dim=1)
-                target_critics = target_critics[(torch.arange(action.shape[0]),
-                                                 target_action_idx)]
-            else:
-                target_critics = torch.sum(probs * target_critics, dim=1)
+            # [B, reward_dim]
+            target_critics = torch.sum(probs * target_critics, dim=1)
         elif self._act_type == ActionType.Mixed:
             critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
