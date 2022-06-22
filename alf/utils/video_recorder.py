@@ -135,6 +135,12 @@ class VideoRecorder(GymVideoRecorder):
         self._frame_cache.append(frame)
         self._pred_info_cache.append(pred_info)
 
+    def clear_cache(self):
+        """Clear the cached contents.
+        """
+        self._frame_cache = []
+        self._pred_info_cache = []
+
     def generate_video_from_cache(self):
         """Generate the video from the cached frames. Also add the plot Image
         instances extracted from cached prediction info.
@@ -144,6 +150,8 @@ class VideoRecorder(GymVideoRecorder):
                 zip(self._frame_cache, self._pred_info_cache)):
             frame = self._plot_pred_info(frame, pred_info)
             self._encode_frame(frame)
+
+        self.clear_cache()
 
         if self._append_blank_frames > 0:
             if self._blank_frame is None:

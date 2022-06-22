@@ -774,6 +774,8 @@ def _step(algorithm,
                 logging.info(
                     "+++++++++ Selective Case Discovered! +++++++++++")
                 recorder.generate_video_from_cache()
+            else:
+                recorder.clear_cache()
 
     elif render:
         if env.batch_size > 1:
