@@ -50,8 +50,8 @@ class DqnAlgorithm(SacAlgorithm):
     """
 
     def __init__(self,
-                 observation_spec,
-                 action_spec,
+                 observation_spec: alf.tensor_specs.NestedTensorSpec,
+                 action_spec: alf.tensor_specs.NestedTensorSpec,
                  reward_spec: TensorSpec = TensorSpec(()),
                  q_network_cls: Callable[..., QNetwork] = QNetwork,
                  q_optimizer: Optional[torch.optim.Optimizer] = None,
@@ -124,51 +124,35 @@ class DqnAlgorithm(SacAlgorithm):
                         observation,
                         state: DqnActionState,
                         epsilon_greedy=None,
-                        eps_greedy_sampling=False,
-                        rollout=False):
-        """The reason why we want to do action sampling inside this function
-        instead of outside is that for the mixed case, once a continuous action
-        is sampled here, we should pair it with the discrete action sampled from
-        the Q value. If we just return two distributions and sample outside, then
-        the actions will not match.
-        """
+                        eps_greedy_sampling=False):
         new_state = DqnActionState()
-
         critic_network_inputs = (observation, None)
-        if self._act_type == ActionType.Mixed:
-            critic_network_inputs = (observation, (None, continuous_action))
-
         q_values, critic_state = self._compute_critics(
             self._critic_networks, *critic_network_inputs, state.critic)
-
         new_state = new_state._replace(critic=critic_state)
-        if self._act_type == ActionType.Discrete:
-            alpha = torch.exp(self._log_alpha).detach()
-        else:
-            alpha = torch.exp(self._log_alpha[0]).detach()
-        # p(a|s) = exp(Q(s,a)/alpha) / Z;
-        logits = q_values / alpha
-        discrete_action_dist = td.Categorical(logits=logits)
+
+        # NOTE: This block is the only departure from SAC:
+        size = q_values.shape
         if eps_greedy_sampling:
-            discrete_action = dist_utils.epsilon_greedy_sample(
-                discrete_action_dist,
-                epsilon_greedy,
-                # NOTE: This is the only departure from SAC:
-                True)
+            # This is epsilon greedy for rollout or evaluation.
+            rand_act_prob = epsilon_greedy / size[-1]
+            probs = torch.ones_like(q_values) * rand_act_prob
+            if epsilon_greedy >= 1:
+                # Uniform random action distribution
+                greedy_act_prob = rand_act_prob
+            else:
+                # Epsilon greedy
+                greedy_act_prob = 1 - epsilon_greedy + rand_act_prob
         else:
-            discrete_action = dist_utils.sample_action_distribution(
-                discrete_action_dist)
-
-        action_dist = discrete_action_dist
-        action = discrete_action
-
-        if (self._reproduce_locomotion and rollout
-                and not self._training_started):
-            # This uniform sampling seems important because for a squashed Gaussian,
-            # even with a large scale, a random policy is not nearly uniform.
-            action = alf.nest.map_structure(
-                lambda spec: spec.sample(outer_dims=observation.shape[:1]),
-                self._action_spec)
+            # This is for train_step to obtain target value from target network.
+            # The greedy action here is the maximizer of q values, and will be used
+            # to obtain target value using the target network.
+            probs = torch.zeros_like(q_values)
+            greedy_act_prob = 1
+        greedy_action = torch.argmax(q_values, dim=-1)
+        probs[(torch.arange(size[0]), greedy_action)] = greedy_act_prob
+        action_dist = td.Categorical(probs=probs)
+        action = dist_utils.epsilon_greedy_sample(action_dist, eps=0.)
 
         return action_dist, action, q_values, new_state
 
@@ -184,8 +168,7 @@ class DqnAlgorithm(SacAlgorithm):
             state=state.action,
             # NOTE: This is the only departure from SAC.
             epsilon_greedy=self._rollout_epsilon_greedy(),
-            eps_greedy_sampling=True,
-            rollout=True)
+            eps_greedy_sampling=True)
 
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(

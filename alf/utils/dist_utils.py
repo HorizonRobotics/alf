@@ -1020,7 +1020,7 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
         return sample
 
 
-def epsilon_greedy_sample(nested_distributions, eps=0.1, uniform=False):
+def epsilon_greedy_sample(nested_distributions, eps=0.1):
     """Generate greedy sample that maximizes the probability.
 
     Args:
@@ -1028,8 +1028,6 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1, uniform=False):
         eps (float): a floating value in :math:`[0,1]`, representing the chance of
             action sampling instead of taking argmax. This can help prevent
             a dead loop in some deterministic environment like `Breakout`.
-        uniform (bool): when not greedy, whether to sample from a uniform distribution
-            (DQN style epsilon greedy) or the input distribution (SAC style).
     Returns:
         (nested) Tensor:
     """
@@ -1039,13 +1037,7 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1, uniform=False):
         greedy_action = get_mode(dist)
         if eps == 0.0:
             return greedy_action
-        if uniform:
-            assert isinstance(dist, td.categorical.Categorical), \
-                "Uniform epsilon greedy is only supported for discrete actions"
-            size = dist.probs.shape
-            sample_action = torch.randint(high=size[-1], size=size[:-1])
-        else:
-            sample_action = dist.sample()
+        sample_action = dist.sample()
         greedy_mask = torch.rand(sample_action.shape[0]) > eps
         sample_action[greedy_mask] = greedy_action[greedy_mask]
         return sample_action
