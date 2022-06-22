@@ -131,10 +131,10 @@ class DqnAlgorithm(SacAlgorithm):
             self._critic_networks, *critic_network_inputs, state.critic)
         new_state = new_state._replace(critic=critic_state)
 
-        # NOTE: This block is the only departure from SAC:
-        size = q_values.shape
+        # NOTE: This block departs from SAC:
+        size = q_values.shape  # [B, actions]
         if eps_greedy_sampling:
-            # This is epsilon greedy for rollout or evaluation.
+            # Epsilon greedy for rollout or evaluation.
             rand_act_prob = epsilon_greedy / size[-1]
             probs = torch.ones_like(q_values) * rand_act_prob
             if epsilon_greedy >= 1:
@@ -144,7 +144,7 @@ class DqnAlgorithm(SacAlgorithm):
                 # Epsilon greedy
                 greedy_act_prob = 1 - epsilon_greedy + rand_act_prob
         else:
-            # This is for train_step to obtain target value from target network.
+            # Greedy for train_step to obtain target value from target network.
             # The greedy action here is the maximizer of q values, and will be used
             # to obtain target value using the target network.
             probs = torch.zeros_like(q_values)
@@ -190,46 +190,3 @@ class DqnAlgorithm(SacAlgorithm):
             output=action,
             state=new_state,
             info=DqnInfo(action=action, action_distribution=action_dist))
-
-    # Copied and modified from sac_algorithm (discrete actions).
-    def _critic_train_step(self, inputs: TimeStep, state: DqnCriticState,
-                           rollout_info: DqnInfo, action, action_distribution):
-        critics, critics_state = self._compute_critics(
-            self._critic_networks,
-            inputs.observation,
-            rollout_info.action,
-            state.critics,
-            replica_min=False,
-            apply_reward_weights=False)
-
-        target_critics, target_critics_state = self._compute_critics(
-            self._target_critic_networks,
-            inputs.observation,
-            action,
-            state.target_critics,
-            apply_reward_weights=False)
-
-        critics = self._select_q_value(rollout_info.action, critics)
-        # [B, num_actions] -> [B, num_actions, reward_dim]
-        probs = common.expand_dims_as(action_distribution.probs,
-                                      target_critics)
-
-        # NOTE: This block is the only departure from SAC.
-        target_critics_1d_rwd = target_critics
-        if self.has_multidim_reward():
-            target_critics_1d_rwd = self._apply_reward_weights(
-                target_critics_1d_rwd)
-        target_action_idx = torch.argmax(target_critics_1d_rwd, dim=1)
-        # [B, reward_dim]
-        target_critics = target_critics[(torch.arange(action.shape[0]),
-                                         target_action_idx)]
-
-        target_critic = target_critics.reshape(inputs.reward.shape)
-
-        target_critic = target_critic.detach()
-
-        state = DqnCriticState(
-            critics=critics_state, target_critics=target_critics_state)
-        info = DqnCriticInfo(critics=critics, target_critic=target_critic)
-
-        return state, info
