@@ -227,6 +227,8 @@ def summarize_loss(loss_info: LossInfo):
     """
     if not isinstance(loss_info.loss, tuple):
         alf.summary.scalar('loss', data=loss_info.loss)
+    if loss_info.gns != ():
+        alf.summary.scalar('gradient_noise_scale', data=loss_info.gns)
     if not loss_info.extra:
         return
     # Support extra as namedtuple or dict (more flexible)

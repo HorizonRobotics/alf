@@ -127,8 +127,9 @@ class Normalizer(nn.Module):
                 with alf.summary.scope(self._name):
                     if val.ndim == 0:
                         alf.summary.scalar(name + "." + suffix, val)
-                    elif val.shape[0] < self._max_dims_to_summarize:
-                        for i in range(val.shape[0]):
+                    elif val.numel() < self._max_dims_to_summarize:
+                        val = val.reshape(-1)  # val might be multi-rank
+                        for i in range(val.numel()):
                             alf.summary.scalar(
                                 name + "_" + str(i) + "." + suffix, val[i])
                     else:

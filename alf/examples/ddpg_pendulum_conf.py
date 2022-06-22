@@ -61,5 +61,6 @@ alf.config(
     evaluate=False,
     debug_summaries=True,
     summarize_grads_and_vars=1,
+    summarize_gradient_noise_scale=True,
     summary_interval=100,
     replay_buffer_length=100000)
