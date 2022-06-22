@@ -744,9 +744,7 @@ def _step(algorithm,
           render=False,
           recorder=None,
           sleep_time_per_step=0,
-          selective_criteria_func=None,
-          env_frame_set=[],
-          info_set=[]):
+          selective_criteria_func=None):
 
     for metric in metrics:
         metric(time_step.cpu())
@@ -763,8 +761,7 @@ def _step(algorithm,
 
     elif recorder and selective_criteria_func is not None:
         env_frame = recorder.capture_env_frame()
-        env_frame_set.append(env_frame)
-        info_set.append(policy_step.info)
+        recorder.cache_frame_and_pred_info(env_frame, policy_step.info)
 
         if time_step.is_last():
             # below is an example failure_criteria based on return.
@@ -776,10 +773,7 @@ def _step(algorithm,
                                   metrics[3].latest())):
                 logging.info(
                     "+++++++++ Selective Case Discovered! +++++++++++")
-                recorder.generate_video_from_frame_set(env_frame_set, info_set)
-
-            env_frame_set = []
-            info_set = []
+                recorder.generate_video_from_cache()
 
     elif render:
         if env.batch_size > 1:
@@ -790,7 +784,7 @@ def _step(algorithm,
 
     next_time_step = env.step(policy_step.output)
 
-    return next_time_step, policy_step, trans_state, env_frame_set, info_set
+    return next_time_step, policy_step, trans_state
 
 
 @common.mark_eval
@@ -905,9 +899,6 @@ def play(root_dir,
             buffer_size=num_episodes, example_time_step=time_step)
     ]
 
-    env_frame_set = []
-    info_set = []
-
     if selective_mode:
         # Below is an example selective criteria based on return.
         # This should be adjusted according to the particular task.
@@ -927,7 +918,7 @@ def play(root_dir,
         # at StepType.LAST. The metric computation uses cpu version of time_step.
         time_step.cpu().step_type[invalid] = StepType.FIRST
 
-        next_time_step, policy_step, trans_state, env_frame_set, info_set = _step(
+        next_time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
@@ -937,9 +928,7 @@ def play(root_dir,
             render=render,
             recorder=recorder,
             sleep_time_per_step=sleep_time_per_step,
-            selective_criteria_func=selective_criteria_func,
-            env_frame_set=env_frame_set,
-            info_set=info_set)
+            selective_criteria_func=selective_criteria_func)
 
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST
