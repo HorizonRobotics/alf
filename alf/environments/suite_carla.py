@@ -720,7 +720,7 @@ class Player(object):
             collision_location_available = obs['collision'].ndim == 3
             if collision_location_available:
                 info['collision_front'] = np.float32(
-                    np.any(self._collision_observation[:, 1, 0] > 0.5))
+                    np.any(obs['collision'][:, 1, 0] > 0.5))
 
             logging.info("actor=%d frame=%d COLLISION" % (self._actor.id,
                                                           current_frame))
