@@ -38,6 +38,16 @@ class AdvFetchEnv(FetchEnv):
         # The only change is from 4 to 7 for ``n_actions`` where the extra 3 dims
         represent 'xyz' euler angles rotated compared to the previous step.
 
+        .. note::
+
+            After adding the rotation angles, the robot gripper might more easily
+            have collisions with the table or itself. Maybe in the future we should
+            have the environment return collision info.
+
+            You can overwrite the function `_sample_goal()` to define new goals
+            given these extra rotation actions, also `_get_obs()` to redefine the
+            achieved goal.
+
         Args:
             model_path (string): path to the environments XML file
             n_substeps (int): number of substeps the simulation runs on every call to step
@@ -96,3 +106,13 @@ class AdvFetchEnv(FetchEnv):
         # Apply action to simulation.
         utils.ctrl_set_action(self.sim, action)
         utils.mocap_set_action(self.sim, action)
+
+    def _get_obs(self):
+        """We should also return the gripper's orientation.
+        """
+        obs = super()._get_obs()
+        gripper_rot = rotations.mat2euler(
+            self.sim.data.get_site_xmat('robot0:grip'))
+        obs['observation'] = np.concatenate(
+            [obs['observation'], gripper_rot.ravel()])
+        return obs
