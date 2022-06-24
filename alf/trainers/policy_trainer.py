@@ -745,6 +745,35 @@ def _step(algorithm,
           recorder=None,
           sleep_time_per_step=0,
           selective_criteria_func=None):
+    """Perform one step interaction using the outpupt action from ``algorithm``
+    taking ``time_step`` as input. Also record the metrics.
+
+    Note that this function is used both in ``play`` below and ``evaluate`` in
+    ``evaluator.py``.
+
+    Args:
+        algorithm (RLAlgorithm): the algorithm under evaluation
+        env: the environment
+        time_step (TimeStep): current time step
+        policy_state (nested Tensor): state of the policy
+        trans_state (nested Tensor): state of the transformer(s)
+        metrics (StepMetric): a list of metrics that will be updated based on
+            ``time_step``.
+        render (bool|False): if True, display the frames of ``env`` on a screen.
+        recorder (VideoRecorder|None): recorder the frames of ``env`` and other
+            additional images in prediction step info if present.
+        sleep_time_per_step (int|0): The sleep time between two frames when
+            ``render`` is True.
+        selective_criteria_func (callable|None): a callable for determining
+            whether an episode will be saved to the video file when a valid
+            recorder is provided.
+
+    Returns:
+        - next time step (TimeStep): the next time step after taking an action in
+            ``env``
+        - policy step (AlgStep): the output from ``algorithm.predict_step``
+        - new state of the transformer(s) (nested Tensor)
+    """
 
     for metric in metrics:
         metric(time_step.cpu())
