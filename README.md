@@ -143,7 +143,7 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 ### DDQN
 * [DDQN on Atari](alf/examples/dqn_breakout_conf.py).  Game "Q*Bert" performance.
 
-  <img src="alf/examples/dqn_breakout_conf_Qbert.png" width = "300" height ="200" alt="Q*Bert-DDQN-training-curve"/>
+  <img src="alf/examples/dqn_breakout_conf_Qbert.png" width = "600" height ="200" alt="Q*Bert-DDQN-training-curve"/>
 
 ### DDPG
 * [FetchSlide (sparse rewards)](alf/examples/ddpg_fetchslide_conf.py). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This example reproduces the performance of vanilla DDPG reported in the OpenAI's Robotics environment [paper](https://arxiv.org/pdf/1802.09464.pdf). Our implementation doesn't use MPI, but obtains (evaluation) performance on par with the original implementation. (*The original MPI implementation has 19 workers, each worker containing 2 environments for rollout and sampling a minibatch of size 256 from its replay buffer for computing gradients. All the workers' gradients will be summed together for a centralized optimizer step. Our implementation simply samples a minibatch of size 5000 from a common replay buffer per optimizer step.*) The training took about 1 hour with 38 (19*2) parallel environments on a single GPU.
