@@ -22,9 +22,10 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.sac_algorithm import SacAlgorithm, ActionType, \
     SacState as DqnState, SacCriticState as DqnCriticState, \
     SacActionState as DqnActionState, \
-    SacInfo as DqnInfo, SacCriticInfo as DqnCriticInfo
+    SacInfo as DqnInfo, SacCriticInfo as DqnCriticInfo, \
+    SacLossInfo as DqnLossInfo
 from alf.algorithms.td_loss import TDLoss
-from alf.data_structures import AlgStep, TimeStep
+from alf.data_structures import AlgStep, LossInfo, TimeStep
 from alf.environments.alf_environment import AlfEnvironment
 from alf.networks import QNetwork
 from alf.optimizers import AdamTF
@@ -51,11 +52,12 @@ class DqnAlgorithm(SacAlgorithm):
 
     def __init__(self,
                  observation_spec: alf.tensor_specs.NestedTensorSpec,
-                 action_spec: alf.tensor_specs.NestedTensorSpec,
+                 action_spec: alf.tensor_specs.BoundedTensorSpec,
                  reward_spec: TensorSpec = TensorSpec(()),
                  q_network_cls: Callable[..., QNetwork] = QNetwork,
                  q_optimizer: Optional[torch.optim.Optimizer] = None,
                  rollout_epsilon_greedy: Union[float, Scheduler] = 0.1,
+                 target_net_target_action: bool = True,
                  num_critic_replicas: int = 2,
                  env: Optional[AlfEnvironment] = None,
                  config: Optional[TrainerConfig] = None,
@@ -65,11 +67,7 @@ class DqnAlgorithm(SacAlgorithm):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
-            action_spec (nested BoundedTensorSpec): representing the actions; can
-                be a mixture of discrete and continuous actions. The number of
-                continuous actions can be arbitrary while only one discrete
-                action is allowed currently. If it's a mixture, then it must be
-                a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
+            action_spec (BoundedTensorSpec): Only one discrete action allowed.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             q_network: is used to construct QNetwork for estimating ``Q(s,a)``
@@ -82,6 +80,9 @@ class DqnAlgorithm(SacAlgorithm):
                 can be converted to a DQN or DDQN algorithm when e.g.
                 ``rollout_epsilon_greedy=0.3``, ``max_target_action=True``, and
                 ``use_entropy_reward=False``.
+            target_net_target_action: when ``True`` uses target critic network to get
+                target action (similar as DDPG).  When ``False``, uses
+                critic network to get target action (similar as DDQN/SAC).
             num_critic_replicas: number of critics to be used. Default is 2.
             env: The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
@@ -96,6 +97,7 @@ class DqnAlgorithm(SacAlgorithm):
             name (str): The name of this algorithm.
         """
         self._rollout_epsilon_greedy = as_scheduler(rollout_epsilon_greedy)
+        self._target_net_target_action = target_net_target_action
         # Disable alpha learning:
         alpha_optimizer = AdamTF(lr=0)
 
@@ -127,8 +129,16 @@ class DqnAlgorithm(SacAlgorithm):
                         eps_greedy_sampling=False):
         new_state = DqnActionState()
         critic_network_inputs = (observation, None)
+
+        # NOTE: This block departs from SAC:
+        if eps_greedy_sampling or not self._target_net_target_action:
+            # SAC always uses critic_networks to obtain action,
+            # even during training
+            nets = self._critic_networks
+        else:
+            nets = self._target_critic_networks
         q_values, critic_state = self._compute_critics(
-            self._critic_networks, *critic_network_inputs, state.critic)
+            nets, *critic_network_inputs, state.critic)
         new_state = new_state._replace(critic=critic_state)
 
         # NOTE: This block departs from SAC:
@@ -150,9 +160,9 @@ class DqnAlgorithm(SacAlgorithm):
             probs = torch.zeros_like(q_values)
             greedy_act_prob = 1
         greedy_action = torch.argmax(q_values, dim=-1)
-        probs[(torch.arange(size[0]), greedy_action)] = greedy_act_prob
+        probs[torch.arange(size[0]), greedy_action] = greedy_act_prob
         action_dist = td.Categorical(probs=probs)
-        action = dist_utils.epsilon_greedy_sample(action_dist, eps=0.)
+        action = dist_utils.sample_action_distribution(action_dist)
 
         return action_dist, action, q_values, new_state
 
@@ -190,3 +200,11 @@ class DqnAlgorithm(SacAlgorithm):
             output=action,
             state=new_state,
             info=DqnInfo(action=action, action_distribution=action_dist))
+
+    def calc_loss(self, info: DqnInfo):
+        # Adapted from SAC: Removes irrelevant losses and logging.
+        critic_loss = self._calc_critic_loss(info)
+        return LossInfo(
+            loss=critic_loss.loss,
+            priority=critic_loss.priority,
+            extra=DqnLossInfo(critic=critic_loss.extra, actor=(), alpha=()))
