@@ -55,17 +55,24 @@ class Evaluator(object):
     """
 
     def __init__(self, config: TrainerConfig, conf_file: str):
+        # The following line is needed for avoid
+        # "RuntimeError: unable to open shared memory object"
+        # See https://github.com/facebookresearch/maskrcnn-benchmark/issues/103#issuecomment-785815218
+        mp.set_sharing_strategy('file_system')
         self._async = config.async_eval
+        if conf_file.endswith('.gin'):
+            assert not self._async, "async_eval is not supported for gin_file"
         num_envs = config.num_eval_environments
         seed = config.random_seed
         if self._async:
             ctx = mp.get_context('spawn')
             self._job_queue = ctx.Queue()
             self._done_queue = ctx.Queue()
+            pre_configs = dict(alf.get_handled_pre_configs())
             self._worker = ctx.Process(
                 target=_worker,
-                args=(self._job_queue, self._done_queue, conf_file, num_envs,
-                      config.root_dir, seed))
+                args=(self._job_queue, self._done_queue, conf_file,
+                      pre_configs, num_envs, config.root_dir, seed))
             self._worker.start()
         else:
             self._env = create_environment(
@@ -164,6 +171,7 @@ class SyncEvaluator(object):
 def _worker(job_queue: mp.Queue,
             done_queue: mp.Queue,
             conf_file: str,
+            pre_configs: Dict,
             num_parallel_envs: int,
             root_dir: str,
             seed: Optional[int] = None):
@@ -192,6 +200,7 @@ def _worker(job_queue: mp.Queue,
         else:
             alf.config('create_environment', nonparallel=True)
         try:
+            alf.pre_config(pre_configs)
             common.parse_conf_file(conf_file)
         except Exception as e:
             alf.close_env()
