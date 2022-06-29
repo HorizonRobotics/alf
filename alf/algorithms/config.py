@@ -55,6 +55,7 @@ class TrainerConfig(object):
                  enable_amp=False,
                  code_snapshots=None,
                  summarize_grads_and_vars=False,
+                 summarize_gradient_noise_scale=False,
                  summarize_action_distributions=False,
                  summarize_output=False,
                  initial_collect_steps=0,
@@ -198,6 +199,8 @@ class TrainerConfig(object):
                 useful for tracking code changes when running a job.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
+            summarize_gradient_noise_scale (bool): whether summarize gradient
+                noise scale. See ``alf.optimizers.utils.py`` for details.
             summarize_output (bool): If True, summarize output of certain networks.
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
@@ -298,6 +301,7 @@ class TrainerConfig(object):
         self.enable_amp = enable_amp
         self.code_snapshots = code_snapshots
         self.summarize_grads_and_vars = summarize_grads_and_vars
+        self.summarize_gradient_noise_scale = summarize_gradient_noise_scale
         self.summarize_action_distributions = summarize_action_distributions
         self.summarize_output = summarize_output
         self.initial_collect_steps = initial_collect_steps

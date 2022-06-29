@@ -75,7 +75,7 @@ def _create_mcts_model(observation_spec, action_spec, num_unroll_steps,
 
 
 class MockMCTSAlgorithm(OffPolicyAlgorithm):
-    def __init__(self, observation_spec, action_spec, discount,
+    def __init__(self, observation_spec, action_spec, model, discount,
                  debug_summaries, name):
         super().__init__(
             observation_spec,
@@ -84,7 +84,7 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
                 steps=alf.TensorSpec((), dtype=torch.int64)),
             debug_summaries=debug_summaries,
             name=name)
-        self._model = None
+        self._model = model
         self._discount = discount
 
     @property

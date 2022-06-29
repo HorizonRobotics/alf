@@ -20,8 +20,9 @@ from alf.algorithms.td_loss import TDLoss
 from alf.algorithms.data_transformer import (
     ImageScaleTransformer, ObservationNormalizer, RewardNormalizer)
 from alf.environments import suite_carla
-from alf.environments.alf_wrappers import (
-    CarlaActionWrapper, ActionObservationWrapper, ScalarRewardWrapper)
+from alf.environments.alf_wrappers import (ActionObservationWrapper,
+                                           ScalarRewardWrapper)
+from alf.environments.carla_env.carla_utils import CarlaActionWrapper
 from alf.environments.carla_controller import VehicleController
 from alf.tensor_specs import BoundedTensorSpec
 

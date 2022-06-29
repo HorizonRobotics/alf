@@ -29,6 +29,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
+from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
@@ -163,9 +164,12 @@ class Algorithm(AlgorithmInterface):
         if optimizer:
             self._optimizers.append(optimizer)
         self._is_on_policy = is_on_policy
+        self._gns_estimator = None
         if config:
             self._rl_train_every_update_steps = config.rl_train_every_update_steps
             self._rl_train_after_update_steps = config.rl_train_after_update_steps
+            if config.summarize_gradient_noise_scale:
+                self._gns_estimator = GradientNoiseScaleEstimator()
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -1074,8 +1078,11 @@ class Algorithm(AlgorithmInterface):
 
         loss_info = self._aggregate_loss(loss_info, valid_masks, batch_info)
 
-        all_params = self._backward_and_gradient_update(
+        all_params, gns = self._backward_and_gradient_update(
             loss_info.loss * weight)
+
+        loss_info = loss_info._replace(gns=gns)
+        loss_info = alf.nest.map_structure(torch.mean, loss_info)
 
         return loss_info, all_params
 
@@ -1115,11 +1122,7 @@ class Algorithm(AlgorithmInterface):
 
         if masks is not None:
             loss_info = alf.nest.map_structure(
-                lambda l: torch.mean(l * masks) if l.ndim == 2 else l,
-                loss_info)
-        else:
-            loss_info = alf.nest.map_structure(lambda l: torch.mean(l),
-                                               loss_info)
+                lambda l: l * masks if l.ndim == 2 else l, loss_info)
         if isinstance(loss_info.scalar_loss, torch.Tensor):
             assert len(loss_info.scalar_loss.shape) == 0
             loss_info = loss_info._replace(
@@ -1143,12 +1146,6 @@ class Algorithm(AlgorithmInterface):
         for optimizer in optimizers:
             optimizer.zero_grad(set_to_none=True)
 
-        if isinstance(loss, torch.Tensor):
-            with record_time("time/backward"):
-                if self._grad_scaler is not None:
-                    loss = self._grad_scaler.scale(loss)
-                loss.backward()
-
         all_params = []
         for optimizer in optimizers:
             params = []
@@ -1159,6 +1156,18 @@ class Algorithm(AlgorithmInterface):
                 "' haven't been used for learning any parameters! Please check."
             )
             all_params.extend(params)
+
+        simple_gns = ()
+        if self._debug_summaries and self._gns_estimator is not None:
+            simple_gns = self._gns_estimator(loss, all_params)
+
+        if isinstance(loss, torch.Tensor):
+            with record_time("time/backward"):
+                if self._grad_scaler is not None:
+                    loss = self._grad_scaler.scale(loss)
+                loss.mean().backward()
+
+        for optimizer in optimizers:
             if self._grad_scaler is not None:
                 # For ALF optimizers, gradient clipping is performed inside
                 # optimizer.step, so we don't need to explicityly unscale grad
@@ -1171,7 +1180,7 @@ class Algorithm(AlgorithmInterface):
             self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
-        return all_params
+        return all_params, simple_gns
 
     # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, info):

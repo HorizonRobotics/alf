@@ -249,6 +249,11 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             self._prediction_net.set_batch_norm_max_steps(num_unroll_steps + 1)
 
     @property
+    def pred_state_spec(self) -> alf.NestedTensorSpec:
+        """Returns the spec of the prediction_net."""
+        return self._prediction_net.state_spec
+
+    @property
     def repr_spec(self) -> TensorSpec:
         """Returns the spec of the representation.
 
@@ -267,7 +272,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         """
         return self._representation_net(observation)[0]
 
-    def initial_predict(self, latent: torch.Tensor) -> ModelOutput:
+    def initial_predict(self, latent: torch.Tensor,
+                        pred_state=()) -> ModelOutput:
         """Make predictions based on an initial latent representation.
 
         Note that we specialize for initial prediction (in addition to recurrent
@@ -275,18 +281,20 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         initializations need to be completed.
 
         Args:
-
             latent: A batch of initial representation (i.e. directly derived
                from a raw observation).
-
+            pred_state: prediction state. If provided, it should be
+                ModelOutput.state.pred_state returned from initial_predict at
+                the previous step
         Returns:
 
             A ModelOutput object produced by the prediction network.
 
         """
         batch_size = latent.shape[0]
-        pred_state = common.zero_tensor_from_nested_spec(
-            self._prediction_net.state_spec, batch_size)
+        if pred_state == ():
+            pred_state = common.zero_tensor_from_nested_spec(
+                self._prediction_net.state_spec, batch_size)
         if self._predict_reward_sum:
             prev_reward_sum = torch.zeros(batch_size)
         else:

@@ -487,7 +487,7 @@ class EncodingNetwork(_Sequential):
             spec = preprocessing_combiner(spec)
             nets.append(preprocessing_combiner)
         else:
-            assert isinstance(input_tensor_spec, TensorSpec), \
+            assert isinstance(spec, TensorSpec), \
                 "The spec must be an instance of TensorSpec!"
 
         if conv_layer_params:
