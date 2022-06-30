@@ -2174,49 +2174,52 @@ class DynamicObjectSensor(SensorBase):
                  parent_actor,
                  alf_world,
                  history_idx=[-16, -11, -6, -1],
-                 max_history_len=20,
                  object_filter='vehicle.*',
                  max_object_number=3,
-                 distance_threshold=100,
-                 with_ego_hist=True,
-                 fill_value=None):
+                 with_ego_history=True,
+                 view_radius=100):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor
             alf_world (World): the world object keeping all relevant data and
-                some utility functions (e.g., `_get_traffic_light_waypoints`)
+                some utility functions.
             navigation_sensor (str): the navigation sensor associated with the
                 `parent_actor`
             history_idx (list[int]): a list of numbers representing the indices
-                of the history information to be rendered for non-ego vehicles.
+                of the history information to be rendered for all dynamic objects.
                 For example, we can set `history_idx=[-1]` for keep only the
                 most recent observation or `history_idx=[-11, -1]` for both the
                 lastest and also the one 10 steps earlier.
-            max_history_len (int): max number of history length preserved
             object_filter (str): a string representing the type of dynamic
-                objects to be perceived. By default, surrounding vehicles are
-                perceived.
-            max_object_number (int): including ego vehicle
-                (if with_ego_hist is True); otherwise, all are ado vehicles
-            with_ego_hist (bool): whether inlcude ego history
+                objects to be perceived, following the
+                `blueprint filter format <https://carla.readthedocs.io/en/0.9.8/core_actors/#blueprints>`_.
+                By default, surrounding dynamic vehicles are perceived.
+            max_object_number (int): the maximum number of dynamic objects that
+                can be perceived within one time step, including ego vehicle if
+                ``with_ego_history`` is True; otherwise, the maximum number of
+                non-ego dynamic objects that can be perfriced in one time step.
+                When the number of dynamic objects is larger than
+                ``max_object_number``, those that are far from the ego agent
+                will be excluded from the observation until the condition on
+                ``max_object_number`` is satisfied.
+            with_ego_history (bool): whether to include ego history.
+            view_radius (float): the radius of the view/perceivable field of
+                the sensor (meter).
         """
 
         super().__init__(parent_actor)
         # descending order, to ensure the active object in observation
         # is based on most recent information
         self._history_idx = sorted(history_idx, reverse=True)
-        self._history_queue = deque(maxlen=max_history_len)
-        self._history_queue_struct = deque(maxlen=max_history_len)
-        self._with_ego_hist = with_ego_hist
+        self._history_queue_struct = deque(maxlen=abs(history_idx[-1]))
+        self._with_ego_history = with_ego_history
 
         self._object_filter = object_filter
         self._max_object_numberr = max_object_number
 
         # dim3 = 1d "presence" + 2d [x, y]
         self._vehicle_fea_dim = 3
-        self._distance_threshold = distance_threshold
-
-        self._alf_world = alf_world
+        self._view_radius = view_radius
         self._world = alf_world._world
 
         self._prev_obs = None
@@ -2227,11 +2230,6 @@ class DynamicObjectSensor(SensorBase):
             len(history_idx), self._max_object_number, self._num_points,
             self._vehicle_fea_dim
         ])
-
-        if fill_value is None:
-            self._fill_value = distance_threshold
-        else:
-            self._fill_value = fill_value
 
     def observation_spec(self):
         return self._observation_spec
@@ -2282,16 +2280,12 @@ class DynamicObjectSensor(SensorBase):
         if len(vehicles) > K:
             logging.warning(
                 "The number of dynamic objects {} is larger than the preset "
-                "max number of perceivable objects {}. ".format(
-                    len(vehicles), K))
+                "max number of perceivable objects {}. Distant objects will "
+                "be excluded from observation.".format(len(vehicles), K))
 
-            idx = np.argpartition(distances, K - 1)
-            vehicles = [vehicles[i] for i in idx[:K]]
-            distances = [distances[i] for i in idx[:K]]
-
-        sorted_idx = np.argsort(distances)
-        vehicles = [vehicles[i] for i in sorted_idx]
-        distances = [distances[i] for i in sorted_idx]
+        idx = np.argpartition(distances, K - 1)
+        vehicles = [vehicles[i] for i in idx[:K]]
+        distances = [distances[i] for i in idx[:K]]
 
         # also add ego into the queue
         ego = (-1, ev_transform, ev_loc, ev_bb_ext)
@@ -2415,7 +2409,7 @@ class DynamicObjectSensor(SensorBase):
             # fill with large value
             full_feature_mat = np.full(
                 [L, self._num_points, self._vehicle_fea_dim],
-                fill_value=self._fill_value)
+                fill_value=self._view_radius)
             full_feature_mat[:feature_mat.shape[-3], :feature_mat.shape[-2], :
                              feature_mat.shape[-1]] = feature_mat[::-1]
 
@@ -2430,14 +2424,14 @@ class DynamicObjectSensor(SensorBase):
         # [L, agent, point_num, fea_dim], L=1 for one step; stack later
         v_fea_mat = np.stack(v_fea_set, axis=1)
         # [past (0) --> present(-1)]
-        if not self._with_ego_hist:
-            v_fea_mat[:-1, 0, :, 0:2] = self._fill_value
+        if not self._with_ego_history:
+            v_fea_mat[:-1, 0, :, 0:2] = self._view_radius
             v_fea_mat[:-1, 0, :, 2] = 0
 
         full_feature_mat = np.full([
             L, self._max_object_number, self._num_points, self._vehicle_fea_dim
         ],
-                                   fill_value=self._fill_value)
+                                   fill_value=self._view_radius)
 
         full_feature_mat[..., -1] = 0
         full_feature_mat[:, :v_fea_mat.shape[-3], :v_fea_mat.
