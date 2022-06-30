@@ -16,6 +16,7 @@ import alf
 from alf.algorithms.data_transformer import HindsightExperienceTransformer, \
     ObservationNormalizer
 from alf.algorithms.ddpg_algorithm import DdpgAlgorithm
+from alf.algorithms.her_algorithms import HerDdpgAlgorithm
 from alf.environments import suite_robotics
 from alf.nest.utils import NestConcat
 
@@ -37,6 +38,8 @@ alf.config(
     ])
 
 alf.config('DdpgAlgorithm', action_l2=0.05)
+
+alf.config('Agent', rl_algorithm_cls=HerDdpgAlgorithm)
 
 # Finer grain tensorboard summaries plus local action distribution
 # TrainerConfig.summarize_action_distributions=True

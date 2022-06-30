@@ -117,7 +117,7 @@ class TDLoss(nn.Module):
         dimesion is the batch dimension.
 
         Args:
-            info (namedtuple): experience collected from ``unroll()`` or
+            info (namedtuple): AlgInfo collected from ``unroll()`` or
                 a replay buffer. All tensors are time-major. ``info`` should
                 contain the following fields:
                 - reward:
@@ -301,7 +301,7 @@ class LowerBoundedTDLoss(TDLoss):
         dimesion is the batch dimension.
 
         Args:
-            info (namedtuple): experience collected from ``unroll()`` or
+            info (namedtuple): AlgInfo collected from ``unroll()`` or
                 a replay buffer. All tensors are time-major. ``info`` should
                 contain the following fields:
                 - reward:
@@ -370,12 +370,12 @@ class LowerBoundedTDLoss(TDLoss):
                     torch.mean(value[:-1][:, episode_ended[0, :]]))
 
         if self._lb_target_q > 0 and disc_ret != ():
-            her_cond = info.her
+            her_cond = info.get_derived_field("her", default=())
             mask = torch.ones(returns.shape, dtype=torch.bool)
             if her_cond != () and torch.any(~her_cond):
                 mask = ~her_cond[:-1]
             disc_ret = disc_ret[
-                1:]  # it's expanded in ddpg_algorithm, need to revert back.
+                1:]  # it's expanded in Agent.preprocess_experience, need to revert back.
             assert returns.shape == disc_ret.shape, "%s %s" % (returns.shape,
                                                                disc_ret.shape)
             with alf.summary.scope(self._name):
@@ -391,9 +391,9 @@ class LowerBoundedTDLoss(TDLoss):
 
         if self._improve_w_goal_return:
             batch_length, batch_size = returns.shape[:2]
-            her_cond = info.her
+            her_cond = info.get_derived_field("her")
             if her_cond != () and torch.any(her_cond):
-                dist = info.future_distance
+                dist = info.get_derived_field("future_distance")
                 if self._positive_reward:
                     goal_return = torch.pow(
                         self._gamma * torch.ones(her_cond.shape), dist)

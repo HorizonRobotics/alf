@@ -54,8 +54,7 @@ SacActorInfo = namedtuple(
     "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
-    "SacInfo",
-    [
+    "SacInfo", [
         "reward",
         "step_type",
         "discount",
@@ -65,11 +64,7 @@ SacInfo = namedtuple(
         "critic",
         "alpha",
         "log_pi",
-        # Optional fields for value target lower bounding or Hindsight relabeling.
-        # TODO: Extract these into a HerAlgorithm wrapper for easier adoption of HER.
         "discounted_return",
-        "future_distance",
-        "her"
     ],
     default_value=())
 

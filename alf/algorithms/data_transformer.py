@@ -900,17 +900,15 @@ class HindsightExperienceTransformer(DataTransformer):
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabeled_goal)
         result = result.update_time_step_field('reward', relabeled_rewards)
-        info = info._replace(her=her_cond, future_distance=future_dist)
+        derived = {"her": her_cond, "future_distance": future_dist}
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
                 result = alf.nest.transform_nest(
                     result, f, lambda t: convert_device(t))
             info = convert_device(info)
-        info = info._replace(
-            her=info.her.unsqueeze(1).expand(result.reward.shape[:2]),
-            future_distance=info.future_distance.unsqueeze(1).expand(
-                result.reward.shape[:2]),
-            replay_buffer=buffer)
+            derived = convert_device(derived)
+        info = info._replace(replay_buffer=buffer)
+        info = info.set_derived(derived)
         result = alf.data_structures.add_batch_info(result, info)
         return result
 
