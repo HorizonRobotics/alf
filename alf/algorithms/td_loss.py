@@ -370,7 +370,10 @@ class LowerBoundedTDLoss(TDLoss):
                     torch.mean(value[:-1][:, episode_ended[0, :]]))
 
         if self._lb_target_q > 0 and disc_ret != ():
-            her_cond = info.get_derived_field("her", default=())
+            if hasattr(info, "get_derived_field"):
+                her_cond = info.get_derived_field("her")
+            else:
+                her_cond = ()
             mask = torch.ones(returns.shape, dtype=torch.bool)
             if her_cond != () and torch.any(~her_cond):
                 mask = ~her_cond[:-1]

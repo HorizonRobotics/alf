@@ -70,13 +70,9 @@ def her_wrapper(alg_cls, alg_info):
 
     # New accessor methods for HerAlgInfo to access the ``derived`` dict.
     @common.add_method(HerInfoCls)
-    def get_derived_field(self, field, default=None):
-        if default is None:
-            assert field in self.derived, f"field {field} not in BatchInfo.derived"
-        if field in self.derived:
-            return self.derived[field]
-        else:
-            return default
+    def get_derived_field(self, field):
+        assert field in self.derived, f"field {field} not in BatchInfo.derived"
+        return self.derived[field]
 
     @common.add_method(HerInfoCls)
     def get_derived(self):
