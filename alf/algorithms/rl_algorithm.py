@@ -613,28 +613,37 @@ class RLAlgorithm(Algorithm):
         if alf.summary.should_record_summaries():
             self._need_to_summarize_rollout = True
 
+        unrolled = False
         if (alf.summary.get_global_counter() >=
-                self._rl_train_after_update_steps and unroll_length > 0):
+                self._rl_train_after_update_steps and unroll_length > 0
+                and (self._config.num_env_steps == 0
+                     or self.get_step_metrics()[1].result() <
+                     self._config.num_env_steps)):
+            unrolled = True
             with torch.set_grad_enabled(config.unroll_with_grad):
                 with record_time("time/unroll"):
                     self.eval()
-                    experience = self.unroll(unroll_length)
                     # The period of performing unroll may not be an integer
                     # divider of config.summary_interval if config.unroll_length is not an
                     # interger. In order to make sure the summary for unroll is
                     # still written out about every summary_interval steps, we
                     # need to remember whether summary has been written between
                     # two unrolls.
-                    if self._need_to_summarize_rollout:
-                        with alf.summary.record_if(lambda: True):
-                            self.summarize_rollout(experience)
-                            self.summarize_metrics()
-                        self._need_to_summarize_rollout = False
+                    with alf.summary.record_if(lambda: self.
+                                               _need_to_summarize_rollout):
+                        experience = self.unroll(unroll_length)
+                        self.summarize_rollout(experience)
+                        self.summarize_metrics()
+                    self._need_to_summarize_rollout = False
+
+        # replay buffer may not have been created yet because unroll is nor performed yet.
+        if self._replay_buffer is None:
+            return 0
 
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
-        if unroll_length > 0:
+        if unrolled:
             with record_time("time/after_train_iter"):
                 if experience is not None:
                     train_info = experience.rollout_info

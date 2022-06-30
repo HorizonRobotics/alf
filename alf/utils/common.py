@@ -1537,7 +1537,8 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     if config.num_iterations > 0:
         num_iterations = config.num_iterations
     # this condition is exclusive with the above
-    if config.num_env_steps > 0:
+    else:
+        assert config.num_env_steps
         # the rollout env is always creatd with ``nonparallel=False``
         num_envs = alf.get_config_value(
             "create_environment.num_parallel_environments")

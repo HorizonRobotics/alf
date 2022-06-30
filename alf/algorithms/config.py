@@ -103,7 +103,11 @@ class TrainerConfig(object):
                 ``initial_collect_steps>0``, then the first
                 ``initial_collect_steps//(unroll_length*num_envs)`` iterations
                 won't perform any training. For SL trainer, indicates the number
-                of training epochs.
+                of training epochs. If both `num_iterations` and `num_env_steps`
+                are set, `num_iterations` must be big enough to consume so many
+                environment steps. And after `num_env_steps` enviroment steps are
+                generated, the training will not interact with environments
+                anymore, which means that it will only train on replay buffer.
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
