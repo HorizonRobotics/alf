@@ -118,6 +118,101 @@ def action_importance_ratio(action_distribution,
     return importance_ratio, importance_ratio_clipped
 
 
+def discounted_return(rewards, values, step_types, discounts, time_major=True):
+    """Computes discounted return for the first T-1 steps.
+
+    The difference between this function and the one tf_agents.utils.value_ops
+    is that the accumulated_discounted_reward is replaced by value for is_last
+    steps in this function.
+
+    .. math::
+
+        Q_t = \sum_{t'=t}^T \gamma^{t'-t} * r_{t'} + \gamma^{T-t+1}*final\_value.
+
+
+    Define abbreviations:
+
+    - B: batch size representing number of trajectories
+    - T: number of steps per trajectory
+
+    Args:
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T, B] (or [T]) when representing values,
+            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
+            of value distributions.
+        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+        time_major (bool): Whether input tensors are time major.
+            False means input tensors have shape [B, T].
+
+    Returns:
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns. Shape is [B, T-1] when time_major is false.
+    """
+    if not time_major:
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
+
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
+
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    is_lasts = common.expand_dims_as(is_lasts, values)
+    discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
+
+    rets = torch.zeros_like(values)
+    rets[-1] = values[-1]
+
+    with torch.no_grad():
+        for t in reversed(range(rewards.shape[0] - 1)):
+            acc_value = rets[t + 1] * discounts[t + 1] + rewards[t + 1]
+            rets[t] = is_lasts[t] * values[t] + (1 - is_lasts[t]) * acc_value
+
+    rets = rets[:-1]
+
+    if not time_major:
+        rets = rets.transpose(0, 1)
+
+    return rets.detach()
+
+
+def one_step_discounted_return(rewards, values, step_types, discounts):
+    """Calculate the one step discounted return  for the first T-1 steps.
+
+    return = next_reward + next_discount * next_value if is not the last step;
+    otherwise will set return = current_discount * current_value.
+
+    Note: Input tensors must be time major
+    Args:
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T, B] (or [T]) when representing values,
+            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
+            of value distributions.
+        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+    Returns:
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns.
+    """
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
+
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    is_lasts = common.expand_dims_as(is_lasts, values)
+    discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
+
+    discounted_values = discounts * values
+    rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
+                 is_lasts[:-1] * discounted_values[:-1]
+    return rets.detach()
+
+
 def generalized_advantage_estimation(rewards,
                                      values,
                                      step_types,
@@ -184,68 +279,6 @@ def generalized_advantage_estimation(rewards,
     return advs.detach()
 
 
-def discounted_return(rewards, values, step_types, discounts, time_major=True):
-    """Computes discounted return for the first T-1 steps.
-
-    The difference between this function and the one tf_agents.utils.value_ops
-    is that the accumulated_discounted_reward is replaced by value for is_last
-    steps in this function.
-
-    .. math::
-
-        Q_t = \sum_{t'=t}^T \gamma^{t'-t} * r_{t'} + \gamma^{T-t+1}*final\_value.
-
-
-    Define abbreviations:
-
-    - B: batch size representing number of trajectories
-    - T: number of steps per trajectory
-
-    Args:
-        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
-        values (Tensor): shape is [T, B] (or [T]) when representing values,
-            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
-            of value distributions.
-        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
-        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
-        time_major (bool): Whether input tensors are time major.
-            False means input tensors have shape [B, T].
-
-    Returns:
-        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
-        returns. Shape is [B, T-1] when time_major is false.
-    """
-    if not time_major:
-        discounts = discounts.transpose(0, 1)
-        rewards = rewards.transpose(0, 1)
-        values = values.transpose(0, 1)
-        step_types = step_types.transpose(0, 1)
-
-    assert values.shape[0] >= 2, ("The sequence length needs to be "
-                                  "at least 2. Got {s}".format(
-                                      s=values.shape[0]))
-
-    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    is_lasts = common.expand_dims_as(is_lasts, values)
-    discounts = common.expand_dims_as(discounts, values)
-    rewards = common.expand_dims_as(rewards, values)
-
-    rets = torch.zeros_like(values)
-    rets[-1] = values[-1]
-
-    with torch.no_grad():
-        for t in reversed(range(rewards.shape[0] - 1)):
-            acc_value = rets[t + 1] * discounts[t + 1] + rewards[t + 1]
-            rets[t] = is_lasts[t] * values[t] + (1 - is_lasts[t]) * acc_value
-
-    rets = rets[:-1]
-
-    if not time_major:
-        rets = rets.transpose(0, 1)
-
-    return rets.detach()
-
-
 def first_step_future_discounted_returns(rewards,
                                          values,
                                          step_types,
@@ -306,37 +339,4 @@ def first_step_future_discounted_returns(rewards,
     if not time_major:
         rets = rets.transpose(0, 1)
 
-    return rets.detach()
-
-
-def one_step_discounted_return(rewards, values, step_types, discounts):
-    """Calculate the one step discounted return  for the first T-1 steps.
-
-    return = next_reward + next_discount * next_value if is not the last step;
-    otherwise will set return = current_discount * current_value.
-
-    Note: Input tensors must be time major
-    Args:
-        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
-        values (Tensor): shape is [T, B] (or [T]) when representing values,
-            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
-            of value distributions.
-        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
-        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
-    Returns:
-        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
-        returns.
-    """
-    assert values.shape[0] >= 2, ("The sequence length needs to be "
-                                  "at least 2. Got {s}".format(
-                                      s=values.shape[0]))
-
-    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    is_lasts = common.expand_dims_as(is_lasts, values)
-    discounts = common.expand_dims_as(discounts, values)
-    rewards = common.expand_dims_as(rewards, values)
-
-    discounted_values = discounts * values
-    rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
-                 is_lasts[:-1] * discounted_values[:-1]
     return rets.detach()
