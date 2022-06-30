@@ -613,7 +613,7 @@ class RLTrainer(Trainer):
             self._trainer_progress.update(iter_num, total_time_steps)
 
             if ((self._num_iterations and iter_num >= self._num_iterations)
-                    or (not self._num_iterations and self._num_env_steps
+                    or (not self._num_iterations
                         and total_time_steps >= self._num_env_steps)):
                 # Evaluate before exiting so that the eval curve shown in TB
                 # will align with the final iter/env_step.
