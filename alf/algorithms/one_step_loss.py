@@ -16,12 +16,12 @@ import torch
 from typing import Union, List, Callable
 
 import alf
-from alf.algorithms.td_loss import LowerBoundedTDLoss, TDQRLoss
+from alf.algorithms.td_loss import TDLoss, TDQRLoss
 from alf.utils import losses
 
 
 @alf.configurable
-class OneStepTDLoss(LowerBoundedTDLoss):
+class OneStepTDLoss(TDLoss):
     def __init__(self,
                  gamma: Union[float, List[float]] = 0.99,
                  td_error_loss_fn: Callable = losses.element_wise_squared_loss,

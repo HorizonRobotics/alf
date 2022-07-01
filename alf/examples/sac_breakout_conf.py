@@ -50,7 +50,7 @@ q_network_cls = functools.partial(
     fc_layer_params=FC_LAYER_PARAMS,
     conv_layer_params=CONV_LAYER_PARAMS)
 
-critic_loss_ctor = functools.partial(LowerBoundedTDLoss, td_lambda=0.95)
+critic_loss_ctor = functools.partial(LowerBoundedTDLoss, td_lambda=0)
 
 lr = define_config('lr', 5e-4)
 critic_optimizer = AdamTF(lr=lr)
@@ -69,7 +69,7 @@ alf.config(
     target_update_period=20)
 
 gamma = define_config('gamma', 0.99)
-alf.config('OneStepTDLoss', gamma=gamma)
+alf.config('LowerBoundedTDLoss', gamma=gamma)
 alf.config('ReplayBuffer', gamma=gamma, reward_clip=(-1, 1))
 
 # training config
