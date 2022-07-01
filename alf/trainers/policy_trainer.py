@@ -766,7 +766,13 @@ def _step(algorithm,
             ``render`` is True.
         selective_criteria_func (callable|None): a callable for determining
             whether an episode will be saved to the video file when a valid
-            recorder is provided.
+            recorder is provided. This function takes two input arguments:
+            - return (float): return of the current episode. This is useful for
+                implementing return based selective criteria.
+            - env_info (dict): a dictionary containing information returned by
+                the environment. This is useful for implementing task specific
+                selective criteria using information contained ``env_info``,
+                e.g., success, infraction etc.
 
     Returns:
         - next time step (TimeStep): the next time step after taking an action in
@@ -793,8 +799,6 @@ def _step(algorithm,
         recorder.cache_frame_and_pred_info(env_frame, policy_step.info)
 
         if time_step.is_last():
-            # below is an example failure_criteria based on return.
-            # This should be adjusted according to the particular task at hand.
             if selective_criteria_func(
                     map_structure(lambda x: x.cpu().numpy(),
                                   metrics[1].latest()),
