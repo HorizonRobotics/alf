@@ -75,6 +75,7 @@ class ParVIAlgorithm(Algorithm):
                   involves a kernel matrix inversion, so computationally more
                   expensive, but in some cases the convergence seems faster
                   than svgd approaches.
+                * None: maximum likelihood estimation of the particles. 
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
@@ -124,6 +125,10 @@ class ParVIAlgorithm(Algorithm):
 
         self._particles = torch.nn.Parameter(
             torch.randn(num_particles, particle_dim, requires_grad=True))
+
+    @property
+    def particle_dim(self):
+        return self._particle_dim
 
     @property
     def num_particles(self):
