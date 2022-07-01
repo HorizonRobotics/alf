@@ -297,6 +297,8 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     config_node = _get_config_node(config_name)
 
     if raise_if_used and config_node.is_used():
+        # Log error because pre_config catches and silences the ValueError.
+        logging.error("Config '%s' used before configured." % config_name)
         raise ValueError(
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
@@ -337,11 +339,7 @@ def pre_config(configs):
         try:
             config1(name, value, mutable=False)
             _HANDLED_PRE_CONFIGS.append((name, value))
-        except ValueError as e:
-            # Most of the times, for command line flags, this warning is a false alarm.
-            # This can be useful in other failures, e.g. when the Config has already been used,
-            # before configuring its value.
-            logging.warning("pre_config potential error: %s", e)
+        except ValueError:
             _PRE_CONFIGS.append((name, value))
 
 

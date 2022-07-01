@@ -40,20 +40,12 @@ def get_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
     x = torch.as_tensor(x, dtype=torch.float32, device="cpu")
     t = torch.as_tensor(t, dtype=torch.int32, device="cpu")
-    # ox = (x * torch.arange(
-    #     batch_size, dtype=torch.float32, requires_grad=True,
-    #     device="cpu").unsqueeze(1) * torch.arange(
-    #         dim, dtype=torch.float32, requires_grad=True,
-    #         device="cpu").unsqueeze(0))
-    if batch_size > 1 and x.ndim > 0 and batch_size == x.shape[0]:
-        a = x
-    else:
-        a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
-    if batch_size > 1 and t.ndim > 0 and batch_size == t.shape[0]:
-        pass
-    else:
-        t = t * torch.ones(batch_size, dtype=torch.int32, device="cpu")
-    ox = a.unsqueeze(1).clone().requires_grad_(True)
+    ox = (x * torch.arange(
+        batch_size, dtype=torch.float32, requires_grad=True,
+        device="cpu").unsqueeze(1) * torch.arange(
+            dim, dtype=torch.float32, requires_grad=True,
+            device="cpu").unsqueeze(0))
+    a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
     g = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
     # reward function adapted from ReplayBuffer: default_reward_fn
     r = torch.where(

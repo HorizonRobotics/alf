@@ -543,8 +543,6 @@ class ResnetEncodingNetwork(alf.networks.Network):
             enc_layers.append(res_block)
             in_channels = 64
 
-        if output_activation is None:
-            output_activation = alf.math.identity
         enc_layers.extend([
             nn.Flatten(),
             alf.layers.FC(
