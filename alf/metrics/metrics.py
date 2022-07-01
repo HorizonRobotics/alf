@@ -56,6 +56,12 @@ class MetricBuffer(torch.nn.Module):
             return torch.tensor(0, dtype=self._dtype)
         return self._buf.get_all()[:self._buf.current_size].mean()
 
+    def latest(self):
+        """Return the value added most recently.
+        """
+        assert self._buf.current_size > 0, "no valid latest value!"
+        return self._buf.get_batch_by_indices(self._buf.current_pos - 1)
+
     def clear(self):
         return self._buf.clear()
 
@@ -265,6 +271,11 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
 
     def result(self):
         return alf.nest.map_structure(lambda buf: buf.mean(), self._buffer)
+
+    def latest(self):
+        """Return the value added most recently.
+        """
+        return alf.nest.map_structure(lambda buf: buf.latest(), self._buffer)
 
     def reset(self):
         alf.nest.map_structure(lambda buf: buf.clear(), self._buffer)

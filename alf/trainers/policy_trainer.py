@@ -750,7 +750,47 @@ def _step(algorithm,
           metrics,
           render=False,
           recorder=None,
-          sleep_time_per_step=0):
+          sleep_time_per_step=0,
+          selective_criteria_func=None):
+    """Perform one step interaction using the outpupt action from ``algorithm``
+    taking ``time_step`` as input. Also record the metrics.
+
+    Note that this function is used both in ``play`` below and ``evaluate`` in
+    ``evaluator.py``.
+
+    Args:
+        algorithm (RLAlgorithm): the algorithm under evaluation
+        env: the environment
+        time_step (TimeStep): current time step
+        policy_state (nested Tensor): state of the policy
+        trans_state (nested Tensor): state of the transformer(s)
+        metrics (StepMetric): a list of metrics that will be updated based on
+            ``time_step``.
+        render (bool|False): if True, display the frames of ``env`` on a screen.
+        recorder (VideoRecorder|None): recorder the frames of ``env`` and other
+            additional images in prediction step info if present.
+        sleep_time_per_step (int|0): The sleep time between two frames when
+            ``render`` is True.
+        selective_criteria_func (callable|None): a callable for determining
+            whether an episode will be saved to the video file when a valid
+            recorder is provided. This function takes two input arguments:
+            - return (float): return of the current episode. This is useful for
+                implementing return based selective criteria.
+            - env_info (dict): a dictionary containing information returned by
+                the environment. This is useful for implementing task specific
+                selective criteria using information contained ``env_info``,
+                e.g., success, infraction etc.
+
+    Returns:
+        - next time step (TimeStep): the next time step after taking an action in
+            ``env``
+        - policy step (AlgStep): the output from ``algorithm.predict_step``
+        - new state of the transformer(s) (nested Tensor)
+    """
+
+    for metric in metrics:
+        metric(time_step.cpu())
+
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
@@ -758,8 +798,25 @@ def _step(algorithm,
         time_step, trans_state)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
-    if recorder:
+    if recorder and selective_criteria_func is None:
         recorder.capture_frame(policy_step.info, time_step.is_last())
+
+    elif recorder and selective_criteria_func is not None:
+        env_frame = recorder.capture_env_frame()
+        recorder.cache_frame_and_pred_info(env_frame, policy_step.info)
+
+        if time_step.is_last():
+            if selective_criteria_func(
+                    map_structure(lambda x: x.cpu().numpy(),
+                                  metrics[1].latest()),
+                    map_structure(lambda x: x.cpu().numpy(),
+                                  metrics[3].latest())):
+                logging.info(
+                    "+++++++++ Selective Case Discovered! +++++++++++")
+                recorder.generate_video_from_cache()
+            else:
+                recorder.clear_cache()
+
     elif render:
         if env.batch_size > 1:
             env.envs[0].render(mode='human')
@@ -768,8 +825,7 @@ def _step(algorithm,
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
-    for metric in metrics:
-        metric(time_step.cpu())
+
     return next_time_step, policy_step, trans_state
 
 
@@ -783,6 +839,7 @@ def play(root_dir,
          record_file=None,
          append_blank_frames=0,
          render=True,
+         selective_mode=False,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -813,6 +870,8 @@ def play(root_dir,
         render (bool): If False, then this function only evaluates the trained
             model without calling rendering functions. This value will be ignored
             if a ``record_file`` argument is provided.
+        selective_mode (bool): whether to save the selective cases discovered
+            according to a ``selective_criteria_func``.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
     """
@@ -882,6 +941,13 @@ def play(root_dir,
             buffer_size=num_episodes, example_time_step=time_step)
     ]
 
+    if selective_mode:
+        # Below is an example selective criteria based on return.
+        # This should be adjusted according to the particular task.
+        selective_criteria_func = lambda return_value, env_info: return_value < 500
+    else:
+        selective_criteria_func = None
+
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statitics) as it can be
@@ -903,7 +969,8 @@ def play(root_dir,
             metrics=metrics,
             render=render,
             recorder=recorder,
-            sleep_time_per_step=sleep_time_per_step)
+            sleep_time_per_step=sleep_time_per_step,
+            selective_criteria_func=selective_criteria_func)
 
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST

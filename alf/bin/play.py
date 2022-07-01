@@ -91,6 +91,12 @@ def _define_flags():
     flags.DEFINE_integer('parallel_play', 1,
                          'Play so many simulations simultaneously')
 
+    flags.DEFINE_bool(
+        'selective_mode', False, "Whether use the selective mode. "
+        "If True, only save the discoverted selective cases within"
+        "the `num_episodes` of test episode. This mode "
+        "should be used together with the video recording mode.")
+
 
 FLAGS = flags.FLAGS
 
@@ -117,6 +123,11 @@ def play():
     except Exception as e:
         alf.close_env()
         raise e
+
+    if FLAGS.selective_mode:
+        assert FLAGS.record_file is not None, ("Should provide a valid value "
+                                               "for `record_file`")
+
     config = policy_trainer.TrainerConfig(root_dir="")
 
     env = alf.get_env()
@@ -137,6 +148,7 @@ def play():
         reward_spec=env.reward_spec(),
         config=config)
     algorithm.set_path('')
+
     try:
         policy_trainer.play(
             common.abs_path(FLAGS.root_dir),
@@ -148,8 +160,10 @@ def play():
             record_file=FLAGS.record_file,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
+            selective_mode=FLAGS.selective_mode,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
+
     finally:
         alf.close_env()
 
