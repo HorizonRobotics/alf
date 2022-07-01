@@ -260,17 +260,49 @@ class LowerBoundedTDLoss(TDLoss):
             gamma .. use_retrace: pass through to TDLoss.
             lb_target_q: between 0 and 1.  When not zero, use this mixing rate for the
                 lower bounded value target.  Only supports batch_length == 2, one step td.
+                Suppose the original one step bootstrapped TD target is :math:`G(s)`, (which
+                equals :math:`r(s) + \gamma Q(s', a')`), the discounted accumulated return
+                to episode end is :math:`G^e(s)`, then, the new lower bounded value target is
+
+                .. math::
+
+                    G^{lb}(s) \coloneqq \max(G^e(s), G(s))
+
             default_return: Keep it the same as replay_buffer.default_return to plot to
                 tensorboard episodic_discounted_return only for the timesteps whose
                 episode already ended.
             improve_w_goal_return: Use return calculated from the distance to hindsight
                 goals.  Only supports batch_length == 2, one step td.
+                Suppose the original one step bootstrapped TD target is :math:`G(s)`, the
+                number of steps to the relabeled goal state is :math:`d`, then, for an
+                episodic task with 0/1 sparse goal reward, the new lower bounded
+                value target is
+
+                .. math::
+
+                    G^{lb}(s) \coloneqq \max(\gamma^d, G(s))
+
             improve_w_nstep_bootstrap: Look ahead 2 to n steps, and take the largest
                 bootstrapped return to lower bound the value target of the 1st step.
+                Suppose the original one step bootstrapped TD target is :math:`G(s)`, the
+                n-step bootstrapped return is :math:`G_i(s)` where :math:`i \in [1, ..., n]`,
+                then, the new lower bounded value target is
+
+                .. math::
+
+                    G^{lb}(s) \coloneqq \max(\max_{i \in [1, ..., n]}(G_i(s)), G(s))
+
             improve_w_nstep_only: Only use the n-th step bootstrapped return as
                 value target lower bound.
+                The new lower bounded value target is
+
+                .. math::
+
+                    G^{lb}(s) \coloneqq \max(G_n(s), G(s))
+
             reward_multiplier: Weight on the hindsight goal return.
-            positive_reward: If True, assumes 0/1 goal reward, otherwise, -1/0.
+            positive_reward: If True, assumes 0/1 goal reward in an episodic task,
+                otherwise, -1/0 in a continuing task.
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -371,7 +403,7 @@ class LowerBoundedTDLoss(TDLoss):
 
         if self._lb_target_q > 0 and disc_ret != ():
             if hasattr(info, "get_derived_field"):
-                her_cond = info.get_derived_field("her")
+                her_cond = info.get_derived_field("is_her")
             else:
                 her_cond = ()
             mask = torch.ones(returns.shape, dtype=torch.bool)
@@ -394,7 +426,7 @@ class LowerBoundedTDLoss(TDLoss):
 
         if self._improve_w_goal_return:
             batch_length, batch_size = returns.shape[:2]
-            her_cond = info.get_derived_field("her")
+            her_cond = info.get_derived_field("is_her")
             if her_cond != () and torch.any(her_cond):
                 dist = info.get_derived_field("future_distance")
                 if self._positive_reward:

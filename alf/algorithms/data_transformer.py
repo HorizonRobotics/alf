@@ -900,7 +900,7 @@ class HindsightExperienceTransformer(DataTransformer):
         result = alf.nest.transform_nest(
             result, self._desired_goal_field, lambda _: relabeled_goal)
         result = result.update_time_step_field('reward', relabeled_rewards)
-        derived = {"her": her_cond, "future_distance": future_dist}
+        derived = {"is_her": her_cond, "future_distance": future_dist}
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
                 result = alf.nest.transform_nest(
