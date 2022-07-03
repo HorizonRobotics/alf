@@ -28,9 +28,11 @@ import torch
 import torch.nn as nn
 from PIL import Image
 import numpy as np
+import wandb
 
 import alf
 from alf.algorithms.algorithm import Algorithm, Loss
+from alf.config_util import config
 from alf.networks import Network
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import (create_data_transformer,

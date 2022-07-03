@@ -59,11 +59,14 @@ import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import wandb
 
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
+from alf.config_util import get_config_value, get_operative_configs, get_inoperative_configs
+from alf.config_helpers import get_env, parse_config_only
 
 
 def _define_flags():
@@ -115,6 +118,40 @@ def _setup_device(rank: int = 0):
         torch.cuda.set_device(rank)
 
 
+def setup_wandb(trainer_conf, name='train'):
+    assert name in ['train', 'eval']
+    algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
+    env_name = get_config_value("create_environment.env_name")
+    version = trainer_conf.version
+    entity = trainer_conf.entity
+    project = trainer_conf.project
+    seed = trainer_conf.random_seed
+    if trainer_conf.async_eval and name == 'eval':
+        # When enabling async evaluation, the seed will be set differently
+        # for the eval worker as per Line 187 of alf.trainers.evaluator.py
+        seed -= 13579
+
+    wandb_group = f"{algorithm}-{version}-{env_name}"
+    wandb_name = f"seed-{seed}-{name}"
+
+    wandb.tensorboard.patch(
+        root_logdir=os.path.join(trainer_conf.root_dir, name))
+
+    config = {k: v for k, v in get_operative_configs()}
+    inoperative = {k: v for k, v in get_inoperative_configs()}
+    config["inoperative"] = inoperative
+
+    wandb.init(
+        project=project,
+        entity=entity,
+        group=wandb_group,
+        name=wandb_name,
+        config=config,
+        reinit=True,
+        sync_tensorboard=True,
+    )
+
+
 def _train(root_dir, rank=0, world_size=1):
     """Launch the trainer after the conf file has been parsed. This function
     could be called by grid search after the config has been modified.
@@ -127,6 +164,8 @@ def _train(root_dir, rank=0, world_size=1):
             interpreted as "non distributed mode".
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
+    if trainer_conf.use_wandb:
+        setup_wandb(trainer_conf)
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
@@ -170,7 +209,8 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         PerProcessContext().finalize()
 
         # Parse the configuration file, which will also implicitly bring up the environments.
-        common.parse_conf_file(conf_file)
+        # common.parse_conf_file(conf_file)
+        get_env()
         _train(root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
@@ -191,20 +231,34 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         alf.close_env()
 
 
+def create_log_dir(conf):
+    algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
+    env_name = get_config_value("create_environment.env_name")
+    version = conf.version
+    seed = conf.random_seed
+
+    return os.path.join(common.abs_path(FLAGS.root_dir), algorithm, version,
+                        env_name, f'seed_{seed}')
+
+
 def main(_):
-    root_dir = common.abs_path(FLAGS.root_dir)
+    conf_params = getattr(flags.FLAGS, 'conf_param', None)
+    conf_file = common.get_conf_file()
+    parse_config_only(conf_file, conf_params)
+    trainer_conf = policy_trainer.TrainerConfig(root_dir=FLAGS.root_dir)
+    root_dir = create_log_dir(trainer_conf)
+
     os.makedirs(root_dir, exist_ok=True)
 
     if FLAGS.store_snapshot:
         common.generate_alf_root_snapshot(common.alf_root(), root_dir)
-
-    conf_file = common.get_conf_file()
 
     # FLAGS.distributed is guaranteed to be one of the possible values.
     if FLAGS.distributed == 'none':
         training_worker(
             rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
     elif FLAGS.distributed == 'multi-gpu':
+        assert False, "Not considered yet!"
         world_size = torch.cuda.device_count()
 
         if world_size == 1:
