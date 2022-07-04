@@ -12,20 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
+from functorch import make_functional_with_buffers, vmap
+from functorch import grad as func_grad
 
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.sac_algorithm import SacAlgorithm, SacInfo, ActionType
-from alf.algorithms.sac_algorithm import SacCriticState, SacCriticInfo, SacLossInfo
+from alf.algorithms.sac_algorithm import SacCriticState, SacLossInfo
 from alf.data_structures import StepType, TimeStep, namedtuple, LossInfo
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork, EncodingNetwork
+from alf.networks.containers import _Sequential
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops
 
-StableSacCriticInfo = namedtuple(
-    "SacCriticInfo",
-    ["critics", "target_critic", "features", "target_features"])
+StableSacCriticInfo = namedtuple("SacCriticInfo", [
+    "critics", "target_critic", "features", "target_features",
+    "per_sample_critic_grad"
+])
 StableCriticLossInfo = namedtuple("DOacCriticLossInfo",
                                   ["critic_loss", "interf_reg"],
                                   default_value=())
@@ -108,6 +112,8 @@ class StableSacAlgorithm(SacAlgorithm):
             name="target_feat_networks")
         self.add_optimizer(feat_optimizer, [self._feat_networks])
 
+        self._f_critics = None
+
         self._update_target_feat = common.TargetUpdater(
             models=[self._feat_networks],
             target_models=[self._target_feat_networks],
@@ -179,6 +185,50 @@ class StableSacAlgorithm(SacAlgorithm):
         else:
             return critics, critics_state
 
+    def _compute_critics_stateless(self, params, buffers, observation, action):
+        assert not self.has_multidim_reward()
+
+        observation = observation.unsqueeze(0)
+        action = action.unsqueeze(0)
+
+        critics, _ = self._f_critics(params, buffers, (observation, action))
+        assert not self.has_multidim_reward()
+
+        return critics.sum(1).squeeze()
+
+    def _get_per_sample_critic_grad(self, observation, action):
+        self._f_critics, critic_params, critic_buffers = make_functional_with_buffers(
+            _Sequential(
+                [self._feat_networks, self._critic_networks],
+                input_tensor_spec=self._feat_networks._input_tensor_spec))
+
+        ft_compute_grad = func_grad(self._compute_critics_stateless)
+        ft_compute_sample_grad = vmap(ft_compute_grad,
+                                      in_dims=(None, None, 0, 0))
+        ft_per_sample_grads = ft_compute_sample_grad(critic_params,
+                                                     critic_buffers,
+                                                     observation, action)
+
+        num_modules_total = (len(ft_per_sample_grads) - 2)
+        num_feat_modules = num_modules_total // self._num_critic_replicas
+        ft_per_sample_grads_new = []
+        bsz = ft_per_sample_grads[0].shape[0]
+        for i in range(num_feat_modules):
+            indices = range(i, num_modules_total, num_feat_modules)
+            grad = torch.cat([
+                ft_per_sample_grads[idx].unsqueeze(1).reshape(bsz, 1, -1)
+                for idx in indices
+            ],
+                             dim=1)
+            ft_per_sample_grads_new.append(grad)
+        ft_per_sample_grads_new.extend([
+            grad.reshape(bsz, self._num_critic_replicas, -1)
+            for grad in ft_per_sample_grads[-2:]
+        ])
+        ft_per_sample_grads_new = torch.cat(ft_per_sample_grads_new, dim=-1)
+
+        return ft_per_sample_grads_new
+
     def _critic_train_step(
         self,
         inputs: TimeStep,
@@ -205,6 +255,14 @@ class StableSacAlgorithm(SacAlgorithm):
         critics = torch.cat((critics, zeros), dim=0)
         zeros = torch.zeros_like(features[:bsz])
         features = torch.cat((features, zeros), dim=0)
+
+        # Obtain per-sample gradient
+        per_sample_critic_grad = self._get_per_sample_critic_grad(
+            inputs.observation[:-bsz], rollout_info.action[:-bsz])
+
+        zeros = torch.zeros_like(per_sample_critic_grad[:bsz])
+        per_sample_critic_grad = torch.cat((per_sample_critic_grad, zeros),
+                                           dim=0)
 
         (
             target_features,
@@ -234,6 +292,7 @@ class StableSacAlgorithm(SacAlgorithm):
             target_critic=target_critic,
             features=features,
             target_features=target_features,
+            per_sample_critic_grad=per_sample_critic_grad,
         )
 
         return state, info
@@ -276,7 +335,7 @@ class StableSacAlgorithm(SacAlgorithm):
                                                   discount, info.reward)))
 
         critic_info = info.critic
-        features = critic_info.features
+        per_sample_grad = critic_info.per_sample_critic_grad[:-1]
         critic_losses = []
         interf_regs = []
         for i, l in enumerate(self._critic_losses):
@@ -285,8 +344,8 @@ class StableSacAlgorithm(SacAlgorithm):
                 value=critic_info.critics[:, :, i, ...],
                 target_value=critic_info.target_critic,
             )
-            feature = features[:, :, i]
-            ntk_matrix = torch.bmm(feature, feature.transpose(1, 2))
+            grad = per_sample_grad[:, :, i]
+            ntk_matrix = torch.bmm(grad, grad.transpose(1, 2))
             td_error = loss.extra
             value_diff = ntk_matrix * td_error
             diag_diff = value_diff.diagonal(dim1=1, dim2=2)
@@ -295,8 +354,8 @@ class StableSacAlgorithm(SacAlgorithm):
                                                           1)
             else:
                 # Should we detach the diag_diff to make it like a regression task？
-                reg = (value_diff.sum(-1) - diag_diff) / (
-                    value_diff.shape[1] - 1) - diag_diff
+                reg = (value_diff.sum(-1) - diag_diff) / (value_diff.shape[1] -
+                                                          1) - diag_diff
 
             critic_losses.append(loss.loss)
             interf_regs.append(reg.abs())
