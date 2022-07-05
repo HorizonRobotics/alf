@@ -55,7 +55,10 @@ import unicodedata
 import alf
 from alf.bin.train import _define_flags as _train_define_flags
 from alf.bin.train import _train
+from alf.config_util import get_config_value
+from alf.trainers import policy_trainer
 from alf.utils import common
+from alf.utils.losses import element_wise_huber_loss
 
 
 def _slugify(value, allow_unicode=False):
@@ -70,8 +73,9 @@ def _slugify(value, allow_unicode=False):
     if allow_unicode:
         value = unicodedata.normalize('NFKC', value)
     else:
-        value = unicodedata.normalize('NFKD', value).encode(
-            'ascii', 'ignore').decode('ascii')
+        value = unicodedata.normalize('NFKD',
+                                      value).encode('ascii',
+                                                    'ignore').decode('ascii')
     value = re.sub(r'[^\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
@@ -84,6 +88,8 @@ def _define_flags():
         'snapshot_gridsearch_activated', False,
         'Whether a snapshot has been generated for grid search. (ONLY '
         'change this flag manually if you know what you are doing!')
+    flags.DEFINE_bool('tree_dir', False,
+                      'Whether to formulate the directory as a tree.')
 
 
 FLAGS = flags.FLAGS
@@ -207,7 +213,6 @@ class GridSearchConfig(object):
 
 class GridSearch(object):
     """Grid Search."""
-
     def __init__(self, conf_file):
         """
         Args:
@@ -229,7 +234,8 @@ class GridSearch(object):
                            id,
                            repeat,
                            token_len=20,
-                           max_len=50):
+                           max_len=50,
+                           tree_dir=False):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy comparison between different search runs without going
         into Tensorboard 'text' for run details.
@@ -246,7 +252,6 @@ class GridSearch(object):
         Returns:
             str: a string with parameters abbr encoded
         """
-
         def _abbr_single(x, l):
             def _initials(t):
                 words = [w for w in t.split('_') if w]
@@ -260,29 +265,46 @@ class GridSearch(object):
             else:
                 return _abbr_single(str(x), l)
 
-        def _abbr(x, l):
+        def _abbr(x, l, is_value=False):
             if isinstance(x, Iterable) and not isinstance(x, str):
                 strs = []
                 for key, val in x.items():
-                    strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
+                    if 'random_seed' in key or 'env_name' in key: continue
+                    strs.append("%s=%s" %
+                                (_abbr(key, l), _abbr(val, l, is_value=True)))
                 return "+".join(strs)
             else:
+                x = x.split('.')[-1]
+                if not is_value:
+                    x = ''.join([str(s[0]) for s in x.split('_')])
                 return _abbr_single(x, l)
 
         def _generate_name(max_token_len):
-            name = "%04dr%d" % (id, repeat)
+            # name = "%04dr%d" % (id, repeat)
+            name = ""
             abbr = _abbr(parameters, max_token_len)
             if abbr:
-                name += "+" + abbr
+                name += abbr
             return name
 
         # first try not truncating words
         name = _generate_name(max_token_len=max_len)
-        if len(name) > max_len:
-            # If this regenerated name is still over ``max_len``, it will get
-            # hard truncated
-            name = _generate_name(max_token_len=token_len)
-        return name[:max_len]
+        if tree_dir:
+            name = os.path.join(*name.split('+'))
+        else:
+            if len(name) > max_len:
+                # If this regenerated name is still over ``max_len``, it will get
+                # hard truncated
+                name = _generate_name(max_token_len=token_len)
+            name = name[:max_len]
+
+        if 'create_environment.env_name' in parameters.keys():
+            name = os.path.join(name,
+                                parameters['create_environment.env_name'])
+        if 'TrainerConfig.random_seed' in parameters.keys():
+            name = os.path.join(
+                name, f"seed_{parameters['TrainerConfig.random_seed']}")
+        return name
 
     def run(self):
         """Run trainings with all possible parameter combinations in
@@ -296,21 +318,25 @@ class GridSearch(object):
         param_values = self._conf.param_values
         max_worker_num = self._conf.max_worker_num
 
-        process_pool = multiprocessing.Pool(
-            processes=max_worker_num, maxtasksperchild=1)
+        process_pool = multiprocessing.Pool(processes=max_worker_num,
+                                            maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
         for repeat in range(self._conf.repeats):
             for task_count, values in enumerate(
                     itertools.product(*param_values)):
                 parameters = dict(zip(param_keys, values))
-                root_dir = "%s/%s" % (FLAGS.root_dir,
-                                      self._generate_run_name(
-                                          parameters, task_count, repeat))
+                root_dir = os.path.join(
+                    FLAGS.root_dir,
+                    self._generate_run_name(parameters,
+                                            task_count,
+                                            repeat,
+                                            tree_dir=FLAGS.tree_dir))
                 root_dir = common.abs_path(root_dir)
+                conf_name = FLAGS.root_dir.split('/')[-1]
                 process_pool.apply_async(
                     func=self._worker,
-                    args=[root_dir, parameters, device_queue],
+                    args=[conf_name, root_dir, parameters, device_queue],
                     error_callback=lambda e: logging.error(e))
 
         process_pool.close()
@@ -321,17 +347,12 @@ class GridSearch(object):
         alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
         os.system("rm -rf %s*" % alf_repo)
 
-    def _worker(self, root_dir, parameters, device_queue):
+    def _worker(self, conf_name, root_dir, parameters, device_queue):
         # sleep for random seconds to avoid crowded launching
         try:
             time.sleep(random.uniform(0, 3))
 
             conf_file = common.get_conf_file()
-            # This is the snapshot stored in grid-search root dir
-            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
-            # We still need to generate a snapshot of ALF repo as ``<root_dir>/alf``
-            # for playing individual searching job later
-            common.generate_alf_root_snapshot(alf_repo, root_dir)
 
             device = device_queue.get()
             if self._conf.use_gpu:
@@ -356,16 +377,34 @@ class GridSearch(object):
             else:
                 # need to first pre_config before parsing the conf file
                 confs = copy.copy(parameters)
-                confs.update({
-                    'TrainerConfig.confirm_checkpoint_upon_crash': False
-                })
+                for k, v in confs.items():
+                    if isinstance(v, str):
+                        confs[k] = eval(v)
+                confs.update(
+                    {'TrainerConfig.confirm_checkpoint_upon_crash': False})
                 alf.pre_config(confs)
                 common.parse_conf_file(conf_file)
+
+            env_name = get_config_value("create_environment.env_name")
+            seed = get_config_value("TrainerConfig.random_seed")
+            if not env_name in root_dir:
+                root_dir = os.path.join(root_dir, env_name)
+            if not 'seed_' in root_dir:
+                root_dir = os.path.join(root_dir, f'seed_{seed}')
+            os.makedirs(root_dir, exist_ok=True)
+
+            # This is the snapshot stored in grid-search root dir
+            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
+            # We still need to generate a snapshot of ALF repo as ``<root_dir>/alf``
+            # for playing individual searching job later
+            common.generate_alf_root_snapshot(alf_repo, root_dir)
 
             # init env random seed differently for each worker
             alf.get_env()
             # current only support non-distributed training for each individual
             # job of grid search
+            if alf.get_config_value("TrainerConfig.use_wandb"):
+                common.setup_wandb(root_dir, conf_name)
             _train(root_dir)
 
             device_queue.put(device)
@@ -398,6 +437,13 @@ def launch_snapshot_gridsearch():
         # for gin, we need to parse it first. Otherwise, configured.gin will be
         # empty
         common.parse_conf_file(conf_file)
+    else:
+        conf_file_name = conf_file.split('/')[-1].split('_conf.py')[0]
+        root_dir = os.path.join(root_dir, conf_file_name)
+        os.makedirs(root_dir, exist_ok=True)
+        for i in range(len(sys.argv)):
+            if sys.argv[i] == '--root_dir':
+                sys.argv[i + 1] = root_dir
     common.write_config(root_dir, common.read_conf_file(root_dir))
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
@@ -427,12 +473,11 @@ def launch_snapshot_gridsearch():
     args = ['python', '-m', 'alf.bin.grid_search'] + flags
 
     try:
-        subprocess.check_call(
-            " ".join(args),
-            env=env_vars,
-            stdout=sys.stdout,
-            stderr=sys.stdout,
-            shell=True)
+        subprocess.check_call(" ".join(args),
+                              env=env_vars,
+                              stdout=sys.stdout,
+                              stderr=sys.stdout,
+                              shell=True)
     except subprocess.CalledProcessError:
         # No need to output anything
         pass

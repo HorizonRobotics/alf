@@ -39,6 +39,8 @@ import traceback
 import types
 from typing import Callable, List
 
+import wandb
+
 import alf
 from alf.algorithms.config import TrainerConfig
 import alf.nest as nest
@@ -1555,3 +1557,41 @@ def call_stack() -> List[str]:
     debugging.
     """
     return [line.strip() for line in traceback.format_stack()]
+
+
+def setup_wandb(root_dir, conf_name=None, wandb_name=None, name='train'):
+    # TODO: use root_dir from TrainerConfig to get the wandb group and run name
+    assert name in ['train', 'eval']
+    env_name = alf.get_config_value("create_environment.env_name")
+    version = alf.get_config_value("TrainerConfig.version")
+    entity = alf.get_config_value("TrainerConfig.entity")
+    project = alf.get_config_value("TrainerConfig.project")
+    seed = alf.get_config_value("TrainerConfig.random_seed")
+    if alf.get_config_value("TrainerConfig.async_eval") and name == 'eval':
+        # When enabling async evaluation, the seed will be set differently
+        # for the eval worker as per Line 187 of alf.trainers.evaluator.py
+        assert wandb_name is None
+        seed -= 13579
+        wandb_name += f"{env_name}-seed-{seed}-{alf.get_config_value('TrainerConfig.wandb_name')}"
+        conf_name = alf.get_config_value('TrainerConfig.conf_name')
+    else:
+        assert conf_name is not None
+        assert wandb_name is not None
+
+    wandb_group = f"{conf_name}-{version}"
+
+    wandb.tensorboard.patch(root_logdir=os.path.join(root_dir, name))
+
+    config = {k: v for k, v in alf.get_operative_configs()}
+    inoperative = {k: v for k, v in alf.get_inoperative_configs()}
+    config["inoperative"] = inoperative
+
+    wandb.init(
+        project=project,
+        entity=entity,
+        group=wandb_group,
+        name=wandb_name,
+        config=config,
+        reinit=True,
+        sync_tensorboard=True,
+    )

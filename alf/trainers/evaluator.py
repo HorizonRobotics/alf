@@ -26,7 +26,6 @@ from typing import Dict, List, Optional
 import wandb
 
 import alf
-from alf.bin.train import setup_wandb
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.environments.alf_environment import AlfEnvironment
@@ -222,7 +221,7 @@ def _worker(job_queue: mp.Queue,
         policy_trainer.Trainer._trainer_progress.set_termination_criterion(
             config.num_iterations, config.num_env_steps)
         if config.use_wandb:
-            setup_wandb(config, name="eval")
+            common.setup_wandb(config, name="eval")
         alf.summary.enable_summary()
         evaluator = SyncEvaluator(env, config)
         logging.info("Evaluator started")

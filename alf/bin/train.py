@@ -65,7 +65,7 @@ from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
-from alf.config_util import get_config_value, get_operative_configs, get_inoperative_configs
+from alf.config_util import get_config_value
 from alf.config_helpers import get_env, parse_config_only
 
 
@@ -118,40 +118,6 @@ def _setup_device(rank: int = 0):
         torch.cuda.set_device(rank)
 
 
-def setup_wandb(trainer_conf, name='train'):
-    assert name in ['train', 'eval']
-    algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
-    env_name = get_config_value("create_environment.env_name")
-    version = trainer_conf.version
-    entity = trainer_conf.entity
-    project = trainer_conf.project
-    seed = trainer_conf.random_seed
-    if trainer_conf.async_eval and name == 'eval':
-        # When enabling async evaluation, the seed will be set differently
-        # for the eval worker as per Line 187 of alf.trainers.evaluator.py
-        seed -= 13579
-
-    wandb_group = f"{algorithm}-{version}-{env_name}"
-    wandb_name = f"seed-{seed}-{name}"
-
-    wandb.tensorboard.patch(
-        root_logdir=os.path.join(trainer_conf.root_dir, name))
-
-    config = {k: v for k, v in get_operative_configs()}
-    inoperative = {k: v for k, v in get_inoperative_configs()}
-    config["inoperative"] = inoperative
-
-    wandb.init(
-        project=project,
-        entity=entity,
-        group=wandb_group,
-        name=wandb_name,
-        config=config,
-        reinit=True,
-        sync_tensorboard=True,
-    )
-
-
 def _train(root_dir, rank=0, world_size=1):
     """Launch the trainer after the conf file has been parsed. This function
     could be called by grid search after the config has been modified.
@@ -165,7 +131,7 @@ def _train(root_dir, rank=0, world_size=1):
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
     if trainer_conf.use_wandb:
-        setup_wandb(trainer_conf)
+        common.setup_wandb(trainer_conf)
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
@@ -232,7 +198,10 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
 
 
 def create_log_dir(conf):
-    algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
+    try:
+        algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
+    except ValueError:
+        algorithm = conf.algorithm_ctor.__name__
     env_name = get_config_value("create_environment.env_name")
     version = conf.version
     seed = conf.random_seed
@@ -258,7 +227,7 @@ def main(_):
         training_worker(
             rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
     elif FLAGS.distributed == 'multi-gpu':
-        assert False, "Not considered yet!"
+        assert False, "Not Condsidered yet!"
         world_size = torch.cuda.device_count()
 
         if world_size == 1:

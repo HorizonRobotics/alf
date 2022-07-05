@@ -96,9 +96,8 @@ alf.config("Agent", rl_algorithm_cls=StableSacAlgorithm)
 
 alf.config(
     "TrainerConfig",
-    version='debug',
-    use_wandb=True,
-    async_eval=False,
+    version=f'full-grad',
+    use_wandb=False,
     entity="jiachenli",
     project="stable-rl",
     initial_collect_steps=10000,
@@ -109,7 +108,7 @@ alf.config(
     num_iterations=3000,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=10,
+    eval_interval=1,
     num_eval_episodes=5,
     debug_summaries=True,
     random_seed=0,

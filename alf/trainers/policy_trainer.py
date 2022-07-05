@@ -341,6 +341,7 @@ class Trainer(object):
                 ans = input("Do you want to save checkpoint? (y/n): ")
                 if ans.lower().startswith('y'):
                     self._save_checkpoint()
+            wandb.finish()
             self._close()
 
     @staticmethod
