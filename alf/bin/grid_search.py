@@ -56,7 +56,6 @@ import alf
 from alf.bin.train import _define_flags as _train_define_flags
 from alf.bin.train import _train
 from alf.config_util import get_config_value
-from alf.trainers import policy_trainer
 from alf.utils import common
 from alf.utils.losses import element_wise_huber_loss
 
@@ -119,6 +118,7 @@ class GridSearchConfig(object):
 
     Args:
         desc (str): a description sentence for this json file.
+        version (str): version of the grid search.
         use_gpu (bool): If True, then the scheduling will only put jobs on devices
             numbered ``gpus``.
         gpus (list[int]): a list of GPU device ids. If ``use_gpu`` is False,
@@ -139,7 +139,7 @@ class GridSearchConfig(object):
     """
 
     _all_keys_ = [
-        "desc", "comment", "use_gpu", "gpus", "max_worker_num", "repeats",
+        "desc", "version", "use_gpu", "gpus", "max_worker_num", "repeats",
         "parameters"
     ]
 
@@ -164,6 +164,7 @@ class GridSearchConfig(object):
             assert k in self._all_keys_, "Invalid conf key: %s" % k
 
         self._desc = conf.get('desc', "Grid search")
+        self._version = conf.get('version', "normal")
         self._param_keys = param_keys
         self._param_values = param_values
         self._max_worker_num = conf.get('max_worker_num', 1)
@@ -185,6 +186,10 @@ class GridSearchConfig(object):
     @property
     def desc(self):
         return self._desc
+
+    @property
+    def version(self):
+        return self._version
 
     @property
     def param_keys(self):
@@ -213,6 +218,7 @@ class GridSearchConfig(object):
 
 class GridSearch(object):
     """Grid Search."""
+
     def __init__(self, conf_file):
         """
         Args:
@@ -252,7 +258,9 @@ class GridSearch(object):
         Returns:
             str: a string with parameters abbr encoded
         """
+
         def _abbr_single(x, l):
+
             def _initials(t):
                 words = [w for w in t.split('_') if w]
                 len_per_word = max(l // len(words), 1)
@@ -322,21 +330,26 @@ class GridSearch(object):
                                             maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
+        conf_name = FLAGS.root_dir.split('/')[-1]
+        version = f'{self._conf.version}-gs'
         for repeat in range(self._conf.repeats):
             for task_count, values in enumerate(
                     itertools.product(*param_values)):
                 parameters = dict(zip(param_keys, values))
-                root_dir = os.path.join(
-                    FLAGS.root_dir,
-                    self._generate_run_name(parameters,
-                                            task_count,
-                                            repeat,
-                                            tree_dir=FLAGS.tree_dir))
+                run_dir = self._generate_run_name(parameters,
+                                                  task_count,
+                                                  repeat,
+                                                  tree_dir=FLAGS.tree_dir)
+                wandb_name = run_dir.split('/')[0]
+                root_dir = os.path.join(FLAGS.root_dir, version, run_dir)
                 root_dir = common.abs_path(root_dir)
-                conf_name = FLAGS.root_dir.split('/')[-1]
+
                 process_pool.apply_async(
                     func=self._worker,
-                    args=[conf_name, root_dir, parameters, device_queue],
+                    args=[
+                        conf_name, wandb_name, root_dir, parameters,
+                        device_queue
+                    ],
                     error_callback=lambda e: logging.error(e))
 
         process_pool.close()
@@ -347,7 +360,8 @@ class GridSearch(object):
         alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
         os.system("rm -rf %s*" % alf_repo)
 
-    def _worker(self, conf_name, root_dir, parameters, device_queue):
+    def _worker(self, conf_name, wandb_name, version, root_dir, parameters,
+                device_queue):
         # sleep for random seconds to avoid crowded launching
         try:
             time.sleep(random.uniform(0, 3))
@@ -377,11 +391,18 @@ class GridSearch(object):
             else:
                 # need to first pre_config before parsing the conf file
                 confs = copy.copy(parameters)
-                for k, v in confs.items():
-                    if isinstance(v, str):
-                        confs[k] = eval(v)
                 confs.update(
                     {'TrainerConfig.confirm_checkpoint_upon_crash': False})
+                confs.update({'TrainerConfig.conf_name': conf_name})
+                confs.update({'TrainerConfig.wandb_name': wandb_name})
+                confs.update({'TrainerConfig.version': version})
+                for k, v in confs.items():
+                    if isinstance(v, str):
+                        try:
+                            confs[k] = eval(v)
+                        except NameError:
+                            confs[k] = v
+
                 alf.pre_config(confs)
                 common.parse_conf_file(conf_file)
 
@@ -391,7 +412,11 @@ class GridSearch(object):
                 root_dir = os.path.join(root_dir, env_name)
             if not 'seed_' in root_dir:
                 root_dir = os.path.join(root_dir, f'seed_{seed}')
+
+            # Make the directory and save the parameters
             os.makedirs(root_dir, exist_ok=True)
+            with open(os.path.join(root_dir, 'parameters.json'), 'w') as f:
+                json.dump(confs, f)
 
             # This is the snapshot stored in grid-search root dir
             alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
@@ -404,7 +429,7 @@ class GridSearch(object):
             # current only support non-distributed training for each individual
             # job of grid search
             if alf.get_config_value("TrainerConfig.use_wandb"):
-                common.setup_wandb(root_dir, conf_name)
+                common.setup_wandb(root_dir)
             _train(root_dir)
 
             device_queue.put(device)
@@ -438,8 +463,8 @@ def launch_snapshot_gridsearch():
         # empty
         common.parse_conf_file(conf_file)
     else:
-        conf_file_name = conf_file.split('/')[-1].split('_conf.py')[0]
-        root_dir = os.path.join(root_dir, conf_file_name)
+        conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+        root_dir = os.path.join(root_dir, conf_name)
         os.makedirs(root_dir, exist_ok=True)
         for i in range(len(sys.argv)):
             if sys.argv[i] == '--root_dir':

@@ -130,8 +130,6 @@ def _train(root_dir, rank=0, world_size=1):
             interpreted as "non distributed mode".
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-    if trainer_conf.use_wandb:
-        common.setup_wandb(trainer_conf)
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
@@ -177,6 +175,8 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         # Parse the configuration file, which will also implicitly bring up the environments.
         # common.parse_conf_file(conf_file)
         get_env()
+        if alf.get_config_value("TrainerConfig.use_wandb"):
+            common.setup_wandb(root_dir)
         _train(root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
@@ -197,26 +197,24 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         alf.close_env()
 
 
-def create_log_dir(conf):
-    try:
-        algorithm = get_config_value("Agent.rl_algorithm_cls").__name__
-    except ValueError:
-        algorithm = conf.algorithm_ctor.__name__
+def create_log_dir(conf_file, conf_params):
+    conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+    alf.pre_config({'TrainerConfig.conf_name': conf_name})
+    parse_config_only(conf_file, conf_params)
+
+    conf = policy_trainer.TrainerConfig(root_dir=FLAGS.root_dir)
     env_name = get_config_value("create_environment.env_name")
     version = conf.version
     seed = conf.random_seed
 
-    return os.path.join(common.abs_path(FLAGS.root_dir), algorithm, version,
+    return os.path.join(common.abs_path(FLAGS.root_dir), conf_name, version,
                         env_name, f'seed_{seed}')
 
 
 def main(_):
     conf_params = getattr(flags.FLAGS, 'conf_param', None)
     conf_file = common.get_conf_file()
-    parse_config_only(conf_file, conf_params)
-    trainer_conf = policy_trainer.TrainerConfig(root_dir=FLAGS.root_dir)
-    root_dir = create_log_dir(trainer_conf)
-
+    root_dir = create_log_dir(conf_file, conf_params)
     os.makedirs(root_dir, exist_ok=True)
 
     if FLAGS.store_snapshot:

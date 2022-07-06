@@ -1559,28 +1559,28 @@ def call_stack() -> List[str]:
     return [line.strip() for line in traceback.format_stack()]
 
 
-def setup_wandb(root_dir, conf_name=None, wandb_name=None, name='train'):
+def setup_wandb(root_dir, mode='train'):
     # TODO: use root_dir from TrainerConfig to get the wandb group and run name
-    assert name in ['train', 'eval']
+    assert mode in ['train', 'eval']
     env_name = alf.get_config_value("create_environment.env_name")
     version = alf.get_config_value("TrainerConfig.version")
     entity = alf.get_config_value("TrainerConfig.entity")
     project = alf.get_config_value("TrainerConfig.project")
     seed = alf.get_config_value("TrainerConfig.random_seed")
-    if alf.get_config_value("TrainerConfig.async_eval") and name == 'eval':
+    if alf.get_config_value("TrainerConfig.async_eval") and mode == 'eval':
         # When enabling async evaluation, the seed will be set differently
         # for the eval worker as per Line 187 of alf.trainers.evaluator.py
-        assert wandb_name is None
         seed -= 13579
-        wandb_name += f"{env_name}-seed-{seed}-{alf.get_config_value('TrainerConfig.wandb_name')}"
-        conf_name = alf.get_config_value('TrainerConfig.conf_name')
-    else:
-        assert conf_name is not None
-        assert wandb_name is not None
 
+    wandb_name = f"{env_name}-seed-{seed}-{mode}"
+    postfix = alf.get_config_value('TrainerConfig.wandb_name')
+    if postfix is not None:
+        wandb_name += f"-{postfix}"
+
+    conf_name = alf.get_config_value('TrainerConfig.conf_name')
     wandb_group = f"{conf_name}-{version}"
 
-    wandb.tensorboard.patch(root_logdir=os.path.join(root_dir, name))
+    wandb.tensorboard.patch(root_logdir=os.path.join(root_dir, mode))
 
     config = {k: v for k, v in alf.get_operative_configs()}
     inoperative = {k: v for k, v in alf.get_inoperative_configs()}

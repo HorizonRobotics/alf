@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from absl import logging
 from absl import flags
 import queue
@@ -72,6 +73,8 @@ class Evaluator(object):
         else:
             self._env = create_environment(
                 num_parallel_environments=num_envs, seed=seed)
+            # if config.use_wandb:
+            #     common.setup_wandb(config.root_dir, mode="eval")
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
@@ -194,6 +197,16 @@ def _worker(job_queue: mp.Queue,
         else:
             alf.config('create_environment', nonparallel=True)
         try:
+            param_file = os.path.join(root_dir, 'parameters.json')
+            if os.path.exists(param_file):
+                confs = json.load(open(param_file, 'r'))
+                for k, v in confs.items():
+                    if isinstance(v, str):
+                        try:
+                            confs[k] = eval(v)
+                        except NameError:
+                            confs[k] = v
+                alf.pre_config(confs)
             common.parse_conf_file(conf_file)
         except Exception as e:
             alf.close_env()
@@ -221,7 +234,7 @@ def _worker(job_queue: mp.Queue,
         policy_trainer.Trainer._trainer_progress.set_termination_criterion(
             config.num_iterations, config.num_env_steps)
         if config.use_wandb:
-            common.setup_wandb(config, name="eval")
+            common.setup_wandb(root_dir, mode="eval")
         alf.summary.enable_summary()
         evaluator = SyncEvaluator(env, config)
         logging.info("Evaluator started")

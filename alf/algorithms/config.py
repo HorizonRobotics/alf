@@ -26,6 +26,8 @@ class TrainerConfig(object):
                  version='normal',
                  entity=None,
                  project=None,
+                 conf_name=None,
+                 wandb_name=None,
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
@@ -86,6 +88,8 @@ class TrainerConfig(object):
             version (str): version of the algorithm
             entity (str): entity name for WandB
             project (str): project name for WandB
+            conf_name (str): config file name to construct group name for WandB
+            wandb_name (str): to construct run name for WandB
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             data_transformer_ctor (Callable|list[Callable]): Function(s)
@@ -279,6 +283,8 @@ class TrainerConfig(object):
         self.version = version
         self.entity = entity
         self.project = project
+        self.conf_name = conf_name
+        self.wandb_name = wandb_name
         self.algorithm_ctor = algorithm_ctor
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
