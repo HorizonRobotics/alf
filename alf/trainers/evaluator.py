@@ -206,7 +206,12 @@ def _worker(job_queue: mp.Queue,
                             confs[k] = eval(v)
                         except NameError:
                             confs[k] = v
-                alf.pre_config(confs)
+            else:
+                confs = {}
+
+            conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+            confs.update({'TrainerConfig.conf_name': conf_name})
+            alf.pre_config(confs)
             common.parse_conf_file(conf_file)
         except Exception as e:
             alf.close_env()
