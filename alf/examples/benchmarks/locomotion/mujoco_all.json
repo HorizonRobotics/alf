@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 5 seeds on each environment"
     ],
-    "version": "torch-1.8",
+    "version": "pytorch-1.8",
     "use_gpu": true,
     "gpus": [
         0,
