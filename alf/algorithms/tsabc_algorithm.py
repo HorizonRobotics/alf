@@ -673,7 +673,9 @@ class TsabcAlgorithm(OffPolicyAlgorithm):
                                                     self._action_spec.shape[0])
 
         critic_step = self._critic_module.predict_step(
-            inputs=(observation, action), state=critic_info.critic_state)
+            inputs=(observation, action),
+            training=True,
+            state=critic_info.critic_state)
         critics_dist = critic_step.output
 
         neg_logprob = []

@@ -64,7 +64,11 @@ alf.config(
 # alf.config(
 #     'FuncParVIAlgorithm',
 #     num_particles=10)
-# alf.config('MultiSwagAlgorithm', num_models=10, num_samples_per_model=2)
+alf.config(
+    'MultiSwagAlgorithm',
+    num_samples_per_model=1,
+    subspace_max_rank=20,
+    subspace_after_update_steps=10000)
 
 alf.config(
     'TsabcAlgorithm',
@@ -102,7 +106,7 @@ alf.config(
     eval_interval=1000,
     num_eval_episodes=5,
     debug_summaries=True,
-    random_seed=0,
+    random_seed=1,
     summarize_grads_and_vars=True,
     summary_interval=1000,
     replay_buffer_length=1000000)

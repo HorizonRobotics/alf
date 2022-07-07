@@ -86,17 +86,30 @@ class CovarianceSpace(Subspace):
         self._var_clamp = var_clamp
         self._max_rank = max_rank
 
-        self.register_buffer('mean', torch.zeros(num_parameters))
-        self.register_buffer('sq_mean', torch.zeros(num_parameters))
-        self.register_buffer('n_samples', torch.zeros(1, dtype=torch.long))
+        # self.register_buffer('mean', torch.zeros(num_parameters))
+        # self.register_buffer('sq_mean', torch.zeros(num_parameters))
+        # self.register_buffer('n_samples', torch.zeros(1, dtype=torch.long))
         self.register_buffer('rank', torch.zeros(1, dtype=torch.long))
         self.register_buffer(
-            'cov_mat_sqrt', torch.empty(
-                0, num_parameters, dtype=torch.float32))
+            'samples', torch.empty(0, num_parameters, dtype=torch.float32))
+        # self.register_buffer(
+        #     'cov_mat_sqrt', torch.empty(
+        #         0, num_parameters, dtype=torch.float32))
+        self.update(torch.zeros(num_parameters))
+
+    @property
+    def mean(self):
+        return self.samples.mean(dim=0)
 
     @property
     def variance(self):
-        return torch.clamp(self.sq_mean - self.mean**2, self._var_clamp)
+        return torch.clamp(self.samples.var(dim=0), self._var_clamp)
+        # return torch.clamp(self.sq_mean - self.mean**2, self._var_clamp)
+
+    @property
+    def cov_factor(self):
+        return (self.samples - self.mean) / (self.samples.size(0) - 1)**0.5
+        # return self.cov_mat_sqrt.clone() / (self.cov_mat_sqrt.size(0) - 1)**0.5
 
     def get_space(self):
         return self.mean, self.variance, self.cov_factor
@@ -109,7 +122,7 @@ class CovarianceSpace(Subspace):
                 n_sample, self.cov_factor.shape[0])  # [n_sample, n_rank]
             z = eps_low_rank @ self.cov_factor  # [n_sample, n_params]
             if diag_noise:
-                noise = torch.randn_like(n_sample, self.variance) * \
+                noise = torch.randn(n_sample, *self.variance.shape) * \
                     self.variance.sqrt().view(1, -1)  # [n_sample, n_params]
                 z += noise
             z *= scale**0.5
@@ -118,25 +131,36 @@ class CovarianceSpace(Subspace):
             raise ValueError("n_sample must be a positive integer")
 
     def update(self, param_vec):
-        # first moments
-        self.mean.mul_(self.n_samples.item() / (self.n_samples.item() + 1.))
-        self.mean.add_(param_vec / (self.n_samples.item() + 1.))
-
-        # second moments
-        self.sq_mean.mul_(self.n_samples.item() / (self.n_samples.item() + 1.))
-        self.sq_mean.add_(param_vec**2 / (self.n_samples.item() + 1.))
-
-        # cov matrix
-        dev_vec = param_vec - self.mean
+        if self.rank > 0:
+            dev_vec = param_vec - self.mean
+        else:
+            dev_vec = torch.zeros(self._num_parameters)
         if self.rank.item() + 1 > self._max_rank:
-            self.cov_mat_sqrt = self.cov_mat_sqrt[1:, :]
-        self.cov_mat_sqrt = torch.cat((self.cov_mat_sqrt, dev_vec.view(1, -1)),
-                                      dim=0)
+            self.samples = self.samples[1:, :]
+            # self.cov_mat_sqrt = self.cov_mat_sqrt[1:, :]
+
+        self.samples = torch.cat((self.samples, param_vec.view(1, -1)), dim=0)
+        # self.cov_mat_sqrt = torch.cat(
+        #     (self.cov_mat_sqrt, dev_vec.view(1, -1)), dim=0)
         self.rank = torch.min(self.rank + 1,
                               torch.as_tensor(self._max_rank)).view(-1)
 
-        self.n_samples.add_(1)
+    # def update(self, param_vec):
+    #     # first moments
+    #     self.mean.mul_(self.n_samples.item() / (self.n_samples.item() + 1.))
+    #     self.mean.add_(param_vec / (self.n_samples.item() + 1.))
 
-    @property
-    def cov_factor(self):
-        return self.cov_mat_sqrt.clone() / (self.cov_mat_sqrt.size(0) - 1)**0.5
+    #     # second moments
+    #     self.sq_mean.mul_(self.n_samples.item() / (self.n_samples.item() + 1.))
+    #     self.sq_mean.add_(param_vec**2 / (self.n_samples.item() + 1.))
+
+    #     # cov matrix
+    #     dev_vec = param_vec - self.mean
+    #     if self.rank.item() + 1 > self._max_rank:
+    #         self.cov_mat_sqrt = self.cov_mat_sqrt[1:, :]
+    #     self.cov_mat_sqrt = torch.cat((self.cov_mat_sqrt, dev_vec.view(1, -1)),
+    #                                   dim=0)
+    #     self.rank = torch.min(self.rank + 1,
+    #                           torch.as_tensor(self._max_rank)).view(-1)
+
+    #     self.n_samples.add_(1)

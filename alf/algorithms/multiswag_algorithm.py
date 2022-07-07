@@ -66,6 +66,7 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                  last_use_ln=False,
                  num_particles=10,
                  num_samples_per_model=2,
+                 subspace_after_update_steps=10000,
                  subspace="covariance",
                  subspace_max_rank=20,
                  entropy_regularization=1.,
@@ -114,6 +115,8 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
 
             num_particles (int): number of SWAG models.
             num_samples_per_model (int): number of samples for each SWAG model.
+            subspace_after_update_steps (int): SWAG subspaces start only after
+                so many number of update steps (according to ``global_counter``).
             var_clamp (float): clamp threshold of variance.
             subspace (str): types of subspace construction methods,
                 types are [``random``, ``covariance``, ``pca``, ``freq_dir``]
@@ -167,6 +170,8 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             name=name)
 
         self._num_samples_per_model = num_samples_per_model
+        self._subspace_after_update_steps = subspace_after_update_steps
+        self._subspace_max_rank = subspace_max_rank
 
         self._subspaces = []
         for _ in range(num_particles):
@@ -197,7 +202,11 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
 
         return torch.cat(samples, dim=0)  # [n_models * n_sample, n_params]
 
-    def predict_step(self, inputs, sample_size=None, state=None):
+    def predict_step(self,
+                     inputs,
+                     training=False,
+                     sample_size=None,
+                     state=None):
         """Predict base_model or ensemble outputs for inputs.
 
         Args:
@@ -219,12 +228,11 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
 
             - state (None): not used
         """
-        if sample_size is None:
-            sample_size = self._num_samples_per_model
-
-        if sample_size == 0:
+        if training or self._subspaces[0].rank < self._subspace_max_rank:
             return super().predict_step(inputs)
         else:
+            if sample_size is None:
+                sample_size = self._num_samples_per_model
             params = self._sample_subspace(
                 sample_size)  # [n_model * n, n_params]
             self.param_net.set_parameters(params)
@@ -253,6 +261,8 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             valid_masks=valid_masks,
             weight=weight,
             batch_info=batch_info)
-        self._update_subspace()
+        if alf.summary.get_global_counter(
+        ) > self._subspace_after_update_steps:
+            self._update_subspace()
 
         return loss_info, all_params
