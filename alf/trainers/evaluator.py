@@ -71,10 +71,8 @@ class Evaluator(object):
                       config.root_dir, seed))
             self._worker.start()
         else:
-            self._env = create_environment(
-                num_parallel_environments=num_envs, seed=seed)
-            # if config.use_wandb:
-            #     common.setup_wandb(config.root_dir, mode="eval")
+            self._env = create_environment(num_parallel_environments=num_envs,
+                                           seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
@@ -159,11 +157,21 @@ class SyncEvaluator(object):
             logging.info("Start evaluation")
             metrics = evaluate(self._env, algorithm,
                                self._config.num_eval_episodes)
+
+            num_episodes = alf.metrics.NumberOfEpisodes()
+            env_steps = alf.metrics.EnvironmentSteps()
+            num_episodes._number_episodes += step_metric_values[
+                num_episodes.name]
+            env_steps._environment_steps += step_metric_values[env_steps.name]
+            metrics.append(num_episodes)
+            metrics.append(env_steps)
+
             common.log_metrics(metrics)
             for metric in metrics:
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
-                    other_steps=step_metric_values)
+                    # other_steps=step_metric_values)
+                    step_metrics=[num_episodes, env_steps])
 
 
 def _worker(job_queue: mp.Queue,
@@ -209,8 +217,8 @@ def _worker(job_queue: mp.Queue,
             else:
                 confs = {}
 
-            conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
-            confs.update({'TrainerConfig.conf_name': conf_name})
+                conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+                confs.update({'TrainerConfig.conf_name': conf_name})
             alf.pre_config(confs)
             common.parse_conf_file(conf_file)
         except Exception as e:

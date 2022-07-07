@@ -59,7 +59,6 @@ import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import wandb
 
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext

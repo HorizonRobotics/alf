@@ -164,7 +164,6 @@ class GridSearchConfig(object):
             assert k in self._all_keys_, "Invalid conf key: %s" % k
 
         self._desc = conf.get('desc', "Grid search")
-        self._version = conf.get('version', "normal")
         self._param_keys = param_keys
         self._param_values = param_values
         self._max_worker_num = conf.get('max_worker_num', 1)
@@ -186,10 +185,6 @@ class GridSearchConfig(object):
     @property
     def desc(self):
         return self._desc
-
-    @property
-    def version(self):
-        return self._version
 
     @property
     def param_keys(self):
@@ -330,8 +325,8 @@ class GridSearch(object):
                                             maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
-        conf_name = FLAGS.root_dir.split('/')[-1]
-        version = f'{self._conf.version}-gs'
+        conf_name = FLAGS.root_dir.split('/')[-2]
+        version = FLAGS.root_dir.split('/')[-1]
         for repeat in range(self._conf.repeats):
             for task_count, values in enumerate(
                     itertools.product(*param_values)):
@@ -340,16 +335,18 @@ class GridSearch(object):
                                                   task_count,
                                                   repeat,
                                                   tree_dir=FLAGS.tree_dir)
-                wandb_name = run_dir.split('/')[0]
-                root_dir = os.path.join(FLAGS.root_dir, version, run_dir)
+                run_name = run_dir.split('/')
+                wandb_name = run_name[0] if len(run_name) > 2 else None
+                parameters.update({'TrainerConfig.version': version})
+                parameters.update({'TrainerConfig.conf_name': conf_name})
+                parameters.update({'TrainerConfig.wandb_name': wandb_name})
+    
+                root_dir = os.path.join(FLAGS.root_dir, run_dir)
                 root_dir = common.abs_path(root_dir)
 
                 process_pool.apply_async(
                     func=self._worker,
-                    args=[
-                        conf_name, wandb_name, root_dir, parameters,
-                        device_queue
-                    ],
+                    args=[root_dir, parameters, device_queue],
                     error_callback=lambda e: logging.error(e))
 
         process_pool.close()
@@ -360,8 +357,7 @@ class GridSearch(object):
         alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
         os.system("rm -rf %s*" % alf_repo)
 
-    def _worker(self, conf_name, wandb_name, version, root_dir, parameters,
-                device_queue):
+    def _worker(self, root_dir, parameters, device_queue):
         # sleep for random seconds to avoid crowded launching
         try:
             time.sleep(random.uniform(0, 3))
@@ -393,9 +389,6 @@ class GridSearch(object):
                 confs = copy.copy(parameters)
                 confs.update(
                     {'TrainerConfig.confirm_checkpoint_upon_crash': False})
-                confs.update({'TrainerConfig.conf_name': conf_name})
-                confs.update({'TrainerConfig.wandb_name': wandb_name})
-                confs.update({'TrainerConfig.version': version})
                 for k, v in confs.items():
                     if isinstance(v, str):
                         try:
@@ -463,8 +456,12 @@ def launch_snapshot_gridsearch():
         # empty
         common.parse_conf_file(conf_file)
     else:
+        with open(FLAGS.search_config) as f:
+            search_conf = json.loads(f.read())
+        version = search_conf.get('version', "normal") + '-gs'
+
         conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
-        root_dir = os.path.join(root_dir, conf_name)
+        root_dir = os.path.join(root_dir, conf_name, version)
         os.makedirs(root_dir, exist_ok=True)
         for i in range(len(sys.argv)):
             if sys.argv[i] == '--root_dir':

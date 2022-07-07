@@ -61,7 +61,7 @@ alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 alf.config('Agent', rl_algorithm_cls=SacAlgorithm)
 
 alf.config('TrainerConfig',
-           version='normal',
+           version='normal-torch-1.8',
            use_wandb=True,
            async_eval=True,
            entity="jiachenli",
@@ -74,7 +74,7 @@ alf.config('TrainerConfig',
            num_iterations=2500000,
            num_checkpoints=1,
            evaluate=True,
-           eval_interval=10000,
+           eval_interval=1000,
            num_eval_episodes=5,
            debug_summaries=True,
            random_seed=0,
