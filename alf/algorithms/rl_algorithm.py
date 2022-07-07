@@ -432,9 +432,11 @@ class RLAlgorithm(Algorithm):
 
         if self._metrics:
             for metric in self._metrics:
+                step_metrics = () if alf.get_config_value(
+                    "TrainerConfig.use_wandb") else self._metrics[:2]
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
-                    step_metrics=self._metrics[:2])
+                    step_metrics=step_metrics)
 
     # Subclass may override predict_step() to allow more efficient implementation
     def predict_step(self, inputs: TimeStep, state):

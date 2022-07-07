@@ -168,10 +168,11 @@ class SyncEvaluator(object):
 
             common.log_metrics(metrics)
             for metric in metrics:
+                step_metric_values = {} if alf.get_config_value(
+                    "TrainerConfig.use_wandb") else step_metric_values
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
-                    # other_steps=step_metric_values)
-                    step_metrics=[num_episodes, env_steps])
+                    other_steps=step_metric_values)
 
 
 def _worker(job_queue: mp.Queue,
