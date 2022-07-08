@@ -340,7 +340,7 @@ class GridSearch(object):
                 parameters.update({'TrainerConfig.version': version})
                 parameters.update({'TrainerConfig.conf_name': conf_name})
                 parameters.update({'TrainerConfig.wandb_name': wandb_name})
-    
+
                 root_dir = os.path.join(FLAGS.root_dir, run_dir)
                 root_dir = common.abs_path(root_dir)
 
