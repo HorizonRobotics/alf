@@ -277,7 +277,8 @@ class GridSearch(object):
                                 (_abbr(key, l), _abbr(val, l, is_value=True)))
                 return "+".join(strs)
             else:
-                x = x.split('.')[-1]
+                if isinstance(x, str):
+                    x = x.split('.')[-1]
                 if not is_value:
                     x = ''.join([str(s[0]) for s in x.split('_')])
                 return _abbr_single(x, l)
