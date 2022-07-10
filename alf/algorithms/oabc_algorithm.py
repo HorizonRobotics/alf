@@ -81,6 +81,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  explore_network_cls=ActorDistributionNetwork,
                  critic_module_cls=FuncParVIAlgorithm,
+                 deterministic_actor=True,
                  deterministic_critic=False,
                  reward_weights=None,
                  epsilon_greedy=None,
@@ -109,6 +110,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         Args:
             explore_network_cls
             critic_module_cls
+            deterministic_actor
             deterministic_critic
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
@@ -228,6 +230,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         self._explore_network = explore_network
 
         self._critic_module = critic_module
+        self._deterministic_actor = deterministic_actor
         self._deterministic_critic = deterministic_critic
         self._target_critic_params = torch.nn.Parameter(target_critic_params)
         target_critic_network.set_parameters(self._target_critic_params)
@@ -257,15 +260,20 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             new_state = new_state._replace(
                 explore_network=explore_network_state)
         else:
-            action_dist, actor_network_state = self._actor_network(
-                observation, state=state.actor_network)
-            new_state = new_state._replace(actor_network=actor_network_state)
-
-            if eps_greedy_sampling:
-                action = dist_utils.epsilon_greedy_sample(
-                    action_dist, epsilon_greedy)
+            if self._deterministic_actor:
+                action_dist = ()
+                action, actor_network_state = self._actor_network(
+                    observation, state=state.actor_network)
             else:
-                action = dist_utils.rsample_action_distribution(action_dist)
+                action_dist, actor_network_state = self._actor_network(
+                    observation, state=state.actor_network)
+
+                if eps_greedy_sampling:
+                    action = dist_utils.epsilon_greedy_sample(
+                        action_dist, epsilon_greedy)
+                else:
+                    action = dist_utils.rsample_action_distribution(action_dist)
+            new_state = new_state._replace(actor_network=actor_network_state)
 
         return action_dist, action, new_state
 
@@ -279,16 +287,6 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             output=action,
             state=OabcState(action=action_state),
             info=OabcInfo(action_distribution=action_dist))
-
-    ## for remote_eval
-    def get_predict_module_state(self):
-        """get state_dict of the predict_step module. """
-        return self._actor_network.state_dict()
-
-    ## for remote_eval
-    def load_predict_module_state(self, state_dict):
-        """load state_dict to the predict_step module. """
-        self._actor_network.load_state_dict(state_dict)
 
     def rollout_step(self, inputs: TimeStep, state: OabcState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -355,9 +353,13 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         dqda = nest_utils.grad(action, q_value.sum())
 
-        cont_alpha = torch.exp(self._log_alpha).detach()
-        entropy_loss = cont_alpha * log_pi
-        neg_entropy = sum(nest.flatten(log_pi))
+        if self._deterministic_actor:
+            neg_entropy = ()
+            entropy_loss = 0.
+        else:
+            cont_alpha = torch.exp(self._log_alpha).detach()
+            entropy_loss = cont_alpha * log_pi
+            neg_entropy = sum(nest.flatten(log_pi))
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -429,10 +431,13 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         else:
             target_critics = target_critics_dist.mean
 
-        # target_critics_mean = target_critics.mean(1)
-        # target_critics_std = target_critics.std(1)
-        # targets = target_critics_mean - self._beta_lb * target_critics_std
-        targets = target_critics
+        # if use common td_target for all critic
+        target_critics_mean = target_critics.mean(1)
+        target_critics_std = target_critics.std(1)
+        targets = target_critics_mean - self._beta_lb * target_critics_std
+
+        # if use separate td_target for each critic
+        # targets = target_critics
 
         targets = targets.detach()
 
@@ -475,9 +480,12 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         # train actor_network
         (action_dist, action, action_state) = self._predict_action(
             inputs.observation, state=state.action)
-        log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
-                                    action_dist, action)
-        log_pi = sum(nest.flatten(log_pi))
+        if self._deterministic_actor:
+            log_pi = ()
+        else:
+            log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
+                                        action_dist, action)
+            log_pi = sum(nest.flatten(log_pi))
         actor_state, actor_loss = self._actor_train_step(
             inputs, state.actor, action, log_pi)
 
@@ -498,7 +506,10 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             inputs, state.critic, rollout_info, action)
 
         # train alpha and explore_alpha
-        alpha_loss = self._alpha_train_step(log_pi)
+        if self._deterministic_actor:
+            alpha_loss = ()
+        else:
+            alpha_loss = self._alpha_train_step(log_pi)
         # explore_alpha_loss = self._explore_alpha_train_step(log_pi_explore)
 
         state = OabcState(
@@ -572,12 +583,18 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                 summary_utils.add_mean_hist_summary("critics_losses",
                                                     critic_loss.extra)
 
-        return LossInfo(
-            # loss=math_ops.add_ignore_empty(actor_loss.loss, alpha_loss),
+        if self._deterministic_actor:
+            loss = math_ops.add_ignore_empty(actor_loss.loss,
+                                             explore_loss.loss)
+            alpha_loss = ()
+        else:
             loss=math_ops.add_ignore_empty(actor_loss.loss + explore_loss.loss,
                                            alpha_loss),
+        return LossInfo(
+            # loss=math_ops.add_ignore_empty(actor_loss.loss, alpha_loss),
             # loss=math_ops.add_ignore_empty(actor_loss.loss + explore_loss.loss,
             #                                alpha_loss + explore_alpha_loss),
+            loss=loss,
             extra=OabcLossInfo(
                 actor=actor_loss.extra,
                 explore=explore_loss.extra,
@@ -625,13 +642,17 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                     self._critic_loss(
                         info=info,
                         value=critics[:, :, i, ...],
-                        # target_value=targets).loss)
-                        target_value=targets[:, :, i, ...]).loss)
+                        # if common td_targets for all ciritcs
+                        target_value=targets).loss)
+                        # if separate td_target for each critic
+                        # target_value=targets[:, :, i, ...]).loss)
         else:
-            # td_targets = self._critic_loss.compute_td_target(info, targets)
+            # if common td_target for all critics
+            td_targets = self._critic_loss.compute_td_target(info, targets)
             for i in range(num_particles):
-                td_targets = self._critic_loss.compute_td_target(
-                    info, targets[:, :, i, ...])
+                # if separate td_target for each critic
+                # td_targets = self._critic_loss.compute_td_target(
+                #     info, targets[:, :, i, ...])
                 critics_mean = critics_dist.base_dist.mean.reshape(
                     self._mini_batch_length, -1,
                     *critics_dist.base_dist.mean.shape[1:])

@@ -16,7 +16,7 @@ from functools import partial
 import torch
 
 import alf
-from alf.algorithms.oabc_algorithm import OabcAlgorithm
+from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.nest.utils import NestConcat
 from alf.networks import NormalProjectionNetwork, ActorNetwork, ActorDistributionNetwork
@@ -29,9 +29,7 @@ from alf.examples import sac_conf
 
 # environment config
 alf.config(
-    'create_environment',
-    env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+    'create_environment', env_name="Humanoid-v2", num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -48,16 +46,11 @@ else:
             NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
-            std_transform=clipped_exp))
+            std_transform=partial(
+                clipped_exp, clip_value_min=-10, clip_value_max=2)))
 
-# explore_network_cls = partial(
-#     ActorDistributionNetwork,
-#     fc_layer_params=fc_layer_params,
-#     continuous_projection_net_ctor=partial(
-#         NormalProjectionNetwork,
-#         state_dependent_std=True,
-#         scale_distribution=True,
-#         std_transform=clipped_exp))
+
+alf.config('calc_default_target_entropy', min_prob=0.184)
 
 explore_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
 
@@ -65,19 +58,18 @@ alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=joint_fc_layer_params)
 
-# alf.config('FuncParVIAlgorithm', num_particles=10)
 alf.config(
     'MultiSwagAlgorithm',
-    num_particles=10,
-    num_samples_per_model=5,
-    subspace_max_rank=30,
+    num_samples_per_model=1,
+    subspace_max_rank=20,
     subspace_after_update_steps=10000)
 
 alf.config(
-    'OabcAlgorithm',
+    'TsabcAlgorithm',
     actor_network_cls=actor_network_cls,
     explore_network_cls=explore_network_cls,
     critic_module_cls=MultiSwagAlgorithm,
+    num_critic_replicas=10,
     beta_ub=1.,
     beta_lb=1.,
     # entropy_regularization_weight=1.,
@@ -94,22 +86,22 @@ alf.config(
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 
 # training config
-alf.config('Agent', rl_algorithm_cls=OabcAlgorithm)
+alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)
 
 alf.config(
     'TrainerConfig',
     initial_collect_steps=10000,
     mini_batch_length=2,
-    unroll_length=1,
+    unroll_length=1000,
     mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_iterations=2500000,
+    num_updates_per_train_iter=1000,
+    num_iterations=2500,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=1000,
+    eval_interval=1,
     num_eval_episodes=5,
     debug_summaries=True,
     random_seed=1,
     summarize_grads_and_vars=True,
-    summary_interval=1000,
+    summary_interval=1,
     replay_buffer_length=1000000)

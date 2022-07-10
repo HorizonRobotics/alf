@@ -21,7 +21,7 @@
 import torch
 from torch.nn import Module, Parameter
 
-del Module.__getattr__
+# del Module.__getattr__
 
 _old_Module__setattr__ = torch.nn.Module.__setattr__
 

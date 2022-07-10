@@ -36,15 +36,19 @@ alf.config(
 # algorithm config
 fc_layer_params = (256, 256)
 joint_fc_layer_params = (256, 256)
+deterministic_actor = True
 
-actor_network_cls = partial(
-    ActorDistributionNetwork,
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
-        state_dependent_std=True,
-        scale_distribution=True,
-        std_transform=clipped_exp))
+if deterministic_actor:
+    actor_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
+else:
+    actor_network_cls = partial(
+        ActorDistributionNetwork,
+        fc_layer_params=fc_layer_params,
+        continuous_projection_net_ctor=partial(
+            NormalProjectionNetwork,
+            state_dependent_std=True,
+            scale_distribution=True,
+            std_transform=clipped_exp))
 
 # explore_network_cls = partial(
 #     ActorDistributionNetwork,
@@ -79,6 +83,7 @@ alf.config(
     beta_ub=1.,
     beta_lb=1.,
     # entropy_regularization_weight=1.,
+    deterministic_actor=deterministic_actor,
     deterministic_critic=False,
     use_entropy_reward=False,
     target_update_tau=0.005,

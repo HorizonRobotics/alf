@@ -29,9 +29,7 @@ from alf.examples import sac_conf
 
 # environment config
 alf.config(
-    'create_environment',
-    env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+    'create_environment', env_name="Humanoid-v2", num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -48,16 +46,10 @@ else:
             NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
-            std_transform=clipped_exp))
+            std_transform=partial(
+                clipped_exp, clip_value_min=-10, clip_value_max=2)))
 
-# explore_network_cls = partial(
-#     ActorDistributionNetwork,
-#     fc_layer_params=fc_layer_params,
-#     continuous_projection_net_ctor=partial(
-#         NormalProjectionNetwork,
-#         state_dependent_std=True,
-#         scale_distribution=True,
-#         std_transform=clipped_exp))
+alf.config('calc_default_target_entropy', min_prob=0.184)
 
 explore_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
 
@@ -100,16 +92,16 @@ alf.config(
     'TrainerConfig',
     initial_collect_steps=10000,
     mini_batch_length=2,
-    unroll_length=1,
+    unroll_length=1000,
     mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_iterations=2500000,
+    num_updates_per_train_iter=1000,
+    num_iterations=2500,
     num_checkpoints=1,
     evaluate=True,
-    eval_interval=1000,
+    eval_interval=1,
     num_eval_episodes=5,
     debug_summaries=True,
     random_seed=1,
     summarize_grads_and_vars=True,
-    summary_interval=1000,
+    summary_interval=1,
     replay_buffer_length=1000000)
