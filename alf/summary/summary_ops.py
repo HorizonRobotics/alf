@@ -100,6 +100,16 @@ def _summary_wrapper(summary_func):
                 average_over_summary_interval=False,
                 step=None,
                 **kwargs):
+        """
+        Args:
+            average_over_summary_interval: if True, the average value of data during a
+                summary interval will be written to summary. If data is None,
+                it will be ignored for calculating the average. Note that providing
+                a "None" value for data is different from not calling the summary
+                function at all. A "None" value for data will cause the summary
+                to be generated if ``should_record_summaries()`` returns True
+                at the moment.
+        """
         if average_over_summary_interval:
             if isinstance(data, torch.Tensor):
                 data = data.detach()
@@ -107,12 +117,13 @@ def _summary_wrapper(summary_func):
                 name = name[1:]
             else:
                 name = _scope_stack[-1] + name
-            if name in _SUMMARY_DATA_BUFFER:
-                data_sum, counter = _SUMMARY_DATA_BUFFER[name]
-                _SUMMARY_DATA_BUFFER[name] = data_sum + data, counter + 1
-            else:
-                _SUMMARY_DATA_BUFFER[name] = data, 1
-            if should_record_summaries():
+            if data is not None:
+                if name in _SUMMARY_DATA_BUFFER:
+                    data_sum, counter = _SUMMARY_DATA_BUFFER[name]
+                    _SUMMARY_DATA_BUFFER[name] = data_sum + data, counter + 1
+                else:
+                    _SUMMARY_DATA_BUFFER[name] = data, 1
+            if should_record_summaries() and name in _SUMMARY_DATA_BUFFER:
                 data_sum, counter = _SUMMARY_DATA_BUFFER[name]
                 del _SUMMARY_DATA_BUFFER[name]
                 data = data_sum / counter

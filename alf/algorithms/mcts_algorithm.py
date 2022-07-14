@@ -219,7 +219,8 @@ class _MCTSTrees(object):
 
 
 MCTSState = namedtuple(
-    "MCTSState", ["steps", "pred_state", "action_sampler_state"],
+    "MCTSState",
+    ["steps", "pred_state", "action_sampler_state", "next_predicted_reward"],
     default_value=())
 MCTSInfo = namedtuple(
     "MCTSInfo", ["candidate_actions", "value", "candidate_action_policy"])
@@ -505,6 +506,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             predict_state_spec=state_spec._replace(
                 action_sampler_state=predict_action_sampler_state_spec),
+            rollout_state_spec=state_spec._replace(
+                next_predicted_reward=alf.TensorSpec(()),
+                action_sampler_state=rollout_action_sampler_state_spec),
             train_state_spec=state_spec._replace(
                 action_sampler_state=rollout_action_sampler_state_spec),
             debug_summaries=debug_summaries,
@@ -609,11 +613,65 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             action = info.candidate_actions[trees.B, action_id]
         else:
             action = action_id
+
+        if common.is_rollout():
+            curr_reward = time_step.reward
+            curr_predicted_reward = trees.reward[roots]
+            with alf.summary.scope(self._name):
+                alf.summary.scalar(
+                    'reward',
+                    time_step.reward.mean(),
+                    average_over_summary_interval=True)
+                alf.summary.scalar(
+                    'reward_next_predicted/value',
+                    state.next_predicted_reward.mean(),
+                    average_over_summary_interval=True)
+                alf.summary.scalar(
+                    'reward_predicted/value',
+                    curr_predicted_reward.mean(),
+                    average_over_summary_interval=True)
+
+                def _summarize_error(name, tgt, pred):
+                    error = (pred - tgt).abs()
+                    error_z = error[tgt == 0]
+                    error_nz = error[tgt != 0]
+                    if error_z.numel() > 0:
+                        alf.summary.scalar(
+                            name + "/error_z",
+                            error_z.mean(),
+                            average_over_summary_interval=True)
+                    else:
+                        alf.summary.scalar(
+                            name + "/error_z",
+                            None,
+                            average_over_summary_interval=True)
+                    if error_nz.numel() > 0:
+                        alf.summary.scalar(
+                            name + "/error_nz",
+                            error_nz.mean(),
+                            average_over_summary_interval=True)
+                    else:
+                        alf.summary.scalar(
+                            name + "/error_nz",
+                            None,
+                            average_over_summary_interval=True)
+
+                _summarize_error("reward_next_predicted", curr_reward,
+                                 state.next_predicted_reward)
+                _summarize_error("reward_predicted", curr_reward,
+                                 curr_predicted_reward)
+
+            next_predicted_reward = trees.reward[
+                trees.B, trees.children_index[roots][trees.B, action_id]]
+        else:
+            next_predicted_reward = ()
+
         return AlgStep(
             output=action,
             state=MCTSState(
                 steps=state.steps + 1,
                 pred_state=pred_state,
+                next_predicted_reward=next_predicted_reward,
                 action_sampler_state=action_sampler_state),
             info=info)
 
@@ -833,6 +891,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         def _get_item(nested, i):
             return alf.nest.map_structure(lambda x: x[i], nested)
 
+        def _print_policy(policy):
+            if policy.numel() <= 4:
+                return policy
+            policy = policy.cpu()
+            indices = torch.argsort(policy, descending=True)
+            s = ' '.join(
+                ["%s:%0.3f" % (int(i), float(policy[i])) for i in indices[:4]])
+            return '[' + s + ']'
+
         while len(nodes) > 0:
             node, action, depth = nodes.pop(0)
             print(
@@ -843,9 +910,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 trees.original_value[node].cpu().numpy(),
                 "v=%-7.4f" % trees.calc_value(node).cpu().numpy(),
                 "r=%-7.4f" % trees.reward[node].cpu().numpy(),
-                "prior=%s" % trees.prior[node].cpu().numpy(),
-                "policy=%s" % self._calculate_policy(trees, (torch.tensor(
-                    [node[0]]), torch.tensor([node[1]]))).cpu().numpy()[0],
+                "prior=%s" % _print_policy(trees.prior[node]),
+                "policy=%s" % _print_policy(
+                    self._calculate_policy(trees,
+                                           (torch.tensor([node[0]]),
+                                            torch.tensor([node[1]])))[0]),
                 "visit_count=%s" % trees.visit_count[node].item())
             children = list(trees.children_index[node])
             prior = list(trees.prior[node])
