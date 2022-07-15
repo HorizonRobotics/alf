@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 5 seeds on each environment"
     ],
-    "version": "decouple-stable",
+    "version": "not-detach-target",
     "use_gpu": true,
     "gpus": [
         1,
