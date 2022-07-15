@@ -391,7 +391,7 @@ class GridSearch(object):
                 confs.update(
                     {'TrainerConfig.confirm_checkpoint_upon_crash': False})
                 for k, v in confs.items():
-                    if 'name' in k: continue
+                    if 'wandb_name' in k: continue
                     if isinstance(v, str):
                         try:
                             confs[k] = eval(v)

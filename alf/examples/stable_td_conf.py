@@ -54,7 +54,7 @@ alf.config('StableTDAlgorithm',
            critic_loss_ctor=OneStepTDLoss,
            use_entropy_reward=True,
            target_update_tau=0.005,
-           coef=1e-4,
+           coef=1.0,
            actor_optimizer=AdamTF(lr=3e-4),
            critic_optimizer=AdamTF(lr=3e-4),
            alpha_optimizer=AdamTF(lr=3e-4))
@@ -65,12 +65,12 @@ alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 alf.config("Agent", rl_algorithm_cls=StableTDAlgorithm)
 
 alf.config('TrainerConfig',
-           version='debug',
+           version='not-detach-target',
            use_wandb=True,
            async_eval=True,
            entity="jiachenli",
            project="stable-rl",
-           initial_collect_steps=10000,
+           initial_collect_steps=1000,
            mini_batch_length=2,
            unroll_length=1,
            mini_batch_size=256,

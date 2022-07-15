@@ -11,13 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import partial
 import torch
-from functorch import make_functional_with_buffers, vmap, grad_and_value
 
 import alf
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.sac_algorithm import SacAlgorithm, SacInfo, ActionType
+from alf.algorithms.sac_algorithm import SacAlgorithm, SacCriticInfo, SacInfo, ActionType
 from alf.algorithms.sac_algorithm import SacCriticState
 from alf.data_structures import StepType, TimeStep, namedtuple, LossInfo
 from alf.nest import nest
@@ -33,7 +31,7 @@ StableTDCriticInfo = namedtuple("StableTDCriticInfo", [
 ],
                                 default_value=())
 StableTDCriticLossInfo = namedtuple("StableTDCriticLossInfo",
-                                    ["critic_loss", "semi_grad_norm"],
+                                    ["critic_loss", "stable_loss"],
                                     default_value=())
 
 
@@ -98,30 +96,7 @@ class StableTDAlgorithm(SacAlgorithm):
         )
         del self._target_critic_networks
         self._coef = coef
-        self._f_critics, self._critic_params, self._critic_buffers = None, None, None
         self._mini_batch_size = self._config.mini_batch_size
-
-    def _get_per_sample_critic_grad(self, observation, action):
-        def compute_critics_stateless(params, buffers, observation, action):
-            assert self._act_type == ActionType.Continuous
-            assert not self.has_multidim_reward()
-
-            observation = observation.unsqueeze(0)
-            action = action.unsqueeze(0)
-            observation = (observation, action)
-
-            critics, _ = self._f_critics(params, buffers, observation)
-            return critics.sum(1).squeeze(), critics.squeeze(0)
-
-        grads_loss_output = grad_and_value(compute_critics_stateless,
-                                           has_aux=True)
-        compute_sample_grad = vmap(grads_loss_output,
-                                   in_dims=(None, None, 0, 0))
-        ps_grads, (_, critics) = compute_sample_grad(self._critic_params,
-                                                     self._critic_buffers,
-                                                     observation, action)
-
-        return [element for element in ps_grads], critics
 
     def _critic_train_step(
         self,
@@ -132,17 +107,21 @@ class StableTDAlgorithm(SacAlgorithm):
         action_distribution,
     ):
         bsz = self._mini_batch_size
-        self._f_critics, self._critic_params, self._critic_buffers = \
-            make_functional_with_buffers(self._critic_networks)
 
-        # Obtain per-sample gradient
-        ps_critic_grad, critics = self._get_per_sample_critic_grad(
-            inputs.observation[:-bsz], rollout_info.action[:-bsz])
+        critics, critics_state = self._compute_critics(
+            self._critic_networks,
+            inputs.observation[:-bsz],
+            rollout_info.action[:-bsz],
+            state.critics,
+            replica_min=False,
+            apply_reward_weights=False)
 
-        observation = (inputs.observation[bsz:], action[bsz:])
-        target_critics, _ = self._f_critics(self._critic_params,
-                                            self._critic_buffers, observation)
-        target_critic = target_critics.min(dim=1)[0]
+        target_critic, target_critics_state = self._compute_critics(
+            self._critic_networks,
+            inputs.observation[bsz:],
+            action[bsz:],
+            state.target_critics,
+            apply_reward_weights=False)
 
         # Prepend or Extend with zeros so that the tensors can be correctly
         # reshape to [T, B, ...]
@@ -151,16 +130,9 @@ class StableTDAlgorithm(SacAlgorithm):
         zeros = torch.zeros_like(target_critic[:bsz])
         target_critic = torch.cat((zeros, target_critic), dim=0)
 
-        for i in range(len(ps_critic_grad)):
-            zeros = torch.zeros_like(ps_critic_grad[i][:bsz])
-            ps_critic_grad[i] = torch.cat((ps_critic_grad[i], zeros), dim=0)
-
-        state = SacCriticState(critics=(), target_critics=())
-        info = StableTDCriticInfo(
-            critics=critics,
-            target_critic=target_critic,
-            per_sample_critic_grad=ps_critic_grad,
-        )
+        state = SacCriticState(critics=critics_state,
+                               target_critics=target_critics_state)
+        info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
 
@@ -183,8 +155,6 @@ class StableTDAlgorithm(SacAlgorithm):
                                                   discount, info.reward)))
 
         critic_info = info.critic
-        ps_critic_grad = critic_info.per_sample_critic_grad
-
         critic_losses = []
         td_errors = []
         for i, l in enumerate(self._critic_losses):
@@ -199,24 +169,41 @@ class StableTDAlgorithm(SacAlgorithm):
         critic_loss = math_ops.add_n(critic_losses)
         td_error = torch.stack(td_errors, dim=-1)
 
-        loss_gradients = []
-        for grad in ps_critic_grad:
-            # First calculate gradient for TD Loss
-            loss_grad = -2 * grad * common.expand_dims_as(td_error, grad)
-            loss_grad = loss_grad.mean(dim=(0, 1))
-            loss_gradients.append(loss_grad)
+        bsz = self._mini_batch_size
+        scale = td_error.shape[0] * (bsz // 2)
+        td_loss_grad_1 = torch.autograd.grad(
+            critic_info.critics[:, :bsz // 2] / scale,
+            self._critic_networks.parameters(),
+            -td_error[:, :bsz // 2] * 2,
+            create_graph=True)
 
-        stable_loss = math_ops.add_n(
-            [0.5 * (grad * grad).sum() for grad in loss_gradients])
-        stable_gradients = torch.autograd.grad(stable_loss,
-                                               self._critic_params)
+        td_loss_grad_2 = torch.autograd.grad(
+            critic_info.critics[:, bsz // 2:] / scale,
+            self._critic_networks.parameters(),
+            -td_error[:, bsz // 2:] * 2,
+            create_graph=True)
+
+        # stable_loss = math_ops.add_n([
+        #     (g1 * g2).sum() / g1.numel() for g1, g2 in zip(td_loss_grad_1, td_loss_grad_2)
+        # ])
+        # stable_gradients = torch.autograd.grad(
+        #     stable_loss, self._critic_networks.parameters())
+
+        # with torch.no_grad():
+        td_loss_gradients = [(g1 + g2) / 2
+                             for g1, g2 in zip(td_loss_grad_1, td_loss_grad_2)]
+
+        stable_loss = math_ops.add_n([
+            (g * g).sum() for g in td_loss_gradients
+        ]) / math_ops.add_n([g.numel() for g in td_loss_gradients])
+        stable_gradients = torch.autograd.grad(
+            stable_loss, self._critic_networks.parameters())
 
         surrogate_losses = []
-        for loss_grad, stable_grad, p in zip(
-                loss_gradients, stable_gradients,
-                self._critic_networks.parameters()):
+        for td_grad, stable_grad, p in zip(td_loss_gradients, stable_gradients,
+                                           self._critic_networks.parameters()):
             surrogate_losses.append(
-                ((loss_grad + self._coef * stable_grad).detach() * p).sum())
+                ((td_grad + self._coef * stable_grad).detach() * p).sum())
 
         surrogate_loss = math_ops.add_n(surrogate_losses)
 
@@ -233,7 +220,7 @@ class StableTDAlgorithm(SacAlgorithm):
             priority=priority,
             extra=StableTDCriticLossInfo(critic_loss=critic_loss /
                                          float(self._num_critic_replicas),
-                                         semi_grad_norm=stable_loss),
+                                         stable_loss=stable_loss),
         )
 
     def after_update(self, root_inputs, info: SacInfo):
