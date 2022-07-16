@@ -20,4 +20,4 @@ torch==1.8.1+cpu
 torchvision==0.9.1+cpu
 cnest==1.0.4
 gym3==0.3.3
-procgen==0.10.4
+procgen==0.10.6

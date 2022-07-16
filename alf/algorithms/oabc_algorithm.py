@@ -73,7 +73,6 @@ OabcLossInfo = namedtuple(
 @alf.configurable
 class OabcAlgorithm(OffPolicyAlgorithm):
     r"""Soft Actor and Bayesian Critic Algorithm. """
-
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -122,8 +121,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         assert actor_network_cls is not None, (
             "ActorNetwork must be provided!")
-        actor_network = actor_network_cls(
-            input_tensor_spec=observation_spec, action_spec=action_spec)
+        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
+                                          action_spec=action_spec)
 
         assert explore_network_cls is not None, (
             "ExploreNetwork must be provided!")
@@ -140,10 +139,9 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         if critic_optimizer is None:
             critic_optimizer = AdamTF(lr=3e-4)
-        critic_module = critic_module_cls(
-            input_tensor_spec=input_tensor_spec,
-            param_net=critic_network,
-            optimizer=critic_optimizer)
+        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
+                                          param_net=critic_network,
+                                          optimizer=critic_optimizer)
         target_critic_params = critic_module.particles.detach().clone()
 
         if epsilon_greedy is None:
@@ -200,8 +198,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
-        critic_loss_ctor = functools.partial(
-            critic_loss_ctor, debug_summaries=debug_summaries)
+        critic_loss_ctor = functools.partial(critic_loss_ctor,
+                                             debug_summaries=debug_summaries)
         self._critic_loss = critic_loss_ctor(name="critic_loss")
 
         self._target_entropy = _set_target_entropy(
@@ -217,7 +215,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             'TrainerConfig.unroll_length')
         self._min_entropy_regularization = self._mini_batch_size / replay_buffer_length
 
-        self._init_rollout_steps = 0
+        self._training_started = False
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
         self._entropy_regularization_weight = entropy_regularization_weight
@@ -272,7 +270,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                     action = dist_utils.epsilon_greedy_sample(
                         action_dist, epsilon_greedy)
                 else:
-                    action = dist_utils.rsample_action_distribution(action_dist)
+                    action = dist_utils.rsample_action_distribution(
+                        action_dist)
             new_state = new_state._replace(actor_network=actor_network_state)
 
         return action_dist, action, new_state
@@ -283,10 +282,9 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
-        return AlgStep(
-            output=action,
-            state=OabcState(action=action_state),
-            info=OabcInfo(action_distribution=action_dist))
+        return AlgStep(output=action,
+                       state=OabcState(action=action_state),
+                       info=OabcInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: OabcState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -294,19 +292,12 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         buffer, then this function also call ``_critic_networks`` and
         ``_target_critic_networks`` to maintain their states.
         """
-        if self._init_rollout_steps <= 10000:
-            explore = False
-        else:
-            explore = True
-
         action_dist, action, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
             epsilon_greedy=1.0,
             eps_greedy_sampling=True,
-            explore=explore)
-
-        self._init_rollout_steps += 1
+            explore=self._training_started)
 
         if self.need_full_rollout_state():
             critics_state = self._critic_module.predict_step(
@@ -314,8 +305,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                 state=state.critic.critics).state
             _, target_critics_state = self._target_critic_network(
                 (inputs.observation, action), state.critic.target_critics)
-            critic_state = OabcCriticState(
-                critics=critics_state, target_critics=target_critics_state)
+            critic_state = OabcCriticState(critics=critics_state,
+                                           target_critics=target_critics_state)
             actor_state = critics_state
             explore_state = critics_state
         else:
@@ -323,16 +314,20 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             explore_state = state.explore
             critic_state = state.critic
 
-        new_state = OabcState(
-            action=action_state,
-            actor=actor_state,
-            explore=explore_state,
-            critic=critic_state)
+        new_state = OabcState(action=action_state,
+                              actor=actor_state,
+                              explore=explore_state,
+                              critic=critic_state)
         return AlgStep(
             output=action, state=new_state, info=OabcInfo(
                 action=action))  #, explore_action_distribution=action_dist))
 
-    def _actor_train_step(self, inputs: TimeStep, state, action, log_pi):
+    def _actor_train_step(self,
+                          inputs: TimeStep,
+                          state,
+                          action,
+                          log_pi,
+                          explore_policy=False):
         critic_step = self._critic_module.predict_step(
             inputs=(inputs.observation, action), state=state)
         critics_state = critic_step.state
@@ -344,16 +339,22 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         q_mean = critics.mean(1)
         q_std = critics.std(1)
-        # q_value = q_mean
-        q_value = q_mean - self._beta_lb * q_std
+        if explore_policy:
+            q_value = q_mean + self._beta_ub * q_std
+            prefix = "explore_"
+        else:
+            # q_value = q_mean
+            q_value = q_mean - self._beta_lb * q_std
+            prefix = ""
 
         with alf.summary.scope(self._name):
-            summary_utils.add_mean_hist_summary("critics_batch_mean", q_mean)
-            summary_utils.add_mean_hist_summary("critics_std", q_std)
+            summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
+                                                q_mean)
+            summary_utils.add_mean_hist_summary(prefix + "critics_std", q_std)
 
         dqda = nest_utils.grad(action, q_value.sum())
 
-        if self._deterministic_actor:
+        if self._deterministic_actor or explore_policy:
             neg_entropy = ()
             entropy_loss = 0.
         else:
@@ -371,55 +372,15 @@ class OabcAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
-        actor_info = LossInfo(
-            loss=actor_loss + entropy_loss,
-            extra=OabcActorInfo(
-                actor_loss=actor_loss, neg_entropy=neg_entropy))
-        return critics_state, actor_info
 
-    def _explore_train_step(self, inputs: TimeStep, state, action,
-                            log_pi_explore):
-        critic_step = self._critic_module.predict_step(
-            inputs=(inputs.observation, action), state=state)
-        critics_state = critic_step.state
-        if self._deterministic_critic:
-            critics = critic_step.output
+        if explore_policy:
+            extra = OabcExploreInfo(explore_loss=actor_loss)
         else:
-            critics_dist = critic_step.output
-            critics = critics_dist.mean
+            extra = OabcActorInfo(actor_loss=actor_loss,
+                                  neg_entropy=neg_entropy)
 
-        q_mean = critics.mean(1)
-        q_std = critics.std(1)
-        q_value = q_mean + self._beta_ub * q_std
-
-        # with alf.summary.scope(self._name):
-        #     summary_utils.add_mean_hist_summary(
-        #         "critics_batch_mean", q_mean)
-        #     summary_utils.add_mean_hist_summary(
-        #         "critics_std", q_std)
-
-        dqda = nest_utils.grad(action, q_value.sum())
-
-        # cont_explore_alpha = torch.exp(self._log_explore_alpha).detach()
-        # entropy_loss = cont_explore_alpha * log_pi_explore
-        # neg_entropy = sum(nest.flatten(log_pi_explore))
-
-        def explore_loss_fn(dqda, action):
-            if self._dqda_clipping:
-                dqda = torch.clamp(dqda, -self._dqda_clipping,
-                                   self._dqda_clipping)
-            loss = 0.5 * losses.element_wise_squared_loss(
-                (dqda + action).detach(), action)
-            return loss.sum(list(range(1, loss.ndim)))
-
-        explore_loss = nest.map_structure(explore_loss_fn, dqda, action)
-        explore_loss = math_ops.add_n(nest.flatten(explore_loss))
-        explore_info = LossInfo(
-            # loss=explore_loss + entropy_loss,
-            loss=explore_loss,
-            # extra=OabcExploreInfo(explore_loss=explore_loss, neg_entropy=neg_entropy))
-            extra=OabcExploreInfo(explore_loss=explore_loss))
-        return critics_state, explore_info
+        actor_info = LossInfo(loss=actor_loss + entropy_loss, extra=extra)
+        return critics_state, actor_info
 
     def _critic_train_step(self, inputs: TimeStep, state: OabcCriticState,
                            rollout_info: OabcInfo, action):
@@ -450,14 +411,13 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                 summary_utils.add_mean_hist_summary("target_critics_std",
                                                     target_critics_std)
 
-        critic_info = OabcCriticInfo(
-            observation=inputs.observation,
-            rollout_action=rollout_info.action,
-            critic_state=state.critics,
-            target_critic=targets)
+        critic_info = OabcCriticInfo(observation=inputs.observation,
+                                     rollout_action=rollout_info.action,
+                                     critic_state=state.critics,
+                                     target_critic=targets)
 
-        state = OabcCriticState(
-            critics=(), target_critics=target_critics_state)
+        state = OabcCriticState(critics=(),
+                                target_critics=target_critics_state)
 
         return state, critic_info
 
@@ -467,19 +427,14 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             self._target_entropy)
         return sum(nest.flatten(alpha_loss))
 
-    # def _explore_alpha_train_step(self, log_pi_explore):
-    #     explore_alpha_loss = nest.map_structure(
-    #         lambda la, lp, t: la * (-lp - t).detach(),
-    #         self._log_explore_alpha, log_pi_explore,
-    #         self._target_entropy)
-    #     return sum(nest.flatten(explore_alpha_loss))
-
     def train_step(self, inputs: TimeStep, state: OabcState,
                    rollout_info: OabcInfo):
+        self._training_started = True
 
         # train actor_network
-        (action_dist, action, action_state) = self._predict_action(
-            inputs.observation, state=state.action)
+        (action_dist, action,
+         action_state) = self._predict_action(inputs.observation,
+                                              state=state.action)
         if self._deterministic_actor:
             log_pi = ()
         else:
@@ -498,8 +453,12 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         # log_pi_explore = sum(nest.flatten(log_pi_explore))
         log_pi_explore = ()
 
-        explore_state, explore_loss = self._explore_train_step(
-            inputs, state.explore, explore_action, log_pi_explore)
+        explore_state, explore_loss = self._actor_train_step(
+            inputs,
+            state.explore,
+            explore_action,
+            log_pi_explore,
+            explore_policy=True)
 
         # train critic_module
         critic_state, critic_info = self._critic_train_step(
@@ -510,13 +469,12 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             alpha_loss = ()
         else:
             alpha_loss = self._alpha_train_step(log_pi)
-        # explore_alpha_loss = self._explore_alpha_train_step(log_pi_explore)
+        # explore_alpha_loss = self._alpha_train_step(log_pi_explore)
 
-        state = OabcState(
-            action=action_state,
-            actor=actor_state,
-            explore=explore_state,
-            critic=critic_state)
+        state = OabcState(action=action_state,
+                          actor=actor_state,
+                          explore=explore_state,
+                          critic=critic_state)
         info = OabcInfo(
             reward=inputs.reward,
             step_type=inputs.step_type,
@@ -552,15 +510,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         actor_loss = info.actor
         explore_loss = info.explore
 
-        # if self._use_entropy_reward:
-        #     with torch.no_grad():
-        #         entropy_reward = nest.map_structure(
-        #             lambda la, lp: -torch.exp(la) * lp, self._log_explore_alpha,
-        #             info.log_pi_explore)
-        #         entropy_reward = sum(nest.flatten(entropy_reward))
-        #         gamma = self._critic_loss.gamma
-        #         info = info._replace(
-        #             reward=info.reward + entropy_reward * gamma)
+        assert not self._use_entropy_reward
 
         exp_size = self._unroll_length * alf.summary.get_global_counter()
         entropy_regularization = self._entropy_regularization
@@ -588,8 +538,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                                              explore_loss.loss)
             alpha_loss = ()
         else:
-            loss=math_ops.add_ignore_empty(actor_loss.loss + explore_loss.loss,
-                                           alpha_loss),
+            loss = math_ops.add_ignore_empty(
+                actor_loss.loss + explore_loss.loss, alpha_loss),
         return LossInfo(
             # loss=math_ops.add_ignore_empty(actor_loss.loss, alpha_loss),
             # loss=math_ops.add_ignore_empty(actor_loss.loss + explore_loss.loss,
@@ -644,8 +594,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                         value=critics[:, :, i, ...],
                         # if common td_targets for all ciritcs
                         target_value=targets).loss)
-                        # if separate td_target for each critic
-                        # target_value=targets[:, :, i, ...]).loss)
+                # if separate td_target for each critic
+                # target_value=targets[:, :, i, ...]).loss)
         else:
             # if common td_target for all critics
             td_targets = self._critic_loss.compute_td_target(info, targets)
@@ -659,9 +609,8 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                 critics_std = critics_dist.base_dist.stddev.reshape(
                     self._mini_batch_length, -1,
                     *critics_dist.base_dist.stddev.shape[1:])
-                value_dist = td.Normal(
-                    loc=critics_mean[:-1, :, i, ...],
-                    scale=critics_std[:-1, :, i, ...])
+                value_dist = td.Normal(loc=critics_mean[:-1, :, i, ...],
+                                       scale=critics_std[:-1, :, i, ...])
                 neg_logprob.append(-value_dist.log_prob(td_targets))
         neg_logprob = torch.stack(neg_logprob).reshape(num_particles, -1)
         return neg_logprob.mean(-1)
