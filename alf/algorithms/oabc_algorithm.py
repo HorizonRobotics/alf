@@ -13,57 +13,54 @@
 # limitations under the License.
 """Optimistic Actor and Bayesian Critic Algorithm."""
 
-from absl import logging
 import numpy as np
 import functools
 import torch
 import torch.distributions as td
 import torch.nn as nn
-from typing import Callable
 
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.sac_algorithm import _set_target_entropy
-from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep, StepType
-from alf.optimizers import Adam, AdamTF
+from alf.data_structures import TimeStep, LossInfo, namedtuple
+from alf.data_structures import AlgStep
+from alf.optimizers import AdamTF
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorNetwork, ActorDistributionNetwork
+from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 
-OabcActionState = namedtuple(
-    "OabcActionState", ["actor_network", "explore_network"], default_value=())
+OabcActionState = namedtuple("OabcActionState",
+                             ["actor_network", "explore_network"],
+                             default_value=())
 
 OabcCriticState = namedtuple("OabcCriticState", ["critics", "target_critics"])
 
-OabcState = namedtuple(
-    "OabcState", ["action", "actor", "explore", "critic"], default_value=())
+OabcState = namedtuple("OabcState", ["action", "actor", "explore", "critic"],
+                       default_value=())
 
 OabcCriticInfo = namedtuple(
     "OabcCriticInfo",
     ["observation", "rollout_action", "critic_state", "target_critic"])
 
-OabcActorInfo = namedtuple(
-    "OabcActorInfo", ["actor_loss", "neg_entropy"], default_value=())
+OabcActorInfo = namedtuple("OabcActorInfo", ["actor_loss", "neg_entropy"],
+                           default_value=())
 
-OabcExploreInfo = namedtuple(
-    "OabcExploreInfo", ["explore_loss", "neg_entropy"], default_value=())
+OabcExploreInfo = namedtuple("OabcExploreInfo",
+                             ["explore_loss", "neg_entropy"],
+                             default_value=())
 
-OabcInfo = namedtuple(
-    "OabcInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "explore_action_distribution", "actor", "explore", "critic", "alpha",
-        "explore_alpha", "log_pi", "log_pi_explore"
-    ],
-    default_value=())
+OabcInfo = namedtuple("OabcInfo", [
+    "reward", "step_type", "discount", "action", "action_distribution",
+    "explore_action_distribution", "actor", "explore", "critic", "alpha",
+    "explore_alpha", "log_pi", "log_pi_explore"
+],
+                      default_value=())
 
 OabcLossInfo = namedtuple(
     'OabcLossInfo', ['actor', 'explore', 'critic', 'alpha', 'explore_alpha'],
@@ -339,16 +336,16 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             output=action, state=new_state, info=OabcInfo(
                 action=action))  #, explore_action_distribution=action_dist))
 
-    def _get_actor_train_q_value(self, critics, explore_policy):
+    def _get_actor_train_q_value(self, critics, explore):
         q_mean = critics.mean(1)
         q_std = critics.std(1)
-        if explore_policy:
+        if explore:
             q_value = q_mean + self._beta_ub * q_std
         else:
             # q_value = q_mean
             q_value = q_mean - self._beta_lb * q_std
 
-        prefix = "explore_" if explore_policy else ""
+        prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
             summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
                                                 q_mean)
@@ -361,7 +358,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                           state,
                           action,
                           log_pi,
-                          explore_policy=False):
+                          explore=False):
         critic_step = self._critic_module.predict_step(
             inputs=(inputs.observation, action), state=state)
         critics_state = critic_step.state
@@ -371,11 +368,11 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             critics_dist = critic_step.output
             critics = critics_dist.mean
 
-        q_value = self._get_actor_train_q_value(critics, explore_policy)
+        q_value = self._get_actor_train_q_value(critics, explore)
 
         dqda = nest_utils.grad(action, q_value.sum())
 
-        if self._deterministic_actor or explore_policy:
+        if self._deterministic_actor or explore:
             neg_entropy = ()
             entropy_loss = 0.
         else:
@@ -394,7 +391,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
 
-        if explore_policy:
+        if explore:
             extra = OabcExploreInfo(explore_loss=actor_loss)
         else:
             extra = OabcActorInfo(actor_loss=actor_loss,
@@ -477,12 +474,11 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         # log_pi_explore = sum(nest.flatten(log_pi_explore))
         log_pi_explore = ()
 
-        explore_state, explore_loss = self._actor_train_step(
-            inputs,
-            state.explore,
-            explore_action,
-            log_pi_explore,
-            explore_policy=True)
+        explore_state, explore_loss = self._actor_train_step(inputs,
+                                                             state.explore,
+                                                             explore_action,
+                                                             log_pi_explore,
+                                                             explore=True)
 
         # train critic_module
         critic_state, critic_info = self._critic_train_step(

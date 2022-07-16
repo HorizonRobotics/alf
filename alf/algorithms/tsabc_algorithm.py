@@ -18,17 +18,12 @@ import torch
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.oabc_algorithm import OabcAlgorithm
-from alf.data_structures import namedtuple
+from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm
 from alf.optimizers import AdamTF
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils, summary_utils
-
-TsabcActionState = namedtuple("TsabcActionState",
-                              ["actor_network", "explore_network"],
-                              default_value=())
 
 
 @alf.configurable
@@ -85,39 +80,39 @@ class TsabcAlgorithm(OabcAlgorithm):
         self._num_critic_replicas = num_critic_replicas
 
         super().__init__(
-                 observation_spec=observation_spec,
-                 action_spec=action_spec,
-                 reward_spec=reward_spec,
-                 actor_network_cls=actor_network_cls,
-                 explore_network_cls=explore_network_cls,
-                 critic_module_cls=critic_module_cls,
-                 deterministic_actor=deterministic_actor,
-                 deterministic_critic=deterministic_critic,
-                 reward_weights=reward_weights,
-                 epsilon_greedy=epsilon_greedy,
-                 use_entropy_reward=use_entropy_reward,
-                 env=env,
-                 config=config,
-                 critic_loss_ctor=critic_loss_ctor,
-                 beta_ub=beta_ub,
-                 beta_lb=beta_lb,
-                 common_td_target=common_td_target,
-                 entropy_regularization_weight=entropy_regularization_weight,
-                 entropy_regularization=entropy_regularization,
-                 target_entropy=target_entropy,
-                 initial_log_alpha=initial_log_alpha,
-                 max_log_alpha=max_log_alpha,
-                 target_update_tau=target_update_tau,
-                 target_update_period=target_update_period,
-                 dqda_clipping=dqda_clipping,
-                 actor_optimizer=actor_optimizer,
-                 explore_optimizer=explore_optimizer,
-                 critic_optimizer=critic_optimizer,
-                 alpha_optimizer=alpha_optimizer,
-                 explore_alpha_optimizer=explore_alpha_optimizer,
-                 debug_summaries=debug_summaries,
-                 name=name)
-        
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            reward_spec=reward_spec,
+            actor_network_cls=actor_network_cls,
+            explore_network_cls=explore_network_cls,
+            critic_module_cls=critic_module_cls,
+            deterministic_actor=deterministic_actor,
+            deterministic_critic=deterministic_critic,
+            reward_weights=reward_weights,
+            epsilon_greedy=epsilon_greedy,
+            use_entropy_reward=use_entropy_reward,
+            env=env,
+            config=config,
+            critic_loss_ctor=critic_loss_ctor,
+            beta_ub=beta_ub,
+            beta_lb=beta_lb,
+            common_td_target=common_td_target,
+            entropy_regularization_weight=entropy_regularization_weight,
+            entropy_regularization=entropy_regularization,
+            target_entropy=target_entropy,
+            initial_log_alpha=initial_log_alpha,
+            max_log_alpha=max_log_alpha,
+            target_update_tau=target_update_tau,
+            target_update_period=target_update_period,
+            dqda_clipping=dqda_clipping,
+            actor_optimizer=actor_optimizer,
+            explore_optimizer=explore_optimizer,
+            critic_optimizer=critic_optimizer,
+            alpha_optimizer=alpha_optimizer,
+            explore_alpha_optimizer=explore_alpha_optimizer,
+            debug_summaries=debug_summaries,
+            name=name)
+
         self._explore_networks = self._explore_network
 
     def _make_modules(self, observation_spec, action_spec, reward_spec,
@@ -134,7 +129,8 @@ class TsabcAlgorithm(OabcAlgorithm):
             "ExploreNetwork must be provided!")
         explore_network = explore_network_cls(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        explore_network = explore_network.make_parallel(self._num_critic_replicas)
+        explore_network = explore_network.make_parallel(
+            self._num_critic_replicas)
         # explore_networks = nn.ModuleList()
         # for i in range(num_critic_replicas):
         #     explore_networks.append(explore_network_cls(
@@ -156,22 +152,23 @@ class TsabcAlgorithm(OabcAlgorithm):
 
         if critic_optimizer is None:
             critic_optimizer = AdamTF(lr=3e-4)
-        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
-                                          param_net=critic_network,
-                                          num_particles=self._num_critic_replicas,
-                                          optimizer=critic_optimizer)
+        critic_module = critic_module_cls(
+            input_tensor_spec=input_tensor_spec,
+            param_net=critic_network,
+            num_particles=self._num_critic_replicas,
+            optimizer=critic_optimizer)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
     def _predict_action(self,
                         observation,
-                        state: TsabcActionState,
+                        state: OabcActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
                         explore=False,
                         train=False):
 
-        new_state = TsabcActionState()
+        new_state = OabcActionState()
         if explore:
             # action_dist, explore_network_state = self._explore_network(
             #     observation, state=state.explore_network)
@@ -226,15 +223,15 @@ class TsabcAlgorithm(OabcAlgorithm):
 
         return action_dist, action, new_state
 
-    def _get_actor_train_q_value(self, critics, explore_policy):
-        if explore_policy:
-            q_mean = critics.mean(1)
-            q_std = critics.std(1)
-            q_value = q_mean + self._beta_ub * q_std
-        else:
+    def _get_actor_train_q_value(self, critics, explore):
+        q_mean = critics.mean(1)
+        q_std = critics.std(1)
+        if explore:
             q_value = critics
+        else:
+            q_value = q_mean - self._beta_lb * q_std
 
-        prefix = "explore_" if explore_policy else ""
+        prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
             summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
                                                 q_mean)
