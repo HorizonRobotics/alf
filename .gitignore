@@ -127,5 +127,5 @@ data_c10/
 .direnv
 
 wandb/
-debug_alf
+debug
 .vscode/
