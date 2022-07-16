@@ -70,7 +70,7 @@ class TsabcAlgorithm(OabcAlgorithm):
             deterministic_actor
             deterministic_critic
             beta_ub (float): parameter for computing the upperbound of Q value:
-                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
+                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
             beta_lb
             explore_optimizer
             explore_alpha_optimizer
@@ -129,8 +129,6 @@ class TsabcAlgorithm(OabcAlgorithm):
             "ExploreNetwork must be provided!")
         explore_network = explore_network_cls(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        explore_network = explore_network.make_parallel(
-            self._num_critic_replicas)
         # explore_networks = nn.ModuleList()
         # for i in range(num_critic_replicas):
         #     explore_networks.append(explore_network_cls(
@@ -157,6 +155,9 @@ class TsabcAlgorithm(OabcAlgorithm):
             param_net=critic_network,
             num_particles=self._num_critic_replicas,
             optimizer=critic_optimizer)
+
+        explore_network = explore_network.make_parallel(
+            self._num_critic_replicas)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
