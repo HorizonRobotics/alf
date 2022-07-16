@@ -90,6 +90,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
                  critic_loss_ctor=None,
                  beta_ub=1.,
                  beta_lb=1.,
+                 common_td_target: bool = True,
                  entropy_regularization_weight=1.,
                  entropy_regularization=None,
                  target_entropy=None,
@@ -218,6 +219,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         self._training_started = False
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
+        self._common_td_target = common_td_target
         self._entropy_regularization_weight = entropy_regularization_weight
         self._entropy_regularization = entropy_regularization
 
@@ -393,12 +395,13 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             target_critics = target_critics_dist.mean
 
         # if use common td_target for all critic
-        target_critics_mean = target_critics.mean(1)
-        target_critics_std = target_critics.std(1)
-        targets = target_critics_mean - self._beta_lb * target_critics_std
-
-        # if use separate td_target for each critic
-        # targets = target_critics
+        if self._common_td_target:
+            target_critics_mean = target_critics.mean(1)
+            target_critics_std = target_critics.std(1)
+            targets = target_critics_mean - self._beta_lb * target_critics_std
+        else:
+            # if use separate td_target for each critic
+            targets = target_critics
 
         targets = targets.detach()
 
@@ -588,21 +591,22 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             critics = critics.reshape(self._mini_batch_length, -1,
                                       *critics.shape[1:])
             for i in range(num_particles):
+                if self._common_td_target:
+                    target_value = targets
+                else:
+                    target_value = targets[:, :, i, ...]
                 neg_logprob.append(
-                    self._critic_loss(
-                        info=info,
-                        value=critics[:, :, i, ...],
-                        # if common td_targets for all ciritcs
-                        target_value=targets).loss)
-                # if separate td_target for each critic
-                # target_value=targets[:, :, i, ...]).loss)
+                    self._critic_loss(info=info,
+                                      value=critics[:, :, i, ...],
+                                      target_value=target_value).loss)
         else:
-            # if common td_target for all critics
-            td_targets = self._critic_loss.compute_td_target(info, targets)
+            if self._common_td_target:
+                td_targets = self._critic_loss.compute_td_target(info, targets)
             for i in range(num_particles):
-                # if separate td_target for each critic
-                # td_targets = self._critic_loss.compute_td_target(
-                #     info, targets[:, :, i, ...])
+                if not self._common_td_target:
+                    td_targets = self._critic_loss.compute_td_target(
+                        info, targets[:, :, i, ...])
+
                 critics_mean = critics_dist.base_dist.mean.reshape(
                     self._mini_batch_length, -1,
                     *critics_dist.base_dist.mean.shape[1:])
