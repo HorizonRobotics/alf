@@ -120,29 +120,12 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         """
         assert action_spec.is_continuous, "Only continuous action is supported"
 
-        assert actor_network_cls is not None, (
-            "ActorNetwork must be provided!")
-        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
-                                          action_spec=action_spec)
+        actor_network, explore_network, critic_module, target_critic_network = \
+            self._make_modules(observation_spec, action_spec, reward_spec,
+                               actor_network_cls, explore_network_cls,
+                               critic_module_cls, critic_optimizer,
+                               deterministic_critic)
 
-        assert explore_network_cls is not None, (
-            "ExploreNetwork must be provided!")
-        explore_network = explore_network_cls(
-            input_tensor_spec=observation_spec, action_spec=action_spec)
-
-        input_tensor_spec = (observation_spec, action_spec)
-        critic_network = CriticDistributionParamNetwork(
-            input_tensor_spec=input_tensor_spec,
-            output_tensor_spec=reward_spec,
-            deterministic=deterministic_critic)
-        target_critic_network = critic_network.copy(
-            name='TargetCriticDistributionParamNetwork')
-
-        if critic_optimizer is None:
-            critic_optimizer = AdamTF(lr=3e-4)
-        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
-                                          param_net=critic_network,
-                                          optimizer=critic_optimizer)
         target_critic_params = critic_module.particles.detach().clone()
 
         if epsilon_greedy is None:
@@ -166,10 +149,10 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=OabcState(
                 action=action_state_spec,
-                actor=critic_network.state_spec,
-                explore=critic_network.state_spec,
+                actor=target_critic_network.state_spec,
+                explore=target_critic_network.state_spec,
                 critic=OabcCriticState(
-                    critics=critic_network.state_spec,
+                    critics=target_critic_network.state_spec,
                     target_critics=target_critic_network.state_spec)),
             predict_state_spec=OabcState(action=action_state_spec),
             reward_weights=reward_weights,
@@ -242,13 +225,45 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
+    def _make_modules(self, observation_spec, action_spec, reward_spec,
+                      actor_network_cls, explore_network_cls,
+                      critic_module_cls, critic_optimizer,
+                      deterministic_critic):
+
+        assert actor_network_cls is not None, (
+            "ActorNetwork must be provided!")
+        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
+                                          action_spec=action_spec)
+
+        assert explore_network_cls is not None, (
+            "ExploreNetwork must be provided!")
+        explore_network = explore_network_cls(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
+
+        input_tensor_spec = (observation_spec, action_spec)
+        critic_network = CriticDistributionParamNetwork(
+            input_tensor_spec=input_tensor_spec,
+            output_tensor_spec=reward_spec,
+            deterministic=deterministic_critic)
+        target_critic_network = critic_network.copy(
+            name='TargetCriticDistributionParamNetwork')
+
+        if critic_optimizer is None:
+            critic_optimizer = AdamTF(lr=3e-4)
+        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
+                                          param_net=critic_network,
+                                          optimizer=critic_optimizer)
+
+        return actor_network, explore_network, critic_module, target_critic_network
+
     def _predict_action(self,
                         observation,
                         state: OabcActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
-                        explore=False):
-
+                        explore=False,
+                        train=False):
+        del train
         new_state = OabcActionState()
         if explore:
             # action_dist, explore_network_state = self._explore_network(
@@ -324,6 +339,23 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             output=action, state=new_state, info=OabcInfo(
                 action=action))  #, explore_action_distribution=action_dist))
 
+    def _get_actor_train_q_value(self, critics, explore_policy):
+        q_mean = critics.mean(1)
+        q_std = critics.std(1)
+        if explore_policy:
+            q_value = q_mean + self._beta_ub * q_std
+        else:
+            # q_value = q_mean
+            q_value = q_mean - self._beta_lb * q_std
+
+        prefix = "explore_" if explore_policy else ""
+        with alf.summary.scope(self._name):
+            summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
+                                                q_mean)
+            summary_utils.add_mean_hist_summary(prefix + "critics_std", q_std)
+
+        return q_value
+
     def _actor_train_step(self,
                           inputs: TimeStep,
                           state,
@@ -339,20 +371,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             critics_dist = critic_step.output
             critics = critics_dist.mean
 
-        q_mean = critics.mean(1)
-        q_std = critics.std(1)
-        if explore_policy:
-            q_value = q_mean + self._beta_ub * q_std
-            prefix = "explore_"
-        else:
-            # q_value = q_mean
-            q_value = q_mean - self._beta_lb * q_std
-            prefix = ""
-
-        with alf.summary.scope(self._name):
-            summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
-                                                q_mean)
-            summary_utils.add_mean_hist_summary(prefix + "critics_std", q_std)
+        q_value = self._get_actor_train_q_value(critics, explore_policy)
 
         dqda = nest_utils.grad(action, q_value.sum())
 
@@ -450,7 +469,9 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         # train explore_network
         (explore_action_dist, explore_action, explore_action_state) = \
             self._predict_action(
-                inputs.observation, state=state.action, explore=True)
+                inputs.observation, state=state.action, explore=True, train=True)
+        action_state = action_state._replace(
+            explore_network=explore_action_state.explore_network)
         # log_pi_explore = nest.map_structure(lambda dist, a: dist.log_prob(a),
         #                                     explore_action_dist, explore_action)
         # log_pi_explore = sum(nest.flatten(log_pi_explore))
@@ -587,7 +608,6 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         neg_logprob = []
         if self._deterministic_critic:
             critics = critics_dist.squeeze(-1)
-            critics_state = critic_step.state
             critics = critics.reshape(self._mini_batch_length, -1,
                                       *critics.shape[1:])
             for i in range(num_particles):
