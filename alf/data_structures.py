@@ -480,6 +480,10 @@ LossInfo = namedtuple(
         # config.priority_replay_alpha.  If not empty, its shape should be (B,).
         "priority",
 
+        # Gradient noise scale (scalar) that indicates the noise-to-signal value
+        # in the gradients. A smaller value means more effective grad steps.
+        "gns",
+
         # per-sample labels used for summarizing loss of samples within each
         # category in the batch. Its shape should be the same as ``loss``.
         "batch_label"

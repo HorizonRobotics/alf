@@ -53,6 +53,9 @@ setup(
         'torchtext==0.9.1',
         'cnest==1.0.4',
     ],  # And any other dependencies alf needs
+    extras_require={
+        'metadrive': ['metadrive-simulator==0.2.5.1', ],
+    },
     package_data={'': ['*.gin']},
     packages=find_packages(),
 )

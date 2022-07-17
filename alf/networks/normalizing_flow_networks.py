@@ -550,3 +550,9 @@ class _RealNVPTransform(td.Transform):
         dim = self.domain.event_dim
         shape = jacob_diag.shape[:-dim] + (-1, )
         return jacob_diag.reshape(shape).sum(-1)
+
+    def with_cache(self, cache_size=1):
+        if self._cache_size == cache_size:
+            return self
+        builder = self.get_builder()
+        return builder(cache_size=cache_size)

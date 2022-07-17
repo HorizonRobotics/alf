@@ -130,7 +130,7 @@ class MIEstimator(Algorithm):
             optimzer (torch.optim.Optimzer): optimizer
             estimator_type (str): one of 'DV', 'KLD' or 'JSD'
             averager (EMAverager): averager used to maintain a moving average
-                of :math:`exp(T)`. Only used for 'DV' estimator. If None, 
+                of :math:`exp(T)`. Only used for 'DV' estimator. If None,
                 a ScalarAdaptiveAverager will be created.
             name (str): name of this estimator
         """
@@ -255,8 +255,8 @@ class MIEstimator(Algorithm):
             y1 = y_distribution.sample()
             y1 = batch_squash.flatten(y1)
 
-        log_ratio = self._model([x, y])[0]
-        t1 = self._model([x1, y1])[0]
+        log_ratio = self._model([x, y])[0].squeeze(-1)
+        t1 = self._model([x1, y1])[0].squeeze(-1)
 
         if self._type == 'DV':
             ratio = torch.min(t1, torch.tensor(20.)).exp()

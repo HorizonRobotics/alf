@@ -64,6 +64,8 @@ from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
+from alf.config_util import get_config_value
+from alf.config_helpers import get_env, parse_config_only
 
 
 def _define_flags():
@@ -74,6 +76,9 @@ def _define_flags():
     flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
     flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
+    flags.DEFINE_bool(
+        'force_torch_deterministic', True,
+        'torch.use_deterministic_algorithms when random_seed is set')
     flags.DEFINE_bool('store_snapshot', True,
                       'Whether store an ALF snapshot before training')
     flags.DEFINE_enum(
@@ -167,7 +172,10 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         PerProcessContext().finalize()
 
         # Parse the configuration file, which will also implicitly bring up the environments.
-        common.parse_conf_file(conf_file)
+        # common.parse_conf_file(conf_file)
+        get_env()
+        if alf.get_config_value("TrainerConfig.use_wandb"):
+            common.setup_wandb(root_dir)
         _train(root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
@@ -188,20 +196,35 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         alf.close_env()
 
 
+def create_log_dir(conf_file, conf_params):
+    conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+    alf.pre_config({'TrainerConfig.conf_name': conf_name})
+    parse_config_only(conf_file, conf_params)
+
+    conf = policy_trainer.TrainerConfig(root_dir=FLAGS.root_dir)
+    env_name = get_config_value("create_environment.env_name")
+    version = conf.version
+    seed = conf.random_seed
+
+    return os.path.join(common.abs_path(FLAGS.root_dir), conf_name, version,
+                        env_name, f'seed_{seed}')
+
+
 def main(_):
-    root_dir = common.abs_path(FLAGS.root_dir)
+    conf_params = getattr(flags.FLAGS, 'conf_param', None)
+    conf_file = common.get_conf_file()
+    root_dir = create_log_dir(conf_file, conf_params)
     os.makedirs(root_dir, exist_ok=True)
 
     if FLAGS.store_snapshot:
         common.generate_alf_root_snapshot(common.alf_root(), root_dir)
-
-    conf_file = common.get_conf_file()
 
     # FLAGS.distributed is guaranteed to be one of the possible values.
     if FLAGS.distributed == 'none':
         training_worker(
             rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
     elif FLAGS.distributed == 'multi-gpu':
+        assert False, "Not Condsidered yet!"
         world_size = torch.cuda.device_count()
 
         if world_size == 1:

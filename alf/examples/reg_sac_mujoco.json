@@ -1,0 +1,25 @@
+{
+    "desc": [
+        "All MuJoCo tasks with 5 seeds on each environment"
+    ],
+    "version": "stable-rl",
+    "use_gpu": true,
+    "gpus": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+    ],
+    "max_worker_num": 12,
+    "repeats": 1,
+    "parameters": {
+        "create_environment.env_name": [
+            "HalfCheetah-v2",
+            "Walker2d"
+        ],
+        "TrainerConfig.random_seed": "list(range(3))"
+    }
+}

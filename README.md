@@ -22,6 +22,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[A2C](alf/algorithms/actor_critic_algorithm.py)|On-policy RL|[OpenAI Baselines: ACKTR & A2C](https://openai.com/blog/baselines-acktr-a2c/)|
 |[PPO](alf/algorithms/ppo_algorithm.py)|On-policy RL|Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)|
 |[PPG](alf/algorithms/ppo_algorithm.py)|On-policy RL|Cobbe et al. "Phasic Policy Gradient" [arXiv:2009.04416](https://arxiv.org/abs/2009.04416)|
+|[DDQN](alf/algorithms/dqn_algorithm.py)|Off-policy RL|Hasselt et al. "Deep Reinforcement Learning with Double Q-learning" [arXiv:1509.06461](https://arxiv.org/abs/1509.06461)|
 |[DDPG](alf/algorithms/ddpg_algorithm.py)|Off-policy RL|Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)|
 |[QRSAC](alf/algorithms/qrsac_algorithm.py)|Off-policy RL|Dabney et al. "Distributional Reinforcement Learning with Quantile Regression" [arXiv:1710.10044](https://arxiv.org/abs/1710.10044)|
 |[SAC](alf/algorithms/sac_algorithm.py)|Off-policy RL|Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)|
@@ -138,6 +139,11 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 * [MetaDrive](alf/examples/metadrive/ppg_metadrive_conf.py). Learning to drive on randomly generated map with interaction on the [MetaDrive](https://metadriverse.github.io/metadrive/) simulator, with BEV as input. Need to install python package [metadrive-simulator](https://github.com/metadriverse/metadrive).
 
   <img src="alf/examples/metadrive/ppg_metadrive.jpg" width="300" height="200" alt="ppg_metadrive-curve"/> <img src="alf/examples/metadrive/ppg_metadrive.gif" height="200" alt="ppg-metadrive-video"/>
+
+### DDQN
+* [DDQN on Atari](alf/examples/dqn_breakout_conf.py).  Game "Q*Bert" performance.
+
+  <img src="alf/examples/dqn_breakout_conf_Qbert.png" width = "600" height ="200" alt="Q*Bert-DDQN-training-curve"/>
 
 ### DDPG
 * [FetchSlide (sparse rewards)](alf/examples/ddpg_fetchslide_conf.py). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This example reproduces the performance of vanilla DDPG reported in the OpenAI's Robotics environment [paper](https://arxiv.org/pdf/1802.09464.pdf). Our implementation doesn't use MPI, but obtains (evaluation) performance on par with the original implementation. (*The original MPI implementation has 19 workers, each worker containing 2 environments for rollout and sampling a minibatch of size 256 from its replay buffer for computing gradients. All the workers' gradients will be summed together for a centralized optimizer step. Our implementation simply samples a minibatch of size 5000 from a common replay buffer per optimizer step.*) The training took about 1 hour with 38 (19*2) parallel environments on a single GPU.

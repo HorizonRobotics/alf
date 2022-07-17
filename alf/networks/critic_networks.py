@@ -76,7 +76,9 @@ class CriticNetwork(EncodingNetwork):
                  observation_action_combiner=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
+                 last_activation=math_ops.identity,
                  kernel_initializer=None,
+                 last_kernel_initializer=None,
                  use_fc_bn=False,
                  use_naive_parallel_network=False,
                  name="CriticNetwork"):
@@ -110,9 +112,13 @@ class CriticNetwork(EncodingNetwork):
                 actions.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            last_activation (nn.functional): activation function of the
+                additional layer
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a variance_scaling_initializer
                 with uniform distribution will be used.
+            last_kernel_initializer (Callable): initializer for the last. If none is
+                provided a torch.nn.init.uniform_ will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
             use_naive_parallel_network (bool): if True, will use
@@ -156,8 +162,9 @@ class CriticNetwork(EncodingNetwork):
             use_fc_bn=use_fc_bn,
             name=name + ".action_encoder")
 
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.003, b=0.003)
+        if last_kernel_initializer is None:
+            last_kernel_initializer = functools.partial(
+                torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         if observation_action_combiner is None:
             observation_action_combiner = alf.layers.NestConcat(dim=-1)
@@ -171,7 +178,7 @@ class CriticNetwork(EncodingNetwork):
             activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=output_tensor_spec.numel,
-            last_activation=math_ops.identity,
+            last_activation=last_activation,
             use_fc_bn=use_fc_bn,
             last_kernel_initializer=last_kernel_initializer,
             name=name)

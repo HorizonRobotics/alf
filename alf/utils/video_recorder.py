@@ -64,6 +64,10 @@ class VideoRecorder(GymVideoRecorder):
         self._blank_frame = None
         self._pred_info_img_shapes = None
 
+        # two caches for lazy rendering of environmental frames and pred_info
+        self._frame_cache = []
+        self._pred_info_cache = []
+
     def capture_frame(self, pred_info=None, is_last_step=False):
         """Render ``self.env`` and add the resulting frame to the video. Also
         plot Image instances extracted from prediction info of ``policy_step``.
@@ -105,6 +109,55 @@ class VideoRecorder(GymVideoRecorder):
                     self._blank_frame = np.zeros_like(frame)
                 for _ in range(self._append_blank_frames):
                     self._encode_frame(self._blank_frame)
+
+            assert not self.broken, (
+                "The output file is broken! Check warning messages.")
+
+    def capture_env_frame(self):
+        """Return un-encoded env frame
+        """
+        if not self.functional: return
+        logger.debug('Capturing video frame: path=%s', self.path)
+        render_mode = 'rgb_array'
+        frame = self.env.render(mode=render_mode)
+
+        assert frame is not None
+        return frame
+
+    def cache_frame_and_pred_info(self, frame, pred_info=None):
+        """Cache the input frame and pred_info for video generation later.
+
+        Args:
+            frame (np.array): the environmental frame.
+            pred_info (None|nest): prediction step info for displaying: any Image
+                instance in the info nest will be recorded.
+        """
+        self._frame_cache.append(frame)
+        self._pred_info_cache.append(pred_info)
+
+    def clear_cache(self):
+        """Clear the cached contents.
+        """
+        self._frame_cache = []
+        self._pred_info_cache = []
+
+    def generate_video_from_cache(self):
+        """Generate the video from the cached frames. Also add the plot Image
+        instances extracted from cached prediction info.
+        The cache will be reset to empty afterwards.
+        """
+        for i, (frame, pred_info) in enumerate(
+                zip(self._frame_cache, self._pred_info_cache)):
+            frame = self._plot_pred_info(frame, pred_info)
+            self._encode_frame(frame)
+
+        self.clear_cache()
+
+        if self._append_blank_frames > 0:
+            if self._blank_frame is None:
+                self._blank_frame = np.zeros_like(frame)
+            for _ in range(self._append_blank_frames):
+                self._encode_frame(self._blank_frame)
 
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")

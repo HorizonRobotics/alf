@@ -49,17 +49,21 @@ alf.config(
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_huber_loss)
 
 # training config
-alf.config(
-    'TrainerConfig',
-    initial_collect_steps=1000,
-    mini_batch_length=2,
-    mini_batch_size=64,
-    unroll_length=1,
-    num_updates_per_train_iter=1,
-    num_iterations=10000,
-    num_checkpoints=5,
-    evaluate=False,
-    debug_summaries=True,
-    summarize_grads_and_vars=1,
-    summary_interval=100,
-    replay_buffer_length=100000)
+alf.config('TrainerConfig',
+           version='debug-gs',
+           use_wandb=True,
+           entity="jiachenli",
+           project="stable-rl",
+           initial_collect_steps=1000,
+           mini_batch_length=2,
+           mini_batch_size=64,
+           unroll_length=1,
+           num_updates_per_train_iter=1,
+           num_iterations=10000,
+           num_checkpoints=5,
+           evaluate=False,
+           debug_summaries=True,
+           summarize_grads_and_vars=1,
+           summarize_gradient_noise_scale=True,
+           summary_interval=100,
+           replay_buffer_length=100000)

@@ -19,6 +19,11 @@ import cv2
 from enum import IntEnum, auto, Enum
 import math
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # 'Agg' no need for xserver!
+import matplotlib.pyplot as plt
+# Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
+plt.style.use('seaborn-dark')
 
 import weakref
 import threading
@@ -2050,3 +2055,498 @@ class BEVSensor(SensorBase):
         For example: top leftmost location will be a pixel at (0, 0).
         """
         return self._map_handler.world_to_pixel(location, projective)
+
+
+# ==============================================================================
+# -- Obstacle Detection Sensor -------------------------------------------------
+# ==============================================================================
+
+
+@alf.configurable
+class ObstacleDetectionSensor(SensorBase):
+    """ObstacleDetectionSensor.
+        A sensor that detects the frontal obstacle and use the distance as
+        the observation.
+        It registers an event every time the parent actor has an obstacle ahead.
+        In order to anticipate obstacles, the sensor creates a capsular shape
+        ahead of the parent vehicle and uses it to check for collisions
+        (https://carla.readthedocs.io/en/latest/ref_sensors/#obstacle-detector).
+        This detection technique is also known as
+        `sphere tracing <https://graphics.stanford.edu/courses/cs348b-20-spring-content/uploads/hart.pdf>`_
+
+    """
+
+    def __init__(self,
+                 parent_actor,
+                 xyz=(2.0, 0., 1.7),
+                 pyr=(0., 0., 0.),
+                 distance=250,
+                 hit_radius=1,
+                 only_dynamics=False,
+                 debug_message=False):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor.
+            xyz (tuple[float]): the attachment position (x, y, z) relative to
+                the parent_actor. This value should be set properly to put the
+                sensor on the windshield of the actor to avoid detection of
+                collision with the actor itself. A default value of (2.0, 0., 1.7)
+                is provided for typical sedan vehicles. For another type of
+                vehicle that is much larger, a larger x value should be used.
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
+                degrees.
+            distance (float): distance within which to be considerred for
+                obstacle detection.
+            hit_radius (float): radius of the trace in sphere tracing.
+            only_dynamics (bool): If True, the trace will only take for dynamic
+                objects into consideration; otherwise, will also consider
+                static objects.
+            debug_message (bool): If True, will log the debug message.
+        """
+
+        self._parent = parent_actor
+        self.distance = None
+        self._event_count = 0
+        world = self._parent.get_world()
+        bp = world.get_blueprint_library().find('sensor.other.obstacle')
+        bp.set_attribute('distance', str(distance))
+        bp.set_attribute('hit_radius', str(hit_radius))
+        bp.set_attribute('debug_linetrace', 'false')
+        if only_dynamics:
+            bp.set_attribute('only_dynamics', 'true')
+        else:
+            bp.set_attribute('only_dynamics', 'false')
+
+        self._sensor_transform = carla.Transform(
+            carla.Location(*xyz), carla.Rotation(*pyr))
+        self._sensor = world.spawn_actor(
+            bp, self._sensor_transform, attach_to=self._parent)
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self._sensor.listen(lambda event: ObstacleDetectionSensor._on_obstacle(
+            weak_self, event))
+        self._distance = distance  # init as a large value
+        self._debug_message = debug_message
+
+    @staticmethod
+    def _on_obstacle(weak_self, event):
+        self = weak_self()
+        if not self:
+            return
+        self._distance = event.distance
+        self._event_count += 1
+
+        if self._debug_message:
+            logging.info(
+                "Event %s, in line of sight with %s at distance %u" %
+                (self._event_count, event.other_actor.type_id, event.distance))
+
+    def observation_spec(self):
+        return alf.TensorSpec((1, ))
+
+    def observation_desc(self):
+        return ("obstacle distance in front of the vehicle")
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        Args:
+            current_frame (int): current frame number.
+        Returns:
+            np.ndarray: 1D vector contains the distance to the frontal obstacle.
+        """
+        return np.array([self._distance]).astype(np.float32)
+
+
+# ==============================================================================
+# -- Dynamic Object Sensor -----------------------------------------------------
+# ==============================================================================
+
+
+@alf.configurable
+class DynamicObjectSensor(SensorBase):
+    """DynamicObjectSensor.
+        A sensor that perceives the dynamic objects around the ego agent.
+    """
+
+    def __init__(self,
+                 parent_actor,
+                 alf_world,
+                 history_idx=[-16, -11, -6, -1],
+                 object_filter='vehicle.*',
+                 max_object_number=3,
+                 with_ego_history=True,
+                 view_radius=100):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+            alf_world (World): the world object keeping all relevant data and
+                some utility functions.
+            navigation_sensor (str): the navigation sensor associated with the
+                `parent_actor`
+            history_idx (list[int]): a list of numbers representing the indices
+                of the history information to be rendered for all dynamic objects.
+                For example, we can set `history_idx=[-1]` for keep only the
+                most recent observation or `history_idx=[-11, -1]` for both the
+                lastest and also the one 10 steps earlier.
+            object_filter (str): a string representing the type of dynamic
+                objects to be perceived, following the
+                `blueprint filter format <https://carla.readthedocs.io/en/0.9.8/core_actors/#blueprints>`_.
+                By default, surrounding dynamic vehicles are perceived.
+            max_object_number (int): the maximum number of dynamic objects that
+                can be perceived within one time step, including ego vehicle if
+                ``with_ego_history`` is True; otherwise, the maximum number of
+                non-ego dynamic objects that can be perfriced in one time step.
+                When the number of dynamic objects is larger than
+                ``max_object_number``, those that are far from the ego agent
+                will be excluded from the observation until the condition on
+                ``max_object_number`` is satisfied.
+            with_ego_history (bool): whether to include ego history.
+            view_radius (float): the radius of the view/perceivable field of
+                the sensor (meter).
+        """
+
+        super().__init__(parent_actor)
+        # descending order, to ensure the active object in observation
+        # is based on most recent information
+        self._history_idx = sorted(history_idx, reverse=True)
+        self._history_queue_struct = deque(maxlen=abs(history_idx[-1]))
+        self._with_ego_history = with_ego_history
+
+        self._object_filter = object_filter
+        self._max_object_numberr = max_object_number
+
+        # dim3 = 1d "presence" + 2d [x, y]
+        self._vehicle_fea_dim = 3
+        self._view_radius = view_radius
+        self._world = alf_world._world
+
+        self._prev_obs = None
+        self._current_obs = None
+
+        self._num_points = 1  # todo: extend to full bounding box
+        self._observation_spec = alf.TensorSpec([
+            len(history_idx), self._max_object_number, self._num_points,
+            self._vehicle_fea_dim
+        ])
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def observation_desc(self):
+        return (
+            "4-D vector of [history length, max object number, "
+            " number of points for each object, feature dim for each point].")
+
+    def _get_actor_bounding_box(self, actor_filter):
+        actor_ids = []
+        bounding_boxes = []
+        for vehicle in self._world.get_actors().filter(actor_filter):
+            bounding_boxes.append(
+                (vehicle.get_location(), vehicle.bounding_box,
+                 vehicle.get_transform()))
+            actor_ids.append(vehicle.id)
+        return bounding_boxes, actor_ids
+
+    def _get_objects_within_region(self):
+        """Get relevant objects within a region around the ev and push them
+        into a queue.
+        """
+        ev_transform = self._parent.get_transform()
+        ev_loc = ev_transform.location
+
+        ev_bbox = self._parent.bounding_box
+        ev_bb_ext = carla.Vector3D(ev_bbox.extent)
+
+        def is_within_distance(loc):
+            distance = np.sqrt((ev_loc.x - loc.x)**2 + (ev_loc.y - loc.y)**2)
+            within_distance = (distance < self._distance_threshold)
+            c_ev = abs(ev_loc.x - loc.x) < 1.0 and abs(ev_loc.y - loc.y) < 1.0
+            same_plane = (ev_loc.z - loc.z) < 1.0
+
+            return within_distance and same_plane and (not c_ev), distance
+
+        vehicle_bbox_list, actor_ids = self._get_actor_bounding_box(
+            self._object_filter)
+
+        vehicles, distances = self._get_surrounding_actors(
+            vehicle_bbox_list, actor_ids, is_within_distance)
+
+        # only use the top-K
+        # -1 for other vehicles
+        K = self._max_object_number - 1
+        assert K >= 0
+        if len(vehicles) > K:
+            logging.warning(
+                "The number of dynamic objects {} is larger than the preset "
+                "max number of perceivable objects {}. Distant objects will "
+                "be excluded from observation.".format(len(vehicles), K))
+
+        idx = np.argpartition(distances, K - 1)
+        vehicles = [vehicles[i] for i in idx[:K]]
+        distances = [distances[i] for i in idx[:K]]
+
+        # also add ego into the queue
+        ego = (-1, ev_transform, ev_loc, ev_bb_ext)
+        self._history_queue_struct.append((ego, vehicles))
+
+        def set_to_zero_for_empty(x):
+            if len(x) == 0:
+                return 0
+            else:
+                return x[0]
+
+    def _to_np_xy_pos(self, trans):
+        # [3, L]
+        t_np = [_to_numpy_loc(t) for t, _, _ in trans]
+        t_np = np.stack(t_np, axis=1)
+        return t_np[0:2, ...]
+
+    def world_polyline_to_ego_array(self, polyline, ev_transform):
+        # convert a single world polyline in waypoint/Vector3D format to np.ndarray
+        # into the coordinate according to ``ev_transform``
+        if isinstance(polyline[0], carla.Vector3D):
+            poly_world = np.array(
+                [np.array([wp.x, wp.y], dtype=np.float32) for wp in polyline])
+        else:
+            poly_world = np.array([
+                np.array([wp.transform.location.x, wp.transform.location.y],
+                         dtype=np.float32) for wp in polyline
+            ])
+
+        if poly_world != []:
+            # 2d -> 3d
+            poly_world = np.pad(
+                poly_world, [(0, 0), (0, 1)],
+                mode='constant',
+                constant_values=0)
+            poly_ego = _calculate_relative_position(ev_transform, poly_world)
+            return poly_ego
+        else:
+            return []
+
+    def _transform_agent_to_ego(self, ego_transform, agent_transform):
+        """Transform the agent location into ego centric representation.
+
+        Args:
+            ego_transform (carla.Transform): transform object of ego agent
+            agent_transform (carla.Transform): transform object of another agent
+
+        Returns:
+            np.ndarray: containing [x, y] locations in ego coordinate for agent.
+        """
+        loc = agent_transform.location
+        # converts to ego coordinates
+        # currently only use the center location; todo: extend to bounding-box
+        loc_ego = self.world_polyline_to_ego_array([loc], ego_transform)
+        return loc_ego[..., 0:2]
+
+    def _get_feature_from_actor_list(self, ego_transform, actor_list,
+                                     max_actor_num, actor_feature_dim,
+                                     fea_dict):
+        """
+        Args:
+            ego_transform (carla.Transform): transform object of ego agent
+            fea_dict (dict): if not {}, not allowed to introduce new keys
+
+        Returns:
+            dict: representing the updated feature dictionary
+        """
+
+        allow_insert = (len(fea_dict.keys()) == 0)
+
+        for i, (a_id, actor_transform, bb_loc,
+                bb_ext) in enumerate(actor_list):
+            actor_feature = self._transform_agent_to_ego(
+                ego_transform, actor_transform)
+
+            str_id = str(a_id)
+            if str_id not in fea_dict.keys():
+                if allow_insert:
+                    fea_dict[str_id] = []
+                    fea_dict[str_id].append(actor_feature)
+            else:
+                fea_dict[str_id].append(actor_feature)
+
+            if i == max_actor_num - 1:
+                break
+        return fea_dict
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+        Args:
+            current_frame (int): not used.
+        Returns:
+            the current obsevation tensor.
+        """
+
+        self._get_objects_within_region()
+
+        ev_transform = self._parent.get_transform()
+        qsize = len(self._history_queue_struct)
+
+        fea_dict = {}
+        for i, idx in enumerate(self._history_idx):
+            idx = max(idx, -1 * qsize)
+            ev, vehicles = self._history_queue_struct[idx]
+            # convert transform to numpy
+            fea_dict = self._get_feature_from_actor_list(
+                ev_transform,
+                [ev] + vehicles,  # put ev at the front of the vehicle list
+                max_actor_num=self._max_object_number,
+                actor_feature_dim=self._vehicle_fea_dim,
+                fea_dict=fea_dict)
+
+        # feature padding
+        # [L, point_num, fea_dim], L=1 for one step; stack later
+        v_fea_set = []
+        L = len(self._history_idx)
+        for key, fea in fea_dict.items():
+            feature_mat = np.stack(fea, axis=0)
+
+            # reset to zero each time
+            # fill with large value
+            full_feature_mat = np.full(
+                [L, self._num_points, self._vehicle_fea_dim],
+                fill_value=self._view_radius)
+            full_feature_mat[:feature_mat.shape[-3], :feature_mat.shape[-2], :
+                             feature_mat.shape[-1]] = feature_mat[::-1]
+
+            # set default presence to 0
+            full_feature_mat[..., -1] = 0
+            # set presence to 1
+            full_feature_mat[:feature_mat.shape[-3], :feature_mat.
+                             shape[-2], -1] = 1
+
+            v_fea_set.append(full_feature_mat.astype(np.float32))
+
+        # [L, agent, point_num, fea_dim], L=1 for one step; stack later
+        v_fea_mat = np.stack(v_fea_set, axis=1)
+        # [past (0) --> present(-1)]
+        if not self._with_ego_history:
+            v_fea_mat[:-1, 0, :, 0:2] = self._view_radius
+            v_fea_mat[:-1, 0, :, 2] = 0
+
+        full_feature_mat = np.full([
+            L, self._max_object_number, self._num_points, self._vehicle_fea_dim
+        ],
+                                   fill_value=self._view_radius)
+
+        full_feature_mat[..., -1] = 0
+        full_feature_mat[:, :v_fea_mat.shape[-3], :v_fea_mat.
+                         shape[-2], :v_fea_mat.shape[-1]] = v_fea_mat
+
+        self._current_obs = full_feature_mat.astype(np.float32)
+        return self._current_obs
+
+    @staticmethod
+    def _get_surrounding_actors(bbox_list,
+                                actor_id_list,
+                                criterium,
+                                scale=None):
+        actors = []
+        distances = []
+        for (loc, bbox, transform), a_id in zip(bbox_list, actor_id_list):
+            is_within_distance, distance = criterium(loc)
+            if is_within_distance:
+                bb_loc = carla.Location()
+                bb_ext = carla.Vector3D(bbox.extent)
+                if scale is not None:
+                    bb_ext = bb_ext * scale
+                    bb_ext.x = max(bb_ext.x, 0.8)
+                    bb_ext.y = max(bb_ext.y, 0.8)
+                actors.append((a_id, transform, bb_loc, bb_ext))
+                distances.append(distance)
+
+        return actors, distances
+
+    def reset(self):
+        self._history_queue_struct.clear()
+
+    def clean(self):
+        self._parent_actor = None
+        self._world = None
+        self._history_queue_struct.clear()
+
+    def destroy(self):
+        """Return the commands for destroying this sensor.
+
+        Use ``carla.Client.apply_batch_sync()`` to actually destroy the sensor.
+
+        Returns:
+            list[carla.command]: the commands used to destroy the sensor.
+        """
+        self.clean()
+        return []
+
+    def render(self,
+               x_range=[-50, 50],
+               y_range=[-50, 50],
+               img_height=256,
+               img_width=256,
+               dpi=300,
+               figsize=(2, 2),
+               linewidth=4,
+               marker_size=5):
+        """Return the rendered RGB image of the BEV view of the dynamic objects
+
+        Args:
+            x_range (list[float]): x range for rendering (meter)
+            x_range (list[float]): y range for rendering (meter)
+            img_height (int): height of the rendered image (pixel)
+            img_width (int): width of the rendered image (pixel)
+            dpi (int): dpi of the rendered image
+            figsize (tuple[int]): figure size used in matplotlib (inches)
+            linewidth (int): width of the line representing the trajectories
+            marker_size (int): the size if the marker, representing the latest
+                position in the trajectory.
+        """
+        __colors__ = [
+            'tab:red', 'tab:orange', 'tab:green', 'tab:blue', 'tab:purple',
+            'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan'
+        ]
+
+        data = self._current_obs
+
+        assert len(data.shape) == 4, "Must be rank-1 or rank-4!"
+        if not isinstance(data, np.ndarray):
+            array = data.cpu().numpy()
+        else:
+            array = data
+
+        fig, ax = plt.subplots(figsize=figsize)
+        # [history, vehicle_num, corner_num=1, feature_num]
+        T, N, P, D = array.shape
+
+        for j in reversed(range(N)):
+            data_j = array[:, j, 0, :]
+            valid_ind = data_j[:, ..., -1] > 0
+            valid_data = data_j[valid_ind, ...]
+
+            if valid_data.shape[0] > 1:
+                ax.plot(
+                    valid_data[:, 1],
+                    valid_data[:, 0],
+                    "-.",
+                    linewidth=linewidth,
+                    color=__colors__[j])
+
+            if valid_data.shape[0] > 0:
+                ax.plot(
+                    valid_data[-1, 1],
+                    valid_data[-1, 0],
+                    marker='s',
+                    linewidth=marker_size,
+                    color=__colors__[j],
+                    **kwargs)
+
+        if y_range:
+            ax.set_ylim(y_range)
+        if x_range:
+            ax.set_xlim(x_range)
+
+        img = alf.summary.render._convert_to_image("", fig, dpi, img_height,
+                                                   img_width)
+
+        return img.data

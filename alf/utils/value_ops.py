@@ -210,7 +210,7 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     discounted_values = discounts * values
     rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
                  is_lasts[:-1] * discounted_values[:-1]
-    return rets.detach()
+    return rets
 
 
 def generalized_advantage_estimation(rewards,

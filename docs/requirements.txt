@@ -2,6 +2,7 @@ absl-py
 atari_py == 0.1.7
 bsuite
 carla
+metadrive-simulator==0.2.5.1
 fasteners
 git+https://github.com/HorizonRobotics/gin-config@master#egg=gin-config
 gym==0.15.4
@@ -21,3 +22,4 @@ torchvision==0.9.1+cpu
 cnest==1.0.4
 gym3==0.3.3
 procgen==0.10.6
+protobuf==3.20.*

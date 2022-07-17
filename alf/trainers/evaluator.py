@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 from absl import logging
 from absl import flags
 import queue
@@ -22,6 +23,8 @@ import sys
 import time
 import torch
 from typing import Dict, List, Optional
+
+import wandb
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -68,8 +71,8 @@ class Evaluator(object):
                       config.root_dir, seed))
             self._worker.start()
         else:
-            self._env = create_environment(
-                num_parallel_environments=num_envs, seed=seed)
+            self._env = create_environment(num_parallel_environments=num_envs,
+                                           seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
@@ -154,8 +157,19 @@ class SyncEvaluator(object):
             logging.info("Start evaluation")
             metrics = evaluate(self._env, algorithm,
                                self._config.num_eval_episodes)
+
+            num_episodes = alf.metrics.NumberOfEpisodes()
+            env_steps = alf.metrics.EnvironmentSteps()
+            num_episodes._number_episodes += step_metric_values[
+                num_episodes.name]
+            env_steps._environment_steps += step_metric_values[env_steps.name]
+            metrics.append(num_episodes)
+            metrics.append(env_steps)
+
             common.log_metrics(metrics)
             for metric in metrics:
+                step_metric_values = {} if alf.get_config_value(
+                    "TrainerConfig.use_wandb") else step_metric_values
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     other_steps=step_metric_values)
@@ -192,6 +206,22 @@ def _worker(job_queue: mp.Queue,
         else:
             alf.config('create_environment', nonparallel=True)
         try:
+            param_file = os.path.join(root_dir, 'parameters.json')
+            if os.path.exists(param_file):
+                confs = json.load(open(param_file, 'r'))
+                for k, v in confs.items():
+                    if 'wandb_name' in k: continue
+                    if isinstance(v, str):
+                        try:
+                            confs[k] = eval(v)
+                        except NameError:
+                            confs[k] = v
+            else:
+                confs = {}
+
+                conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+                confs.update({'TrainerConfig.conf_name': conf_name})
+            alf.pre_config(confs)
             common.parse_conf_file(conf_file)
         except Exception as e:
             alf.close_env()
@@ -218,6 +248,8 @@ def _worker(job_queue: mp.Queue,
         algorithm.set_path('')
         policy_trainer.Trainer._trainer_progress.set_termination_criterion(
             config.num_iterations, config.num_env_steps)
+        if config.use_wandb:
+            common.setup_wandb(root_dir, mode="eval")
         alf.summary.enable_summary()
         evaluator = SyncEvaluator(env, config)
         logging.info("Evaluator started")
@@ -275,7 +307,11 @@ def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
         alf.metrics.AverageEnvInfoMetric(
             example_time_step=time_step, buffer_size=num_episodes),
         alf.metrics.AverageDiscountedReturnMetric(
-            buffer_size=num_episodes, example_time_step=time_step)
+            buffer_size=num_episodes, example_time_step=time_step),
+        alf.metrics.EpisodicStartAverageDiscountedReturnMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
+        alf.metrics.AverageRewardMetric(
+            example_time_step=time_step, buffer_size=num_episodes),
     ]
     time_step = common.get_initial_time_step(env)
     while episodes < num_episodes:

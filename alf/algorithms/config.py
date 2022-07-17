@@ -23,6 +23,11 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  ml_type='rl',
+                 version='normal',
+                 entity=None,
+                 project=None,
+                 conf_name=None,
+                 wandb_name=None,
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
@@ -50,11 +55,13 @@ class TrainerConfig(object):
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  metric_min_buffer_size=10,
+                 use_wandb=False,
                  debug_summaries=False,
                  profiling=False,
                  enable_amp=False,
                  code_snapshots=None,
                  summarize_grads_and_vars=False,
+                 summarize_gradient_noise_scale=False,
                  summarize_action_distributions=False,
                  summarize_output=False,
                  initial_collect_steps=0,
@@ -78,6 +85,11 @@ class TrainerConfig(object):
         Args:
             root_dir (str): directory for saving summary and checkpoints
             ml_type (str): type of learning task, one of ['rl', 'sl']
+            version (str): version of the algorithm
+            entity (str): entity name for WandB
+            project (str): project name for WandB
+            conf_name (str): config file name to construct group name for WandB
+            wandb_name (str): to construct run name for WandB
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             data_transformer_ctor (Callable|list[Callable]): Function(s)
@@ -102,7 +114,11 @@ class TrainerConfig(object):
                 ``initial_collect_steps>0``, then the first
                 ``initial_collect_steps//(unroll_length*num_envs)`` iterations
                 won't perform any training. For SL trainer, indicates the number
-                of training epochs.
+                of training epochs. If both `num_iterations` and `num_env_steps`
+                are set, `num_iterations` must be big enough to consume so many
+                environment steps. And after `num_env_steps` enviroment steps are
+                generated, the training will not interact with environments
+                anymore, which means that it will only train on replay buffer.
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
@@ -181,6 +197,7 @@ class TrainerConfig(object):
             summary_max_queue (int): flush to disk every so mary summaries
             metric_min_buffer_size (int): a minimal size of the buffer used to
                 construct some average episodic metrics used in ``RLAlgorithm``.
+            use_wandb (bool): A bool to use WandB.
             debug_summaries (bool): A bool to gather debug summaries.
             profiling (bool): If True, use cProfile to profile the training. The
                 profile result will be written to ``root_dir``/py_train.INFO.
@@ -194,6 +211,8 @@ class TrainerConfig(object):
                 useful for tracking code changes when running a job.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
+            summarize_gradient_noise_scale (bool): whether summarize gradient
+                noise scale. See ``alf.optimizers.utils.py`` for details.
             summarize_output (bool): If True, summarize output of certain networks.
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
@@ -261,6 +280,11 @@ class TrainerConfig(object):
         assert ml_type in ('rl', 'sl')
         self.root_dir = root_dir
         self.ml_type = ml_type
+        self.version = version
+        self.entity = entity
+        self.project = project
+        self.conf_name = conf_name
+        self.wandb_name = wandb_name
         self.algorithm_ctor = algorithm_ctor
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
@@ -289,11 +313,13 @@ class TrainerConfig(object):
         self.summaries_flush_secs = summaries_flush_secs
         self.summary_max_queue = summary_max_queue
         self.metric_min_buffer_size = metric_min_buffer_size
+        self.use_wandb = use_wandb
         self.debug_summaries = debug_summaries
         self.profiling = profiling
         self.enable_amp = enable_amp
         self.code_snapshots = code_snapshots
         self.summarize_grads_and_vars = summarize_grads_and_vars
+        self.summarize_gradient_noise_scale = summarize_gradient_noise_scale
         self.summarize_action_distributions = summarize_action_distributions
         self.summarize_output = summarize_output
         self.initial_collect_steps = initial_collect_steps

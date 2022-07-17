@@ -39,6 +39,8 @@ import traceback
 import types
 from typing import Callable, List
 
+import wandb
+
 import alf
 from alf.algorithms.config import TrainerConfig
 import alf.nest as nest
@@ -996,7 +998,10 @@ def set_random_seed(seed):
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        torch.use_deterministic_algorithms(True)
+        force_torch_deterministic = getattr(flags.FLAGS,
+                                            'force_torch_deterministic', True)
+        # causes RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation
+        torch.use_deterministic_algorithms(force_torch_deterministic)
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
@@ -1534,7 +1539,8 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     if config.num_iterations > 0:
         num_iterations = config.num_iterations
     # this condition is exclusive with the above
-    if config.num_env_steps > 0:
+    else:
+        assert config.num_env_steps
         # the rollout env is always creatd with ``nonparallel=False``
         num_envs = alf.get_config_value(
             "create_environment.num_parallel_environments")
@@ -1551,3 +1557,41 @@ def call_stack() -> List[str]:
     debugging.
     """
     return [line.strip() for line in traceback.format_stack()]
+
+
+def setup_wandb(root_dir, mode='train'):
+    # TODO: use root_dir from TrainerConfig to get the wandb group and run name
+    assert mode in ['train', 'eval']
+    env_name = alf.get_config_value("create_environment.env_name")
+    version = alf.get_config_value("TrainerConfig.version")
+    entity = alf.get_config_value("TrainerConfig.entity")
+    project = alf.get_config_value("TrainerConfig.project")
+    seed = alf.get_config_value("TrainerConfig.random_seed")
+    if alf.get_config_value("TrainerConfig.async_eval") and mode == 'eval':
+        # When enabling async evaluation, the seed will be set differently
+        # for the eval worker as per Line 187 of alf.trainers.evaluator.py
+        seed -= 13579
+
+    wandb_name = f"{env_name}-seed-{seed}-{mode}"
+    postfix = alf.get_config_value('TrainerConfig.wandb_name')
+    if postfix is not None:
+        wandb_name += f"-{postfix}"
+
+    conf_name = alf.get_config_value('TrainerConfig.conf_name')
+    wandb_group = f"{conf_name}-{version}"
+
+    wandb.tensorboard.patch(root_logdir=os.path.join(root_dir, mode))
+
+    config = {k: v for k, v in alf.get_operative_configs()}
+    inoperative = {k: v for k, v in alf.get_inoperative_configs()}
+    config["inoperative"] = inoperative
+
+    wandb.init(
+        project=project,
+        entity=entity,
+        group=wandb_group,
+        name=wandb_name,
+        config=config,
+        reinit=True,
+        sync_tensorboard=True,
+    )

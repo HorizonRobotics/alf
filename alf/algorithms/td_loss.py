@@ -197,6 +197,7 @@ class TDLoss(nn.Module):
             returns = self._target_normalizer.normalize(returns)
             value = self._target_normalizer.normalize(value)
 
+        td_error = returns - value
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
@@ -210,13 +211,12 @@ class TDLoss(nn.Module):
                     safe_mean_hist_summary("td_error" + suffix, td, mask)
 
                 if value.ndim == 2:
-                    _summarize(value, returns, returns - value, '')
+                    _summarize(value, returns, td_error, '')
                 else:
-                    td = returns - value
                     for i in range(value.shape[2]):
                         suffix = '/' + str(i)
-                        _summarize(value[..., i], returns[..., i], td[..., i],
-                                   suffix)
+                        _summarize(value[..., i], returns[..., i],
+                                   td_error[..., i], suffix)
 
         loss = self._td_error_loss_fn(returns.detach(), value)
 
@@ -227,7 +227,8 @@ class TDLoss(nn.Module):
         # The shape of the loss expected by Algorith.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
         loss = tensor_utils.tensor_extend_zero(loss)
-        return LossInfo(loss=loss, extra=loss)
+        td_error = tensor_utils.tensor_extend_zero(td_error)
+        return LossInfo(loss=loss, extra=td_error)
 
 
 @alf.configurable

@@ -394,4 +394,15 @@ NestedTensorSpec = Union[
     Tuple['NestedTensorSpec', ...],
     Dict[str, 'NestedTensorSpec']
 ]
+
+NestedBoundedTensorSpec = Union[
+    BoundedTensorSpec,
+    List['NestedBoundedTensorSpec'],
+    # An empty tuple is also considered a NestedBoundedTensorSpec
+    Tuple[()],
+    # Though Tuple['NestedBoundedTensorSpec', ...] is not the tightest specification,
+    # it is here to cover the case of "(named) tuple of NestedBoundedTensorSpec".
+    Tuple['NestedBoundedTensorSpec', ...],
+    Dict[str, 'NestedBoundedTensorSpec']
+]
 # yapf: enable

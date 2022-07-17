@@ -28,9 +28,11 @@ import torch
 import torch.nn as nn
 from PIL import Image
 import numpy as np
+import wandb
 
 import alf
 from alf.algorithms.algorithm import Algorithm, Loss
+from alf.config_util import config
 from alf.networks import Network
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import (create_data_transformer,
@@ -72,15 +74,12 @@ class _TrainerProgress(nn.Module):
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
                         "You must first call set_terimination_criterion()!")
-        iter_progress, env_steps_progress = 0, 0
         if self._num_iterations > 0:
-            iter_progress = float(
+            self._progress = float(
                 self._iter_num.to(torch.float64) / self._num_iterations)
-        if self._num_env_steps > 0:
-            env_steps_progress = float(
+        else:
+            self._progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
-        # If either criterion is met, the training ends
-        self._progress = max(iter_progress, env_steps_progress)
 
     def set_progress(self, value: float):
         """Manually set the current progress.
@@ -342,6 +341,8 @@ class Trainer(object):
                 ans = input("Do you want to save checkpoint? (y/n): ")
                 if ans.lower().startswith('y'):
                     self._save_checkpoint()
+            if alf.get_config_value("TrainerConfig.use_wandb"):
+                wandb.finish()
             self._close()
 
     @staticmethod
@@ -485,9 +486,19 @@ class RLTrainer(Trainer):
 
         self._num_env_steps = config.num_env_steps
         self._num_iterations = config.num_iterations
-        assert (self._num_iterations + self._num_env_steps > 0
-                and self._num_iterations * self._num_env_steps == 0), \
-            "Must provide #iterations or #env_steps exclusively for training!"
+        assert self._num_iterations + self._num_env_steps > 0, \
+            "Must provide #iterations or #env_steps for training!"
+        if self._num_iterations > 0 and self._num_env_steps > 0:
+            num_envs = alf.get_config_value(
+                "create_environment.num_parallel_environments")
+            num_iterations_with_env_interations = config.num_env_steps / (
+                num_envs * config.unroll_length)
+            pure_train_iters = self._num_iterations - num_iterations_with_env_interations
+            assert pure_train_iters >= 0, (
+                f"num_iterations={self._num_iterations} is not enough for "
+                f"num_env_steps={self._num_env_steps}")
+            logging.info("There is no environmental interation in the last"
+                         f"{pure_train_iters} iterations")
         self._trainer_progress.set_termination_criterion(
             self._num_iterations, self._num_env_steps)
 
@@ -606,7 +617,7 @@ class RLTrainer(Trainer):
             self._trainer_progress.update(iter_num, total_time_steps)
 
             if ((self._num_iterations and iter_num >= self._num_iterations)
-                    or (self._num_env_steps
+                    or (not self._num_iterations
                         and total_time_steps >= self._num_env_steps)):
                 # Evaluate before exiting so that the eval curve shown in TB
                 # will align with the final iter/env_step.
@@ -615,7 +626,7 @@ class RLTrainer(Trainer):
                 break
 
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
-                    or (self._num_env_steps
+                    or (not self._num_iterations and self._num_env_steps
                         and total_time_steps >= time_to_checkpoint)):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
@@ -743,7 +754,47 @@ def _step(algorithm,
           metrics,
           render=False,
           recorder=None,
-          sleep_time_per_step=0):
+          sleep_time_per_step=0,
+          selective_criteria_func=None):
+    """Perform one step interaction using the outpupt action from ``algorithm``
+    taking ``time_step`` as input. Also record the metrics.
+
+    Note that this function is used both in ``play`` below and ``evaluate`` in
+    ``evaluator.py``.
+
+    Args:
+        algorithm (RLAlgorithm): the algorithm under evaluation
+        env: the environment
+        time_step (TimeStep): current time step
+        policy_state (nested Tensor): state of the policy
+        trans_state (nested Tensor): state of the transformer(s)
+        metrics (StepMetric): a list of metrics that will be updated based on
+            ``time_step``.
+        render (bool|False): if True, display the frames of ``env`` on a screen.
+        recorder (VideoRecorder|None): recorder the frames of ``env`` and other
+            additional images in prediction step info if present.
+        sleep_time_per_step (int|0): The sleep time between two frames when
+            ``render`` is True.
+        selective_criteria_func (callable|None): a callable for determining
+            whether an episode will be saved to the video file when a valid
+            recorder is provided. This function takes two input arguments:
+            - return (float): return of the current episode. This is useful for
+                implementing return based selective criteria.
+            - env_info (dict): a dictionary containing information returned by
+                the environment. This is useful for implementing task specific
+                selective criteria using information contained ``env_info``,
+                e.g., success, infraction etc.
+
+    Returns:
+        - next time step (TimeStep): the next time step after taking an action in
+            ``env``
+        - policy step (AlgStep): the output from ``algorithm.predict_step``
+        - new state of the transformer(s) (nested Tensor)
+    """
+
+    for metric in metrics:
+        metric(time_step.cpu())
+
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
@@ -751,8 +802,25 @@ def _step(algorithm,
         time_step, trans_state)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
-    if recorder:
+    if recorder and selective_criteria_func is None:
         recorder.capture_frame(policy_step.info, time_step.is_last())
+
+    elif recorder and selective_criteria_func is not None:
+        env_frame = recorder.capture_env_frame()
+        recorder.cache_frame_and_pred_info(env_frame, policy_step.info)
+
+        if time_step.is_last():
+            if selective_criteria_func(
+                    map_structure(lambda x: x.cpu().numpy(),
+                                  metrics[1].latest()),
+                    map_structure(lambda x: x.cpu().numpy(),
+                                  metrics[3].latest())):
+                logging.info(
+                    "+++++++++ Selective Case Discovered! +++++++++++")
+                recorder.generate_video_from_cache()
+            else:
+                recorder.clear_cache()
+
     elif render:
         if env.batch_size > 1:
             env.envs[0].render(mode='human')
@@ -761,8 +829,7 @@ def _step(algorithm,
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
-    for metric in metrics:
-        metric(time_step.cpu())
+
     return next_time_step, policy_step, trans_state
 
 
@@ -776,6 +843,7 @@ def play(root_dir,
          record_file=None,
          append_blank_frames=0,
          render=True,
+         selective_mode=False,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -806,6 +874,8 @@ def play(root_dir,
         render (bool): If False, then this function only evaluates the trained
             model without calling rendering functions. This value will be ignored
             if a ``record_file`` argument is provided.
+        selective_mode (bool): whether to save the selective cases discovered
+            according to a ``selective_criteria_func``.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
     """
@@ -875,6 +945,13 @@ def play(root_dir,
             buffer_size=num_episodes, example_time_step=time_step)
     ]
 
+    if selective_mode:
+        # Below is an example selective criteria based on return.
+        # This should be adjusted according to the particular task.
+        selective_criteria_func = lambda return_value, env_info: return_value < 500
+    else:
+        selective_criteria_func = None
+
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statitics) as it can be
@@ -896,7 +973,8 @@ def play(root_dir,
             metrics=metrics,
             render=render,
             recorder=recorder,
-            sleep_time_per_step=sleep_time_per_step)
+            sleep_time_per_step=sleep_time_per_step,
+            selective_criteria_func=selective_criteria_func)
 
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST

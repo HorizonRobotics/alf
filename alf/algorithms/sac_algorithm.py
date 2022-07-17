@@ -580,6 +580,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=new_state,
             info=SacInfo(action=action, action_distribution=action_dist))
 
+    def _apply_reward_weights(self, critics):
+        critics = critics * self.reward_weights
+        critics = critics.sum(dim=-1)
+        return critics
+
     def _compute_critics(self,
                          critic_net,
                          observation,
@@ -620,8 +625,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critics = critics.min(dim=1)[0]
 
         if apply_reward_weights and self.has_multidim_reward():
-            critics = critics * self.reward_weights
-            critics = critics.sum(dim=-1)
+            critics = self._apply_reward_weights(critics)
 
         # The returns have the following shapes in different circumstances:
         # [replica_min=True, apply_reward_weights=True]
