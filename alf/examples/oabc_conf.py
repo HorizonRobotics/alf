@@ -15,7 +15,7 @@
 from functools import partial
 
 import alf
-from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
+from alf.algorithms.oabc_algorithm import OabcAlgorithm
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.networks import NormalProjectionNetwork, ActorNetwork, ActorDistributionNetwork
 from alf.optimizers import Adam, AdamTF
@@ -25,10 +25,9 @@ from alf.utils.math_ops import clipped_exp
 from alf.examples import sac_conf
 
 # environment config
-alf.config(
-    'create_environment',
-    env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+alf.config('create_environment',
+           env_name="HalfCheetah-v2",
+           num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -38,16 +37,13 @@ deterministic_actor = True
 if deterministic_actor:
     actor_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
 else:
-    actor_network_cls = partial(
-        ActorDistributionNetwork,
-        fc_layer_params=fc_layer_params,
-        continuous_projection_net_ctor=partial(
-            NormalProjectionNetwork,
-            state_dependent_std=True,
-            scale_distribution=True,
-            std_transform=clipped_exp))
-
-alf.config('calc_default_target_entropy', min_prob=0.184)
+    actor_network_cls = partial(ActorDistributionNetwork,
+                                fc_layer_params=fc_layer_params,
+                                continuous_projection_net_ctor=partial(
+                                    NormalProjectionNetwork,
+                                    state_dependent_std=True,
+                                    scale_distribution=True,
+                                    std_transform=clipped_exp))
 
 # explore_network_cls = partial(
 #     ActorDistributionNetwork,
@@ -60,25 +56,23 @@ alf.config('calc_default_target_entropy', min_prob=0.184)
 
 explore_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
 
-alf.config(
-    'CriticDistributionParamNetwork',
-    joint_fc_layer_params=joint_fc_layer_params)
+alf.config('calc_default_target_entropy', min_prob=0.184)
 
-# alf.config(
-#     'FuncParVIAlgorithm',
-#     num_particles=10)
-alf.config(
-    'MultiSwagAlgorithm',
-    num_samples_per_model=1,
-    subspace_max_rank=20,
-    subspace_after_update_steps=10000)
+alf.config('CriticDistributionParamNetwork',
+           joint_fc_layer_params=joint_fc_layer_params)
+
+# alf.config('FuncParVIAlgorithm', num_particles=10)
+alf.config('MultiSwagAlgorithm',
+           num_particles=10,
+           num_samples_per_model=5,
+           subspace_max_rank=30,
+           subspace_after_update_steps=10000)
 
 alf.config(
-    'TsabcAlgorithm',
+    'OabcAlgorithm',
     actor_network_cls=actor_network_cls,
     explore_network_cls=explore_network_cls,
     critic_module_cls=MultiSwagAlgorithm,
-    num_critic_replicas=10,
     beta_ub=1.,
     beta_lb=1.,
     # entropy_regularization_weight=1.,
@@ -95,7 +89,7 @@ alf.config(
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 
 # training config
-alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)
+alf.config('Agent', rl_algorithm_cls=OabcAlgorithm)
 
 alf.config('TrainerConfig',
            version='normal',
