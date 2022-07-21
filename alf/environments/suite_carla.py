@@ -439,7 +439,10 @@ class Player(object):
         self._info_spec = OrderedDict(
             success=alf.TensorSpec(()),
             collision=alf.TensorSpec(()),
-            red_light=alf.TensorSpec(()))
+            collision_front=alf.TensorSpec(()),
+            red_light_violated=alf.TensorSpec(()),
+            red_light_encountered=alf.TensorSpec(()),
+            overspeed=alf.TensorSpec(()))
 
         self._control = carla.VehicleControl()
         self._controller = None
