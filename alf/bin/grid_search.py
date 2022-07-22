@@ -468,6 +468,8 @@ def launch_snapshot_gridsearch():
         for i in range(len(sys.argv)):
             if sys.argv[i] == '--root_dir':
                 sys.argv[i + 1] = root_dir
+            elif '--root_dir' in sys.argv[i]:
+                sys.argv[i] = f"--root_dir={root_dir}"
     common.write_config(root_dir, common.read_conf_file(root_dir))
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``

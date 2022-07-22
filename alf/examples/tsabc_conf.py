@@ -31,9 +31,17 @@ alf.config(
     num_parallel_environments=1)
 
 # algorithm config
+@alf.configurable
+def tsabc_deterministic_actor(value: bool = True):
+    return value
+# environment config
+alf.config('tsabc_deterministic_actor',
+           value=True)
+
+# algorithm config
 fc_layer_params = (256, 256)
 joint_fc_layer_params = (256, 256)
-deterministic_actor = True
+deterministic_actor = tsabc_deterministic_actor()
 
 if deterministic_actor:
     actor_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)

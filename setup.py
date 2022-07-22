@@ -24,7 +24,7 @@ setup(
         # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'box2d-py',
         'cpplint',
-        'clang-format==9.0',
+        'clang-format',
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',

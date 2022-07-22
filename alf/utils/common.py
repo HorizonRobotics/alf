@@ -1560,6 +1560,7 @@ def call_stack() -> List[str]:
 
 
 def setup_wandb(root_dir, mode='train'):
+    wandb.login(key="b878d2af02009bc43e87cca2418c77605b17ae05")
     # TODO: use root_dir from TrainerConfig to get the wandb group and run name
     assert mode in ['train', 'eval']
     env_name = alf.get_config_value("create_environment.env_name")
