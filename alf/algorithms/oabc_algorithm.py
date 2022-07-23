@@ -559,7 +559,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             alpha_loss = ()
         else:
             loss = math_ops.add_ignore_empty(
-                actor_loss.loss + explore_loss.loss, alpha_loss),
+                actor_loss.loss + explore_loss.loss, alpha_loss)
         return LossInfo(
             # loss=math_ops.add_ignore_empty(actor_loss.loss, alpha_loss),
             # loss=math_ops.add_ignore_empty(actor_loss.loss + explore_loss.loss,
