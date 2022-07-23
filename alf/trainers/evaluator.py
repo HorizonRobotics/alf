@@ -210,7 +210,7 @@ def _worker(job_queue: mp.Queue,
             if os.path.exists(param_file):
                 confs = json.load(open(param_file, 'r'))
                 for k, v in confs.items():
-                    if 'wandb_name' in k: continue
+                    if 'wandb_name' in k or 'version' in k: continue
                     if isinstance(v, str):
                         try:
                             confs[k] = eval(v)
