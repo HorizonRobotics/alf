@@ -231,7 +231,7 @@ class TsabcAlgorithm(OabcAlgorithm):
     def rollout_step(self, inputs: TimeStep, state: OabcState):
         if inputs.step_type == StepType.FIRST:
             self._idx = torch.randint(self._num_critic_replicas, ())
-        super().rollout_step(inputs, state)
+        return super().rollout_step(inputs, state)
 
     def _get_actor_train_q_value(self, critics, explore):
         q_mean = critics.mean(1)
