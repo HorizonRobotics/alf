@@ -93,6 +93,7 @@ alf.config(
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
     use_entropy_reward=False,
+    random_actor_every_step=False,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     explore_optimizer=AdamTF(lr=3e-4),

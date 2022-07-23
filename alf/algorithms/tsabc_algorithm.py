@@ -18,7 +18,8 @@ import torch
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm
+from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm, OabcState
+from alf.data_structures import StepType, TimeStep
 from alf.optimizers import AdamTF
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
@@ -48,6 +49,7 @@ class TsabcAlgorithm(OabcAlgorithm):
                  beta_ub=1.,
                  beta_lb=1.,
                  common_td_target: bool = True,
+                 random_actor_every_step: bool = True,
                  entropy_regularization_weight=1.,
                  entropy_regularization=None,
                  target_entropy=None,
@@ -76,7 +78,8 @@ class TsabcAlgorithm(OabcAlgorithm):
             explore_alpha_optimizer
         """
         self._idx = 0
-        self._cyclic_unroll_steps = 0
+        # self._cyclic_unroll_steps = 0
+        self._random_actor_every_step = random_actor_every_step
         self._num_critic_replicas = num_critic_replicas
 
         super().__init__(
@@ -193,7 +196,8 @@ class TsabcAlgorithm(OabcAlgorithm):
             # new_state = new_state._replace(explore_network=explore_network_state)
             # else:
             if not train:
-                if self._cyclic_unroll_steps == 0:
+                # if self._cyclic_unroll_steps == 0:
+                if self._random_actor_every_step:
                     self._idx = torch.randint(self._num_critic_replicas, ())
                 action = action[:, self._idx, :]
                 # import pdb; pdb.set_trace()
@@ -201,9 +205,9 @@ class TsabcAlgorithm(OabcAlgorithm):
                 # action, explore_network_state = self._explore_networks[self._idx](
                 #     observation, state=state.explore_network)
 
-                self._cyclic_unroll_steps += 1
-                if self._cyclic_unroll_steps >= 100:
-                    self._cyclic_unroll_steps = 0
+                # self._cyclic_unroll_steps += 1
+                # if self._cyclic_unroll_steps >= 100:
+                #     self._cyclic_unroll_steps = 0
         else:
             if self._deterministic_actor:
                 action_dist = ()
@@ -223,6 +227,11 @@ class TsabcAlgorithm(OabcAlgorithm):
             new_state = new_state._replace(actor_network=actor_network_state)
 
         return action_dist, action, new_state
+
+    def rollout_step(self, inputs: TimeStep, state: OabcState):
+        if inputs.step_type == StepType.FIRST:
+            self._idx = torch.randint(self._num_critic_replicas, ())
+        super().rollout_step(inputs, state)
 
     def _get_actor_train_q_value(self, critics, explore):
         q_mean = critics.mean(1)
