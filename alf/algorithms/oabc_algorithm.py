@@ -131,7 +131,10 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         self._epsilon_greedy = epsilon_greedy
 
         def _init_log_alpha():
-            return nn.Parameter(torch.tensor(float(initial_log_alpha)))
+            if alpha_optimizer is None:
+                return torch.tensor(float(initial_log_alpha))
+            else:
+                return nn.Parameter(torch.tensor(float(initial_log_alpha)))
 
         log_alpha = _init_log_alpha()
         # log_explore_alpha = _init_log_alpha()

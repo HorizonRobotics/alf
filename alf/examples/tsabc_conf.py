@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import partial
+import math
 
 import alf
 from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
@@ -89,6 +90,7 @@ alf.config(
     num_critic_replicas=10,
     beta_ub=1.,
     beta_lb=1.,
+    initial_log_alpha=math.log(0.2),
     # entropy_regularization_weight=1.,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
@@ -98,7 +100,7 @@ alf.config(
     actor_optimizer=AdamTF(lr=3e-4),
     explore_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=Adam(lr=3e-4),  #, weight_decay=1e-4),
-    alpha_optimizer=AdamTF(lr=3e-4),
+    alpha_optimizer=None,
     explore_alpha_optimizer=AdamTF(lr=3e-4))
 
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)

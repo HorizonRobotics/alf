@@ -1567,7 +1567,7 @@ def setup_wandb(root_dir, mode='train'):
             "Please set the WANDB_API_KEY as an environment variable!")
 
     wandb.login(key=wandb_api_key)
-    # TODO: use root_dir from TrainerConfig to get the wandb group and run name
+
     assert mode in ['train', 'eval']
     env_name = alf.get_config_value("create_environment.env_name")
     version = alf.get_config_value("TrainerConfig.version")
