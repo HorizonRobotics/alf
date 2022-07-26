@@ -1566,6 +1566,10 @@ def setup_wandb(root_dir, mode='train'):
         raise KeyError(
             "Please set the WANDB_API_KEY as an environment variable!")
 
+    if alf.get_config_value("TrainerConfig.evaluate"):
+        assert alf.get_config_value(
+            "TrainerConfig.async_eval"), "Currently only support async_eval!"
+
     wandb.login(key=wandb_api_key)
 
     assert mode in ['train', 'eval']
