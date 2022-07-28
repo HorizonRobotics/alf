@@ -66,8 +66,10 @@ def _compute_y_interval(interval_mode, ys):
 
 class MeanCurve(
         namedtuple(
-            "MeanCurve",
-            ['x', 'y', 'min_y', 'max_y', 'ay', 'min_ay', 'max_ay', 'name'],
+            "MeanCurve", [
+                'x', 'y', 'min_y', 'max_y', 'ay', 'min_ay', 'max_ay', 'name',
+                'ys'
+            ],
             default_value=None)):
     @classmethod
     def from_curves(cls, x, ys, interval_mode="std", name="MeanCurve"):
@@ -99,6 +101,7 @@ class MeanCurve(
             ay=ay,
             min_ay=min_ay,
             max_ay=max_ay,
+            ys=ys,
             name=name)
 
     def final_y(self, N=1):
@@ -924,7 +927,7 @@ def plot(env, her, train, curves):
         _env = env
         if env == "atari_b":
             _env = "atari"
-        p = os.path.join(os.getenv("HOME"), "tmp/iclr22/" + _env, dir)
+        p = os.path.join(os.getenv("HOME"), "bak/iclr22/" + _env, dir)
         if dir == "":
             print(f"Writing to {p} for task {t}")
         else:
@@ -933,18 +936,52 @@ def plot(env, her, train, curves):
 
     curve_readers = [[
         reader_cls(
-            glob.glob(
-                get_curve_path(
-                    "%s*%s/%s" % (_run_name(m, t), "" if
-                                  (t in SIX_ATARI_GAMES or env == "fetch_b")
-                                  else cluster_str, train),
-                    t=t,
-                    m=m)),
+            sorted(
+                glob.glob(
+                    get_curve_path(
+                        "%s*%s/%s" % (_run_name(m, t), "" if
+                                      (t in SIX_ATARI_GAMES or env == "fetch_b"
+                                       ) else cluster_str, train),
+                        t=t,
+                        m=m))),
             np.arange(task_start_step, total_steps or task_total_steps[t],
                       plot_interval),
             name="%s" % (method_tag[m]),
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
+
+    if curves in ["return", "value"]:
+        print("Plotting comparison curve")
+        # Extract pairs curve_readers[method1][task]().ys[seed][x] vs curve_readers[method0][task]().ys[seed][x]
+        n_seeds = len(curve_readers[0][0]().ys)
+        n_x = len(curve_readers[0][0]().ys[0])
+        x_val = curve_readers[0][0]().x
+        ys = []
+        m_id = 1 if env == "fetch" and her else 0  # use gdist as treatment to compare with HER in fetch.
+        for i in range(len(tasks) * n_seeds):
+            ys.append(x_val.copy())
+        for x in range(n_x):
+            # for x axis:
+            for t_id, t in enumerate(tasks):
+                for s in range(n_seeds):
+                    # for seeds:
+                    above = curve_readers[m_id][t_id](
+                    ).ys[s][x] - curve_readers[-1][t_id]().ys[s][x] > 0
+                    ys[t_id * n_seeds + s][x] = above
+        y_name = f"Fraction {method_tag[methods[m_id]]} above {method_tag[methods[-1]]}"
+        y_label = "Fraction of random task trials"
+        plotter = CurvesPlotter(
+            MeanCurve().from_curves(x=x_val, ys=ys, name=y_name),
+            x_label=curve_readers[0][0].x_label,
+            y_label=y_label,
+            y_range=(0, 1),
+            x_range=(0, total_steps or list(task_total_steps.values())[-1]))
+        plotter.plot(
+            output_path=os.path.join(
+                get_curve_path(), f"{env}-" + "vs".join(methods) + "-" +
+                curves + "-" + train + "-frac_above.pdf"))
+
+    # return
 
     print("Plotting", curves)
     for i, t in enumerate(tasks):
