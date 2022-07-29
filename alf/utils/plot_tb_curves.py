@@ -934,6 +934,8 @@ def plot(env, her, train, curves):
             print(f"Reading from {p} for task {t}, method {m}")
         return p
 
+    # methods = [methods[0], ]  # uncomment to save some time if only running comparison curves.
+
     curve_readers = [[
         reader_cls(
             sorted(
@@ -950,38 +952,59 @@ def plot(env, her, train, curves):
             smoothing=3) for t in tasks
     ] for m in methods if curve_in_method(curves, m)]
 
-    if curves in ["return", "value"]:
-        print("Plotting comparison curve")
-        # Extract pairs curve_readers[method1][task]().ys[seed][x] vs curve_readers[method0][task]().ys[seed][x]
+    if not curve_readers:
+        print(f"No {curves} curve for methods: ", methods)
+        return
+
+    if curves in ["return", "drgt", "gdgt", "bstgt"]:
         n_seeds = len(curve_readers[0][0]().ys)
         n_x = len(curve_readers[0][0]().ys[0])
-        x_val = curve_readers[0][0]().x
+        print(f"Plotting {curves} comparison, {n_seeds} seeds, {n_x} x-size")
+        # Extract pairs curve_readers[method1][task]().ys[seed][x] vs curve_readers[method0][task]().ys[seed][x]
+        y_val = curve_readers[0][0]().y
         ys = []
         m_id = 1 if env == "fetch" and her else 0  # use gdist as treatment to compare with HER in fetch.
         for i in range(len(tasks) * n_seeds):
-            ys.append(x_val.copy())
+            # List of array copies.  Cannot be a list of the same array reference
+            ys.append(y_val.copy())
         for x in range(n_x):
             # for x axis:
             for t_id, t in enumerate(tasks):
                 for s in range(n_seeds):
                     # for seeds:
-                    above = curve_readers[m_id][t_id](
-                    ).ys[s][x] - curve_readers[-1][t_id]().ys[s][x] > 0
+                    if curves in ["return"]:
+                        above = (curve_readers[m_id][t_id]().ys[s][x] -
+                                 curve_readers[-1][t_id]().ys[s][x]) > 0
+                    else:
+                        above = curve_readers[m_id][t_id]().ys[s][x]
                     ys[t_id * n_seeds + s][x] = above
-        y_name = f"Fraction {method_tag[methods[m_id]]} above {method_tag[methods[-1]]}"
-        y_label = "Fraction of random task trials"
+        if curves in ["return"]:
+            y_name = f"Fraction {method_tag[methods[m_id]]} above {method_tag[methods[-1]]}"
+            y_label = "Fraction of random task trials"
+        else:
+            y_name = f"{method_tag[methods[m_id]]} above Bellman target"
+            y_label = "Average fraction of experience with higher value target"
+
+        if env == "atari":
+            max_y = 0.2
+        elif env in ["fetch", "pioneer"]:
+            max_y = 0.1
+        else:
+            max_y = 1
         plotter = CurvesPlotter(
-            MeanCurve().from_curves(x=x_val, ys=ys, name=y_name),
+            MeanCurve().from_curves(
+                x=curve_readers[0][0]().x, ys=ys, name=y_name),
             x_label=curve_readers[0][0].x_label,
             y_label=y_label,
-            y_range=(0, 1),
+            y_range=(0, max_y),
+            # use the total steps of the last task, usually harder and longer, e.g. PioneerPushReach.
             x_range=(0, total_steps or list(task_total_steps.values())[-1]))
         plotter.plot(
             output_path=os.path.join(
                 get_curve_path(), f"{env}-" + "vs".join(methods) + "-" +
                 curves + "-" + train + "-frac_above.pdf"))
 
-    # return
+    # return  # uncomment to save some time if only running comparison curves.
 
     print("Plotting", curves)
     for i, t in enumerate(tasks):
@@ -1045,6 +1068,6 @@ if __name__ == "__main__":
         ]
     for train, curves, her in train_curves:
         # train is "train" or "eval"
-        # curves is one of "drgt", "gdgt", "return", "value"
+        # curves is one of "drgt", "gdgt", "bstgt", "return", "value"
         if her in env_her[env]:
             plot(env, her, train, curves)
