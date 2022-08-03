@@ -467,21 +467,31 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             inputs, state.actor, action, log_pi)
 
         # train explore_network
-        (explore_action_dist, explore_action, explore_action_state) = \
-            self._predict_action(
-                inputs.observation, state=state.action, explore=True, train=True)
-        action_state = action_state._replace(
-            explore_network=explore_action_state.explore_network)
-        # log_pi_explore = nest.map_structure(lambda dist, a: dist.log_prob(a),
-        #                                     explore_action_dist, explore_action)
-        # log_pi_explore = sum(nest.flatten(log_pi_explore))
-        log_pi_explore = ()
+        if self._explore_network is None:
+            explore_state = state.actor
+            explore_loss = LossInfo(
+                loss=torch.zeros_like(actor_loss.loss),
+                extra=OabcExploreInfo(
+                    explore_loss=torch.zeros_like(actor_loss.loss)))
+            log_pi_explore = ()
+            explore_action_dist = ()
+        else:
+            (explore_action_dist, explore_action, explore_action_state) = \
+                self._predict_action(
+                    inputs.observation, state=state.action, explore=True, train=True)
+            action_state = action_state._replace(
+                explore_network=explore_action_state.explore_network)
+            # log_pi_explore = nest.map_structure(lambda dist, a: dist.log_prob(a),
+            #                                     explore_action_dist, explore_action)
+            # log_pi_explore = sum(nest.flatten(log_pi_explore))
+            log_pi_explore = ()
 
-        explore_state, explore_loss = self._actor_train_step(inputs,
-                                                             state.explore,
-                                                             explore_action,
-                                                             log_pi_explore,
-                                                             explore=True)
+            explore_state, explore_loss = self._actor_train_step(
+                inputs,
+                state.explore,
+                explore_action,
+                log_pi_explore,
+                explore=True)
 
         # train critic_module
         critic_state, critic_info = self._critic_train_step(
