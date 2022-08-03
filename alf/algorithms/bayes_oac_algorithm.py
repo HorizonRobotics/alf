@@ -19,14 +19,10 @@ import torch.distributions as td
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm, OabcInfo, OabcState
-from alf.algorithms.sac_algorithm import ActionType
-from alf.data_structures import TimeStep
+from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.optimizers import AdamTF
 from alf.networks import ActorDistributionNetwork
-from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils, summary_utils
 
@@ -34,6 +30,7 @@ from alf.utils import dist_utils, summary_utils
 @alf.configurable
 class BayesOacAlgorithm(OabcAlgorithm):
     r"""Optimistic Actor Critic with Bayesian Critics. """
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -67,20 +64,10 @@ class BayesOacAlgorithm(OabcAlgorithm):
                  alpha_optimizer=None,
                  explore_alpha_optimizer=None,
                  debug_summaries=False,
-                 name="TsabcAlgorithm"):
+                 name="BayesOacAlgorithm"):
         """
-        Args:
-            explore_network_cls
-            critic_module_cls
-            deterministic_actor
-            deterministic_critic
-            beta_ub (float): parameter for computing the upperbound of Q value:
-                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
-            beta_lb
-            explore_optimizer
-            explore_alpha_optimizer
+        Refer to OacAlgorithm and OabcAlgorithm for Args.
         """
-
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -115,40 +102,10 @@ class BayesOacAlgorithm(OabcAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for explore mode.")
         assert not self._deterministic_actor, "The target policy should be stochastic!"
+        self._explore_network = None
         self._explore_networks = self._explore_network
         self._explore_delta = explore_delta
-
-    def _make_modules(self, observation_spec, action_spec, reward_spec,
-                      actor_network_cls, explore_network_cls,
-                      critic_module_cls, critic_optimizer,
-                      deterministic_critic):
-
-        assert actor_network_cls is not None, (
-            "ActorNetwork must be provided!")
-        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
-                                          action_spec=action_spec)
-
-        assert explore_network_cls is None, ("No need for the ExploreNetwork!")
-        explore_network = None
-
-        input_tensor_spec = (observation_spec, action_spec)
-        critic_network = CriticDistributionParamNetwork(
-            input_tensor_spec=input_tensor_spec,
-            output_tensor_spec=reward_spec,
-            deterministic=deterministic_critic)
-        target_critic_network = critic_network.copy(
-            name='TargetCriticDistributionParamNetwork')
-
-        if critic_optimizer is None:
-            critic_optimizer = AdamTF(lr=3e-4)
-        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
-                                          param_net=critic_network,
-                                          optimizer=critic_optimizer)
-
-        return actor_network, explore_network, critic_module, target_critic_network
 
     def _predict_action(self,
                         observation,
@@ -235,3 +192,6 @@ class BayesOacAlgorithm(OabcAlgorithm):
                 summary_utils.add_mean_hist_summary("critics_std", q_std)
 
         return q_value
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_critic_module', '_target_critic_params', '_explore_networks']

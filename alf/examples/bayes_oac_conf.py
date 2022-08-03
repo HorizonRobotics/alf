@@ -41,10 +41,9 @@ actor_network_cls = partial(ActorDistributionNetwork,
                                 state_dependent_std=True,
                                 scale_distribution=True,
                                 std_transform=clipped_exp))
+explore_network_cls = actor_network_cls
 
 alf.config('calc_default_target_entropy', min_prob=0.184)
-
-explore_network_cls = None
 
 alf.config('CriticDistributionParamNetwork',
            joint_fc_layer_params=joint_fc_layer_params)
@@ -68,10 +67,10 @@ alf.config(
     use_entropy_reward=False,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
-    explore_optimizer=AdamTF(lr=3e-4),
+    explore_optimizer=None,
     critic_optimizer=Adam(lr=3e-4),  #, weight_decay=1e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
-    explore_alpha_optimizer=AdamTF(lr=3e-4))
+    explore_alpha_optimizer=None)
 
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 
@@ -80,7 +79,7 @@ alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
 
 alf.config('TrainerConfig',
            version='normal',
-           use_wandb=False,
+           use_wandb=True,
            async_eval=True,
            entity="jiachenli",
            project="bayesian-critics",
@@ -91,7 +90,7 @@ alf.config('TrainerConfig',
            num_updates_per_train_iter=1,
            num_iterations=2500000,
            num_checkpoints=1,
-           evaluate=False,
+           evaluate=True,
            eval_interval=1000,
            num_eval_episodes=5,
            debug_summaries=True,

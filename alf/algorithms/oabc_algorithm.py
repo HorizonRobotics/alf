@@ -36,7 +36,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 
 OabcActionState = namedtuple("OabcActionState",
-                             ["actor_network", "explore_network"],
+                             ["actor_network", "explore_network", "critic"],
                              default_value=())
 
 OabcCriticState = namedtuple("OabcCriticState", ["critics", "target_critics"])
