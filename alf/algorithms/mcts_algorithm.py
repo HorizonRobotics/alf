@@ -1338,7 +1338,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
 
     .. math::
 
-        p = -\arg\min_p E_p(v) + c KL(q||p)
+        p = \arg\min_p \left[ -E_p(v) + c KL(q||p) \right]
 
     which leads to the following solution:
 
