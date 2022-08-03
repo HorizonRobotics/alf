@@ -64,7 +64,7 @@ alf.config('Agent', rl_algorithm_cls=OacAlgorithm)
 
 alf.config('TrainerConfig',
            version='normal',
-           use_wandb=False,
+           use_wandb=True,
            async_eval=True,
            entity="jiachenli",
            project="bayesian-critics",

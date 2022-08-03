@@ -18,7 +18,7 @@ import torch.distributions as td
 
 import alf
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.sac_algorithm import SacAlgorithm, SacInfo, ActionType
+from alf.algorithms.sac_algorithm import SacAlgorithm, SacCriticInfo, SacInfo, ActionType
 from alf.algorithms.sac_algorithm import SacActionState, SacCriticState, SacState
 from alf.data_structures import TimeStep
 from alf.data_structures import AlgStep
@@ -59,8 +59,9 @@ class OacAlgorithm(SacAlgorithm):
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
                  explore=True,
-                 explore_delta=6.8,
-                 beta_ub=4.6,
+                 explore_delta=6.86,
+                 beta_ub=4.66,
+                 beta_lb=1.0,
                  max_log_alpha=None,
                  target_update_tau=0.05,
                  target_update_period=1,
@@ -115,6 +116,7 @@ class OacAlgorithm(SacAlgorithm):
         self._explore = explore
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
+        self._beta_lb = beta_lb
 
     def _predict_action(self,
                         observation,
@@ -220,3 +222,35 @@ class OacAlgorithm(SacAlgorithm):
             output=action,
             state=new_state,
             info=SacInfo(action=action, action_distribution=action_dist))
+
+    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
+                           rollout_info: SacInfo, action, action_distribution):
+        critics, critics_state = self._compute_critics(
+            self._critic_networks,
+            inputs.observation,
+            rollout_info.action,
+            state.critics,
+            replica_min=False,
+            apply_reward_weights=False)
+
+        target_critics, target_critics_state = self._compute_critics(
+            self._target_critic_networks,
+            inputs.observation,
+            action,
+            state.target_critics,
+            replica_min=False,
+            apply_reward_weights=False)
+
+        target_critics_mean = target_critics.mean(1)
+        target_critics_std = target_critics.std(1)
+        target_critics = target_critics_mean - self._beta_lb * target_critics_std
+
+        target_critic = target_critics.reshape(inputs.reward.shape)
+
+        target_critic = target_critic.detach()
+
+        state = SacCriticState(
+            critics=critics_state, target_critics=target_critics_state)
+        info = SacCriticInfo(critics=critics, target_critic=target_critic)
+
+        return state, info
