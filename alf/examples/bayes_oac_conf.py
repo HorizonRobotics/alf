@@ -41,10 +41,9 @@ actor_network_cls = partial(ActorDistributionNetwork,
                                 state_dependent_std=True,
                                 scale_distribution=True,
                                 std_transform=clipped_exp))
+explore_network_cls = actor_network_cls
 
 alf.config('calc_default_target_entropy', min_prob=0.184)
-
-explore_network_cls = None
 
 alf.config('CriticDistributionParamNetwork',
            joint_fc_layer_params=joint_fc_layer_params)
@@ -68,10 +67,10 @@ alf.config(
     use_entropy_reward=False,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
-    explore_optimizer=AdamTF(lr=3e-4),
+    explore_optimizer=None,
     critic_optimizer=Adam(lr=3e-4),  #, weight_decay=1e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
-    explore_alpha_optimizer=AdamTF(lr=3e-4))
+    explore_alpha_optimizer=None)
 
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 
