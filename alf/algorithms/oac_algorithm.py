@@ -166,7 +166,10 @@ class OacAlgorithm(SacAlgorithm):
                     critics = critics.squeeze()
                 assert critics.ndim == 2
                 q_mean = critics.mean(dim=1)
-                q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
+                if critics.shape[1] == 2:
+                    q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
+                else:
+                    q_std = critics.std(1)
                 q_ub = q_mean + self._beta_ub * q_std
                 dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
