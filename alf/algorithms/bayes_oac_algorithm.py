@@ -64,20 +64,10 @@ class BayesOacAlgorithm(OabcAlgorithm):
                  alpha_optimizer=None,
                  explore_alpha_optimizer=None,
                  debug_summaries=False,
-                 name="TsabcAlgorithm"):
+                 name="BayesOacAlgorithm"):
         """
-        Args:
-            explore_network_cls
-            critic_module_cls
-            deterministic_actor
-            deterministic_critic
-            beta_ub (float): parameter for computing the upperbound of Q value:
-                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
-            beta_lb
-            explore_optimizer
-            explore_alpha_optimizer
+        Refer to OacAlgorithm and OabcAlgorithm for Args.
         """
-
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
