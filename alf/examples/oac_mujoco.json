@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 5 seeds on each environment"
     ],
-    "version": "ensemble-10",
+    "version": "cluster-is-deter",
     "use_gpu": true,
     "gpus": [
         0,
