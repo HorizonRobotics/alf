@@ -332,6 +332,53 @@ class FrameResize(BaseObservationWrapper):
 
 
 @alf.configurable
+class FrameCrop(BaseObservationWrapper):
+    def __init__(self, env, sx=0, sy=0, width=84, height=84, fields=None):
+        """Create a FrameCrop instance
+
+        Args:
+             env (gym.Env): the gym environment
+             sx (int): start position along the horizonal direction (x-axis)
+             sy (int): start position along the vertical direction (y-axis)
+             width (int): crop width
+             height (int): crop height
+             fields (list[str]):  fields to be resize, A field str is a multi-level
+                path denoted by "A.B.C". If None, then non-nested observation is resized
+        """
+        assert sx >= 0 and sy >= 0, (
+            "The start positions should be non-negative",
+            "Got ({}, {}).".format(sx, sy))
+        self._sx = sx
+        self._sy = sy
+        self._width = width
+        self._height = height
+        super().__init__(env, fields=fields)
+
+    def transform_space(self, observation_space):
+        obs_shape = observation_space.shape
+        assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
+        assert self._sx + self._width <= obs_shape[0], (
+            "Crop is out of boundary "
+            "along the horizontal direction")
+        assert self._sy + self._height <= obs_shape[1], (
+            "Crop is out of boundary "
+            "along the vertical direction")
+        return gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=[self._width, self._height] + list(obs_shape[2:]),
+            dtype=np.uint8)
+
+    def transform_observation(self, observation):
+        obs = observation[self._sy:self._sy + self._height, self._sx:self._sx +
+                          self._width]
+
+        if len(obs.shape) != 3:
+            obs = obs[:, :, np.newaxis]
+        return obs
+
+
+@alf.configurable
 class FrameGrayScale(BaseObservationWrapper):
     """Gray scale image observation"""
 
