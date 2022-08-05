@@ -150,6 +150,17 @@ class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
         assert all_shapes == expected, "Result " + str(
             all_shapes) + " doesn't match exptected " + str(expected)
 
+        # test observation space
+        observation_space = env.observation_space
+        all_shapes_from_obs_space = (
+            observation_space['image'].shape,
+            observation_space['states'].shape,
+            observation_space['language'].shape,
+            observation_space['dict']['inner_states'].shape)
+        assert all_shapes_from_obs_space == expected, (
+            "Observation space " + str(all_shapes_from_obs_space) +
+            " doesn't match exptected " + str(expected))
+
 
 class ActionWrappersTest(alf.test.TestCase):
     def test_continuous_action_clipping(self):
