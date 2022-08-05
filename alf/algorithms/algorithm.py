@@ -1922,9 +1922,11 @@ class Algorithm(AlgorithmInterface):
                     if exp:
                         self.summarize_train(exp, train_info, loss_info,
                                              params)
-                    with alf.summary.scope("offline"):
-                        self.summarize_train(offline_exp, offline_train_info,
-                                             offline_loss_info, None)
+                    if offline_exp:
+                        with alf.summary.scope("offline"):
+                            self.summarize_train(offline_exp,
+                                                 offline_train_info,
+                                                 offline_loss_info, None)
 
         train_steps = 2 * batch_size * mini_batch_length * num_updates
         return train_steps
@@ -1960,10 +1962,10 @@ class Algorithm(AlgorithmInterface):
             context = common.pretrain_context()
         else:
             context = nullcontext()
+
         with context:
             offline_train_info = self._collect_train_info_offline(
                 offline_experience, self._pre_train)
-
             offline_loss_info = self.calc_loss_offline(offline_train_info,
                                                        self._pre_train)
 
@@ -2008,6 +2010,10 @@ class Algorithm(AlgorithmInterface):
         if self._RL_train:
             # for now, there is no need to do a hybrid after update
             self.after_update(experience.time_step, train_info)
+
+        loss_info = alf.nest.map_structure(torch.mean, loss_info)
+        offline_loss_info = alf.nest.map_structure(torch.mean,
+                                                   offline_loss_info)
 
         return experience, train_info, loss_info, offline_experience, \
                 offline_train_info, offline_loss_info, params

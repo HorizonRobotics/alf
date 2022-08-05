@@ -636,10 +636,6 @@ class RLAlgorithm(Algorithm):
                         self.summarize_metrics()
                     self._need_to_summarize_rollout = False
 
-        # replay buffer may not have been created yet because unroll is nor performed yet.
-        if self._replay_buffer is None:
-            return 0
-
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
