@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
 import gym
 from gym import spaces
 import numpy as np
 
 import alf
-from alf.environments.gym_wrappers import (FrameStack, ContinuousActionClip,
-                                           ContinuousActionMapping)
+from alf.environments.gym_wrappers import (
+    FrameStack, FrameCrop, ContinuousActionClip, ContinuousActionMapping)
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
@@ -105,6 +106,60 @@ class FrameStackTest(alf.test.TestCase):
         )
         assert all_shapes == expected, "Result " + str(
             all_shapes) + " doesn't match exptected " + str(expected)
+
+
+class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
+    def _create_env(self, sx, sy, width, height, channel_order):
+        return FrameCrop(
+            env=FakeDictObservationEnvironment(),
+            sx=sx,
+            sy=sy,
+            width=width,
+            height=height,
+            channel_order=channel_order,
+            fields=["image"])
+
+    @parameterized.parameters(
+        (0, 0, 1, 1, 'channels_last'), (0, 0, 1, 2, 'channels_last'),
+        (0, 0, 2, 1, 'channels_last'), (1, 0, 1, 1, 'channels_last'),
+        (0, 1, 1, 1, 'channels_last'), (0, 0, 2, 2, 'channels_last'),
+        (0, 0, 1, 1, 'channels_first'), (0, 0, 1, 2, 'channels_first'),
+        (0, 0, 2, 1, 'channels_first'), (1, 0, 1, 1, 'channels_first'),
+        (0, 1, 1, 1, 'channels_first'), (0, 0, 2, 2, 'channels_first'))
+    def test_frame_crop(self, sx, sy, width, height, channel_order):
+        env = self._create_env(
+            sx=sx,
+            sy=sy,
+            width=width,
+            height=height,
+            channel_order=channel_order)
+        obs = env.reset()
+        all_shapes = (
+            obs['image'].shape,
+            obs['states'].shape,
+            obs['language'].shape,
+            obs['dict']['inner_states'].shape,
+        )
+        expected = (
+            (height, width, 3) if channel_order == 'channels_last' else
+            (2, height, width),
+            (4, ),
+            (3, ),
+            (7, ),
+        )
+        assert all_shapes == expected, "Result " + str(
+            all_shapes) + " doesn't match exptected " + str(expected)
+
+        # test observation space
+        observation_space = env.observation_space
+        all_shapes_from_obs_space = (
+            observation_space['image'].shape,
+            observation_space['states'].shape,
+            observation_space['language'].shape,
+            observation_space['dict']['inner_states'].shape)
+        assert all_shapes_from_obs_space == expected, (
+            "Observation space " + str(all_shapes_from_obs_space) +
+            " doesn't match exptected " + str(expected))
 
 
 class ActionWrappersTest(alf.test.TestCase):
