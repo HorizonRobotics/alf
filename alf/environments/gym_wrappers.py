@@ -319,7 +319,7 @@ class FrameResize(BaseObservationWrapper):
         return gym.spaces.Box(
             low=0,
             high=255,
-            shape=[self._width, self._height] + list(obs_shape[2:]),
+            shape=[self._height, self._width] + list(obs_shape[2:]),
             dtype=np.uint8)
 
     def transform_observation(self, observation):

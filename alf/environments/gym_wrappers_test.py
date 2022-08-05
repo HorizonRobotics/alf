@@ -18,8 +18,9 @@ from gym import spaces
 import numpy as np
 
 import alf
-from alf.environments.gym_wrappers import (
-    FrameStack, FrameCrop, ContinuousActionClip, ContinuousActionMapping)
+from alf.environments.gym_wrappers import (FrameStack, FrameResize, FrameCrop,
+                                           ContinuousActionClip,
+                                           ContinuousActionMapping)
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
@@ -106,6 +107,46 @@ class FrameStackTest(alf.test.TestCase):
         )
         assert all_shapes == expected, "Result " + str(
             all_shapes) + " doesn't match exptected " + str(expected)
+
+
+class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
+    def _create_env(self, width, height):
+        return FrameResize(
+            env=FakeDictObservationEnvironment(),
+            width=width,
+            height=height,
+            fields=["image"])
+
+    @parameterized.parameters((10, 11), (12, 11))
+    def test_frame_resize(self, width, height):
+        env = self._create_env(width=width, height=height)
+        obs = env.reset()
+
+        all_shapes = (
+            obs['image'].shape,
+            obs['states'].shape,
+            obs['language'].shape,
+            obs['dict']['inner_states'].shape,
+        )
+        expected = (
+            (height, width, 3),
+            (4, ),
+            (3, ),
+            (7, ),
+        )
+        assert all_shapes == expected, "Result " + str(
+            all_shapes) + " doesn't match exptected " + str(expected)
+
+        # test observation space
+        observation_space = env.observation_space
+        all_shapes_from_obs_space = (
+            observation_space['image'].shape,
+            observation_space['states'].shape,
+            observation_space['language'].shape,
+            observation_space['dict']['inner_states'].shape)
+        assert all_shapes_from_obs_space == expected, (
+            "Observation space " + str(all_shapes_from_obs_space) +
+            " doesn't match exptected " + str(expected))
 
 
 class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
