@@ -25,6 +25,7 @@ from alf.networks.encoding_networks import AutoShapeImageDeconvNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
+from alf.networks.encoding_networks import ImageDecodingNetworkV2
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.network_test import test_net_copy
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -87,6 +88,23 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             output_shape = (64, 21, 65)
         self.assertEqual(output_shape, network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
+
+    @parameterized.parameters((False, ), (True, ))
+    def test_image_decoding_network_v2(self, same_padding):
+        input_spec = TensorSpec((100, ), torch.float32)
+        network = ImageDecodingNetworkV2(
+            input_size=input_spec.shape[0],
+            upsample_conv_layer_params=(2, (16, 3, 1), 4, (64, 3, 1)),
+            same_padding=same_padding,
+            start_decoding_size=(20, 30),
+            start_decoding_channels=8)
+
+        if same_padding:
+            output_shape = (64, 160, 240)
+        else:
+            output_shape = (64, ((20 * 2 - 3 + 1) * 4 - 3 + 1),
+                            ((30 * 2 - 3 + 1) * 4 - 3 + 1))
+        self.assertEqual(output_shape, network.output_spec.shape)
 
     @parameterized.parameters((None, 1, (64, 21, 65)), ((100, 100), 5,
                                                         (18, 31, 24)))

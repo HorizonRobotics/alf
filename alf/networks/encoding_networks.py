@@ -14,7 +14,7 @@
 
 import functools
 import numpy as np
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -228,6 +228,129 @@ class ImageDecodingNetwork(_Sequential):
                     strides=strides,
                     padding=padding))
             in_channels = filters
+
+        super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+
+@alf.configurable
+class ImageDecodingNetworkV2(_Sequential):
+    """Image decoding using upsampling+convolution.
+
+    Different with ``ImageDecodingNetwork`` which uses transposed convolution to
+    transform a smaller input to a larger image output, this class uses upsampling
+    followed by convolution layers. The idea is to let conv layer refine the
+    upsampling (e.g., nearest neighbor, bilinear, etc) results.
+
+    The difference between transposed conv and upsampling+conv can be found in
+    this article: `<https://distill.pub/2016/deconv-checkerboard/>`_. In short,
+    upsampling+conv might help reduce checkerboard artifacts that are common in
+    the outputs by transposed convolutions.
+    """
+
+    def __init__(self,
+                 input_size: int,
+                 upsample_conv_layer_params: Tuple[Union[int, Tuple[int]]],
+                 start_decoding_size: Union[int, Tuple[int]],
+                 start_decoding_channels: int,
+                 upsampling_mode: str = 'nearest',
+                 same_padding: bool = False,
+                 activation: Callable = torch.relu_,
+                 kernel_initializer: Callable = None,
+                 output_activation: Callable = torch.tanh,
+                 name: str = "ImageDecodingNetworkV2"):
+        """An example network of upsampling+conv for decoding images.
+
+        .. code-block:: python
+
+            net = ImageDecodingNetworkV2(input_size=100,
+                                         start_decoding_size=10,
+                                         start_decoding_channels=8,
+                                         same_padding=True,
+                                         upsample_conv_layer_params=(
+                                            2,
+                                            (16, 3, 1),
+                                            (32, 3, 1),
+                                            2,
+                                            (64, 3, 1),
+                                            (3, 3, 1)))
+            # The image shape: (8,10,10) -> (8,20,20) -> (16,20,20) -> (32,20,20)
+            #                  -> (32,40,40) -> (64,40,40) -> (3,40,40)
+
+        Args:
+            input_size: the size of the input latent vector
+            upsample_conv_layer_params: a tuple of ints or tuples. If the element
+                is an int, it represents the scaling factor for a ``torch.nn.Upsample``
+                layer; otherwise it should a tuple of ints representing conv params
+                ``(num_filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            start_decoding_size: the initial height and width we'd like to have
+                for the feature map.
+            start_decoding_channels: the initial number of channels we'd
+                like to have for the feature map. Note that we always first
+                project an input latent vector into a vector of an appropriate
+                length so that it can be reshaped into (``start_decoding_channels``,
+                ``start_decoding_height``, ``start_decoding_width``).
+            upsampling_mode: the argument for choosing an upsampling algorithm
+                for ``torch.nn.Upsample``.
+            same_padding: similar to TF's conv2d ``same`` padding mode. If
+                True, the user provided paddings in ``transconv_layer_params`` will
+                be replaced by automatically calculated ones; if False, it
+                corresponds to TF's ``valid`` padding mode (the user can still
+                provide custom paddings though).
+            activation: activation for hidden layers
+            kernel_initializer: initializer for all the layers.
+            output_activation: activation for the output layer.
+                Usually our image inputs are normalized to [0, 1] or [-1, 1],
+                so this function should be ``torch.sigmoid`` or ``torch.tanh``.
+            name (str):
+        """
+        input_tensor_spec = TensorSpec((input_size, ))
+
+        assert isinstance(upsample_conv_layer_params, tuple)
+        assert len(upsample_conv_layer_params) > 0
+
+        start_decoding_size = common.tuplify2d(start_decoding_size)
+        # pytorch assumes "channels_first" !
+        start_decoding_shape = [
+            start_decoding_channels, start_decoding_size[0],
+            start_decoding_size[1]
+        ]
+
+        nets = [
+            layers.FC(
+                input_size,
+                np.prod(start_decoding_shape),
+                activation=activation,
+                kernel_initializer=kernel_initializer),
+            alf.layers.Reshape(start_decoding_shape)
+        ]
+
+        in_channels = start_decoding_channels
+        for i, paras in enumerate(upsample_conv_layer_params):
+            if isinstance(paras, int):
+                nets.append(
+                    torch.nn.Upsample(
+                        scale_factor=paras, mode=upsampling_mode))
+            else:
+                filters, kernel_size, strides = paras[:3]
+                padding = paras[3] if len(paras) > 3 else 0
+                if same_padding:  # overwrite paddings
+                    kernel_size = common.tuplify2d(kernel_size)
+                    padding = ((kernel_size[0] - 1) // 2,
+                               (kernel_size[1] - 1) // 2)
+                act = activation
+                if i == len(upsample_conv_layer_params) - 1:
+                    act = output_activation
+                nets.append(
+                    layers.Conv2D(
+                        in_channels,
+                        filters,
+                        kernel_size,
+                        activation=act,
+                        kernel_initializer=kernel_initializer,
+                        strides=strides,
+                        padding=padding))
+                in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
