@@ -986,11 +986,11 @@ def play(root_dir,
                 episode_length[i] = 0
                 env_episodes[i] += 1
                 episodes += 1
+                common.log_metrics(metrics)
 
         policy_state = policy_step.state
         time_step = next_time_step
 
-    common.log_metrics(metrics)
     if recorder:
         recorder.close()
     env.reset()
