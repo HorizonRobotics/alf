@@ -32,6 +32,14 @@ BcLossInfo = namedtuple("LossInfo", ["actor"], default_value=())
 @alf.configurable
 class BcAlgorithm(OffPolicyAlgorithm):
     r"""Behavior cloning algorithm.
+    Behavior cloning is an offline approach to learn a policy
+    :math:`\pi_{\theta}(a|s)`, which is a function that maps an input
+    observation :math:`s` to an action :math:`a`. The paramerates (:math:`\theta`)
+    of this policy is learned by using the expert action as supervision for
+    training, e.g., by maximizing the probability of the expert actions on the
+    training data :math:`D`:
+    :math:`\max_{\theta} E_{(s,a)~D}\log \pi_{\theta}(a|s)`
+
     Reference:
     ::
         Pomerleau ALVINN: An Autonomous Land Vehicle in a Neural Network, NeurIPS 1988.
@@ -135,8 +143,6 @@ class BcAlgorithm(OffPolicyAlgorithm):
                            state,
                            rollout_info,
                            pre_train=False):
-
-        self._pre_train = pre_train
 
         action_dist, new_state = self._predict_action(
             inputs.observation, state=state.actor)

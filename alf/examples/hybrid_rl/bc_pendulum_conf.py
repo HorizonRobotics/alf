@@ -62,7 +62,7 @@ actor_network_cls = partial(
 use_action_delta = False
 alf.config('BcAlgorithm', actor_network_cls=actor_network_cls)
 
-num_iterations = 10000000
+num_iterations = 100000
 
 # training config
 alf.config(
@@ -70,8 +70,9 @@ alf.config(
     initial_collect_steps=0,
     num_updates_per_train_iter=1,
     num_iterations=num_iterations,
+    # disable rl training by setting rl_train_after_update_steps
+    # to be larger than num_iterations
     rl_train_after_update_steps=num_iterations + 1000,
-    rl_train_every_update_steps=1,
     mini_batch_size=64,
     mini_batch_length=2,
     offline_buffer_dir=offline_buffer_dir,

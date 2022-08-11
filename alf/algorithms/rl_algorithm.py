@@ -636,6 +636,15 @@ class RLAlgorithm(Algorithm):
                         self.summarize_metrics()
                     self._need_to_summarize_rollout = False
 
+        # replay buffer may not have been created for two different reasons:
+        # 1. in online RL training (``has_offline`` is False), unroll is not
+        # performed yet. In this case, we simply return from here.
+        # 2. in offline RL training case (``has_offline`` is True), there is no
+        # online replay buffer. In this case, we move on and continue with the
+        # offline training.
+        if self._replay_buffer is None and not self.has_offline:
+            return 0
+
         self.train()
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
