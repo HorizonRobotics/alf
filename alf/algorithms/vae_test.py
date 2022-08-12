@@ -13,9 +13,11 @@
 # limitations under the License.
 
 from absl import logging
+from absl.testing import parameterized
 import os
 import numpy as np
 import tempfile
+from functools import partial
 
 import torch
 
@@ -26,6 +28,28 @@ from alf.nest.utils import NestConcat
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import math_ops
+
+
+def _make_cond_vae_dataset(train_size, input_spec, prior_input_spec):
+    x_train = input_spec.randn(outer_dims=(train_size, ))
+    y_train = x_train.clone()
+    y_train[:train_size // 2] = y_train[:train_size // 2] + 1.0
+    pr_train = torch.cat([
+        prior_input_spec.zeros(outer_dims=(train_size // 2, )),
+        prior_input_spec.ones(outer_dims=(train_size // 2, ))
+    ],
+                         dim=0)
+
+    x_test = input_spec.randn(outer_dims=(100, ))
+    y_test = x_test.clone()
+    y_test[:50] = y_test[:50] + 1.0
+    pr_test = torch.cat([
+        prior_input_spec.zeros(outer_dims=(50, )),
+        prior_input_spec.ones(outer_dims=(50, ))
+    ],
+                        dim=0)
+    pr_test = torch.nn.functional.one_hot(pr_test, 2).to(torch.float32)
+    return x_train, y_train, pr_train, x_test, y_test, pr_test
 
 
 class VaeTest(alf.test.TestCase):
@@ -99,26 +123,9 @@ class VaeTest(alf.test.TestCase):
             list(encoder.parameters()) + list(decoding_layers.parameters()),
             lr=0.1)
 
-        x_train = self._input_spec.randn(outer_dims=(10000, ))
-        y_train = x_train.clone()
-        y_train[:5000] = y_train[:5000] + 1.0
-        pr_train = torch.cat([
-            prior_input_spec.zeros(outer_dims=(5000, )),
-            prior_input_spec.ones(outer_dims=(5000, ))
-        ],
-                             dim=0)
-
-        x_test = self._input_spec.randn(outer_dims=(100, ))
-        y_test = x_test.clone()
-        y_test[:50] = y_test[:50] + 1.0
-        pr_test = torch.cat([
-            prior_input_spec.zeros(outer_dims=(50, )),
-            prior_input_spec.ones(outer_dims=(50, ))
-        ],
-                            dim=0)
-        pr_test = torch.nn.functional.one_hot(
-            pr_test,
-            int(z_prior_network.input_tensor_spec.shape[0])).to(torch.float32)
+        (x_train, y_train, pr_train,
+         x_test, y_test, pr_test) = _make_cond_vae_dataset(
+             10000, self._input_spec, prior_input_spec)
 
         for _ in range(self._epochs):
             idx = torch.randperm(x_train.shape[0])
@@ -142,6 +149,135 @@ class VaeTest(alf.test.TestCase):
 
         y_hat_test = decoding_layers(
             encoder.train_step([pr_test, x_test]).output.z)
+        reconstruction_loss = float(
+            torch.mean(self._loss_f(y_test - y_hat_test)))
+        print("reconstruction_loss:", reconstruction_loss)
+        self.assertLess(reconstruction_loss, 0.05)
+
+
+class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
+    def setUp(self):
+        super().setUp()
+        self._input_spec = TensorSpec((1, ))
+        self._epochs = 10
+        self._batch_size = 200
+        self._loss_f = math_ops.square
+        self._encoder_cls = partial(
+            alf.networks.EncodingNetwork,
+            activation=torch.tanh,
+            fc_layer_params=(256, ) * 3)
+        self._decoder_cls = partial(
+            alf.networks.EncodingNetwork,
+            fc_layer_params=(256, ) * 3,
+            activation=torch.tanh,
+            last_layer_size=1,
+            last_activation=alf.math.identity)
+
+    @parameterized.parameters(
+        dict(z_shape=(20, ), n_categories=2),
+        dict(z_shape=(10, ), n_categories=4),
+        dict(z_shape=(8, ), n_categories=20),
+        dict(z_shape=(2, 5), n_categories=3),
+    )
+    def test_discrete_vae(self, z_shape, n_categories):
+        """Test for multiple categoricals."""
+        z_spec = BoundedTensorSpec(
+            shape=z_shape,
+            minimum=0,
+            maximum=n_categories - 1,
+            dtype=torch.int64)
+        encoder = vae.DiscreteVAE(
+            z_spec=z_spec,
+            beta=0.001,
+            input_tensor_spec=self._input_spec,
+            encoder_cls=self._encoder_cls)
+
+        self.assertEqual(encoder.output_spec.shape,
+                         z_spec.shape + (n_categories, ))
+
+        decoder = self._decoder_cls(
+            input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
+
+        optimizer = torch.optim.Adam(
+            list(encoder.parameters()) + list(decoder.parameters()), lr=1e-3)
+
+        x_train = self._input_spec.randn(outer_dims=(40000, ))
+        x_test = self._input_spec.randn(outer_dims=(100, ))
+
+        for _ in range(self._epochs):
+            x_train = x_train[torch.randperm(x_train.shape[0])]
+            rec_loss = []
+            for i in range(0, x_train.shape[0], self._batch_size):
+                optimizer.zero_grad()
+                batch = x_train[i:i + self._batch_size]
+                alg_step = encoder.train_step(batch)
+                z = alg_step.output.z
+                z = z.reshape(z.shape[0], -1)
+                outputs = decoder(z)[0]
+                l = torch.mean(self._loss_f(batch - outputs))
+                loss = l + torch.mean(alg_step.info.loss)
+                loss.backward()
+                optimizer.step()
+                rec_loss.append(l)
+            print("training rec loss: ", sum(rec_loss) / len(rec_loss))
+
+        z = encoder.train_step(x_test).output.z
+        z = z.reshape(z.shape[0], -1)
+        y_test = decoder(z)[0]
+        reconstruction_loss = float(torch.mean(self._loss_f(x_test - y_test)))
+        print("reconstruction_loss:", reconstruction_loss)
+        self.assertLess(reconstruction_loss, 0.05)
+
+    def test_cond_discrete_vae(self):
+        """The input has a shift of 1. depending on the Bernoulli variable.
+        """
+        prior_input_spec = BoundedTensorSpec((), 'int64')
+
+        z_spec = BoundedTensorSpec(
+            shape=(20, ), minimum=0, maximum=1, dtype=torch.int64)
+        encoder = vae.DiscreteVAE(
+            z_spec=z_spec,
+            beta=0.0001,
+            input_tensor_spec=self._input_spec,
+            prior_encoder_cls=self._encoder_cls,
+            prior_input_tensor_spec=TensorSpec((2, )),
+            encoder_cls=self._encoder_cls)
+        decoder = self._decoder_cls(
+            input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
+
+        optimizer = torch.optim.Adam(
+            list(encoder.parameters()) + list(decoder.parameters()), lr=1e-3)
+
+        (x_train, y_train, pr_train,
+         x_test, y_test, pr_test) = _make_cond_vae_dataset(
+             40000, self._input_spec, prior_input_spec)
+
+        for _ in range(self._epochs * 2):
+            idx = torch.randperm(x_train.shape[0])
+            x_train = x_train[idx]
+            y_train = y_train[idx]
+            pr_train = pr_train[idx]
+            rec_loss = []
+            for i in range(0, x_train.shape[0], self._batch_size):
+                optimizer.zero_grad()
+                batch = x_train[i:i + self._batch_size]
+                y_batch = y_train[i:i + self._batch_size]
+                pr_batch = torch.nn.functional.one_hot(
+                    pr_train[i:i + self._batch_size], 2).to(torch.float32)
+                alg_step = encoder.train_step([pr_batch, batch])
+                z = alg_step.output.z
+                z = z.reshape(z.shape[0], -1)
+                outputs = decoder(z)[0]
+                l = torch.mean(self._loss_f(y_batch - outputs))
+                loss = l + torch.mean(alg_step.info.loss)
+                loss.backward()
+                optimizer.step()
+                rec_loss.append(l)
+            print("training rec loss: ", sum(rec_loss) / len(rec_loss))
+
+        z = encoder.train_step([pr_test, x_test]).output.z
+        z = z.reshape(z.shape[0], -1)
+        y_hat_test = decoder(z)[0]
         reconstruction_loss = float(
             torch.mean(self._loss_f(y_test - y_hat_test)))
         print("reconstruction_loss:", reconstruction_loss)

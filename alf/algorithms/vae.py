@@ -13,16 +13,21 @@
 # limitations under the License.
 """Variational auto encoder."""
 
+from typing import Callable
+
+import numpy as np
+
 import torch
+import torch.distributions as td
 import torch.nn as nn
 
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.layers import FC
-from alf.networks import EncodingNetwork
-from alf.tensor_specs import TensorSpec
-from alf.utils import math_ops
+from alf.networks import EncodingNetwork, OnehotCategoricalProjectionNetwork
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.utils import math_ops, dist_utils
 from alf.utils.tensor_utils import tensor_extend_new_dim
 
 VAEInfo = namedtuple(
@@ -179,3 +184,143 @@ class VariationalAutoEncoder(Algorithm):
     def _beta_train_step(self, kld_loss):
         beta_loss = self._log_beta * (self._target_kld - kld_loss).detach()
         return beta_loss
+
+
+@alf.configurable
+class DiscreteVAE(VariationalAutoEncoder):
+    r"""VAE with a discrete posterior distribution. The latent ``z`` might be
+    a single categorical variable or a vector of categorials. Because the
+    re-parameterization trick can no longer be applied to the discrete distribution,
+    we instead use the straight-through gradient estimator to train the encoder.
+
+    ::
+
+        Bengio et al., "Estimating or Propagating Gradients Through Stochastic
+        Neurons for Conditional Computation", 2013.
+
+    In short, we can re-parameterize the one-hot latent embedding :math:`z` as
+
+    .. math::
+
+        \hat{z} = z + z_{prob} - SG(z_{prob})
+
+    Because :math:`z` is a sampled discrete variable, it has no gradient. So
+    the parameter gradient is
+
+    .. math::
+
+        \frac{\partial L}{\partial \hat{z}}\frac{\partial \hat{z}}{\partial \theta}
+        = \frac{\partial L}{\partial \hat{z}}\frac{\partial z_{prob}}{\partial \theta}
+
+    For implementation, we directly use ``OnehotCategoricalProjectionNetwork`` to
+    model the posterior distribution.
+    """
+
+    def __init__(self,
+                 z_spec: BoundedTensorSpec,
+                 input_tensor_spec: alf.NestedTensorSpec = None,
+                 encoder_cls: Callable = EncodingNetwork,
+                 prior_input_tensor_spec: alf.NestedTensorSpec = None,
+                 prior_encoder_cls: Callable = None,
+                 beta: float = 1.,
+                 target_kld_per_categorical: float = None,
+                 beta_optimizer: torch.optim.Optimizer = None,
+                 name: str = "DiscreteVAE"):
+        """
+        Args:
+            z_spec: a rank-0 or rank-1 tensor spec for the discrete posterior.
+                If it's rank-1, then ``z`` represents multiple  Categorials.
+            input_tensor_spec: the input spec.
+            encoder_cls: an encoding network to
+                preprocess input data before projecting it into a discrete
+                distribution. If ``prior_encoder_cls`` is None, this network must
+                handle input with spec ``input_tensor_spec``. If ``prior_encoder_cls``
+                is not None, this network must be handle input with spec
+                ``(prior_input_tensor_spec, input_tensor_spec, prior_encoder.output_spec)``.
+            prior_input_tensor_spec: the input spec for the prior encoder.
+            prior_encoder_cls: an encoding network that outputs an embedding to
+                be projected into a prior ``z`` distribution given the prior input.
+            beta: the weight for KL-divergence
+            target_kld_per_categorical: if not None, then this will be used as the
+                target KLD per Categorical to automatically tune beta.
+            beta_optimizer: if not None, will be used to train beta.
+            name (str):
+        """
+        Algorithm.__init__(self, name=name)
+
+        assert z_spec.is_discrete
+
+        prior_z_network = None
+        if prior_encoder_cls is not None:
+            prior_encoder = prior_encoder_cls(
+                input_tensor_spec=prior_input_tensor_spec)
+            prior_proj_net = OnehotCategoricalProjectionNetwork(
+                input_size=prior_encoder.output_spec.numel, action_spec=z_spec)
+            prior_z_network = alf.nn.Sequential(prior_encoder, prior_proj_net)
+            logits_spec = TensorSpec((np.prod(prior_proj_net._output_shape), ))
+            input_tensor_spec = (prior_input_tensor_spec, input_tensor_spec,
+                                 logits_spec)
+
+        self._prior_z_network = prior_z_network
+
+        encoder = encoder_cls(
+            input_tensor_spec=input_tensor_spec,
+            preprocessing_combiner=alf.nest.utils.NestConcat())
+        proj_net = OnehotCategoricalProjectionNetwork(
+            input_size=encoder.output_spec.numel, action_spec=z_spec)
+        self._z_network = alf.nn.Sequential(encoder, proj_net)
+
+        self._n_categories = int(z_spec.maximum - z_spec.minimum + 1)
+        self._z_spec = z_spec
+
+        self._log_beta = nn.Parameter(torch.tensor(beta).log())
+        self._target_kld = None
+        if target_kld_per_categorical is not None:
+            self._target_kld = target_kld_per_categorical * z_spec.numel
+
+        if beta_optimizer is not None:
+            self.add_optimizer(beta_optimizer, [self._log_beta])
+
+    @property
+    def output_spec(self):
+        return BoundedTensorSpec(
+            shape=self._z_spec.shape + (self._n_categories, ),
+            minimum=0.,
+            maximum=1.,
+            dtype=torch.float32)
+
+    def _sampling_forward(self, inputs):
+        """Encode the data into latent space then do sampling.
+
+        Args:
+            inputs (nested Tensor): if a prior network is provided, this is a
+                tuple of ``(prior_input, new_observation)``.
+        """
+        if self._prior_z_network is not None:
+            prior_input, new_obs = inputs
+            prior_z_dist, _ = self._prior_z_network(prior_input)
+            # probably should detach ``prior_z_logits``??
+            prior_z_logits = dist_utils.distributions_to_params(
+                prior_z_dist)['logits']
+            inputs = (prior_input, new_obs,
+                      prior_z_logits.reshape(prior_z_logits.shape[0], -1))
+
+        z_dist, _ = self._z_network(inputs)
+        if self._prior_z_network is not None:
+            # This will sum over kld of each Categorical pair
+            kl_div_loss = td.kl.kl_divergence(z_dist, prior_z_dist)
+            z_logits = prior_z_logits + dist_utils.distributions_to_params(
+                z_dist)['logits']
+            z_dist_spec = dist_utils.extract_spec(z_dist)
+            z_dist = dist_utils.params_to_distributions({
+                'logits': z_logits
+            }, z_dist_spec)
+        else:
+            uniform_prob = 1. / self._n_categories
+            entropy = dist_utils.compute_entropy(z_dist)
+            kl_div_loss = -np.log(uniform_prob) * self._z_spec.numel - entropy
+
+        # sample z with straight-through enabled
+        z = dist_utils.rsample_action_distribution(z_dist)
+        output = VAEOutput(z=z)
+        return output, kl_div_loss
