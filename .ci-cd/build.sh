@@ -128,6 +128,7 @@ function test() {
         alf.utils.lean_function_test \
         alf.utils.math_ops_test \
         alf.utils.normalizers_test \
+        alf.utils.schedulers_test \
         alf.utils.tensor_utils_test \
         alf.utils.value_ops_test \
         alf.examples.networks.impala_cnn_encoder_test
