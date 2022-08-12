@@ -9,13 +9,14 @@ capability of ALF.
 --------------------------------------------------------
 Here we only focus on the RL training functionality of ALF. For this, we
 have several different training modes supported in ALF:
+
 - Online training: the training involves online interaction with the environment
   and all the data required for training is obtained through interaction with
   with the environment. Typical RL algorthms including both on-policy and
   off-policy RL methods fall into this category.
 - Offline training: there is no online interaction with the environment, and all
   the data for training is pre-collected and provided as a fixed dataset.
-  Representative methods in this category incldues Behavior Cloning methods and
+  Representative methods in this category includes Behavior Cloning methods and
   Offline RL methods.
 - Hybrid training: a training modes that mixes the two modes above. It involves
   both offline data and online interaction for training.
@@ -51,7 +52,7 @@ By assigning to it a value that is larger than ``num_iterations``,
 we essentially can conduct pure offline RL training.
 
 ``rl_train_every_update_steps`` can be used to contol the training frequency
-of the normal (non-offline) part of the RL training w.r.t offline RL training.
+of the normal (non-offline) part of the RL training w.r.t. offline RL training.
 
 
 
@@ -73,6 +74,7 @@ described by the following data spec:
                                 ))
 
 As can be observed, the offline replay buffer contains information including:
+
 - time step: which is the ``TimeStep`` structure holding one-step transition
   information including previous action, observation, reward, discout
   and step type etc.
