@@ -33,6 +33,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[ICM](alf/algorithms/icm_algorithm.py)|Intrinsic motivation/Exploration|Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)|
 |[RND](alf/algorithms/rnd_algorithm.py)|Intrinsic motivation/Exploration|Burda et al. "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)|
 |[MuZero](alf/algorithms/muzero_algorithm.py)|Model-based RL|Schrittwieser et al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)|
+|[BC](alf/algorithms/bc_algorithm.py)|Offline Policy Learning|Pomerleau "ALVINN: An Autonomous Land Vehicle in a Neural Network" [NeurIPS 1988](https://papers.nips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html) <br>  Bain et al. "A framework for behavioural cloning" [Machine Intelligence 1999](http://www.cse.unsw.edu.au/~claude/papers/MI15.pdf)|
 |[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
 |[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
 |[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks" [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
@@ -129,13 +130,13 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 * [Humanoid](alf/examples/ppo_bullet_humanoid.gin). Learning to walk using the pybullet Humanoid environment. Need to install python pybullet>=2.5.0 for the environment. The evaluation score reaches 3k in 50M steps, using 96 parallel environments.
 
   <img src="alf/examples/ppo_bullet_humanoid.png" width = "300" height ="200" alt="Humanoid-training-curve"/> <img src="alf/examples/ppo_bullet_humanoid.gif" width = "300" height ="200" alt="Humanoid-video"/>
-  
+
 ### PPG
 
 * [procgen](alf/examples/ppg_procgen_bossfight_conf.py). Game "bossfight" as an example. Need to install python package [procgen](https://github.com/openai/procgen).
 
   <img src="alf/examples/ppg_procgen_bossfight.png" width="300" height="200" alt="ppg-bossfight-curve"/> <img src="alf/examples/ppg_bossfight.gif" height="200" alt="ppg-bossfight-video"/>
-  
+
 * [MetaDrive](alf/examples/metadrive/ppg_metadrive_conf.py). Learning to drive on randomly generated map with interaction on the [MetaDrive](https://metadriverse.github.io/metadrive/) simulator, with BEV as input. Need to install python package [metadrive-simulator](https://github.com/metadriverse/metadrive).
 
   <img src="alf/examples/metadrive/ppg_metadrive.jpg" width="300" height="200" alt="ppg_metadrive-curve"/> <img src="alf/examples/metadrive/ppg_metadrive.gif" height="200" alt="ppg-metadrive-video"/>
@@ -182,6 +183,13 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 
   <img src="alf/examples/diayn_pendulum.png" width="300" alt="Discriminator loss">
   <img src="alf/examples/diayn_pendulum.gif" width = "600" alt="Skills learned with DIAYN"/>
+
+### BC
+* [Pendulum](alf/examples/hybrid_rl/bc_pendulum_conf.py). Learning a control policy from [offline demonstrations](alf/examples/hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac_10k).
+
+  <img src="alf/examples/hybrid_rl/bc_pendulum_return.png" width="300" height ="200" alt="Loss">
+  <img src="alf/examples/hybrid_rl/bc_pendulum_loss.png" width="300" height ="200" alt="Return">
+
 
 
 ### Merlin
