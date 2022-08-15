@@ -160,7 +160,7 @@ class AlfGym3Wrapper(AlfEnvironment):
     environments which themselves are Gym3-based environments.
 
     NOTE: TimeLimit is currently not applicable to Gym3 environments
-    are it does not offer reset() interface.
+    as it does not offer reset() interface.
 
     """
 
