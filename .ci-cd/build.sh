@@ -120,6 +120,7 @@ function test() {
         alf.summary.summary_ops_test \
         alf.tensor_specs_test \
         alf.trainers.policy_trainer_test \
+        alf.utils.action_samplers_test \
         alf.utils.checkpoint_utils_test \
         alf.utils.common_test \
         alf.utils.data_buffer_test \

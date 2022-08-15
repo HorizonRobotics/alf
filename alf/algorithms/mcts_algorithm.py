@@ -596,15 +596,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             self._build_tree2(trees, to_plays)
 
-        action_dist, info = self._select_action(trees, steps)
+        action_probs, info = self._select_action(trees, steps)
         pred_state = ()
         if self._keep_model_pred_state:
             pred_state = model_output.state.pred_state
         if isinstance(action_sampler, alf.nn.Network):
             action_id, action_sampler_state = action_sampler(
-                action_dist, state.action_sampler_state)
+                action_probs, state.action_sampler_state)
         else:
-            action_id, action_sampler_state = action_sampler(action_dist), ()
+            action_id, action_sampler_state = action_sampler(action_probs), ()
         if info.candidate_actions != ():
             action = info.candidate_actions[trees.B, action_id]
         else:
@@ -1479,7 +1479,6 @@ def calculate_kl_exploration_policy(value, prior, c):
         value (Tensor): [N, K] Tensor
         prior (Tensor): [N, K] Tensor
         c (Tensor): [N, 1] Tensor
-        tol (float): Desired acurracy. The result satisfy :math:`|\sum_i p_i - 1| \le tol`
     Returns:
         tuple:
         - Tensor: [N, K], the exploration policy

@@ -138,7 +138,7 @@ class EpsilonGreedySampler(nn.Module):
 
 @alf.repr_wrapper
 class MultinomialSampler(nn.Module):
-    """Sample actions according the given multinomial distribution.
+    """Sample actions according to the given multinomial distribution.
     """
 
     def __init__(self):
