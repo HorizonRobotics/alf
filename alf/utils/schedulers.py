@@ -252,24 +252,26 @@ class CyclicalScheduler(Scheduler):
 
     def __call__(self):
         progress = self.progress()
-        progress_in_half_cycle = (
-            progress % self._half_cycle_size) / self._half_cycle_size
-        progress_in_cycle = (progress % self._cycle_size) / self._cycle_size
+
+        # round to one decimal place to facilitate the stage comparison below
+        progress_in_half_cycle = round(
+            (progress % self._half_cycle_size / self._half_cycle_size), 1) % 1
+        progress_in_cycle = round(
+            (progress % self._cycle_size / self._cycle_size), 1) % 1
 
         if self._switch_mode == "step":
             # step mode changes value at half-cycle point
-            if progress_in_cycle == 0:
+            if progress_in_cycle < 0.5:
                 self._current_value = self._base_lr
-            elif progress_in_half_cycle == 0 and progress_in_cycle != 0:
+            else:
                 self._current_value = self._bound_lr
+
             return self._current_value
 
         elif self._switch_mode == "linear":
             if progress_in_cycle < 0.5:
                 return (1 - progress_in_half_cycle) * self._base_lr + \
                     progress_in_half_cycle * self._bound_lr
-            elif progress_in_cycle == 0.5:
-                return self._bound_lr
             else:
                 return progress_in_half_cycle * self._base_lr + \
                     (1 - progress_in_half_cycle) * self._bound_lr
