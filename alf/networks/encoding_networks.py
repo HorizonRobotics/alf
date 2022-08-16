@@ -296,7 +296,8 @@ class ImageDecodingNetworkV2(_Sequential):
                 True, the user provided paddings in ``transconv_layer_params`` will
                 be replaced by automatically calculated ones; if False, it
                 corresponds to TF's ``valid`` padding mode (the user can still
-                provide custom paddings though).
+                provide custom paddings though). Please refer to the docstring of
+                ``ImageEncodingNetwork`` for definitions of the two padding modes.
             activation: activation for hidden layers
             kernel_initializer: initializer for all the layers.
             output_activation: activation for the output layer.
