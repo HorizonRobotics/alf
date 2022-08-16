@@ -115,7 +115,9 @@ def summarize_variables(name_and_params, with_histogram=True):
     """
     for var_name, var in name_and_params:
         var_values = var
-        if with_histogram:
+        if with_histogram and torch.all(torch.isfinite(var_values)):
+            # Need to make sure all values are finite to avoid the histogram range
+            # error
             alf.summary.histogram(
                 name='summarize_vars/' + var_name + '_value', data=var_values)
         alf.summary.scalar(
