@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Schedulers."""
-from typing import Callable
+from functools import partial
 from numbers import Number
+from typing import Callable
 
 import alf
 
@@ -249,15 +250,20 @@ class CyclicalScheduler(Scheduler):
         }, ("unsupportted switch mode {}".format(switch_mode))
         self._switch_mode = switch_mode
         self._current_value = base_lr
+        # Apply rounding the the calculated progress in cycle and half-cycle
+        # when progress_type is ``percent`` to avoid the issue in stage
+        # transition due to numerical reasons.
+        # For the other progress_types, no rounding is applied.
+        self._rounding_func = partial(round, ndigits=10) \
+                            if progress_type == "percent" else lambda x: x
 
     def __call__(self):
         progress = self.progress()
 
-        # round to one decimal place to facilitate the stage comparison below
-        progress_in_half_cycle = round(
-            (progress % self._half_cycle_size / self._half_cycle_size), 1) % 1
-        progress_in_cycle = round(
-            (progress % self._cycle_size / self._cycle_size), 1) % 1
+        progress_in_half_cycle = self._rounding_func(
+            (progress % self._half_cycle_size / self._half_cycle_size)) % 1
+        progress_in_cycle = self._rounding_func(
+            (progress % self._cycle_size / self._cycle_size)) % 1
 
         if self._switch_mode == "step":
             # step mode changes value at half-cycle point
