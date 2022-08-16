@@ -357,7 +357,7 @@ class Trainer(object):
 
     @staticmethod
     def current_env_steps():
-        return Trainer._trainer_progress._env_step
+        return Trainer._trainer_progress._env_steps
 
     def _train(self):
         """Perform training according the the learning type. """
