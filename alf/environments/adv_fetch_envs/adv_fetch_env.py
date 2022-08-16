@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Union
+
 import numpy as np
 
 from gym.envs.robotics.fetch_env import FetchEnv
@@ -21,22 +23,25 @@ from gym.envs.robotics import robot_env, rotations, utils
 class AdvFetchEnv(FetchEnv):
     def __init__(
             self,
-            model_path,
-            n_substeps,
-            gripper_extra_height,
-            block_gripper,
-            has_object,
-            target_in_the_air,
-            target_offset,
-            obj_range,
-            target_range,
-            distance_threshold,
-            initial_qpos,
-            reward_type,
+            model_path: str,
+            n_substeps: int,
+            gripper_extra_height: float,
+            block_gripper: bool,
+            has_object: bool,
+            target_in_the_air: bool,
+            target_offset: Union[float, np.ndarray],
+            obj_range: float,
+            target_range: float,
+            distance_threshold: float,
+            initial_qpos: dict,
+            reward_type: str,
     ):
-        """Initializes a new Fetch environment. Almost the same with ``FetchEnv``.
-        # The only change is from 4 to 7 for ``n_actions`` where the extra 3 dims
+        """Class copied from OpenAI ``FetchEnv``. Almost the same with ``FetchEnv``.
+        The only change is from 4 to 7 for ``n_actions`` where the extra 3 dims
         represent 'xyz' euler angles rotated compared to the previous step.
+
+        The updated action dims: 0-2 for position control, 3-5 for euler angle control,
+        and 6 for gripper openness control.
 
         .. note::
 
@@ -49,18 +54,18 @@ class AdvFetchEnv(FetchEnv):
             achieved goal.
 
         Args:
-            model_path (string): path to the environments XML file
-            n_substeps (int): number of substeps the simulation runs on every call to step
-            gripper_extra_height (float): additional height above the table when positioning the gripper
-            block_gripper (boolean): whether or not the gripper is blocked (i.e. not movable) or not
-            has_object (boolean): whether or not the environment has an object
-            target_in_the_air (boolean): whether or not the target should be in the air above the table or on the table surface
-            target_offset (float or array with 3 elements): offset of the target
-            obj_range (float): range of a uniform distribution for sampling initial object positions
-            target_range (float): range of a uniform distribution for sampling a target
-            distance_threshold (float): the threshold after which a goal is considered achieved
-            initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
-            reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
+            model_path: path to the environments XML file
+            n_substeps: number of substeps the simulation runs on every call to step
+            gripper_extra_height: additional height above the table when positioning the gripper
+            block_gripper: whether or not the gripper is blocked (i.e. not movable) or not
+            has_object: whether or not the environment has an object
+            target_in_the_air: whether or not the target should be in the air above the table or on the table surface
+            target_offset: offset of the target
+            obj_range: range of a uniform distribution for sampling initial object positions
+            target_range: range of a uniform distribution for sampling a target
+            distance_threshold: the threshold after which a goal is considered achieved
+            initial_qpos: a dictionary of joint names and values that define the initial configuration
+            reward_type: the reward type, i.e. sparse or dense
         """
         self.gripper_extra_height = gripper_extra_height
         self.block_gripper = block_gripper
