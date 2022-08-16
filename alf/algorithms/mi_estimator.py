@@ -44,7 +44,7 @@ class MIEstimator(Algorithm):
 
     * *DV*:  :math:`\sup_T E_P(T) - \log E_Q(\exp(T))`
     * *KLD*: :math:`\sup_T E_P(T) - E_Q(\exp(T)) + 1`
-    * *JSD*: :math:`\sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + \log(4)`
+    * *JSD*: :math:`\sup_T -E_P(softplus(-T))) - E_Q(softplus(T)) + \log(4)`
     * *ML*: :math:`\sup_q E_P(\log(q(y|x)) - \log(P(y)))`
 
     where P is the joint distribution of X and Y, and Q is the product marginal

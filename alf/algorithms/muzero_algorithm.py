@@ -120,9 +120,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
-            train_state_spec=mcts.predict_state_spec,
+            train_state_spec=mcts.train_state_spec,
             predict_state_spec=mcts.predict_state_spec,
-            rollout_state_spec=mcts.predict_state_spec,
+            rollout_state_spec=mcts.rollout_state_spec,
             config=config,
             debug_summaries=debug_summaries,
             name=name)
