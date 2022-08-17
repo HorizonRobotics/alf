@@ -609,6 +609,9 @@ class RewardClipping(RewardTransformer):
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
+
+    Note that if the reward is multi-dimensional, the clipping is applied to all
+    the dimensions. If per-dimension operation is desired,
     """
 
     def __init__(self, observation_spec=(), minmax=(-1, 1)):
@@ -623,27 +626,6 @@ class RewardClipping(RewardTransformer):
 
     def forward(self, reward):
         return reward.clamp(*self._minmax)
-
-
-@alf.configurable
-class RewardShifting(RewardTransformer):
-    """Shift immediate rewards by a displacement of ``bias``.
-
-    Can be used as a reward shaping function passed to an algorithm
-    (e.g. ``ActorCriticAlgorithm``).
-    """
-
-    def __init__(self, observation_spec=(), bias=0.0):
-        """
-        Args:
-            observation_spec (nested TensorSpec): describing the observation in timestep
-            bias (float): displacement amount
-        """
-        super().__init__(observation_spec)
-        self._bias = bias
-
-    def forward(self, reward):
-        return reward + self._bias
 
 
 @alf.configurable
@@ -710,19 +692,67 @@ class RewardScaling(RewardTransformer):
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
+
+    Note that if the reward is multi-dimensional, the scaling is applied to all
+    the dimensions. If per-dimension operation is desired,
+    ``FunctionalRewardTransformer`` can be used.
     """
 
-    def __init__(self, observation_spec=(), scale=1.0):
+    def __init__(self, scale, observation_spec=()):
         """
         Args:
-            observation_spec (nested TensorSpec): describing the observation in timestep
             scale (float): scale factor
+            observation_spec (nested TensorSpec): describing the observation in timestep
         """
         super().__init__(observation_spec)
         self._scale = scale
 
     def forward(self, reward):
         return reward * self._scale
+
+
+@alf.configurable
+class RewardShifting(RewardTransformer):
+    """Shift immediate rewards by a displacement of ``bias``.
+
+    Note that if the reward is multi-dimensional, the shifting is applied to all
+    the dimensions. If per-dimension operation is desired,
+    ``FunctionalRewardTransformer`` can be used.
+    """
+
+    def __init__(self, bias, observation_spec=()):
+        """
+        Args:
+            bias (float): displacement amount
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+        self._bias = bias
+
+    def forward(self, reward):
+        return reward + self._bias
+
+
+@alf.configurable
+class FunctionalRewardTransformer(RewardTransformer):
+    """Transform reward according to a provided function.
+
+    Can be used as a reward shaping function passed to an algorithm
+    (e.g. ``ActorCriticAlgorithm``).
+    """
+
+    def __init__(self, func, observation_spec=()):
+        """
+        Args:
+            func (Callable): the transformation function to be applied to the
+                reward. It takes reward as input and outputs a transformed reward.
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+        self._trans_func = func
+
+    def forward(self, reward):
+        return self._trans_func(reward)
 
 
 @alf.configurable

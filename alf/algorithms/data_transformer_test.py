@@ -45,6 +45,68 @@ class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorEqual(y1, y2)
 
 
+class FunctionalRewardTransformerTest(parameterized.TestCase,
+                                      alf.test.TestCase):
+    @parameterized.parameters((1, 1), (1, 10), (10, 1), (10, 10))
+    def test_functional_reward_transformer_for_clipping(
+            self, reward_dim, clamp_bound):
+        transformer = alf.algorithms.data_transformer.RewardClipping(
+            minmax=(-clamp_bound, clamp_bound))
+        func_transformer = alf.algorithms.data_transformer.FunctionalRewardTransformer(
+            func=lambda x: x.clamp(-clamp_bound, clamp_bound))
+        x = torch.randn(100, reward_dim)
+        common.set_exe_mode(common.EXE_MODE_OTHER)
+        y1 = transformer(x)
+        y2 = func_transformer(x)
+        self.assertTensorEqual(y1, y2)
+
+    @parameterized.parameters((1, 1), (1, 10), (10, 1), (10, 10))
+    def test_functional_reward_transformer_for_scaling(self, reward_dim,
+                                                       scale):
+        transformer = alf.algorithms.data_transformer.RewardScaling(
+            scale=scale)
+        func_transformer = alf.algorithms.data_transformer.FunctionalRewardTransformer(
+            func=lambda x: x * scale)
+        x = torch.randn(100, reward_dim)
+        common.set_exe_mode(common.EXE_MODE_OTHER)
+        y1 = transformer(x)
+        y2 = func_transformer(x)
+        self.assertTensorEqual(y1, y2)
+
+    @parameterized.parameters((1, 1), (1, 10), (10, 1), (10, 10))
+    def test_functional_reward_transformer_for_shifting(
+            self, reward_dim, bias):
+        transformer = alf.algorithms.data_transformer.RewardShifting(bias=bias)
+        func_transformer = alf.algorithms.data_transformer.FunctionalRewardTransformer(
+            func=lambda x: x + bias)
+        x = torch.randn(100, reward_dim)
+        common.set_exe_mode(common.EXE_MODE_OTHER)
+        y1 = transformer(x)
+        y2 = func_transformer(x)
+        self.assertTensorEqual(y1, y2)
+
+    @parameterized.parameters(
+        (5, 0, 0, 0),  # mask out dim 0
+        (5, 0, 1, 2),  # scale and shift dim 0
+        (10, 1, 0.1, -5)  # scale and shift dim 1
+    )
+    def test_multi_dim_reward_transformation(self, reward_dim, dim_for_trans,
+                                             scale, bias):
+        def multi_dim_reward_trans_func(reward):
+            # only apply transformation to the dimension specified by ``dim_for_trans``
+            reward[...,
+                   dim_for_trans] = reward[..., dim_for_trans] * scale + bias
+            return reward
+
+        func_transformer = alf.algorithms.data_transformer.FunctionalRewardTransformer(
+            func=multi_dim_reward_trans_func)
+        x = torch.randn(100, reward_dim)
+        common.set_exe_mode(common.EXE_MODE_OTHER)
+        y1 = multi_dim_reward_trans_func(x)
+        y2 = func_transformer(x)
+        self.assertTensorEqual(y1, y2)
+
+
 class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(-1, 0)
     def test_frame_stacker(self, stack_axis=0):
