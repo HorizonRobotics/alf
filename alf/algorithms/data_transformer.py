@@ -626,6 +626,27 @@ class RewardClipping(RewardTransformer):
 
 
 @alf.configurable
+class RewardShifting(RewardTransformer):
+    """Shift immediate rewards by a displacement of ``bias``.
+
+    Can be used as a reward shaping function passed to an algorithm
+    (e.g. ``ActorCriticAlgorithm``).
+    """
+
+    def __init__(self, observation_spec=(), bias=0.0):
+        """
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in timestep
+            bias (float): displacement amount
+        """
+        super().__init__(observation_spec)
+        self._bias = bias
+
+    def forward(self, reward):
+        return reward + self._bias
+
+
+@alf.configurable
 class RewardNormalizer(RewardTransformer):
     """Transform reward to be zero-mean and unit-variance."""
 

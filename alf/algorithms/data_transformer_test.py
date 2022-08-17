@@ -31,6 +31,7 @@ class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
         alf.algorithms.data_transformer.RewardClipping(),
         alf.algorithms.data_transformer.RewardScaling(scale=0.01),
+        alf.algorithms.data_transformer.RewardShifting(bias=-1),
         alf.algorithms.data_transformer.RewardNormalizer(
             update_mode="rollout"),
     )
