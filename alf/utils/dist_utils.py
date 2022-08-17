@@ -1068,7 +1068,8 @@ def get_mode(dist):
     elif isinstance(dist, td.OneHotCategorical) or \
                 isinstance(dist, td.OneHotCategoricalStraightThrough):
         mode = torch.nn.functional.one_hot(
-            torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
+            torch.argmax(dist.logits, -1),
+            num_classes=dist.logits.shape[-1]).to(dist.logits)
     elif isinstance(dist, td.normal.Normal):
         mode = dist.mean
     elif isinstance(dist, StableCauchy):
