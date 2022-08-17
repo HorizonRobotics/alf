@@ -32,7 +32,7 @@ from alf.utils.tensor_utils import tensor_extend_new_dim
 
 VAEInfo = namedtuple(
     "VAEInfo", ["kld", "z_std", "loss", "beta_loss", 'beta'], default_value=())
-VAEOutput = namedtuple("VAEOutput", ["z", "z_mean", "z_std"])
+VAEOutput = namedtuple("VAEOutput", ["z", "z_mode", "z_std"], default_value=())
 
 
 @alf.configurable
@@ -154,7 +154,7 @@ class VariationalAutoEncoder(Algorithm):
         eps = torch.randn(z_mean.shape)
         z_std = torch.exp(z_log_var * 0.5)
         z = z_mean + z_std * eps
-        output = VAEOutput(z=z, z_std=z_std, z_mean=z_mean)
+        output = VAEOutput(z=z, z_std=z_std, z_mode=z_mean)
         return output, kl_div_loss
 
     def train_step(self, inputs, state=()):
@@ -228,8 +228,10 @@ class DiscreteVAE(VariationalAutoEncoder):
                  name: str = "DiscreteVAE"):
         """
         Args:
-            z_spec: a rank-0 or rank-1 tensor spec for the discrete posterior.
-                If it's rank-1, then ``z`` represents multiple  Categorials.
+            z_spec: a tensor spec for the discrete posterior. Regardless of its
+                rank, it will be converted to rank-1, representing a vector of
+                discrete variables. The value bould of each variable must be
+                identical.
             input_tensor_spec: the input spec.
             encoder_cls: an encoding network to
                 preprocess input data before projecting it into a discrete
@@ -249,6 +251,14 @@ class DiscreteVAE(VariationalAutoEncoder):
         Algorithm.__init__(self, name=name)
 
         assert z_spec.is_discrete
+        self._n_categories = int(z_spec.maximum - z_spec.minimum + 1)
+
+        # convert z_spec to rank-1
+        z_spec = BoundedTensorSpec(
+            shape=(z_spec.numel, ),
+            minimum=0,
+            maximum=self._n_categories - 1,
+            dtype=z_spec.dtype)
 
         prior_z_network = None
         if prior_encoder_cls is not None:
@@ -263,14 +273,11 @@ class DiscreteVAE(VariationalAutoEncoder):
 
         self._prior_z_network = prior_z_network
 
-        encoder = encoder_cls(
-            input_tensor_spec=input_tensor_spec,
-            preprocessing_combiner=alf.nest.utils.NestConcat())
+        encoder = encoder_cls(input_tensor_spec=input_tensor_spec)
         proj_net = OnehotCategoricalProjectionNetwork(
             input_size=encoder.output_spec.numel, action_spec=z_spec)
         self._z_network = alf.nn.Sequential(encoder, proj_net)
 
-        self._n_categories = int(z_spec.maximum - z_spec.minimum + 1)
         self._z_spec = z_spec
 
         self._log_beta = nn.Parameter(torch.tensor(beta).log())
@@ -283,6 +290,8 @@ class DiscreteVAE(VariationalAutoEncoder):
 
     @property
     def output_spec(self):
+        """Because the output is a floating one-hot vector, the shape is rank-2.
+        """
         return BoundedTensorSpec(
             shape=self._z_spec.shape + (self._n_categories, ),
             minimum=0.,
@@ -322,5 +331,6 @@ class DiscreteVAE(VariationalAutoEncoder):
 
         # sample z with straight-through enabled
         z = dist_utils.rsample_action_distribution(z_dist)
-        output = VAEOutput(z=z)
+        z_mode = dist_utils.get_mode(z_dist).to(z)  # to float onehot
+        output = VAEOutput(z=z, z_mode=z_mode)
         return output, kl_div_loss

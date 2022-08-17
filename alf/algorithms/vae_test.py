@@ -193,7 +193,7 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
             encoder_cls=self._encoder_cls)
 
         self.assertEqual(encoder.output_spec.shape,
-                         z_spec.shape + (n_categories, ))
+                         (z_spec.numel, ) + (n_categories, ))
 
         decoder = self._decoder_cls(
             input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
