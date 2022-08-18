@@ -69,7 +69,6 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                  subspace_after_update_steps=10000,
                  subspace="covariance",
                  subspace_max_rank=20,
-                 entropy_regularization=1.,
                  loss_type="classification",
                  voting="soft",
                  num_train_classes=10,
@@ -126,7 +125,6 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                 * pca:
                 * freq_dir:
             subspace_max_rank (int): max rank of SWAG subspace.
-            entropy_regularization (float): weight of the repulsive term in par_vi.
 
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
@@ -181,24 +179,33 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                     num_parameters=self.particle_dim,
                     max_rank=subspace_max_rank))
 
-        if loss_type == 'classification':
-            self._loss_func = classification_loss
-            self._vote = self._classification_vote
-        elif loss_type == 'regression':
-            self._loss_func = regression_loss
-            self._vote = self._regression_vote
-        else:
-            raise ValueError("Unsupported loss_type: %s" % loss_type)
-
     @property
     def num_models(self):
         return self._num_particles
 
-    def _sample_subspace(self, sample_size, scale=0.5, diag_noise=True):
+    def sample_particles(self, n_samples=None):
+        if n_samples is None:
+            sample_size = 1
+        else:
+            assert n_samples % self.num_models == 0, (
+                "n_samples must be multiples of num_models (%d)!" \
+                    & (self.num_models))
+            sample_size = int(n_samples / self.num_models)
+
+        return self._sample_subspace(sample_size,
+                                     use_subspace_mean=True)
+
+    def _sample_subspace(self, 
+                         sample_size, 
+                         scale=0.5, 
+                         diag_noise=True,
+                         use_subspace_mean=None):
         samples = []
         for i in range(self.num_models):
             # append a tensor of [n_sample, n_params]
-            samples.append(self._subspaces[i].sample(sample_size))
+            samples.append(self._subspaces[i].sample(
+                               sample_size, 
+                               use_subspace_mean=use_subspace_mean))
 
         return torch.cat(samples, dim=0)  # [n_models * n_sample, n_params]
 
@@ -211,7 +218,8 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
 
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
-            ensemble_size (int|None): size of sampled ensemble for prediction.
+            training (bool): whether the prediction is used for training.
+            sample_size (int|None): size of sampled ensemble for prediction.
                 If None (default), use the base models. Otherwise, sample
                 ``sample_size`` many models from each swag model.
             state (None): not used.
@@ -223,7 +231,7 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                 ``[B, n, D]``, where the meanings of symbols are:
 
                 - B: batch size
-                - n: ensemble_size
+                - n: sample_size
                 - D: output dimension
 
             - state (None): not used
@@ -261,8 +269,7 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             valid_masks=valid_masks,
             weight=weight,
             batch_info=batch_info)
-        if alf.summary.get_global_counter(
-        ) > self._subspace_after_update_steps:
+        if alf.summary.get_global_counter() > self._subspace_after_update_steps:
             self._update_subspace()
 
         return loss_info, all_params

@@ -66,6 +66,39 @@ OabcLossInfo = namedtuple(
     'OabcLossInfo', ['actor', 'explore', 'critic', 'alpha', 'explore_alpha'],
     default_value=())
 
+def get_target_updater(param, target_param, tau=1.0, period=1, copy=True):
+    r"""Performs a soft update of the target parameter.
+    For param :math:`w_s` and its corresponding target_param :math:`w_t`, 
+    a soft update is:
+    .. math::
+        w_t = (1 - \tau) * w_t + \tau * w_s.
+    Args:
+        params (Tensor | Parameter): the current tensor or parameter.
+        target_models (Parameter): the parameter to be updated.
+        tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
+            means hard update.
+        period (int): Step interval at which the target param is updated.
+        copy (bool): If True, also copy ``param`` to ``target_param`` in the
+            beginning.
+    Returns:
+        Callable: a callable that performs a soft update of the target parameter.
+    """
+    def _copy_parameter(s, t):
+        t.data.copy_(s)
+
+    def _lerp_parameter(s, t):
+        t.data.lerp_(s, tau)
+
+    if copy:
+        _copy_parameter(param, target_param)
+
+    def update():
+        if tau != 1.0:
+            _lerp_parameter(param, target_param)
+        else:
+            _copy_parameter(param, target_param)
+
+    return common.Periodically(update, period, 'periodic_update_targets')
 
 @alf.configurable
 class OabcAlgorithm(OffPolicyAlgorithm):
@@ -219,9 +252,9 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         target_critic_network.set_parameters(self._target_critic_params)
         self._target_critic_network = target_critic_network
 
-        self._update_target_critic_params = common.TargetUpdater(
-            models=self._critic_module.particles,
-            target_models=self._target_critic_params,
+        self._update_target_critic_params = get_target_updater(
+            param=self._critic_module.sample_particles(),
+            target_param=self._target_critic_params,
             tau=target_update_tau,
             period=target_update_period)
 
@@ -603,10 +636,16 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         critic_info = info.critic
         targets = critic_info.target_critic
 
-        observation = critic_info.observation.reshape(
+        observation = critic_info.observation[:-1, ...]
+        action = critic_info.rollout_action[:-1, ...]
+        observation = observation.reshape(
             -1, self._observation_spec.shape[0])
-        action = critic_info.rollout_action.reshape(-1,
-                                                    self._action_spec.shape[0])
+        action = action.reshape(-1, self._action_spec.shape[0])
+
+        # observation = critic_info.observation.reshape(
+        #     -1, self._observation_spec.shape[0])
+        # action = critic_info.rollout_action.reshape(-1,
+        #                                             self._action_spec.shape[0])
 
         critic_step = self._critic_module.predict_step(
             inputs=(observation, action),
@@ -614,38 +653,78 @@ class OabcAlgorithm(OffPolicyAlgorithm):
             state=critic_info.critic_state)
         critics_dist = critic_step.output
 
-        neg_logprob = []
+        # speed up
         if self._deterministic_critic:
             critics = critics_dist.squeeze(-1)
             critics = critics.reshape(self._mini_batch_length, -1,
                                       *critics.shape[1:])
-            for i in range(num_particles):
-                if self._common_td_target:
-                    target_value = targets
-                else:
-                    target_value = targets[:, :, i, ...]
-                neg_logprob.append(
-                    self._critic_loss(info=info,
-                                      value=critics[:, :, i, ...],
-                                      target_value=target_value).loss)
+            if self._common_td_target:
+                neg_logprob = [self._critic_loss(
+                    info=info,
+                    value=critics[:, :, i, ...],
+                    target_value=targets).loss for i in range(num_particles)]
+            else:
+                neg_logprob = [self._critic_loss(
+                    info=info,
+                    value=critics[:, :, i, ...],
+                    target_value=targets[:, :, i, ...]).loss \
+                        for i in range(num_particles)]
+            neg_logprob = torch.stack(neg_logprob).reshape(num_particles, -1)
         else:
+            critics_mean = critics_dist.base_dist.mean.reshape(
+                self._mini_batch_length-1, -1,
+                *critics_dist.base_dist.mean.shape[1:])
+            critics_std = critics_dist.base_dist.stddev.reshape(
+                self._mini_batch_length-1, -1,
+                *critics_dist.base_dist.stddev.shape[1:])
             if self._common_td_target:
                 td_targets = self._critic_loss.compute_td_target(info, targets)
-            for i in range(num_particles):
-                if not self._common_td_target:
-                    td_targets = self._critic_loss.compute_td_target(
-                        info, targets[:, :, i, ...])
+                td_targets = td_targets.unsqueeze(2)
+            else:
+                td_targets = [self._critic_loss.compute_td_target(
+                    info, targets[:, :, i, ...]) for i in range(num_particles)]
+                td_targets = torch.stack(td_targets, dim=2)
+            
+            value_dist = td.Normal(loc=critics_mean,
+                                    scale=critics_std)
+            neg_logprob = -value_dist.log_prob(td_targets)
+            neg_logprob = neg_logprob.transpose(0, 2)
+            neg_logprob = neg_logprob.reshape(num_particles, -1)
 
-                critics_mean = critics_dist.base_dist.mean.reshape(
-                    self._mini_batch_length, -1,
-                    *critics_dist.base_dist.mean.shape[1:])
-                critics_std = critics_dist.base_dist.stddev.reshape(
-                    self._mini_batch_length, -1,
-                    *critics_dist.base_dist.stddev.shape[1:])
-                value_dist = td.Normal(loc=critics_mean[:-1, :, i, ...],
-                                       scale=critics_std[:-1, :, i, ...])
-                neg_logprob.append(-value_dist.log_prob(td_targets))
-        neg_logprob = torch.stack(neg_logprob).reshape(num_particles, -1)
+
+        # neg_logprob = []
+        # if self._deterministic_critic:
+        #     critics = critics_dist.squeeze(-1)
+        #     critics = critics.reshape(self._mini_batch_length, -1,
+        #                               *critics.shape[1:])
+        #     for i in range(num_particles):
+        #         if self._common_td_target:
+        #             target_value = targets
+        #         else:
+        #             target_value = targets[:, :, i, ...]
+        #         neg_logprob.append(
+        #             self._critic_loss(info=info,
+        #                               value=critics[:, :, i, ...],
+        #                               target_value=target_value).loss)
+        # else:
+        #     if self._common_td_target:
+        #         td_targets = self._critic_loss.compute_td_target(info, targets)
+        #     for i in range(num_particles):
+        #         if not self._common_td_target:
+        #             td_targets = self._critic_loss.compute_td_target(
+        #                 info, targets[:, :, i, ...])
+        #
+        #         critics_mean = critics_dist.base_dist.mean.reshape(
+        #             self._mini_batch_length, -1,
+        #             *critics_dist.base_dist.mean.shape[1:])
+        #         critics_std = critics_dist.base_dist.stddev.reshape(
+        #             self._mini_batch_length, -1,
+        #             *critics_dist.base_dist.stddev.shape[1:])
+        #         value_dist = td.Normal(loc=critics_mean[:-1, :, i, ...],
+        #                                scale=critics_std[:-1, :, i, ...])
+        #         neg_logprob.append(-value_dist.log_prob(td_targets))
+        # neg_logprob = torch.stack(neg_logprob).reshape(num_particles, -1)
+
         return neg_logprob.mean(-1)
 
     def _trainable_attributes_to_ignore(self):

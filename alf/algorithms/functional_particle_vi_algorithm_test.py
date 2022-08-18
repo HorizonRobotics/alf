@@ -95,7 +95,8 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         inputs = trainset.get_features()
         targets = trainset.get_targets()
         train_loader = torch.utils.data.DataLoader(
-            trainset, batch_size=batch_size, shuffle=True)
+            trainset, batch_size=batch_size, shuffle=True,
+            generator=torch.Generator(device=alf.get_default_device()))
         test_loader = torch.utils.data.DataLoader(testset, batch_size=1)
         true_cov = torch.inverse(inputs.t() @ inputs)
         true_mean = true_cov @ inputs.t() @ targets

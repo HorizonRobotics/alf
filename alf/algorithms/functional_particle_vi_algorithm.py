@@ -87,6 +87,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  last_activation=math_ops.identity,
                  last_use_bias=True,
                  last_use_ln=False,
+                 particles = None,
                  num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
@@ -103,6 +104,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  critic_use_bn=True,
                  num_train_classes=10,
                  optimizer=None,
+                 initial_train_steps=0,
                  critic_optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -143,6 +145,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             last_use_bias (bool): whether use bias for the last layer
             last_use_ln (bool): whether use normalization for the last layer.
 
+            particles (nn.Parameter): training particles.
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi.
 
@@ -185,6 +188,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             function_vi (bool): whether to use function value based par_vi.
             num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
+            initial_train_steps (int): if positive, number of steps that the 
+                algorithm is trained with preprocessed inputs before regular 
+                train_step.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
@@ -221,7 +227,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 use_conv_ln=use_conv_ln,
                 use_fc_bias=use_fc_bias,
                 use_fc_ln=use_fc_ln,
-                n_groups=num_particles,
                 activation=activation,
                 last_layer_size=last_layer_size,
                 last_activation=last_activation,
@@ -238,6 +243,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         super().__init__(
             particle_dim,
             num_particles=num_particles,
+            particles=particles,
             entropy_regularization=entropy_regularization,
             par_vi=par_vi,
             critic_hidden_layers=critic_hidden_layers,
@@ -257,6 +263,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         self._logging_evaluate = logging_evaluate
         self._config = config
         self._function_vi = function_vi
+        self._initial_train_steps = initial_train_steps
+        self._train_step_counter = 0
 
         if function_vi:
             assert function_bs is not None, (
@@ -281,6 +289,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     @property
     def param_net(self):
         return self._param_net
+
+    def sample_particles(self, n_samples=None):
+        return self.particles
 
     def reset_param_net(self, params):
         self._param_net.set_parameters(params)
@@ -313,7 +324,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         else:
             self._outlier_train_loader = self._outlier_test_loader = None
 
-    def predict_step(self, inputs, training=False, params=None, state=None):
+    def predict_step(self, inputs, params=None, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
         Args:
@@ -325,7 +336,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         Returns:
             AlgStep:
             - output (Tensor): predictions with shape
-                ``[batch_size, self._param_net._output_spec.shape[0]]``
+                ``[batch_size, n_sample, self._param_net._output_spec.shape[0]]``
             - state (None): not used
         """
         if params is None:
@@ -394,6 +405,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             - state: not used
             - info (LossInfo): loss
         """
+        self._train_step_counter += 1
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
@@ -418,6 +430,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 loss_func=loss_func,
                 entropy_regularization=entropy_regularization,
                 state=())
+
+    def initial_train_stage(self):
+        return self._train_step_counter < self._initial_train_steps
 
     def _function_transform(self, data, params):
         """

@@ -50,6 +50,7 @@ class ParVIAlgorithm(Algorithm):
     def __init__(self,
                  particle_dim,
                  num_particles=10,
+                 particles = None,
                  entropy_regularization=1.,
                  par_vi="gfsf",
                  critic_input_dim=None,
@@ -66,6 +67,7 @@ class ParVIAlgorithm(Algorithm):
         Args:
             particle_dim (int): dimension of the particles.
             num_particles (int): number of particles.
+            particles (nn.Parameter): training particles.
             entropy_regularization (float): weight of the repulsive term in par_vi.
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``, ``None``],
 
@@ -93,10 +95,19 @@ class ParVIAlgorithm(Algorithm):
         """
         super().__init__(
             optimizer=optimizer, debug_summaries=debug_summaries, name=name)
+
+        if particles is None:
+            self._particles = torch.nn.Parameter(
+                torch.randn(num_particles, particle_dim, requires_grad=True))
+        else:
+            assert particles.shape == (num_particles, particle_dim), (
+                "shape of input particles (%d, %d) does not match specified \
+                 (num_particles, particle_dim) % (particles.shape)")
+            self._particles = particles
+
         self._particle_dim = particle_dim
         self._num_particles = num_particles
         self._entropy_regularization = entropy_regularization
-        self._particles = None
         self._par_vi = par_vi
         if par_vi == 'gfsf':
             self._grad_func = self._gfsf_grad
@@ -122,9 +133,6 @@ class ParVIAlgorithm(Algorithm):
 
         self._kernel_width_averager = AdaptiveAverager(
             tensor_spec=TensorSpec(shape=()))
-
-        self._particles = torch.nn.Parameter(
-            torch.randn(num_particles, particle_dim, requires_grad=True))
 
     @property
     def particle_dim(self):
