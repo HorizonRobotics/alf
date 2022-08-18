@@ -123,7 +123,7 @@ class SequentialDataTransformer(DataTransformer):
         state_spec = []
         max_stack_size = 1
         for i, ctor in enumerate(data_transformer_ctors):
-            obs_trans = ctor(observation_spec)
+            obs_trans = ctor(observation_spec=observation_spec)
             if isinstance(obs_trans, FrameStacker):
                 max_stack_size = max(max_stack_size, obs_trans.stack_size)
             observation_spec = obs_trans.transformed_observation_spec
@@ -609,6 +609,9 @@ class RewardClipping(RewardTransformer):
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
+
+    Note that if the reward is multi-dimensional, the clipping is applied to all
+    the dimensions. If per-dimension operation is desired,
     """
 
     def __init__(self, observation_spec=(), minmax=(-1, 1)):
@@ -689,19 +692,67 @@ class RewardScaling(RewardTransformer):
 
     Can be used as a reward shaping function passed to an algorithm
     (e.g. ``ActorCriticAlgorithm``).
+
+    Note that if the reward is multi-dimensional, the scaling is applied to all
+    the dimensions. If per-dimension operation is desired,
+    ``FunctionalRewardTransformer`` can be used.
     """
 
-    def __init__(self, observation_spec=(), scale=1.0):
+    def __init__(self, scale, observation_spec=()):
         """
         Args:
-            observation_spec (nested TensorSpec): describing the observation in timestep
             scale (float): scale factor
+            observation_spec (nested TensorSpec): describing the observation in timestep
         """
         super().__init__(observation_spec)
         self._scale = scale
 
     def forward(self, reward):
         return reward * self._scale
+
+
+@alf.configurable
+class RewardShifting(RewardTransformer):
+    """Shift immediate rewards by a displacement of ``bias``.
+
+    Note that if the reward is multi-dimensional, the shifting is applied to all
+    the dimensions. If per-dimension operation is desired,
+    ``FunctionalRewardTransformer`` can be used.
+    """
+
+    def __init__(self, bias, observation_spec=()):
+        """
+        Args:
+            bias (float): displacement amount
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+        self._bias = bias
+
+    def forward(self, reward):
+        return reward + self._bias
+
+
+@alf.configurable
+class FunctionalRewardTransformer(RewardTransformer):
+    """Transform reward according to a provided function.
+
+    Can be used as a reward shaping function passed to an algorithm
+    (e.g. ``ActorCriticAlgorithm``).
+    """
+
+    def __init__(self, func, observation_spec=()):
+        """
+        Args:
+            func (Callable): the transformation function to be applied to the
+                reward. It takes reward as input and outputs a transformed reward.
+            observation_spec (nested TensorSpec): describing the observation in timestep
+        """
+        super().__init__(observation_spec)
+        self._trans_func = func
+
+    def forward(self, reward):
+        return self._trans_func(reward)
 
 
 @alf.configurable
@@ -749,7 +800,7 @@ class HindsightExperienceTransformer(DataTransformer):
     """
 
     def __init__(self,
-                 transformed_observation_spec,
+                 observation_spec,
                  her_proportion=0.8,
                  achieved_goal_field="time_step.observation.achieved_goal",
                  desired_goal_field="time_step.observation.desired_goal",
@@ -767,8 +818,7 @@ class HindsightExperienceTransformer(DataTransformer):
                 suite_robotics environments.
         """
         super().__init__(
-            transformed_observation_spec=transformed_observation_spec,
-            state_spec=())
+            transformed_observation_spec=observation_spec, state_spec=())
         self._her_proportion = her_proportion
         self._achieved_goal_field = achieved_goal_field
         self._desired_goal_field = desired_goal_field
@@ -900,6 +950,14 @@ class UntransformedTimeStep(SimpleDataTransformer):
     data transformer must be applied first, before any other data transformer.
     """
 
+    def __init__(self, observation_spec=None):
+        """
+        observation_spec (nested TensorSpec): describing the observation. This
+            should be provided when ``transformed_observation_spec`` propery
+            needs to be accessed.
+        """
+        super().__init__(observation_spec)
+
     def _transform(self, timestep):
         return timestep._replace(untransformed=timestep)
 
@@ -917,11 +975,11 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
         DataTransformer
     """
     if data_transformer_ctor is None:
-        return IdentityDataTransformer(observation_spec)
+        return IdentityDataTransformer(observation_spec=observation_spec)
     elif not isinstance(data_transformer_ctor, Iterable):
         data_transformer_ctor = [data_transformer_ctor]
 
     if len(data_transformer_ctor) == 1:
-        return data_transformer_ctor[0](observation_spec)
+        return data_transformer_ctor[0](observation_spec=observation_spec)
 
     return SequentialDataTransformer(data_transformer_ctor, observation_spec)
