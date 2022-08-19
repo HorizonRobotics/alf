@@ -19,6 +19,7 @@ import torch.nn as nn
 import numpy as np
 
 import alf
+from alf.layers import PeriodicReset
 from alf.utils import math_ops
 
 
@@ -1136,6 +1137,58 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
         self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
 
+        
+class PeriodicResetTest(alf.test.TestCase):
+    def setUp(self):
+        alf.summary.set_global_counter(0)
+
+    def tearDown(self):
+        alf.summary.set_global_counter(0)
+        
+    def test_periodic_reset(self):
+        fc = nn.Linear(10, 1, bias=False)
+        nn.init.xavier_uniform_(fc.weight)
+        initial_weight = fc.weight.clone()
+
+        wrapped_fc = PeriodicReset(fc, period=4, no_reset_beyond=15)
+        optimizer = torch.optim.Adam(list(wrapped_fc.parameters()), lr=0.01)
+
+        num_iterations = 20
+        num_updates_per_iter = 3
+        is_reset = np.zeros((num_iterations, num_updates_per_iter), dtype=bool)
+        for i in range(num_iterations):
+            for j in range(num_updates_per_iter):
+                optimizer.zero_grad()                
+                x = torch.randn(8, 10)
+                y = torch.randn(8)
+                loss = ((wrapped_fc(x) - y) ** 2).mean()
+                is_reset[i, j] = (fc.weight == initial_weight).all()
+                loss.backward()
+                optimizer.step()
+            alf.summary.increment_global_counter()
+
+        np.testing.assert_equal(is_reset,
+                                np.array(
+                                    [[ True, False, False],
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [ True, False, False], # Reset at start of 4
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [ True, False, False], # Reset at start of 8
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [ True, False, False], # Reset at start of 12
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False], # No reset beyond 15
+                                     [False, False, False],
+                                     [False, False, False],
+                                     [False, False, False]]))
 
 if __name__ == "__main__":
     alf.test.main()

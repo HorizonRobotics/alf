@@ -3612,3 +3612,57 @@ class AMPWrapper(nn.Module):
                 lambda x: x.float() if x.dtype.is_floating_point else x, input)
         with torch.cuda.amp.autocast(self._enabled):
             return self._net(input)
+
+
+class PeriodicReset(torch.nn.Module):
+    """A wrapper that perioidcally reset the parameters of the wrapped module.
+
+    1. The reset happens at forward() periodically.
+    2. The period is based on the global counter.
+    3. When there are multiple updates per iteration, it only resets at the
+       first update.
+    4. Other than the reset, the module's forward() behaves exactly the same as
+       the wrapped module's.
+
+    """
+    def __init__(self,
+                 wrapped_module: nn.Module,
+                 period: int,
+                 no_reset_beyond: Optional[int] = None,
+                 name="PeriodicallyReset"):
+        """Construct a PeriodReset module.
+
+        Args:
+
+            wrapped_module: the inner module that is wrapped for periodic reset
+            period: reset every this number of global iterations
+            no_reset_beyond: when set, no reset will happen if the global counter
+                goes beyon d this number.
+
+        """
+        super().__init__()
+        self._body = wrapped_module
+        self._period = period
+        self._no_reset_beyond = no_reset_beyond
+        self._last_reset_count = 0
+        self._name = name
+        self._initial_state_dict = alf.nest.map_structure(
+            lambda x: x.clone(),
+            self._body.state_dict())
+
+    def _should_reset(self, count: int) -> bool:
+        if self._no_reset_beyond is not None and count >= self._no_reset_beyond:
+            return False
+        if count % self._period != 0:
+            return False
+        if count == self._last_reset_count:
+            return False
+        return True
+
+    def forward(self, *args, **kwargs):
+        if self.training:
+            count = int(alf.summary.get_global_counter())
+            if self._should_reset(count):
+                self._last_reset_count = count
+                self._body.load_state_dict(self._initial_state_dict)
+        return self._body(*args, **kwargs)
