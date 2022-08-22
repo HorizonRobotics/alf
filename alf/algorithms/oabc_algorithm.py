@@ -66,15 +66,15 @@ OabcLossInfo = namedtuple(
     'OabcLossInfo', ['actor', 'explore', 'critic', 'alpha', 'explore_alpha'],
     default_value=())
 
-def get_target_updater(param, target_param, tau=1.0, period=1, copy=True):
+def get_target_updater(param_fn, target_param, tau=1.0, period=1, copy=True):
     r"""Performs a soft update of the target parameter.
     For param :math:`w_s` and its corresponding target_param :math:`w_t`, 
     a soft update is:
     .. math::
         w_t = (1 - \tau) * w_t + \tau * w_s.
     Args:
-        params (Tensor | Parameter): the current tensor or parameter.
-        target_models (Parameter): the parameter to be updated.
+        param_fn (Callable): param_fn() returns the current parameter.
+        target_param (Parameter): the parameter to be updated.
         tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
             means hard update.
         period (int): Step interval at which the target param is updated.
@@ -90,9 +90,10 @@ def get_target_updater(param, target_param, tau=1.0, period=1, copy=True):
         t.data.lerp_(s, tau)
 
     if copy:
-        _copy_parameter(param, target_param)
+        _copy_parameter(param_fn(), target_param)
 
     def update():
+        param = param_fn()
         if tau != 1.0:
             _lerp_parameter(param, target_param)
         else:
@@ -253,7 +254,7 @@ class OabcAlgorithm(OffPolicyAlgorithm):
         self._target_critic_network = target_critic_network
 
         self._update_target_critic_params = get_target_updater(
-            param=self._critic_module.sample_particles(),
+            param_fn=self._critic_module.get_particles,
             target_param=self._target_critic_params,
             tau=target_update_tau,
             period=target_update_period)

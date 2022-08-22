@@ -290,7 +290,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     def param_net(self):
         return self._param_net
 
-    def sample_particles(self, n_samples=None):
+    def get_particles(self):
         return self.particles
 
     def reset_param_net(self, params):

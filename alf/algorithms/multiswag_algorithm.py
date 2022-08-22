@@ -183,17 +183,11 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
     def num_models(self):
         return self._num_particles
 
-    def sample_particles(self, n_samples=None):
-        if n_samples is None:
-            sample_size = 1
+    def get_particles(self):
+        if self._subspaces[0].rank > 0:
+            return self._sample_subspace(1, use_subspace_mean=True)
         else:
-            assert n_samples % self.num_models == 0, (
-                "n_samples must be multiples of num_models (%d)!" \
-                    & (self.num_models))
-            sample_size = int(n_samples / self.num_models)
-
-        return self._sample_subspace(sample_size,
-                                     use_subspace_mean=True)
+            return self.particles
 
     def _sample_subspace(self, 
                          sample_size, 
