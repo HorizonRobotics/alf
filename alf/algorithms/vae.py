@@ -25,8 +25,8 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.layers import FC
-from alf.networks import EncodingNetwork, OnehotCategoricalProjectionNetwork
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.networks import EncodingNetwork
+from alf.tensor_specs import BoundedTensorSpec
 from alf.utils import math_ops, dist_utils
 from alf.utils.tensor_utils import tensor_extend_new_dim
 
@@ -219,7 +219,9 @@ class DiscreteVAE(VariationalAutoEncoder):
         Jang et al., "CATEGORICAL REPARAMETERIZATION WITH GUMBEL-SOFTMAX", 2017.
 
     Which applies the above ST trick to the Gumbel-softmax distribution that uses
-    the Gumbel trick to reparameterize the categorical sampling process.
+    the Gumbel trick to reparameterize the categorical sampling process. The paper
+    claims that ST Gumbel-softmax gradient estimator has a lower variance than the
+    plain ST estimator.
     """
 
     def __init__(self,
@@ -250,7 +252,8 @@ class DiscreteVAE(VariationalAutoEncoder):
             prior_z_network_cls: an encoding network that outputs a vector of logits
                 representing the a prior ``z`` distribution given the prior input.
             mode: either 'st' or 'st-gumbel'.
-            gumbel_temp: the temperature for gumbel-softmax.
+            gumbel_temp: the temperature for gumbel-softmax. Only used when
+                ``mode=='st-gumbel'``.
             beta: the weight for KL-divergence
             target_kld_per_categorical: if not None, then this will be used as the
                 target KLD *per Categorical* to automatically tune beta.
@@ -320,8 +323,8 @@ class DiscreteVAE(VariationalAutoEncoder):
         """Encode the data into latent space then do sampling.
 
         Args:
-            inputs (nested Tensor): if a prior network is provided, this is a
-                tuple of ``(prior_input, new_observation)``.
+            inputs: if a prior network is provided, this is a tuple of
+                ``(prior_input, new_observation)``.
         """
         logits_shape = (-1, ) + self._z_spec.shape + (self._n_categories, )
 
