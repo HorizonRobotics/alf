@@ -164,6 +164,7 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         self._loss_f = math_ops.square
         self._encoder_cls = partial(
             alf.networks.EncodingNetwork,
+            preprocessing_combiner=NestConcat(),
             activation=torch.tanh,
             fc_layer_params=(256, ) * 3)
         self._decoder_cls = partial(
@@ -174,12 +175,13 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
             last_activation=alf.math.identity)
 
     @parameterized.parameters(
-        dict(z_shape=(20, ), n_categories=2),
-        dict(z_shape=(10, ), n_categories=4),
-        dict(z_shape=(8, ), n_categories=20),
-        dict(z_shape=(2, 5), n_categories=3),
+        dict(z_shape=(20, ), n_categories=2, mode='st'),
+        dict(z_shape=(10, ), n_categories=4, mode='st'),
+        dict(z_shape=(8, ), n_categories=20, mode='st'),
+        dict(z_shape=(2, 5), n_categories=3, mode='st'),
+        dict(z_shape=(2, 5), n_categories=3, mode='st-gumbel'),
     )
-    def test_discrete_vae(self, z_shape, n_categories):
+    def test_discrete_vae(self, z_shape, n_categories, mode):
         """Test for multiple categoricals."""
         z_spec = BoundedTensorSpec(
             shape=z_shape,
@@ -189,8 +191,9 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         encoder = vae.DiscreteVAE(
             z_spec=z_spec,
             beta=0.001,
+            mode=mode,
             input_tensor_spec=self._input_spec,
-            encoder_cls=self._encoder_cls)
+            z_network_cls=self._encoder_cls)
 
         self.assertEqual(encoder.output_spec.shape,
                          (z_spec.numel, ) + (n_categories, ))
@@ -228,7 +231,8 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         print("reconstruction_loss:", reconstruction_loss)
         self.assertLess(reconstruction_loss, 0.05)
 
-    def test_cond_discrete_vae(self):
+    @parameterized.parameters(dict(mode='st'), dict(mode='st-gumbel'))
+    def test_cond_discrete_vae(self, mode):
         """The input has a shift of 1. depending on the Bernoulli variable.
         """
         prior_input_spec = BoundedTensorSpec((), 'int64')
@@ -239,9 +243,10 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
             z_spec=z_spec,
             beta=0.0001,
             input_tensor_spec=self._input_spec,
-            prior_encoder_cls=self._encoder_cls,
+            mode=mode,
+            prior_z_network_cls=self._encoder_cls,
             prior_input_tensor_spec=TensorSpec((2, )),
-            encoder_cls=self._encoder_cls)
+            z_network_cls=self._encoder_cls)
         decoder = self._decoder_cls(
             input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
 

@@ -191,7 +191,7 @@ class DiscreteVAE(VariationalAutoEncoder):
     r"""VAE with a discrete posterior distribution. The latent ``z`` might be
     a single categorical variable or a vector of categorials. Because the
     re-parameterization trick can no longer be applied to the discrete distribution,
-    we instead use the straight-through gradient estimator to train the encoder.
+    we instead use the straight-through (ST) gradient estimator to train the encoder.
 
     ::
 
@@ -212,16 +212,24 @@ class DiscreteVAE(VariationalAutoEncoder):
         \frac{\partial L}{\partial \hat{z}}\frac{\partial \hat{z}}{\partial \theta}
         = \frac{\partial L}{\partial \hat{z}}\frac{\partial z_{prob}}{\partial \theta}
 
-    For implementation, we directly use ``OnehotCategoricalProjectionNetwork`` to
-    model the posterior distribution.
+    Alternatively, we provide the option of ST Gumbel Softmax gradient estimator.
+
+    ::
+
+        Jang et al., "CATEGORICAL REPARAMETERIZATION WITH GUMBEL-SOFTMAX", 2017.
+
+    Which applies the above ST trick to the Gumbel-softmax distribution that uses
+    the Gumbel trick to reparameterize the categorical sampling process.
     """
 
     def __init__(self,
                  z_spec: BoundedTensorSpec,
                  input_tensor_spec: alf.NestedTensorSpec = None,
-                 encoder_cls: Callable = EncodingNetwork,
+                 z_network_cls: Callable = EncodingNetwork,
                  prior_input_tensor_spec: alf.NestedTensorSpec = None,
-                 prior_encoder_cls: Callable = None,
+                 prior_z_network_cls: Callable = None,
+                 mode: str = "st",
+                 gumbel_temp: float = 1.,
                  beta: float = 1.,
                  target_kld_per_categorical: float = None,
                  beta_optimizer: torch.optim.Optimizer = None,
@@ -233,18 +241,19 @@ class DiscreteVAE(VariationalAutoEncoder):
                 discrete variables. The value bould of each variable must be
                 identical.
             input_tensor_spec: the input spec.
-            encoder_cls: an encoding network to
-                preprocess input data before projecting it into a discrete
-                distribution. If ``prior_encoder_cls`` is None, this network must
-                handle input with spec ``input_tensor_spec``. If ``prior_encoder_cls``
+            z_network_cls: an encoding network to encode input data into a vector
+                of logits. If ``prior_z_network_cls`` is None, this network must
+                handle input with spec ``input_tensor_spec``. If ``prior_z_network_cls``
                 is not None, this network must be handle input with spec
-                ``(prior_input_tensor_spec, input_tensor_spec, prior_encoder.output_spec)``.
-            prior_input_tensor_spec: the input spec for the prior encoder.
-            prior_encoder_cls: an encoding network that outputs an embedding to
-                be projected into a prior ``z`` distribution given the prior input.
+                ``(prior_input_tensor_spec, input_tensor_spec, prior_z_network.output_spec)``.
+            prior_input_tensor_spec: the input spec for ``prior_z_network``.
+            prior_z_network_cls: an encoding network that outputs a vector of logits
+                representing the a prior ``z`` distribution given the prior input.
+            mode: either 'st' or 'st-gumbel'.
+            gumbel_temp: the temperature for gumbel-softmax.
             beta: the weight for KL-divergence
             target_kld_per_categorical: if not None, then this will be used as the
-                target KLD per Categorical to automatically tune beta.
+                target KLD *per Categorical* to automatically tune beta.
             beta_optimizer: if not None, will be used to train beta.
             name (str):
         """
@@ -261,25 +270,24 @@ class DiscreteVAE(VariationalAutoEncoder):
             dtype=z_spec.dtype)
 
         prior_z_network = None
-        if prior_encoder_cls is not None:
-            prior_encoder = prior_encoder_cls(
-                input_tensor_spec=prior_input_tensor_spec)
-            prior_proj_net = OnehotCategoricalProjectionNetwork(
-                input_size=prior_encoder.output_spec.numel, action_spec=z_spec)
-            prior_z_network = alf.nn.Sequential(prior_encoder, prior_proj_net)
-            logits_spec = TensorSpec((np.prod(prior_proj_net._output_shape), ))
+        if prior_z_network_cls is not None:
+            prior_z_network = prior_z_network_cls(
+                input_tensor_spec=prior_input_tensor_spec,
+                last_layer_size=z_spec.numel * self._n_categories,
+                last_activation=alf.math.identity)
             input_tensor_spec = (prior_input_tensor_spec, input_tensor_spec,
-                                 logits_spec)
-
+                                 prior_z_network.output_spec)
         self._prior_z_network = prior_z_network
 
-        encoder = encoder_cls(input_tensor_spec=input_tensor_spec)
-        proj_net = OnehotCategoricalProjectionNetwork(
-            input_size=encoder.output_spec.numel, action_spec=z_spec)
-        self._z_network = alf.nn.Sequential(encoder, proj_net)
+        self._z_network = z_network_cls(
+            input_tensor_spec=input_tensor_spec,
+            last_layer_size=z_spec.numel * self._n_categories,
+            last_activation=alf.math.identity)
 
         self._z_spec = z_spec
-
+        assert mode in ['st', 'st-gumbel'], f"Wrong mode {mode}"
+        self._mode = mode
+        self._gumbel_temp = gumbel_temp
         self._log_beta = nn.Parameter(torch.tensor(beta).log())
         self._target_kld = None
         if target_kld_per_categorical is not None:
@@ -298,6 +306,16 @@ class DiscreteVAE(VariationalAutoEncoder):
             maximum=1.,
             dtype=torch.float32)
 
+    def _kl_divergence(self, logits1, logits2=None):
+        if logits2 is None:
+            logits2 = torch.zeros_like(logits1)  # assume uniform
+        logits1 = torch.nn.functional.log_softmax(logits1, dim=-1)
+        logits2 = torch.nn.functional.log_softmax(logits2, dim=-1)
+        kld_loss = torch.nn.KLDivLoss(reduction='none', log_target=True)
+        # The expectation is over the target distribution
+        kld = kld_loss(input=logits2, target=logits1)
+        return kld.sum(dim=(1, 2))  # [B,L,K] -> [B]
+
     def _sampling_forward(self, inputs):
         """Encode the data into latent space then do sampling.
 
@@ -305,32 +323,34 @@ class DiscreteVAE(VariationalAutoEncoder):
             inputs (nested Tensor): if a prior network is provided, this is a
                 tuple of ``(prior_input, new_observation)``.
         """
+        logits_shape = (-1, ) + self._z_spec.shape + (self._n_categories, )
+
         if self._prior_z_network is not None:
             prior_input, new_obs = inputs
-            prior_z_dist, _ = self._prior_z_network(prior_input)
-            # probably should detach ``prior_z_logits``??
-            prior_z_logits = dist_utils.distributions_to_params(
-                prior_z_dist)['logits']
-            inputs = (prior_input, new_obs,
-                      prior_z_logits.reshape(prior_z_logits.shape[0], -1))
+            prior_z_logits, _ = self._prior_z_network(prior_input)
+            inputs = (prior_input, new_obs, prior_z_logits)
+            prior_z_logits = prior_z_logits.reshape(logits_shape)
 
-        z_dist, _ = self._z_network(inputs)
+        z_logits, _ = self._z_network(inputs)
+        z_logits = z_logits.reshape(logits_shape)
+
         if self._prior_z_network is not None:
-            # This will sum over kld of each Categorical pair
-            kl_div_loss = td.kl.kl_divergence(z_dist, prior_z_dist)
-            z_logits = prior_z_logits + dist_utils.distributions_to_params(
-                z_dist)['logits']
-            z_dist_spec = dist_utils.extract_spec(z_dist)
-            z_dist = dist_utils.params_to_distributions({
-                'logits': z_logits
-            }, z_dist_spec)
+            z_logits += prior_z_logits
+            kl_div_loss = self._kl_divergence(z_logits, prior_z_logits)
         else:
-            uniform_prob = 1. / self._n_categories
-            entropy = dist_utils.compute_entropy(z_dist)
-            kl_div_loss = -np.log(uniform_prob) * self._z_spec.numel - entropy
+            kl_div_loss = self._kl_divergence(z_logits)
 
-        # sample z with straight-through enabled
-        z = dist_utils.rsample_action_distribution(z_dist)
-        z_mode = dist_utils.get_mode(z_dist).to(z)  # to float onehot
+        # For argmax (mode), we directly use ST
+        z_mode = torch.nn.functional.one_hot(
+            torch.argmax(z_logits, -1), num_classes=self._n_categories)
+        z_dist = td.OneHotCategoricalStraightThrough(logits=z_logits)
+        z_mode = z_mode.to(z_logits) + z_dist.probs - z_dist.probs.detach()
+
+        if self._mode == 'st':
+            z = dist_utils.rsample_action_distribution(z_dist)
+        else:
+            z = torch.nn.functional.gumbel_softmax(
+                logits=z_logits, tau=self._gumbel_temp, hard=True, dim=-1)
+
         output = VAEOutput(z=z, z_mode=z_mode)
         return output, kl_div_loss
