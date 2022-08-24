@@ -684,6 +684,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='./hybrid_rl/bc_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_iql_pendulum(self):
+        self._test(
+            conf_file='./hybrid_rl/iql_pendulum_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_hybrid_sac_pendulum(self):
         self._test(
             conf_file='./hybrid_rl/hybrid_sac_pendulum.gin',

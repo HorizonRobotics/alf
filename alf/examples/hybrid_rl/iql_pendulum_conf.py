@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bc_algorithm import BcAlgorithm
+from alf.algorithms.iql_algorithm import IqlAlgorithm
 
 # default params
 lr = 1e-4
@@ -35,8 +35,8 @@ alf.config(
 
 alf.config(
     'Agent',
-    rl_algorithm_cls=BcAlgorithm,
-    optimizer=alf.optimizers.Adam(lr=lr),
+    rl_algorithm_cls=IqlAlgorithm,
+    optimizer=alf.optimizers.Adam(lr=1e-4),
 )
 
 alf.config(
@@ -47,21 +47,39 @@ alf.config(
 
 proj_net = partial(
     alf.networks.StableNormalProjectionNetwork,
-    state_dependent_std=True,
+    state_dependent_std=False,  # IQL uses state independt std
     squash_mean=False,
     scale_distribution=True,
     min_std=1e-3,
     max_std=10)
 
-actor_network_cls = partial(
+actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
     fc_layer_params=fc_layers_params,
     activation=activation,
     continuous_projection_net_ctor=proj_net)
 
-alf.config('BcAlgorithm', actor_network_cls=actor_network_cls)
+critic_network_cls = partial(
+    alf.networks.CriticNetwork,
+    joint_fc_layer_params=fc_layers_params,
+)
 
-num_iterations = 100000
+v_network_cls = partial(
+    alf.networks.QNetwork,
+    fc_layer_params=fc_layers_params,
+    action_spec=alf.BoundedTensorSpec(
+        shape=(), minimum=0, maximum=0, dtype='int32'))
+
+alf.config(
+    'IqlAlgorithm',
+    actor_network_cls=actor_distribution_network_cls,
+    critic_network_cls=critic_network_cls,
+    v_network_cls=v_network_cls,
+    target_update_tau=0.005,
+    expectile=0.8,
+    temperature=1.0)
+
+num_iterations = 20000
 
 # training config
 alf.config(
