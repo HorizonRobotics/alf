@@ -178,8 +178,8 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         dict(z_shape=(20, ), n_categories=2, mode='st'),
         dict(z_shape=(10, ), n_categories=4, mode='st'),
         dict(z_shape=(8, ), n_categories=20, mode='st'),
-        dict(z_shape=(2, 5), n_categories=3, mode='st'),
-        dict(z_shape=(2, 5), n_categories=3, mode='st-gumbel'),
+        dict(z_shape=(10, ), n_categories=3, mode='st'),
+        dict(z_shape=(10, ), n_categories=3, mode='st-gumbel'),
     )
     def test_discrete_vae(self, z_shape, n_categories, mode):
         """Test for multiple categoricals."""

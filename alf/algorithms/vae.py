@@ -239,10 +239,10 @@ class DiscreteVAE(VariationalAutoEncoder):
                  name: str = "DiscreteVAE"):
         """
         Args:
-            z_spec: a tensor spec for the discrete posterior. Regardless of its
-                rank, it will be converted to rank-1, representing a vector of
-                discrete variables. The value bould of each variable must be
-                identical.
+            z_spec: a tensor spec for the discrete posterior. It has to be
+                rank-one, representing a vector of discrete variables.
+                The value bould of each variable must be identical and the lower
+                bound has to be 0.
             input_tensor_spec: the input spec.
             z_network_cls: an encoding network to encode input data into a vector
                 of logits. If ``prior_z_network_cls`` is None, this network must
@@ -263,15 +263,9 @@ class DiscreteVAE(VariationalAutoEncoder):
         """
         Algorithm.__init__(self, name=name)
 
-        assert z_spec.is_discrete
-        self._n_categories = int(z_spec.maximum - z_spec.minimum + 1)
-
-        # convert z_spec to rank-1
-        z_spec = BoundedTensorSpec(
-            shape=(z_spec.numel, ),
-            minimum=0,
-            maximum=self._n_categories - 1,
-            dtype=z_spec.dtype)
+        assert (z_spec.is_discrete and z_spec.ndim == 1
+                and z_spec.minimum == 0)
+        self._n_categories = int(z_spec.maximum + 1)
 
         prior_z_network = None
         if prior_z_network_cls is not None:
@@ -302,7 +296,7 @@ class DiscreteVAE(VariationalAutoEncoder):
 
     @property
     def output_spec(self):
-        """Because the output is a floating one-hot vector, the shape is rank-2.
+        """Because the output is a floating one-hot vector, the shape is rank-two.
         """
         return BoundedTensorSpec(
             shape=self._z_spec.shape + (self._n_categories, ),
@@ -315,9 +309,9 @@ class DiscreteVAE(VariationalAutoEncoder):
             logits2 = torch.zeros_like(logits1)  # assume uniform
         logits1 = torch.nn.functional.log_softmax(logits1, dim=-1)
         logits2 = torch.nn.functional.log_softmax(logits2, dim=-1)
-        kld_loss = torch.nn.KLDivLoss(reduction='none', log_target=True)
         # The expectation is over the target distribution
-        kld = kld_loss(input=logits2, target=logits1)
+        kld = torch.nn.functional.kl_div(
+            input=logits2, target=logits1, reduction='none', log_target=True)
         return kld.sum(dim=(1, 2))  # [B,L,K] -> [B]
 
     def _sampling_forward(self, inputs):
