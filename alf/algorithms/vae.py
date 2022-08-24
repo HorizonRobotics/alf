@@ -29,6 +29,7 @@ from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec
 from alf.utils import math_ops, dist_utils
 from alf.utils.tensor_utils import tensor_extend_new_dim
+from alf.utils.schedulers import ConstantScheduler, Scheduler
 
 VAEInfo = namedtuple(
     "VAEInfo", ["kld", "z_std", "loss", "beta_loss", 'beta'], default_value=())
@@ -231,7 +232,7 @@ class DiscreteVAE(VariationalAutoEncoder):
                  prior_input_tensor_spec: alf.NestedTensorSpec = None,
                  prior_z_network_cls: Callable = None,
                  mode: str = "st",
-                 gumbel_temp: float = 1.,
+                 gumbel_temp_scheduler: Scheduler = ConstantScheduler(1.),
                  beta: float = 1.,
                  target_kld_per_categorical: float = None,
                  beta_optimizer: torch.optim.Optimizer = None,
@@ -252,8 +253,8 @@ class DiscreteVAE(VariationalAutoEncoder):
             prior_z_network_cls: an encoding network that outputs a vector of logits
                 representing the a prior ``z`` distribution given the prior input.
             mode: either 'st' or 'st-gumbel'.
-            gumbel_temp: the temperature for gumbel-softmax. Only used when
-                ``mode=='st-gumbel'``.
+            gumbel_temp_scheduler: the temperature scheduler for gumbel-softmax.
+                Only used when ``mode=='st-gumbel'``.
             beta: the weight for KL-divergence
             target_kld_per_categorical: if not None, then this will be used as the
                 target KLD *per Categorical* to automatically tune beta.
@@ -290,7 +291,7 @@ class DiscreteVAE(VariationalAutoEncoder):
         self._z_spec = z_spec
         assert mode in ['st', 'st-gumbel'], f"Wrong mode {mode}"
         self._mode = mode
-        self._gumbel_temp = gumbel_temp
+        self._gumbel_temp_scheduler = gumbel_temp_scheduler
         self._log_beta = nn.Parameter(torch.tensor(beta).log())
         self._target_kld = None
         if target_kld_per_categorical is not None:
@@ -353,7 +354,10 @@ class DiscreteVAE(VariationalAutoEncoder):
             z = dist_utils.rsample_action_distribution(z_dist)
         else:
             z = torch.nn.functional.gumbel_softmax(
-                logits=z_logits, tau=self._gumbel_temp, hard=True, dim=-1)
+                logits=z_logits,
+                tau=self._gumbel_temp_scheduler(),
+                hard=True,
+                dim=-1)
 
         output = VAEOutput(z=z, z_mode=z_mode)
         return output, kl_div_loss
