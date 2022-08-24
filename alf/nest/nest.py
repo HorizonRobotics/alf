@@ -956,6 +956,9 @@ def transpose(nested: Nest,
     if shallow_nest is None:
         shallow_nest = nest_top_level(nested)
 
+    if not is_nested(shallow_nest):
+        return nested
+
     # ``nested`` is ``A`` and each leaf is ``B`` in the docstring
     leaves = flatten_up_to(shallow_nest, nested)
     for leaf in leaves:
@@ -986,3 +989,12 @@ def nest_top_level(nested: Nest):
         return type(nested)([None] * len(nested))
     fields_vals = extract_fields_from_nest(nested)
     return type(nested)(**{field: None for field, _ in fields_vals})
+
+
+def sum_nest(nested: Nest):
+    """Sum all elements in a nest.
+
+    Args:
+        nested: a nested structure
+    """
+    return sum(flatten(nested))
