@@ -45,13 +45,14 @@ alf.config(
     whole_replay_buffer_training=False,
     clear_replay_buffer=False)
 
+# these clip values are set according to IQL's hyper-parameter values
+alf.config('clipped_exp', clip_value_min=-5.0, clip_value_max=2.0)
+
 proj_net = partial(
-    alf.networks.StableNormalProjectionNetwork,
-    state_dependent_std=False,  # IQL uses state independt std
-    squash_mean=False,
-    scale_distribution=True,
-    min_std=1e-3,
-    max_std=10)
+    alf.networks.NormalProjectionNetwork,
+    state_dependent_std=False,  # IQL uses state independent std
+    scale_distribution=False,  # IQL scales mean instead of distribution
+    std_transform=alf.math.clipped_exp)
 
 actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
@@ -65,10 +66,7 @@ critic_network_cls = partial(
 )
 
 v_network_cls = partial(
-    alf.networks.QNetwork,
-    fc_layer_params=fc_layers_params,
-    action_spec=alf.BoundedTensorSpec(
-        shape=(), minimum=0, maximum=0, dtype='int32'))
+    alf.networks.ValueNetwork, fc_layer_params=fc_layers_params)
 
 alf.config(
     'IqlAlgorithm',
@@ -76,8 +74,8 @@ alf.config(
     critic_network_cls=critic_network_cls,
     v_network_cls=v_network_cls,
     target_update_tau=0.005,
-    expectile=0.8,
-    temperature=1.0)
+    expectile=0.8,  # expectile might need to be tuned for different tasks
+    temperature=1.0)  # temperature might need to be tuned for different tasks
 
 num_iterations = 20000
 

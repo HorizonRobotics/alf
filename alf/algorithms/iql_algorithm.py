@@ -137,6 +137,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            temperature (float): the hyper-parameter for scaling the advantages.
+                It corresponds to 1/beta in Eqn.(7) of the paper.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             expectile (float): the expectile value for value learning.
@@ -333,8 +335,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
 
         return critics, critics_state
 
-    def _actor_train_step(self, inputs: TimeStep, state, action, critics,
-                          action_distribution, v_value, rollout_info):
+    def _actor_train_step(self, inputs: TimeStep, state, action_distribution,
+                          v_value, rollout_info):
 
         # IQL uses target critic network for computing the value learning target
         q_value, critics_state = self._compute_critics(
@@ -406,8 +408,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             inputs, state.critic, rollout_info, action, action_distribution)
 
         actor_state, actor_loss = self._actor_train_step(
-            inputs, state.actor, action, critics, action_distribution,
-            critic_info.value, rollout_info)
+            inputs, state.actor, action_distribution, critic_info.value,
+            rollout_info)
 
         state = IqlState(
             action=action_state, actor=actor_state, critic=critic_state)
