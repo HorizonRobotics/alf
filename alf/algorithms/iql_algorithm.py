@@ -45,7 +45,7 @@ IqlActorInfo = namedtuple("IqlActorInfo", ["actor_loss"], default_value=())
 IqlInfo = namedtuple(
     "IqlInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "log_pi"
+        "actor", "critic"
     ],
     default_value=())
 
@@ -59,8 +59,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
     IQL is an offline reinforcement learning method. The idea is
     that instead of constraining the critic network or policy to avoid the
     value function extrapolation issue, IQL conducts learning using only
-    in-sample data, thus void the issues when querying the critic network with
-    out-of-distribution actions, a problem commonly faced in offline RL.
+    in-sample data, thus voiding the issues when querying the critic network
+    with out-of-distribution actions, a problem commonly faced in offline RL.
 
     Reference:
     ::
@@ -218,21 +218,11 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             assert nest.flatten(spec1) == nest.flatten(spec2), (
                 "Unmatched action specs: {} vs. {}".format(spec1, spec2))
 
-        continuous_action_spec = [
-            spec for spec in nest.flatten(action_spec) if spec.is_continuous
-        ]
-
-        continuous_action_spec = action_spec
-
-        assert continuous_actor_network_cls is not None, (
-            "If there are continuous actions, then a ActorDistributionNetwork "
-            "must be provided for sampling continuous actions!")
         actor_network = continuous_actor_network_cls(
-            input_tensor_spec=observation_spec,
-            action_spec=continuous_action_spec)
+            input_tensor_spec=observation_spec, action_spec=action_spec)
 
         critic_network = critic_network_cls(
-            input_tensor_spec=(observation_spec, continuous_action_spec))
+            input_tensor_spec=(observation_spec, action_spec))
         critic_networks = _make_parallel(critic_network)
 
         v_network = v_network_cls(input_tensor_spec=observation_spec)
@@ -318,13 +308,11 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                          apply_reward_weights=True):
         observation = (observation, action)
 
-        # continuous: critics shape [B, replicas]
+        # critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
 
         # For multi-dim reward, do
-        # continuous: [B, replicas * reward_dim] -> [B, replicas, reward_dim]
-        # discrete: [B, replicas * reward_dim, num_actions]
-        #        -> [B, replicas, reward_dim, num_actions]
+        # [B, replicas * reward_dim] -> [B, replicas, reward_dim]
         # For scalar reward, do nothing
         if self.has_multidim_reward():
             remaining_shape = critics.shape[2:]
@@ -346,7 +334,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
         return critics, critics_state
 
     def _actor_train_step(self, inputs: TimeStep, state, action, critics,
-                          log_pi, action_distribution, v_value, rollout_info):
+                          action_distribution, v_value, rollout_info):
 
         # IQL uses target critic network for computing the value learning target
         q_value, critics_state = self._compute_critics(
@@ -414,16 +402,11 @@ class IqlAlgorithm(OffPolicyAlgorithm):
          action_state) = self._predict_action(
              inputs.observation, state=state.action)
 
-        log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
-                                    action_distribution, action)
-
-        log_pi = sum(nest.flatten(log_pi))
-
         critic_state, critic_info = self._critic_train_step(
             inputs, state.critic, rollout_info, action, action_distribution)
 
         actor_state, actor_loss = self._actor_train_step(
-            inputs, state.actor, action, critics, log_pi, action_distribution,
+            inputs, state.actor, action, critics, action_distribution,
             critic_info.value, rollout_info)
 
         state = IqlState(
@@ -435,8 +418,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             action=rollout_info.action,
             action_distribution=action_distribution,
             actor=actor_loss,
-            critic=critic_info,
-            log_pi=log_pi)
+            critic=critic_info)
         return AlgStep(action, state, info)
 
     def after_update(self, root_inputs, info: IqlInfo):

@@ -36,7 +36,7 @@ alf.config(
 alf.config(
     'Agent',
     rl_algorithm_cls=IqlAlgorithm,
-    optimizer=alf.optimizers.Adam(lr=1e-4),
+    optimizer=alf.optimizers.Adam(lr=lr),
 )
 
 alf.config(
