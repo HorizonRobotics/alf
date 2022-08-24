@@ -25,7 +25,7 @@ from alf.data_structures import TimeStep, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
-from alf.networks import QNetwork
+from alf.networks import ValueNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, dist_utils, math_ops
 
@@ -74,7 +74,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
-                 v_network_cls=QNetwork,
+                 v_network_cls=ValueNetwork,
                  reward_weights=None,
                  epsilon_greedy=None,
                  calculate_priority=False,
@@ -87,6 +87,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                  temperature=1.0,
                  actor_optimizer=None,
                  critic_optimizer=None,
+                 value_optimizer=None,
                  expectile=0.8,
                  max_exp_advantage=100,
                  debug_summaries=False,
@@ -94,21 +95,17 @@ class IqlAlgorithm(OffPolicyAlgorithm):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
-            action_spec (nested BoundedTensorSpec): representing the actions; can
-                be a mixture of discrete and continuous actions. The number of
-                continuous actions can be arbitrary while only one discrete
-                action is allowed currently. If it's a mixture, then it must be
-                a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
+            action_spec (BoundedTensorSpec): representing the actions. Only
+                continuous action is supported currently.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             actor_network_cls (Callable): is used to construct the actor network.
                 The constructed actor network will be called
                 to sample continuous actions. All of its output specs must be
-                continuous. Note that we don't need a discrete actor network
-                because a discrete action can simply be sampled from the Q values.
+                continuous. Discrete actor network is not supported.
             critic_network_cls (Callable): is used to construct critic network.
             v_network_cls (Callable): is used to construct a value network.
-                for estimating the expectile of q values..
+                for estimating the expectile of q values.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
@@ -141,6 +138,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                 It corresponds to 1/beta in Eqn.(7) of the paper.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
+            value_optimizer (torch.optim.optimizer): The optimizer for value network.
             expectile (float): the expectile value for value learning.
             max_exp_advantage (float): clamp the exponentiated advantages with
                 this value before being applied to weight the actor loss.
@@ -181,9 +179,10 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])
+        if value_optimizer is not None:
+            self.add_optimizer(value_optimizer, [v_network])
 
         self._temperature = temperature
-
         self._actor_network = actor_network
         self._critic_networks = critic_networks
         self._target_critic_networks = self._critic_networks.copy(
@@ -253,11 +252,11 @@ class IqlAlgorithm(OffPolicyAlgorithm):
         action_dist = continuous_action_dist
         action = continuous_action
 
-        return action_dist, action, None, new_state
+        return action_dist, action, new_state
 
     def predict_step(self, inputs: TimeStep, state: IqlState):
 
-        action_dist, action, _, action_state = self._predict_action(
+        _, action, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
@@ -347,11 +346,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
         weight = torch.clamp(weight, max=self._max_exp_advantage)
 
         # log_pi_data: the log probability computed with the action from dataset
-        log_pi_data = nest.map_structure(
-            lambda dist, a: dist.log_prob(a.detach()), action_distribution,
-            rollout_info.action)
-
-        log_pi_data = sum(nest.flatten(log_pi_data))
+        log_pi_data = dist_utils.compute_log_probability(
+            action_distribution, rollout_info.action)
         weighted_log_pi = -weight.detach() * log_pi_data
         actor_loss = weighted_log_pi
 
@@ -360,7 +356,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
         return critics_state, actor_info
 
     def _critic_train_step(self, inputs: TimeStep, state: IqlCriticState,
-                           rollout_info: IqlInfo, action, action_distribution):
+                           rollout_info: IqlInfo):
 
         # use dataset action for Q learning
         critics, critics_state = self._compute_critics(
@@ -400,12 +396,11 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                    rollout_info: IqlInfo):
         self._training_started = True
 
-        (action_distribution, action, critics,
-         action_state) = self._predict_action(
-             inputs.observation, state=state.action)
+        (action_distribution, action, action_state) = self._predict_action(
+            inputs.observation, state=state.action)
 
         critic_state, critic_info = self._critic_train_step(
-            inputs, state.critic, rollout_info, action, action_distribution)
+            inputs, state.critic, rollout_info)
 
         actor_state, actor_loss = self._actor_train_step(
             inputs, state.actor, action_distribution, critic_info.value,
