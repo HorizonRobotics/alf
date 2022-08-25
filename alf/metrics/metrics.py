@@ -16,6 +16,8 @@
 Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
+from typing import List
+
 import torch
 
 import alf
@@ -553,6 +555,7 @@ class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
                            torch.ones_like(time_step.step_type))
 
 
+@alf.configurable(whitelist=['fields'])
 class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
     """Metric for computing average quantities contained in the environment info.
     An example of env info (which can be a nest) has to be provided when constructing
@@ -565,7 +568,14 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
                  name="AverageEnvInfoMetric",
                  prefix="Metrics",
                  dtype=torch.float32,
+                 fields: List[str] = None,
                  buffer_size=10):
+        """
+        Args:
+            fields: a list of fields to include in the average env info metric.
+                If None, all fields will be included.
+        """
+        self._fields = fields
         super(AverageEnvInfoMetric, self).__init__(
             name=name,
             dtype=dtype,
@@ -574,4 +584,7 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
             example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
-        return time_step.env_info
+        if self._fields is None:
+            return time_step.env_info
+        else:
+            return {f: time_step.env_info[f] for f in self._fields}
