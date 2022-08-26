@@ -338,20 +338,14 @@ class DiscreteVAE(VariationalAutoEncoder):
         else:
             kl_div_loss = self._kl_divergence(z_logits)
 
-        # For argmax (mode), we directly use ST
-        z_mode = torch.nn.functional.one_hot(
-            torch.argmax(z_logits, -1), num_classes=self._n_categories)
-        z_dist = td.OneHotCategoricalStraightThrough(logits=z_logits)
-        z_mode = z_mode.to(z_logits) + z_dist.probs - z_dist.probs.detach()
-
         if self._mode == 'st':
-            z = dist_utils.rsample_action_distribution(z_dist)
+            z_dist = dist_utils.OneHotCategoricalStraightThrough(
+                logits=z_logits)
         else:
-            z = torch.nn.functional.gumbel_softmax(
-                logits=z_logits,
+            z_dist = dist_utils.OneHotCategoricalGumbelSoftmax(
+                hard_sample=True,
                 tau=self._gumbel_temp_scheduler(),
-                hard=True,
-                dim=-1)
+                logits=z_logits)
 
-        output = VAEOutput(z=z, z_mode=z_mode)
+        output = VAEOutput(z=z_dist.rsample(), z_mode=z_dist.mode)
         return output, kl_div_loss

@@ -585,6 +585,57 @@ class DiagMultivariateCauchy(td.Independent):
         return self.base_dist.scale
 
 
+class OneHotCategoricalStraightThrough(td.OneHotCategoricalStraightThrough):
+    """Provide an additional property ``mode`` with gradient enabled.
+    """
+
+    @property
+    def mode(self):
+        mode = torch.nn.functional.one_hot(
+            torch.argmax(self.logits, -1), num_classes=self.logits.shape[-1])
+        return mode.to(self.logits) + self.probs - self.probs.detach()
+
+
+@alf.configurable
+class OneHotCategoricalGumbelSoftmax(td.OneHotCategorical):
+    r"""Create a reparameterizable ``td.OneHotCategorical`` distribution based on
+    the Gumbel-softmax gradient estimator from
+
+    ::
+
+        Jang et al., "CATEGORICAL REPARAMETERIZATION WITH GUMBEL-SOFTMAX", 2017.
+    """
+    has_rsample = True
+
+    def __init__(self, hard_sample: bool = True, tau: float = 1., **kwargs):
+        """
+        Args:
+            hard_sample: If False, the rsampled result will be a "soft" vector
+                of Gumbel softmax distribution, which naturally supports gradient
+                backprop. If True, ``argmax`` will be applied on top of it and then
+                a straight-through gradient estimator is used.
+            tau: the Gumbel-softmax temperature for ``rsample``. A higher
+                temperature leads to a more uniform sample.
+        """
+        super(OneHotCategoricalGumbelSoftmax, self).__init__(**kwargs)
+        self._hard_sample = hard_sample
+        self._tau = tau
+
+    def rsample(self, sample_shape=torch.Size()):
+        sample_shape = torch.Size(sample_shape)
+        # expand additional first dims according to ``sample_shape``
+        shape = sample_shape + (1, ) * len(self.param_shape)
+        logits = self.logits.repeat(*shape)
+        return torch.nn.functional.gumbel_softmax(
+            logits=logits, tau=self._tau, hard=self._hard_sample, dim=-1)
+
+    @property
+    def mode(self):
+        mode = torch.nn.functional.one_hot(
+            torch.argmax(self.logits, -1), num_classes=self.logits.shape[-1])
+        return mode.to(self.logits) + self.probs - self.probs.detach()
+
+
 def _builder_independent(base_builder, reinterpreted_batch_ndims_, **kwargs):
     return td.Independent(base_builder(**kwargs), reinterpreted_batch_ndims_)
 
@@ -597,9 +648,9 @@ def _builder_transformed(base_builder, transform_builders, params_,
     return td.TransformedDistribution(base_builder(**params_), transforms)
 
 
-def _get_categorical_builder(
-        obj: Union[td.Categorical, td.OneHotCategorical, td.
-                   OneHotCategoricalStraightThrough]):
+def _get_categorical_builder(obj: Union[
+        td.Categorical, td.OneHotCategorical, td.
+        OneHotCategoricalStraightThrough, OneHotCategoricalStraightThrough]):
 
     dist_cls = type(obj)
 
@@ -608,6 +659,19 @@ def _get_categorical_builder(
         return dist_cls, {'probs': obj.probs}
     else:
         return dist_cls, {'logits': obj.logits}
+
+
+def _get_gumbelsoftmax_categorical_builder(
+        obj: OneHotCategoricalGumbelSoftmax):
+    builder = functools.partial(
+        OneHotCategoricalGumbelSoftmax,
+        hard_sample=obj._hard_sample,
+        tau=obj._tau)
+    if 'probs' in obj.__dict__ and id(obj.probs) == id(obj._param):
+        # This means that obj is constructed using probs
+        return builder, {'probs': obj.probs}
+    else:
+        return builder, {'logits': obj.logits}
 
 
 def _get_independent_builder(obj: td.Independent):
@@ -688,6 +752,10 @@ _get_builder_map = {
         _get_categorical_builder,
     td.OneHotCategoricalStraightThrough:
         _get_categorical_builder,
+    OneHotCategoricalStraightThrough:
+        _get_categorical_builder,
+    OneHotCategoricalGumbelSoftmax:
+        _get_gumbelsoftmax_categorical_builder,
     td.Normal:
         lambda obj: (td.Normal, {
             'loc': obj.mean,
@@ -1065,8 +1133,13 @@ def get_mode(dist):
     """
     if isinstance(dist, td.categorical.Categorical):
         mode = torch.argmax(dist.logits, -1)
-    elif isinstance(dist, td.OneHotCategorical) or \
-                isinstance(dist, td.OneHotCategoricalStraightThrough):
+    elif isinstance(
+            dist,
+        (OneHotCategoricalStraightThrough, OneHotCategoricalGumbelSoftmax)):
+        # Our version of one-hot st supports mode with grad
+        mode = dist.mode
+    elif isinstance(
+            dist, (td.OneHotCategorical, td.OneHotCategoricalStraightThrough)):
         mode = torch.nn.functional.one_hot(
             torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
     elif isinstance(dist, td.normal.Normal):
