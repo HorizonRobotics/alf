@@ -18,6 +18,7 @@ import torch
 import alf
 from alf.algorithms.oabc_algorithm import OabcAlgorithm
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
+from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.nest.utils import NestConcat
 from alf.networks import NormalProjectionNetwork, ActorNetwork, ActorDistributionNetwork
 from alf.optimizers import Adam, AdamTF
@@ -36,7 +37,7 @@ alf.config(
 # algorithm config
 fc_layer_params = (256, 256)
 joint_fc_layer_params = (256, 256)
-deterministic_actor = True
+deterministic_actor = False
 
 if deterministic_actor:
     actor_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
@@ -66,18 +67,25 @@ alf.config(
     joint_fc_layer_params=joint_fc_layer_params)
 
 # alf.config('FuncParVIAlgorithm', num_particles=10)
+
 alf.config(
     'MultiSwagAlgorithm',
     num_particles=10,
     num_samples_per_model=5,
-    subspace_max_rank=30,
+    subspace_max_rank=20,
     subspace_after_update_steps=10000)
+
+# alf.config(
+#     'MultiBootstrapEnsemble',
+#     num_basins=5,
+#     num_particles_per_basin=3)
 
 alf.config(
     'OabcAlgorithm',
     actor_network_cls=actor_network_cls,
     explore_network_cls=explore_network_cls,
     critic_module_cls=MultiSwagAlgorithm,
+    # critic_module_cls=MultiBootstrapEnsemble,
     beta_ub=1.,
     beta_lb=1.,
     # entropy_regularization_weight=1.,

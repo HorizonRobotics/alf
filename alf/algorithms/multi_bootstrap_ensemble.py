@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""MultiSwag algorithm implemented based on FuncParVIAlgorithm."""
+"""MultiBootstrap ensemble implemented based on FuncParVIAlgorithm."""
 
 from absl import logging
 import functools
@@ -36,15 +36,32 @@ from alf.utils.summary_utils import record_time
 from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
+MbeInfo = namedtuple("MbeInfo",
+                     ["total_std", "opt_std"],
+                     default_value=())
 
-@alf.configurable
-class MultiSwagAlgorithm(FuncParVIAlgorithm):
-    """MultiSwagAlgorithm, described in:
+@alf.configurable 
+class MultiBootstrapEnsemble(FuncParVIAlgorithm):
+    """MultiBootstrapEnsemble
 
-    ::
+    It maintains an ensemble of functional particles of size num_basins times
+    num_particles_per_basin. All functions share the same network structure.
+    Two caveats for initializaing and training the ensemble:
 
-        Willson and Izmailov. "Bayesian Deep Learning and a Probabilistic 
-        Perspective of Generalization", arXiv:2002.08791
+    * Functional particles of the same basin are initialized with a same set 
+      of parameters, but trained to follow different SGD paths by feeding in 
+      different stochastic training batches at each SGD step.
+
+    * Functional particles of different basins are initialized differently.
+
+    The key insigts are as follows:
+
+    * Predictive variance among the whole ensemble captures epistemic plus
+      optimization uncertainty of the network model.
+
+    * Predictive variance among members within a basin captures mainly
+      optimization uncertainty of the corresponding basin of the network 
+      model.
 
     """
 
@@ -64,21 +81,19 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                  last_activation=math_ops.identity,
                  last_use_bias=True,
                  last_use_ln=False,
-                 num_particles=10,
-                 num_samples_per_model=2,
-                 subspace_after_update_steps=10000,
-                 subspace="covariance",
-                 subspace_max_rank=20,
+                 num_basins=5,
+                 num_particles_per_basin=4,
                  loss_type="classification",
                  voting="soft",
                  num_train_classes=10,
                  optimizer=None,
+                 initial_train_steps=0,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
                  config: TrainerConfig = None,
                  debug_summaries=False,
-                 name="MultiSwagAlgorithm"):
+                 name="MultiBootstrapEnsemble"):
         """
         Args:
             data_creator (Callable): called as ``data_creator()`` to get a tuple
@@ -112,19 +127,10 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             last_use_bias (bool): whether use bias for the last layer
             last_use_bn (bool): whether use batch normalization for the last layer.
 
-            num_particles (int): number of SWAG models.
-            num_samples_per_model (int): number of samples for each SWAG model.
-            subspace_after_update_steps (int): SWAG subspaces start only after
-                so many number of update steps (according to ``global_counter``).
-            var_clamp (float): clamp threshold of variance.
-            subspace (str): types of subspace construction methods,
-                types are [``random``, ``covariance``, ``pca``, ``freq_dir``]
-
-                * random: empirical expectation of SVGD is evaluated by reusing
-                * covariance: wasserstein gradient flow with smoothed functions. It
-                * pca:
-                * freq_dir:
-            subspace_max_rank (int): max rank of SWAG subspace.
+            num_basins (int): number basins (different particle initializations)
+                to explore for the function space.
+            num_particles_per_basin (int): number of particles to explore within 
+                each basin.
 
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
@@ -132,12 +138,42 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                 types are [``soft``, ``hard``]
             num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
+            initial_train_steps (int): if positive, number of steps that the 
+                algorithm is trained with preprocessed inputs before regular 
+                train_step.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
             config (TrainerConfig): configuration for training
             name (str):
         """
+        if param_net is None:
+            assert input_tensor_spec is not None and output_dim is not None, (
+                "input_tensor_spec and output_dim need to be provided if "
+                "both data_creator and param_net are not provided")
+            last_layer_size = output_dim
+            param_net = ParamNetwork(
+                input_tensor_spec=input_tensor_spec,
+                conv_layer_params=conv_layer_params,
+                fc_layer_params=fc_layer_params,
+                use_conv_bias=use_conv_bias,
+                use_conv_ln=use_conv_ln,
+                use_fc_bias=use_fc_bias,
+                use_fc_ln=use_fc_ln,
+                activation=activation,
+                last_layer_size=last_layer_size,
+                last_activation=last_activation,
+                last_use_bias=last_use_bias,
+                last_use_ln=last_use_ln)
+
+        particle_dim = param_net.param_length
+
+        init_particles = torch.randn(
+            num_basins, particle_dim, requires_grad=True)  # [nb, D]
+        all_particles = torch.repeat_interleave(
+            init_particles, num_particles_per_basin, dim=0)  # [nb*np, D]
+        particles = torch.nn.Parameter(all_particles)
+
         super().__init__(
             data_creator=data_creator,
             data_creator_outlier=data_creator_outlier,
@@ -154,12 +190,14 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             last_activation=last_activation,
             last_use_bias=last_use_bias,
             last_use_ln=last_use_ln,
-            num_particles=num_particles,
+            particles=particles,
+            num_particles=num_basins * num_particles_per_basin,
             loss_type=loss_type,
             par_vi=None,
             function_vi=False,
             num_train_classes=num_train_classes,
             optimizer=optimizer,
+            initial_train_steps=initial_train_steps,
             config=config,
             logging_network=logging_network,
             logging_training=logging_training,
@@ -167,104 +205,60 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        self._num_samples_per_model = num_samples_per_model
-        self._subspace_after_update_steps = subspace_after_update_steps
-        self._subspace_max_rank = subspace_max_rank
-
-        self._subspaces = []
-        for _ in range(num_particles):
-            self._subspaces.append(
-                Subspace.create(
-                    subspace,
-                    num_parameters=self.particle_dim,
-                    max_rank=subspace_max_rank))
+        self._num_basins = num_basins
+        self._num_particles_per_basin = num_particles_per_basin
 
     @property
-    def num_models(self):
-        return self._num_particles
+    def num_basins(self):
+        return self._num_basins
 
-    def get_particles(self):
-        if self._subspaces[0].rank > 0:
-            return self._sample_subspace(1, use_subspace_mean=True)
-        else:
-            return self.particles
+    @property
+    def num_particles_per_basin(self):
+        return self._num_particles_per_basin
 
-    def _sample_subspace(self, 
-                         sample_size, 
-                         scale=0.5, 
-                         diag_noise=True,
-                         use_subspace_mean=None):
-        samples = []
-        for i in range(self.num_models):
-            # append a tensor of [n_sample, n_params]
-            samples.append(self._subspaces[i].sample(
-                               sample_size, 
-                               use_subspace_mean=use_subspace_mean))
-
-        return torch.cat(samples, dim=0)  # [n_models * n_sample, n_params]
-
-    def predict_step(self,
-                     inputs,
-                     training=False,
-                     sample_size=None,
-                     state=None):
-        """Predict base_model or ensemble outputs for inputs.
+    def predict_step(self, inputs, training=False, state=None):
+        """Predict ensemble outputs for inputs using the hypernetwork model.
 
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
-            training (bool): whether the prediction is used for training.
-            sample_size (int|None): size of sampled ensemble for prediction.
-                If None (default), use the base models. Otherwise, sample
-                ``sample_size`` many models from each swag model.
             state (None): not used.
 
         Returns:
             AlgStep:
-            - output (Tensor): if ``sample_size`` is None, with shape
-                ``[B, D]``, otherwise, with shape ``[B, D]`` (n=1) or 
-                ``[B, n, D]``, where the meanings of symbols are:
-
-                - B: batch size
-                - n: sample_size
-                - D: output dimension
-
+            - output (Tensor): predictions with shape
+                ``[batch_size, n_sample, self._param_net._output_spec.shape[0]]``
             - state (None): not used
+            - info (MbeInfo)
         """
-        if training or self._subspaces[0].rank < self._subspace_max_rank:
-            return super().predict_step(inputs)
-        else:
-            if sample_size is None:
-                sample_size = self._num_samples_per_model
-            params = self._sample_subspace(
-                sample_size)  # [n_model * n, n_params]
-            self.param_net.set_parameters(params)
-            # [bs, n_model * n, n_out] or [bs, n_model * n]
-            outputs, _ = self.param_net(inputs)  
+        self._param_net.set_parameters(self.particles)
+        outputs, _ = self._param_net(inputs)  # [bs, n_particles, d_out]
+        # [bs, n_particles, d_out] or [bs, n_particles]
+        outputs_mean = outputs.mean  
+        total_std = outputs_mean.std(1)  # [bs, d_out] or [bs]
+        outputs_mean = outputs_mean.reshape(
+            outputs_mean.shape[0],
+            self.num_basins, 
+            self.num_particles_per_basin, 
+            *outputs_mean.shape[2:])
+        # [bs, n_basins, d_out] or [bs, n_basins]
+        opt_std = outputs_mean.std(2)  
 
-            return AlgStep(output=outputs, state=(), info=())
+        return AlgStep(output=outputs,
+                       state=(), 
+                       info=MbeInfo(total_std=total_std, opt_std=opt_std))
 
-    def train_iter(self, update_subspace=False, state=None):
-        train_steps = super().train_iter(state=state)
-        if update_subspace:
-            self._update_subspace()
-        return train_steps
+    def reward_perturbation(self, info):
+        reward_std = torch.std(info.reward.view(-1))
+        return torch.randn(
+            self.num_particles, *info.reward.shape) * reward_std
 
-    def _update_subspace(self):
-        cur_weights = self.particles.detach()
-        for i in range(self.num_models):
-            self._subspaces[i].update(cur_weights[i])
-
-    def update_with_gradient(self,
-                             loss_info,
-                             valid_masks=None,
-                             weight=1.0,
-                             batch_info=None):
-        loss_info, all_params = super().update_with_gradient(
-            loss_info,
-            valid_masks=valid_masks,
-            weight=weight,
-            batch_info=batch_info)
-        if alf.summary.get_global_counter() > self._subspace_after_update_steps:
-            self._update_subspace()
-
-        return loss_info, all_params
+        # def _input_bootstrap_fn(input):
+        #     total_batch_size = input.shape[0]
+        #     assert total_batch_size % self.num_particles_per_basin == 0, (
+        #         "first dim of input must be multiples of num_particles_per_basin") 
+        #     batch_size = int(total_batch_size / self.num_particles_per_basin)
+        #     input = input.reshape(
+        #         batch_size, self.num_particles_per_basin, *input.shape[1:])
+        #     return input.repeat(1, self.num_basins, *(1,)*(input.ndim - 2))
+        #     
+        # return alf.nest.map_structure(_input_bootstrap_fn, inputs) 

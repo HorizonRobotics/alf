@@ -324,7 +324,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         else:
             self._outlier_train_loader = self._outlier_test_loader = None
 
-    def predict_step(self, inputs, params=None, state=None):
+    def predict_step(self, inputs, params=None, training=False, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
         Args:

@@ -18,7 +18,9 @@ import torch
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm, OabcState
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
+from alf.algorithms.actor_bayes_critic_algorithm import AbcState
 from alf.data_structures import StepType, TimeStep
 from alf.optimizers import AdamTF
 from alf.networks import ActorDistributionNetwork
@@ -28,7 +30,7 @@ from alf.utils import dist_utils, summary_utils
 
 
 @alf.configurable
-class TsabcAlgorithm(OabcAlgorithm):
+class TsabcAlgorithm(AbcAlgorithm):
     r"""Soft Actor and Bayesian Critic Algorithm. """
     def __init__(self,
                  observation_spec,
@@ -38,11 +40,14 @@ class TsabcAlgorithm(OabcAlgorithm):
                  explore_network_cls=ActorDistributionNetwork,
                  critic_module_cls=FuncParVIAlgorithm,
                  num_critic_replicas=10,
-                 deterministic_actor=True,
+                 deterministic_actor=False,
                  deterministic_critic=False,
                  reward_weights=None,
+                 weighted_critic_training=False,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
+                 use_q_mean_train_actor=True,
+                 use_subspace_mean_for_target_critic=True,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -92,8 +97,11 @@ class TsabcAlgorithm(OabcAlgorithm):
             deterministic_actor=deterministic_actor,
             deterministic_critic=deterministic_critic,
             reward_weights=reward_weights,
+            weighted_critic_training=weighted_critic_training,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
+            use_q_mean_train_actor=use_q_mean_train_actor,
+            use_subspace_mean_for_target_critic=use_subspace_mean_for_target_critic,
             env=env,
             config=config,
             critic_loss_ctor=critic_loss_ctor,
@@ -166,41 +174,25 @@ class TsabcAlgorithm(OabcAlgorithm):
 
     def _predict_action(self,
                         observation,
-                        state: OabcActionState,
+                        state: AbcActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
                         explore=False,
                         train=False):
 
-        new_state = OabcActionState()
+        new_state = AbcActionState()
         if explore:
-            # action_dist, explore_network_state = self._explore_network(
-            #     observation, state=state.explore_network)
-            # action, explore_network_state = self._explore_network(
-            #     observation, state=state.explore_network)
-            action_dist = ()
+            # deterministic explore_network
             action, explore_network_state = self._explore_networks(
                 observation, state=state.explore_network)
+            action_dist = ()
             new_state = new_state._replace(
                 explore_network=explore_network_state)
-            # if train:
-            # output_states = []
-            # for i in range(self._num_critic_replicas):
-            #     s = alf.nest.map_structure(
-            #         lambda x: x[:, i, ...], state.explore_network)
-            #     ret = self._explore_networks[i](observation, state=s)
-            #     ret = alf.nest.map_structure(lambda x: x.unsqueeze(1), ret)
-            #     output_states.append(ret)
-            # action, explore_network_state = alf.nest.map_structure(
-            #     lambda *tensors: torch.cat(tensors, dim=1), *output_states)
-            # new_state = new_state._replace(explore_network=explore_network_state)
-            # else:
             if not train:
                 # if self._cyclic_unroll_steps == 0:
                 if self._random_actor_every_step:
                     self._idx = torch.randint(self._num_critic_replicas, ())
                 action = action[:, self._idx, :]
-                # import pdb; pdb.set_trace()
 
                 # action, explore_network_state = self._explore_networks[self._idx](
                 #     observation, state=state.explore_network)
@@ -228,23 +220,30 @@ class TsabcAlgorithm(OabcAlgorithm):
 
         return action_dist, action, new_state
 
-    def rollout_step(self, inputs: TimeStep, state: OabcState):
+    def rollout_step(self, inputs: TimeStep, state: AbcState):
         if inputs.step_type == StepType.FIRST:
             self._idx = torch.randint(self._num_critic_replicas, ())
         return super().rollout_step(inputs, state)
 
-    def _get_actor_train_q_value(self, critics, explore):
+    def _consensus_q_for_actor_train(self, critics, explore, info=()):
         q_mean = critics.mean(1)
-        q_std = critics.std(1)
+        if hasattr(info, "total_std"):
+            q_total_std = info.total_std
+        else:
+            q_total_std = critics.std(1)  # [bs, d_out] or [bs]
         if explore:
             q_value = critics
         else:
-            q_value = q_mean - self._beta_lb * q_std
+            if self._use_q_mean_train_actor:
+                q_value = q_mean
+            else:
+                q_value = q_mean - self._beta_lb * q_total_std
 
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
             summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
                                                 q_mean)
-            summary_utils.add_mean_hist_summary(prefix + "critics_std", q_std)
+            summary_utils.add_mean_hist_summary(
+                prefix + "critics_total_std", q_total_std)
 
         return q_value

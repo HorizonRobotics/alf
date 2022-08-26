@@ -19,7 +19,8 @@ import torch.distributions as td
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.oabc_algorithm import OabcActionState, OabcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
@@ -28,7 +29,7 @@ from alf.utils import dist_utils, summary_utils
 
 
 @alf.configurable
-class BayesOacAlgorithm(OabcAlgorithm):
+class BayesOacAlgorithm(AbcAlgorithm):
     r"""Optimistic Actor Critic with Bayesian Critics. """
 
     def __init__(self,
@@ -36,13 +37,16 @@ class BayesOacAlgorithm(OabcAlgorithm):
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
-                 explore_network_cls=ActorDistributionNetwork,
+                 explore_network_cls=None,
                  critic_module_cls=FuncParVIAlgorithm,
-                 deterministic_actor=True,
+                 deterministic_actor=False,
                  deterministic_critic=False,
                  reward_weights=None,
+                 weighted_critic_training=False,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
+                 use_q_mean_train_actor=False,
+                 use_subspace_mean_for_target_critic=True,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -66,20 +70,24 @@ class BayesOacAlgorithm(OabcAlgorithm):
                  debug_summaries=False,
                  name="BayesOacAlgorithm"):
         """
-        Refer to OacAlgorithm and OabcAlgorithm for Args.
+        Refer to OacAlgorithm and AbcAlgorithm for Args.
         """
+        assert not deterministic_actor, "The target policy should be stochastic!"
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
             actor_network_cls=actor_network_cls,
-            explore_network_cls=explore_network_cls,
+            explore_network_cls=None,
             critic_module_cls=critic_module_cls,
             deterministic_actor=deterministic_actor,
             deterministic_critic=deterministic_critic,
             reward_weights=reward_weights,
+            weighted_critic_training=weighted_critic_training,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
+            use_q_mean_train_actor=use_q_mean_train_actor,
+            use_subspace_mean_for_target_critic=use_subspace_mean_for_target_critic,
             env=env,
             config=config,
             critic_loss_ctor=critic_loss_ctor,
@@ -102,22 +110,19 @@ class BayesOacAlgorithm(OabcAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        assert not self._deterministic_actor, "The target policy should be stochastic!"
-        self._explore_network = None
-        self._explore_networks = self._explore_network
         self._explore_delta = explore_delta
 
     def _predict_action(self,
                         observation,
-                        state: OabcActionState,
+                        state: AbcActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
                         explore=False,
                         train=False):
         if explore:
-            assert not train
+            assert not train, ("Explore_network is not maintained in OAC!")
 
-        new_state = OabcActionState()
+        new_state = AbcActionState()
         action_dist, actor_network_state = self._actor_network(
             observation, state=state.actor_network)
         assert isinstance(action_dist, td.TransformedDistribution), (
@@ -157,8 +162,10 @@ class BayesOacAlgorithm(OabcAlgorithm):
                 else:
                     critics_dist = critic_step.output
                     critics = critics_dist.mean
+                critics_info = critic_step.info
 
-                q_ub = self._get_actor_train_q_value(critics, explore=True)
+                q_ub = self._consensus_q_for_actor_train(
+                    critics, explore=True, info=critics_info)
                 dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
                                               dqda, unsquashed_var)
@@ -177,21 +184,36 @@ class BayesOacAlgorithm(OabcAlgorithm):
 
         return action_dist, action, new_state
 
-    def _get_actor_train_q_value(self, critics, explore):
+    def _consensus_q_for_actor_train(self, critics, explore, info=()):
         q_mean = critics.mean(1)
-        q_std = critics.std(1)
-        if explore:
-            q_value = q_mean + self._beta_ub * q_std
+        if hasattr(info, "total_std"):
+            q_total_std = info.total_std
         else:
-            q_value = q_mean - self._beta_lb * q_std
+            q_total_std = critics.std(1)  # [bs, d_out] or [bs]
+        if hasattr(info, "opt_std"):
+            q_opt_std = info.opt_std
+            q_opt_std = q_opt_std.mean(1)  # [bs, d_out] or [bs]
+            q_epi_std = q_total_std - q_opt_std
+        else:
+            q_opt_std = None
+            q_epi_std = q_total_std
+
+        if explore:
+            q_value = q_mean + self._beta_ub * q_epi_std
+        else:
+            if self._use_q_mean_train_actor:
+                q_value = q_mean
+            else:
+                q_value = q_mean - self._beta_lb * q_total_std
 
         if not explore:
             with alf.summary.scope(self._name):
                 summary_utils.add_mean_hist_summary("critics_batch_mean",
                                                     q_mean)
-                summary_utils.add_mean_hist_summary("critics_std", q_std)
+                summary_utils.add_mean_hist_summary(
+                    "critics_total_std", q_total_std)
+                if q_opt_std is not None:
+                    summary_utils.add_mean_hist_summary(
+                        "critic_opt_std", q_opt_std)
 
         return q_value
-
-    def _trainable_attributes_to_ignore(self):
-        return ['_critic_module', '_target_critic_params', '_explore_networks']
