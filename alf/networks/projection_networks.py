@@ -812,7 +812,7 @@ class OnehotCategoricalProjectionNetwork(Network):
                 uses the straight-through grad estimator; 'gumbel' uses the
                 Gumbel-softmax distribution to sample soft onehot vectors;
                 'st-gumbel' additionally takes argmax on the soft vectors and applies
-                the straight-through grad estimator. Genrally, 'st-gumbel' should
+                the straight-through grad estimator. Generally, 'st-gumbel' should
                 have a lower grad variance than 'st'.
             gumbel_temperature: the temperature of the Gumbel-softmax distribution.
                 Only used by 'gumbel' and 'st-gumbel' modes. A higher
