@@ -238,13 +238,15 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
 
 class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
                                              alf.test.TestCase):
-    def test_onehot_categorical_uniform_projection_net(self):
+    @parameterized.parameters('st', 'st-gumbel', 'plain', 'gumbel')
+    def test_onehot_categorical_uniform_projection_net(self, mode):
         """A zero-weight net generates uniform actions."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(1, ))
 
         net = OnehotCategoricalProjectionNetwork(
             input_size=input_spec.shape[0],
+            mode=mode,
             action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
             logits_init_output_factor=0)
         dist, _ = net(embedding)
@@ -253,21 +255,23 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertEqual(dist.base_dist.batch_shape, (1, 1))
         self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
 
-    def test_onehot_samples(self):
+    @parameterized.parameters('st', 'st-gumbel', 'plain', 'gumbel')
+    def test_onehot_samples(self, mode):
         """Samples from the projection net are onehot vectors."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(1, ))
 
         net = OnehotCategoricalProjectionNetwork(
             input_size=input_spec.shape[0],
+            mode=mode,
             action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
             logits_init_output_factor=0.1)
         dist, _ = net(embedding)
         samples = dist.sample()
         self.assertTrue(torch.all(samples.sum(dim=-1) == 1))
 
-    @parameterized.parameters((True, ), (False, ))
-    def test_straight_through_gradient(self, use_straight_through_gradient):
+    @parameterized.parameters('plain', 'st')
+    def test_straight_through_gradient(self, mode):
         """Test the gradient with straight through estimator."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(1, ))
@@ -276,10 +280,10 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
             input_size=input_spec.shape[0],
             action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
             logits_init_output_factor=0.1,
-            use_straight_through_gradient=use_straight_through_gradient)
+            mode=mode)
         dist, _ = net(embedding)
 
-        if not use_straight_through_gradient:
+        if mode == 'plain':
             self.assertTrue(dist.has_rsample == False)
         else:
             self.assertTrue(dist.has_rsample == True)
@@ -298,13 +302,15 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
             self.assertTensorNotClose(p_layer.bias.grad,
                                       torch.zeros(p_layer.bias.grad.shape))
 
-    def test_mode(self):
+    @parameterized.parameters('st', 'st-gumbel', 'plain', 'gumbel')
+    def test_mode(self, mode):
         """Test the mode of the onehot caregorical distribution."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.randn(outer_dims=(5, ))
 
         net1 = OnehotCategoricalProjectionNetwork(
             input_size=input_spec.shape[0],
+            mode=mode,
             action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
             logits_init_output_factor=0.1)
         dist1, _ = net1(embedding)

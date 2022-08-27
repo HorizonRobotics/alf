@@ -51,7 +51,7 @@ class EstimatedEntropyTest(parameterized.TestCase, alf.test.TestCase):
                 exact_entropy, estimated_entropy, eps=1e-2)
 
 
-class DistributionSpecTest(alf.test.TestCase):
+class DistributionSpecTest(parameterized.TestCase, alf.test.TestCase):
     def test_normal(self):
         dist = td.Normal(
             loc=torch.tensor([1., 2.]), scale=torch.tensor([0.5, 0.25]))
@@ -115,6 +115,24 @@ class DistributionSpecTest(alf.test.TestCase):
 
         self.assertRaises(RuntimeError, spec.build_distribution,
                           {'loc': torch.tensor([1., 2.])})
+
+    @parameterized.parameters(True, False)
+    def test_onehot_categorical_gumbelsoftmax(self, hard_sample):
+        logits = torch.randn([2, 3], requires_grad=True)
+        dist = dist_utils.OneHotCategoricalGumbelSoftmax(
+            hard_sample=hard_sample, tau=0.1, logits=logits)
+        spec = dist_utils.DistributionSpec.from_distribution(dist)
+
+        logits1 = torch.zeros([2, 3])
+        dist1 = spec.build_distribution({'logits': logits1})
+        self.assertEqual(dist1._hard_sample, hard_sample)
+        self.assertEqual(dist1._tau, 0.1)
+        self.assertTensorEqual(dist1.probs, torch.ones([2, 3]) / 3.)
+
+        sample = dist.rsample()
+        self.assertEqual(sample.shape, logits.shape)
+        self.assertTrue(sample.requires_grad)
+        self.assertTrue(dist.mode.requires_grad)
 
 
 class TransformationAndInversionTest(parameterized.TestCase,

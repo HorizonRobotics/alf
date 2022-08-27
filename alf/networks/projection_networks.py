@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
 import math
 import numpy as np
 from typing import Callable
@@ -789,7 +790,8 @@ class OnehotCategoricalProjectionNetwork(Network):
                  input_size,
                  action_spec,
                  logits_init_output_factor=0.1,
-                 use_straight_through_gradient=True,
+                 mode: str = 'st',
+                 gumbel_temperature: float = 1.,
                  name="OnehotCategoricalProjectionNetwork"):
         """Creates a onehot categorical projection network that outputs a
         discrete distribution over a number of classes.
@@ -805,8 +807,16 @@ class OnehotCategoricalProjectionNetwork(Network):
                 information of the output distribution.
             logits_init_output_factor (float): the gain factor to initialize
                 the FC layer for predicting the logits
-            use_straight_through_gradient (bool): whether to use the straight
-                through gradient estimator.
+            mode: one of ('st', 'gumbel', 'st-gumbel', 'plain'). All modes other
+                than 'plain' enables gradient backprop through the samples. 'st'
+                uses the straight-through grad estimator; 'gumbel' uses the
+                Gumbel-softmax distribution to sample soft onehot vectors;
+                'st-gumbel' additionally takes argmax on the soft vectors and applies
+                the straight-through grad estimator. Generally, 'st-gumbel' should
+                have a lower grad variance than 'st'.
+            gumbel_temperature: the temperature of the Gumbel-softmax distribution.
+                Only used by 'gumbel' and 'st-gumbel' modes. A higher
+                temperature leads to a more uniform sample (less like one-hot).
             name (str):
         """
         super(OnehotCategoricalProjectionNetwork, self).__init__(
@@ -824,7 +834,10 @@ class OnehotCategoricalProjectionNetwork(Network):
 
         output_shape = action_spec.shape + (int(unique_num_actions), )
         self._output_shape = output_shape
-        self._use_straight_through_gradient = use_straight_through_gradient
+        assert mode in ['plain', 'st', 'st-gumbel',
+                        'gumbel'], (f"Invalid mode {mode}")
+        self._mode = mode
+        self._gumbel_temperature = gumbel_temperature
 
         self._projection_layer = layers.FC(
             input_size,
@@ -835,10 +848,20 @@ class OnehotCategoricalProjectionNetwork(Network):
         logits = self._projection_layer(inputs)
         logits = logits.reshape(inputs.shape[0], *self._output_shape)
 
-        if self._use_straight_through_gradient:
-            dist_cls = td.OneHotCategoricalStraightThrough
-        else:
+        if self._mode == 'plain':
             dist_cls = td.OneHotCategorical
+        elif self._mode == 'st':
+            dist_cls = dist_utils.OneHotCategoricalStraightThrough
+        elif self._mode == 'gumbel':
+            dist_cls = partial(
+                dist_utils.OneHotCategoricalGumbelSoftmax,
+                tau=self._gumbel_temperature,
+                hard_sample=False)
+        else:  # 'st-gumbel'
+            dist_cls = partial(
+                dist_utils.OneHotCategoricalGumbelSoftmax,
+                tau=self._gumbel_temperature,
+                hard_sample=True)
 
         if len(self._output_shape) > 1:
             return td.Independent(
