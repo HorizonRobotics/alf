@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bc_algorithm import BcAlgorithm
+from alf.algorithms.iql_algorithm import IqlAlgorithm
 
 # default params
 lr = 1e-4
@@ -35,7 +35,7 @@ alf.config(
 
 alf.config(
     'Agent',
-    rl_algorithm_cls=BcAlgorithm,
+    rl_algorithm_cls=IqlAlgorithm,
     optimizer=alf.optimizers.Adam(lr=lr),
 )
 
@@ -45,23 +45,39 @@ alf.config(
     whole_replay_buffer_training=False,
     clear_replay_buffer=False)
 
-proj_net = partial(
-    alf.networks.StableNormalProjectionNetwork,
-    state_dependent_std=True,
-    squash_mean=False,
-    scale_distribution=True,
-    min_std=1e-3,
-    max_std=10)
+# these clip values are set according to IQL's hyper-parameter values
+alf.config('clipped_exp', clip_value_min=-5.0, clip_value_max=2.0)
 
-actor_network_cls = partial(
+proj_net = partial(
+    alf.networks.NormalProjectionNetwork,
+    state_dependent_std=False,  # IQL uses state independent std
+    scale_distribution=False,  # IQL scales mean instead of distribution
+    std_transform=alf.math.clipped_exp)
+
+actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
     fc_layer_params=fc_layers_params,
     activation=activation,
     continuous_projection_net_ctor=proj_net)
 
-alf.config('BcAlgorithm', actor_network_cls=actor_network_cls)
+critic_network_cls = partial(
+    alf.networks.CriticNetwork,
+    joint_fc_layer_params=fc_layers_params,
+)
 
-num_iterations = 100000
+v_network_cls = partial(
+    alf.networks.ValueNetwork, fc_layer_params=fc_layers_params)
+
+alf.config(
+    'IqlAlgorithm',
+    actor_network_cls=actor_distribution_network_cls,
+    critic_network_cls=critic_network_cls,
+    v_network_cls=v_network_cls,
+    target_update_tau=0.005,
+    expectile=0.8,  # expectile might need to be tuned for different tasks
+    temperature=1.0)  # temperature might need to be tuned for different tasks
+
+num_iterations = 20000
 
 # training config
 alf.config(
