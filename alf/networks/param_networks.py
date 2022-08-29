@@ -363,6 +363,7 @@ class CriticDistributionParamNetwork(Network):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  deterministic=False,
+                 state_dependent_std=False,
                  name="CriticDistributionParamNetwork"):
         """A network with Fc and conv2D layers that does not maintain its own
         network parameters, but accepts them from users. If the given parameter
@@ -390,6 +391,9 @@ class CriticDistributionParamNetwork(Network):
                 ``last_layer_size`` is not None, ``last_activation`` has to be
                 specified explicitly.
             deterministic (bool): whether to make this network deterministic.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
             name (str):
         """
         super().__init__(input_tensor_spec=input_tensor_spec, name=name)
@@ -447,7 +451,8 @@ class CriticDistributionParamNetwork(Network):
 
             self._projection_net = NormalProjectionParamNetwork(
                 input_size=self._joint_encoder.output_spec.shape[0],
-                output_tensor_spec=output_tensor_spec)
+                output_tensor_spec=output_tensor_spec,
+                state_dependent_std=state_dependent_std)
 
         self._param_length = None
         # self._output_spec = output_tensor_spec

@@ -118,7 +118,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=True,
-                 use_subspace_mean_for_target_critic=True,
+                 use_basin_mean_for_target_critic=True,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -255,7 +255,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         target_critic_network.set_parameters(self._target_critic_params)
         self._target_critic_network = target_critic_network
 
-        if use_subspace_mean_for_target_critic:
+        if use_basin_mean_for_target_critic:
             param_fn = self._critic_module.get_particles
         else:
             param_fn = lambda: self._critic_module.particles

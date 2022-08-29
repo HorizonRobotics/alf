@@ -64,7 +64,8 @@ explore_network_cls = partial(ActorNetwork, fc_layer_params=fc_layer_params)
 
 alf.config(
     'CriticDistributionParamNetwork',
-    joint_fc_layer_params=joint_fc_layer_params)
+    joint_fc_layer_params=joint_fc_layer_params,
+    state_dependent_std=True)
 
 # alf.config('FuncParVIAlgorithm', num_particles=10)
 

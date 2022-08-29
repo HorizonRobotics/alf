@@ -87,7 +87,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                  voting="soft",
                  num_train_classes=10,
                  optimizer=None,
-                 initial_train_steps=0,
+                 initial_train_steps=100,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -139,8 +139,8 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
             initial_train_steps (int): if positive, number of steps that the 
-                algorithm is trained with preprocessed inputs before regular 
-                train_step.
+                algorithm is trained with preprocessed inputs (reward_perturbation
+                for now) before regular train_step.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
@@ -215,6 +215,14 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
     @property
     def num_particles_per_basin(self):
         return self._num_particles_per_basin
+
+    def get_particles(self):
+        if self.num_particles_per_basin > 1:
+            particles = self.particles.reshape(
+                self.num_basins, self.num_particles_per_basin, -1)
+            return particles.mean(dim=1)
+        else:
+            return self.particles
 
     def predict_step(self, inputs, training=False, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
