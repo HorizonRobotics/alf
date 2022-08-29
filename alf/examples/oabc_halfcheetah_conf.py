@@ -76,6 +76,8 @@ alf.config(
     subspace_max_rank=20,
     subspace_after_update_steps=10000)
 
+alf.config('CovarianceSpace', use_subspace_mean=True)
+
 # alf.config(
 #     'MultiBootstrapEnsemble',
 #     num_basins=5,

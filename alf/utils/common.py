@@ -1570,7 +1570,8 @@ def setup_wandb(root_dir, mode='train'):
         assert alf.get_config_value(
             "TrainerConfig.async_eval"), "Currently only support async_eval!"
 
-    wandb.login(key=wandb_api_key)
+    if mode == 'train':
+        wandb.login(key=wandb_api_key)
 
     assert mode in ['train', 'eval']
     env_name = alf.get_config_value("create_environment.env_name")

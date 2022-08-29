@@ -53,6 +53,8 @@ alf.config('MultiSwagAlgorithm',
            subspace_max_rank=20,
            subspace_after_update_steps=10000)
 
+alf.config('CovarianceSpace', use_subspace_mean=True)
+
 alf.config(
     'BayesOacAlgorithm',
     actor_network_cls=actor_network_cls,

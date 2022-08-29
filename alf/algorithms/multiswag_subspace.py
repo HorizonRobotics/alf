@@ -19,6 +19,8 @@ import abc
 import numpy as np
 import torch
 
+import alf
+
 
 class Subspace(torch.nn.Module, metaclass=abc.ABCMeta):
     subclasses = {}
@@ -50,6 +52,7 @@ class Subspace(torch.nn.Module, metaclass=abc.ABCMeta):
         pass
 
 
+@alf.configurable
 @Subspace.register_subclass('random')
 class RandomSpace(Subspace):
     def __init__(self, num_parameters, rank=20, method='dense'):
@@ -76,7 +79,7 @@ class RandomSpace(Subspace):
     def cov_factor(self):
         return self.subspace
 
-
+@alf.configurable
 @Subspace.register_subclass('covariance')
 class CovarianceSpace(Subspace):
     def __init__(self, 
