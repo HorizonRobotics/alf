@@ -33,7 +33,13 @@ def encoding_network_ctor(input_tensor_spec):
         flatten_output_size=encoder_output_size)
 
 
+# The PPG auxiliary replay buffer is typically large and does not fit in the GPU
+# memory. As a result, for ``gather all()`` we set ``convert to default device``
+# to ``False`` so that it does not have to put everything directly into GPU
+# memory. Because of this, all data transformers should be created on "cpu" as
+# they will be used while the experience is still in CPU memory.
 alf.config('ReplayBuffer.gather_all', convert_to_default_device=False)
+alf.config('data_transformer.create_data_transformer', device="cpu")
 
 # The policy network and aux network is going to share the same
 # encoder to save GPU memory. See

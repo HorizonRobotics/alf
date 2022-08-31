@@ -18,7 +18,7 @@ from functools import partial
 import numpy as np
 import torch
 from torch import nn
-from typing import Iterable
+from typing import Iterable, Optional
 
 import alf
 from alf.data_structures import AlgStep, Experience, namedtuple, StepType, TimeStep
@@ -962,7 +962,10 @@ class UntransformedTimeStep(SimpleDataTransformer):
         return timestep._replace(untransformed=timestep)
 
 
-def create_data_transformer(data_transformer_ctor, observation_spec):
+@alf.configurable
+def create_data_transformer(data_transformer_ctor,
+                            observation_spec,
+                            device: Optional[str] = None):
     """Create a data transformer.
 
     Args:
@@ -971,6 +974,8 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
             as ``data_transformer_ctor(observation_spec)`` to create a data
             transformer. Available transformers are in ``algorithms.data_transformer``.
         observation_spec (nested TensorSpec): the spec of the raw observation.
+        device: If not None, the data transformer(s) will be created on the
+            specified device.
     Returns:
         DataTransformer
     """
@@ -979,7 +984,9 @@ def create_data_transformer(data_transformer_ctor, observation_spec):
     elif not isinstance(data_transformer_ctor, Iterable):
         data_transformer_ctor = [data_transformer_ctor]
 
-    if len(data_transformer_ctor) == 1:
-        return data_transformer_ctor[0](observation_spec=observation_spec)
+    with alf.device(device or alf.get_default_device()):
+        if len(data_transformer_ctor) == 1:
+            return data_transformer_ctor[0](observation_spec=observation_spec)
 
-    return SequentialDataTransformer(data_transformer_ctor, observation_spec)
+        return SequentialDataTransformer(data_transformer_ctor,
+                                         observation_spec)

@@ -15,6 +15,9 @@
 from typing import Optional
 import copy
 import torch
+
+import alf
+from alf.algorithms.data_transformer import create_data_transformer
 from alf.data_structures import namedtuple
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppg import PPGRolloutInfo, PPGTrainInfo, PPGAuxPhaseLoss, ppg_network_forward
@@ -107,6 +110,10 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
                                             or config.unroll_length)
         updated_config.mini_batch_size = aux_options.mini_batch_size
         updated_config.num_updates_per_train_iter = aux_options.num_updates_per_train_iter
+
+        updated_config.data_transformer = create_data_transformer(
+            config.data_transformer_ctor,
+            alf.get_env().observation_spec())
 
         super().__init__(
             config=updated_config,
