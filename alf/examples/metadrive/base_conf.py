@@ -15,7 +15,9 @@
 from functools import partial
 
 import alf
+from alf.data_structures import Experience
 from alf.environments import suite_metadrive
+from alf.utils import summary_utils
 
 # Environment Configuration
 alf.config(
@@ -29,3 +31,21 @@ alf.config(
     crash_penalty=50.0,
     success_reward=200.0,
     traffic_density=0.1)
+
+# The following config will create customized summaries of the env_info from the
+# MetaDrive environment via ``inject_summary`` of ``summarize_rollout``. The
+# default env_info summarization will only take care of the ones specified in
+# the ``fields`` of ``AverageEnvInfoMetric``.
+
+
+def summarize_metadrive(experience: Experience):
+    with alf.summary.scope("MetaDrive"):
+        env_info = experience.time_step.env_info
+        summary_utils.add_mean_hist_summary("velocity@step",
+                                            env_info["velocity@step"])
+        summary_utils.add_mean_hist_summary("abs_steering@step",
+                                            env_info["abs_steering@step"])
+
+
+alf.config("alf.metrics.metrics.AverageEnvInfoMetric", fields=["reach_goal"])
+alf.config("RLAlgorithm.summarize_rollout", inject_summary=summarize_metadrive)
