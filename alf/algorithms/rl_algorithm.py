@@ -371,16 +371,16 @@ class RLAlgorithm(Algorithm):
                         torch.mean(r),
                         average_over_summary_interval=True)
 
-    @alf.configurable(whitelist=["inject_summary"])
+    @alf.configurable(whitelist=["custom_summary"])
     def summarize_rollout(
             self,
             experience: Experience,
-            inject_summary: Optional[Callable[[Experience], None]] = None):
+            custom_summary: Optional[Callable[[Experience], None]] = None):
         """Generate summaries for rollout.
 
         Args:
             experience: experience collected from ``rollout_step()``.
-            inject_summary: when specified it is a function that will be called every
+            custom_summary: when specified it is a function that will be called every
                time when this ``summarize_rollout`` hook is called. This provides
                a convenient way for the user to extend ``summarize_rollout`` from
                ALF configs.
@@ -398,8 +398,8 @@ class RLAlgorithm(Algorithm):
                 summary_utils.summarize_distribution("rollout_action_dist",
                                                      field[0])
 
-        if inject_summary is not None:
-            inject_summary(experience)
+        if custom_summary is not None:
+            custom_summary(experience)
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.

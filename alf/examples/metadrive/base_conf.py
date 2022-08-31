@@ -33,7 +33,7 @@ alf.config(
     traffic_density=0.1)
 
 # The following config will create customized summaries of the env_info from the
-# MetaDrive environment via ``inject_summary`` of ``summarize_rollout``. The
+# MetaDrive environment via ``custom_summary`` of ``summarize_rollout``. The
 # default env_info summarization will only take care of the ones specified in
 # the ``fields`` of ``AverageEnvInfoMetric``.
 
@@ -48,4 +48,4 @@ def summarize_metadrive(experience: Experience):
 
 
 alf.config("alf.metrics.metrics.AverageEnvInfoMetric", fields=["reach_goal"])
-alf.config("RLAlgorithm.summarize_rollout", inject_summary=summarize_metadrive)
+alf.config("RLAlgorithm.summarize_rollout", custom_summary=summarize_metadrive)
