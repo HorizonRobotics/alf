@@ -69,26 +69,25 @@ alf.config(
 
 # alf.config('FuncParVIAlgorithm', num_particles=10)
 
-alf.config(
-    'MultiSwagAlgorithm',
-    num_particles=10,
-    num_samples_per_model=5,
-    subspace_max_rank=20,
-    subspace_after_update_steps=10000)
-
-alf.config('CovarianceSpace', use_subspace_mean=True)
-
 # alf.config(
-#     'MultiBootstrapEnsemble',
-#     num_basins=5,
-#     num_particles_per_basin=3)
+#     'MultiSwagAlgorithm',
+#     num_particles=10,
+#     num_samples_per_model=5,
+#     subspace_max_rank=20,
+#     subspace_after_update_steps=10000)
+# alf.config('CovarianceSpace', use_subspace_mean=True)
+
+alf.config(
+    'MultiBootstrapEnsemble',
+    num_basins=5,
+    num_particles_per_basin=3)
 
 alf.config(
     'OabcAlgorithm',
     actor_network_cls=actor_network_cls,
     explore_network_cls=explore_network_cls,
-    critic_module_cls=MultiSwagAlgorithm,
-    # critic_module_cls=MultiBootstrapEnsemble,
+    # critic_module_cls=MultiSwagAlgorithm,
+    critic_module_cls=MultiBootstrapEnsemble,
     beta_ub=1.,
     beta_lb=1.,
     # entropy_regularization_weight=1.,

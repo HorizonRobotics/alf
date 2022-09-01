@@ -69,12 +69,12 @@ alf.config(
 # alf.config(
 #     'FuncParVIAlgorithm',
 #     num_particles=10)
+
 alf.config(
     'MultiSwagAlgorithm',
     num_samples_per_model=1,
     subspace_max_rank=20,
     subspace_after_update_steps=10000)
-
 alf.config('CovarianceSpace', use_subspace_mean=True)
 
 alf.config(

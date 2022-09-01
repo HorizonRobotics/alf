@@ -130,6 +130,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
+                 use_epistemic_alpha=True,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -151,6 +152,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            use_epistemic_alpha
             explore_optimizer
             explore_alpha_optimizer
         """
@@ -205,7 +207,10 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(actor_optimizer, [actor_network])
         if explore_optimizer is not None and explore_network is not None:
             self.add_optimizer(explore_optimizer, [explore_network])
-        if alpha_optimizer is not None:
+        if alpha_optimizer is None:
+            self._fixed_alpha = True
+        else:
+            self._fixed_alpha = False
             self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
 
         self._log_alpha = log_alpha
@@ -242,6 +247,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         self._use_entropy_reward = use_entropy_reward
         self._use_q_mean_train_actor = use_q_mean_train_actor
+        self._use_epistemic_alpha = use_epistemic_alpha
         self._dqda_clipping = dqda_clipping
         self._weighted_critic_training = weighted_critic_training
 
@@ -373,8 +379,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             q_total_std = critics.std(1)  # [bs, d_out] or [bs]
         if hasattr(info, "opt_std"):
-            q_opt_std = info.opt_std
-            q_opt_std = q_opt_std.mean(1)  # [bs, d_out] or [bs]
+            q_opt_std = info.opt_std  # [bs, d_out] or [bs]
             q_epi_std = q_total_std - q_opt_std
         else:
             q_opt_std = None
@@ -398,7 +403,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                 summary_utils.add_mean_hist_summary(
                     prefix + "critic_opt_std", q_opt_std)
 
-        return q_value
+        return q_value, q_epi_std
 
     def _actor_train_step(self,
                           inputs: TimeStep,
@@ -416,7 +421,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             critics = critics_dist.mean
         critics_info = critic_step.info
 
-        q_value = self._consensus_q_for_actor_train(
+        q_value, q_epi_std = self._consensus_q_for_actor_train(
             critics, explore, critics_info)
         dqda = nest_utils.grad(action, q_value.sum())
 
@@ -426,6 +431,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             cont_alpha = torch.exp(self._log_alpha).detach()
             entropy_loss = cont_alpha * log_pi
+            if self._use_epistemic_alpha:
+                entropy_loss = q_epi_std.detach() * entropy_loss
             neg_entropy = sum(nest.flatten(log_pi))
 
         def actor_loss_fn(dqda, action):
@@ -443,7 +450,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             extra = AbcExploreInfo(explore_loss=actor_loss)
         else:
             extra = AbcActorInfo(actor_loss=actor_loss,
-                                  neg_entropy=neg_entropy)
+                                 neg_entropy=neg_entropy)
         actor_info = LossInfo(loss=actor_loss + entropy_loss, extra=extra)
 
         return critics_state, actor_info
@@ -539,10 +546,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         critic_state, critic_info = self._compute_critic_train_info(
             inputs, state.critic, rollout_info, action)
 
-        # train alpha and explore_alpha
-        if self._deterministic_actor:
-            alpha_loss = ()
-        else:
+        if not self._deterministic_actor and not self._fixed_alpha:
             alpha_loss = self._alpha_train_step(log_pi)
 
         state = AbcState(action=action_state,
@@ -640,7 +644,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         # reweight training (s, a) paris with opt_std
         if hasattr(critics_info, "opt_std") and self._weighted_critic_training:
-            weights = critics_info.opt_std.mean(1)  # [bs, d_out] or [bs]
+            weights = critics_info.opt_std  # [bs, d_out] or [bs]
             weights = weights.reshape(
                 self._mini_batch_length-1, -1, *weights.shape[1:])
         else:

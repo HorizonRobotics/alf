@@ -220,9 +220,12 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         if self.num_particles_per_basin > 1:
             particles = self.particles.reshape(
                 self.num_basins, self.num_particles_per_basin, -1)
-            return particles.mean(dim=1)
+            particles = torch.repeat_interleave(
+                particles.mean(dim=1), self.num_particles_per_basin, dim=0)
         else:
-            return self.particles
+            particles = self.particles
+
+        return particles
 
     def predict_step(self, inputs, training=False, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
@@ -250,6 +253,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             *outputs_mean.shape[2:])
         # [bs, n_basins, d_out] or [bs, n_basins]
         opt_std = outputs_mean.std(2)  
+        opt_std = opt_std.mean(1)  # [bs, d_out] or [bs]
 
         return AlgStep(output=outputs,
                        state=(), 
