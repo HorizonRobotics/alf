@@ -31,7 +31,8 @@ alf.config(
     scenario_num=5000,
     crash_penalty=50.0,
     success_reward=200.0,
-    traffic_density=0.1)
+    traffic_density=0.25,
+    speed_reward_weight=0.15)
 
 # Configure the extra rewards
 alf.config(
