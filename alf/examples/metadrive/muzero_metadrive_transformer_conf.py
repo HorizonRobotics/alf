@@ -239,12 +239,19 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         else:
             return x
 
-    def _make_trunk():
-        return [
-            layers.Reshape(-1),
-            layers.FC(d_model, 1024, activation=torch.relu_),
-            layers.FC(1024, dim, activation=torch.relu_),
-        ]
+    def _make_trunk(lstm: bool = False):
+        if lstm:
+            return [
+                layers.Reshape(-1),
+                alf.nn.LSTMCell(d_model, 512),
+                layers.FC(512, dim, activation=torch.relu_),
+            ]
+        else:
+            return [
+                layers.Reshape(-1),
+                layers.FC(d_model, 1024, activation=torch.relu_),
+                layers.FC(1024, dim, activation=torch.relu_),
+            ]
 
     if num_quantiles == 1:
         reshape_layer = [layers.Reshape(())]
@@ -268,7 +275,7 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
 
     reward_net = [
         partial(_summarize_grad, name='reward_grad'),
-        *_make_trunk(),
+        *_make_trunk(lstm=True),
         layers.FC(
             dim,
             num_quantiles,
