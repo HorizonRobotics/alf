@@ -190,7 +190,6 @@ def create_representation_net(observation_spec):
         # Take the corresponding transformer output of the first vector in the
         # sequence (corresponding to "ego") as the final output of the encoder.
         lambda x: x[:, 0, :],
-        layers.Reshape(-1),
         torch.nn.LayerNorm(d_model),
     ]
     # yapf: enable
@@ -361,9 +360,10 @@ alf.config(
     "MuzeroRepresentationImpl",
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
-    td_steps=10,
+    td_steps=10,  # Not used as reanalyze ratio is 1.0
     reanalyze_algorithm_ctor=partial(
         MCTSAlgorithm, num_simulations=52, num_parallel_sims=2),
+    reanalyze_td_steps=5,
     reanalyze_td_steps_func=  #LinearMaxAgeTdStepFunc(),
     LinearTdStepFunc(max_bootstrap_age=1.2, min_td_steps=1),
     train_repr_prediction=True,
