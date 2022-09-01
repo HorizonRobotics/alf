@@ -140,8 +140,8 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         extra_env_info = {}
         for extra_reward in self._all_extra_rewards:
             rewards, info = extra_reward.evaluate(self._env.engine)
-            extra_env_info = {**extra_env_info, **info}
-            for _, reward in rewards.items():
+            extra_env_info.update(info)
+            for reward in rewards.values():
                 result += reward
 
         return result, extra_env_info

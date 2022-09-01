@@ -178,6 +178,22 @@ def squared_brake_cost(lon_acc: float,
     return min(diff * diff * scale, cap)
 
 
+def is_harsh_brake(lon_acc: float, speed: float):
+    """Simple empirical thresholds for harsh brake.
+
+    """
+    if speed < 2.0:
+        return False
+    elif speed < 15.0:
+        # Within 15 m/s, typical local driving where braking at -3.0
+        # is noticeable and uncomfortable.
+        return lon_acc < -3.0
+    else:
+        # High way and express way range, -1.2 is noticeable and
+        # uncomfortable.
+        return lon_acc < -1.2
+
+
 @alf.configurable
 class EgoKinematicReward(ExtraReward):
     """The comfort rewards that are based on the kinematics of the ego vehicle.
@@ -225,8 +241,6 @@ class EgoKinematicReward(ExtraReward):
         lon_jerk_cost = self._lon_jerk_cost_func(jerk=lon_jerk, speed=speed)
         lat_jerk_cost = self._lat_jerk_cost_func(jerk=lat_jerk, speed=speed)
 
-        harsh_brake = 1.0 if speed > 2.0 and lon_acc < -1.2 else 0.0
-
         rewards = {
             "lon_acc": -lon_acc_cost,
             "lon_jerk": -lon_jerk_cost,
@@ -234,14 +248,22 @@ class EgoKinematicReward(ExtraReward):
         }
 
         info = {
-            "MetaDrive/harsh_brake": harsh_brake,
-            "MetaDrive/lon_acc": lon_acc,
-            "MetaDrive/lon_jerk": lon_jerk,
-            "MetaDrive/lat_acc": lat_acc,
-            "MetaDrive/lat_jerk": lat_jerk,
-            "MetaDrive/costs/lon_acc": lon_acc_cost,
-            "MetaDrive/costs/lon_jerk": lon_jerk_cost,
-            "MetaDrive/costs/lat_jerk": lat_jerk_cost,
+            "MetaDrive/harsh_brake":
+                is_harsh_brake(lon_acc=lon_acc, speed=speed),
+            "MetaDrive/lon_acc":
+                lon_acc,
+            "MetaDrive/lon_jerk":
+                lon_jerk,
+            "MetaDrive/lat_acc":
+                lat_acc,
+            "MetaDrive/lat_jerk":
+                lat_jerk,
+            "MetaDrive/costs/lon_acc":
+                lon_acc_cost,
+            "MetaDrive/costs/lon_jerk":
+                lon_jerk_cost,
+            "MetaDrive/costs/lat_jerk":
+                lat_jerk_cost,
         }
         return rewards, info
 
@@ -333,13 +355,12 @@ class CrashVehicleReward(ExtraReward):
     def evaluate(self, engine: BaseEngine):
         ego: BaseVehicle = engine.managers["agent_manager"].active_agents[
             "default_agent"]
-        cost = 0.0
-        if ego.crash_vehicle:
-            cost = self._cost
+
+        rewards = {"crash_vehicle": -self._cost if ego.crash_vehicle else 0.0}
 
         info = {"MetaDrive/crash_vehicle": 1.0 if ego.crash_vehicle else 0.0}
 
-        return {"crash": -cost}, info
+        return rewards, info
 
     def env_info_spec(self):
         return {
