@@ -19,7 +19,7 @@ from collections import namedtuple
 import os
 import time
 import torch
-from typing import Callable
+from typing import Callable, Optional
 from absl import logging
 
 import alf
@@ -371,11 +371,19 @@ class RLAlgorithm(Algorithm):
                         torch.mean(r),
                         average_over_summary_interval=True)
 
-    def summarize_rollout(self, experience):
+    @alf.configurable(whitelist=["custom_summary"])
+    def summarize_rollout(
+            self,
+            experience: Experience,
+            custom_summary: Optional[Callable[[Experience], None]] = None):
         """Generate summaries for rollout.
 
         Args:
-            experience (Experience): experience collected from ``rollout_step()``.
+            experience: experience collected from ``rollout_step()``.
+            custom_summary: when specified it is a function that will be called every
+               time when this ``summarize_rollout`` hook is called. This provides
+               a convenient way for the user to extend ``summarize_rollout`` from
+               ALF configs.
         """
         if self._debug_summaries:
             summary_utils.summarize_action(experience.action,
@@ -389,6 +397,9 @@ class RLAlgorithm(Algorithm):
             if len(field) == 1:
                 summary_utils.summarize_distribution("rollout_action_dist",
                                                      field[0])
+
+        if custom_summary is not None:
+            custom_summary(experience)
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.
