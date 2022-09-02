@@ -262,6 +262,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
+                 initial_alpha=1.,
                  debug_summaries=False,
                  randomize_first_state_tau=False,
                  b1_advantage_clipping=None,
@@ -311,6 +312,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
+            initial_alpha (float): the initial entropy weight for both policies.
             debug_summaries (bool): True if debug summaries should be created.
             randomize_first_state_tau (bool): whether to randomize ``state.tau``
                 at the beginning of an episode during rollout and training.
@@ -343,8 +345,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             observation_spec, action_spec, reward_spec, actor_network_cls,
             actor_observation_processors, critic_network_cls)
 
-        log_alpha = (nn.Parameter(torch.zeros(())),
-                     nn.Parameter(torch.zeros(())))
+        log_alpha = (nn.Parameter(torch.tensor(np.log(initial_alpha))),
+                     nn.Parameter(torch.tensor(np.log(initial_alpha))))
 
         assert (len(alf.nest.flatten(critic_networks.state_spec)) == 0
                 and len(alf.nest.flatten(actor_network.state_spec)) == 0), (
