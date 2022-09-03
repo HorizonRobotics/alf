@@ -80,6 +80,12 @@ class StepMetric(nn.Module):
                 against.
             other_steps: A dictionary of steps to generate summaries against.
         """
+        # NOTE(breakds): Ignore step_metrics when wandb is turned on, as it does
+        # not correctly support alternative x-axis.
+        if os.getenv("ALF_USE_WANDB") == "1":
+            step_metrics = []
+            other_steps = dict()
+
         prefix = self._prefix
         result = self.result()
 
