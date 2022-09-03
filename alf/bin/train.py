@@ -54,11 +54,13 @@ from absl import app
 from absl import flags
 from absl import logging
 import os
-import pathlib
+from pathlib import Path
 import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import wandb
+from alf.config_util import get_operative_configs
 
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
@@ -70,6 +72,8 @@ def _define_flags():
     flags.DEFINE_string(
         'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
         'Root directory for writing logs/summaries/checkpoints.')
+    flags.DEFINE_string('notes', 'N/A',
+                        'A longer description of the experiment')
     flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
     flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
@@ -115,11 +119,12 @@ def _setup_device(rank: int = 0):
         torch.cuda.set_device(rank)
 
 
-def _train(root_dir, rank=0, world_size=1):
+def _train(conf_file: str, root_dir, rank=0, world_size=1):
     """Launch the trainer after the conf file has been parsed. This function
     could be called by grid search after the config has been modified.
 
     Args:
+        conf_file: Path to the configuration file.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
         rank (int): The ID of the process among all of the DDP processes. For
             non-distributed training, this id should be 0.
@@ -129,6 +134,42 @@ def _train(root_dir, rank=0, world_size=1):
     conf_file = common.get_conf_file()
     trainer_conf = policy_trainer.TrainerConfig(
         root_dir=root_dir, conf_file=conf_file)
+
+    # TODO(breakds): In DDP mode, maybe we should only establish wandb
+    # for the process whose rank = 0.
+    # TODO(breakds): Find a correct way to handle "eval"
+    if os.getenv("ALF_USE_WANDB") == "1" and (world_size == 1 or rank == 0):
+        wandb.tensorboard.patch(
+            root_logdir=os.path.join(trainer_conf.root_dir, "train"))
+        group, _, name = str(Path(root_dir).name).rpartition(".")
+
+        # Use the config file's name to generate the name of the project if it
+        # is not set via ``TrainerConfig.wandb_project``.
+        project = trainer_conf.wandb_project
+        if project == "":
+            project = Path(conf_file).stem
+            if project.endswith("_conf"):
+                project = project[:-5]
+            project = f"alf.{project}"
+
+        wandb.init(
+            project=project,
+            entity="horizon-robotics-gail",
+            group=group,
+            name=name,
+            reinit=True,
+            sync_tensorboard=True,
+            dir=root_dir,
+            notes=FLAGS.notes,
+        )
+
+        # Now add user defined config key value pairs to wandb.config
+        # so that we can use those for filtering in visualization.
+        user_defined_filters = {}
+        for key, value in get_operative_configs():
+            if key.startswith("_CONFIG._USER"):
+                user_defined_filters[key[14:]] = value
+        wandb.config.update(user_defined_filters)
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
@@ -182,7 +223,7 @@ def training_worker(rank: int,
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
-        _train(root_dir, rank, world_size)
+        _train(conf_file, root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -193,6 +234,8 @@ def training_worker(rank: int,
             logging.exception(f'{mp.current_process().name} - {e}')
         raise e
     finally:
+        if os.getenv("ALF_USE_WANDB") == "1" and (world_size == 1 or rank == 0):
+            wandb.finish()
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
         # finishes ealier (e.g. when it raises an exception), it will hang
