@@ -80,7 +80,8 @@ alf.config(
 alf.config(
     'MultiBootstrapEnsemble',
     num_basins=5,
-    num_particles_per_basin=3)
+    num_particles_per_basin=3,
+    initial_train_steps=100)
 
 alf.config(
     'OabcAlgorithm',
@@ -94,6 +95,7 @@ alf.config(
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
     use_entropy_reward=False,
+    common_td_target=True,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     explore_optimizer=AdamTF(lr=3e-4),

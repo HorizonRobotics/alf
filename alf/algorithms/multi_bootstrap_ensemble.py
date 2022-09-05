@@ -18,6 +18,7 @@ import functools
 import math
 import numpy as np
 import torch
+import torch.distributions as td
 import torch.nn.functional as F
 from typing import Callable
 
@@ -244,7 +245,10 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         self._param_net.set_parameters(self.particles)
         outputs, _ = self._param_net(inputs)  # [bs, n_particles, d_out]
         # [bs, n_particles, d_out] or [bs, n_particles]
-        outputs_mean = outputs.mean  
+        if isinstance(outputs, td.Distribution):
+            outputs_mean = outputs.mean  
+        else:
+            outputs_mean = outputs
         total_std = outputs_mean.std(1)  # [bs, d_out] or [bs]
         outputs_mean = outputs_mean.reshape(
             outputs_mean.shape[0],
@@ -259,10 +263,10 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                        state=(), 
                        info=MbeInfo(total_std=total_std, opt_std=opt_std))
 
-    def reward_perturbation(self, info):
-        reward_std = torch.std(info.reward.view(-1))
-        return torch.randn(
-            self.num_particles, *info.reward.shape) * reward_std
+    # def reward_perturbation(self, info):
+    #     reward_std = torch.std(info.reward.view(-1))
+    #     return torch.randn(
+    #         self.num_particles, *info.reward.shape) * reward_std
 
         # def _input_bootstrap_fn(input):
         #     total_batch_size = input.shape[0]

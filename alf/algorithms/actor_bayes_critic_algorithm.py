@@ -26,14 +26,17 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.data_structures import TimeStep, LossInfo, namedtuple
-from alf.data_structures import AlgStep
+from alf.data_structures import AlgStep, StepType
 from alf.optimizers import AdamTF
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils, math_ops, summary_utils
+from alf.utils import losses, common, math_ops 
+from alf.utils import tensor_utils, dist_utils 
+from alf.utils.summary_utils import safe_mean_hist_summary
+
 
 AbcActionState = namedtuple("AbcActionState",
                              ["actor_network", "explore_network", "critic"],
@@ -114,7 +117,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  deterministic_actor=False,
                  deterministic_critic=False,
                  reward_weights=None,
-                 weighted_critic_training=False,
+                 critic_training_weight=1.0,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=True,
@@ -147,8 +150,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             critic_module_cls
             deterministic_actor
             deterministic_critic
-            weighted_critic_training (bool): whether or not weight :math:`(s,a)`
+            critic_training_weight (float|None): if not None, weight :math:`(s,a)`
                 pairs for critic training according to opt_std of :math:`Q(s,a)`
+                with exponent ``critic_training_weight``.
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
@@ -249,7 +253,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._use_q_mean_train_actor = use_q_mean_train_actor
         self._use_epistemic_alpha = use_epistemic_alpha
         self._dqda_clipping = dqda_clipping
-        self._weighted_critic_training = weighted_critic_training
+        self._critic_training_weight = critic_training_weight
 
         self._actor_network = actor_network
         self._explore_network = explore_network
@@ -260,6 +264,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._target_critic_params = torch.nn.Parameter(target_critic_params)
         target_critic_network.set_parameters(self._target_critic_params)
         self._target_critic_network = target_critic_network
+        self._critic_train_mask = None
 
         if use_basin_mean_for_target_critic:
             param_fn = self._critic_module.get_particles
@@ -395,12 +400,12 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
-            summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
-                                                q_mean)
-            summary_utils.add_mean_hist_summary(
+            safe_mean_hist_summary(prefix + "critics_batch_mean",
+                                   q_mean)
+            safe_mean_hist_summary(
                 prefix + "critics_total_std", q_total_std)
             if q_opt_std is not None:
-                summary_utils.add_mean_hist_summary(
+                safe_mean_hist_summary(
                     prefix + "critic_opt_std", q_opt_std)
 
         return q_value, q_epi_std
@@ -432,7 +437,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             cont_alpha = torch.exp(self._log_alpha).detach()
             entropy_loss = cont_alpha * log_pi
             if self._use_epistemic_alpha:
-                entropy_loss = q_epi_std.detach() * entropy_loss
+                entropy_loss = q_epi_std.squeeze().detach() * entropy_loss
             neg_entropy = sum(nest.flatten(log_pi))
 
         def actor_loss_fn(dqda, action):
@@ -464,29 +469,29 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             (inputs.observation, action), state.target_critics)
 
         if self._deterministic_critic:
-            target_critics = target_critics_dist.squeeze(-1)
+            target_critics = target_critics_dist
         else:
             target_critics = target_critics_dist.mean
 
-        # if use common td_target for all critic
+        target_critics_std = target_critics.std(1)
         if self._common_td_target:
+            # use common td_target for all critic
             target_critics_mean = target_critics.mean(1)
-            target_critics_std = target_critics.std(1)
             targets = target_critics_mean - self._beta_lb * target_critics_std
         else:
-            # if use separate td_target for each critic
-            targets = target_critics
+            # use separate td_target for each critic
+            overestimation = target_critics_std.unsqueeze(1)
+            targets = target_critics - self._beta_lb * overestimation 
 
         targets = targets.detach()
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 target_critics_mean = target_critics.mean(1)
-                summary_utils.add_mean_hist_summary(
+                safe_mean_hist_summary(
                     "target_critics_batch_mean", target_critics_mean)
-                target_critics_std = target_critics.std(1)
-                summary_utils.add_mean_hist_summary("target_critics_std",
-                                                    target_critics_std)
+                safe_mean_hist_summary("target_critics_std",
+                                       target_critics_std)
 
         critic_info = AbcCriticInfo(critic_state=state.critics,
                                     target_critic=targets)
@@ -546,7 +551,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         critic_state, critic_info = self._compute_critic_train_info(
             inputs, state.critic, rollout_info, action)
 
-        if not self._deterministic_actor and not self._fixed_alpha:
+        if self._deterministic_actor or self._fixed_alpha:
+            alpha_loss = ()
+        else:
             alpha_loss = self._alpha_train_step(log_pi)
 
         state = AbcState(action=action_state,
@@ -592,8 +599,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 alf.summary.scalar("alpha", self._log_alpha.exp())
-                summary_utils.add_mean_hist_summary("critics_losses",
-                                                    critic_loss.extra)
+                safe_mean_hist_summary("critics_losses",
+                                       critic_loss.extra)
 
         if self._deterministic_actor:
             loss = math_ops.add_ignore_empty(actor_loss.loss,
@@ -642,86 +649,129 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         critics_dist = critic_step.output
         critics_info = critic_step.info
 
-        # reweight training (s, a) paris with opt_std
-        if hasattr(critics_info, "opt_std") and self._weighted_critic_training:
-            weights = critics_info.opt_std  # [bs, d_out] or [bs]
-            weights = weights.reshape(
-                self._mini_batch_length-1, -1, *weights.shape[1:])
+        # compute td_targets
+        if self._common_td_target:
+            td_targets = self._critic_loss.compute_td_target(info, targets)
+            td_targets = td_targets.unsqueeze(2) # [T-1, B, 1, ...]
         else:
-            weights = torch.ones_like(targets[1:, ...])
-        weights = weights.unsqueeze(-1) / weights.sum()
+            td_targets = [self._critic_loss.compute_td_target(
+                info, targets[:, :, i, ...]) for i in range(num_particles)]
+            td_targets = torch.stack(td_targets, dim=2) # [T-1, B, n, ...]
 
-        # get rewards noise if needed for initial train stage
-        if self._critic_module.initial_train_stage() and \
-            hasattr(self._critic_module, 'reward_perturbation'):
-            reward_noise = self._critic_module.reward_perturbation(info)
-        else:
-            reward_noise = None
-
+        # compute critic_loss
         if self._deterministic_critic:
-            critics = critics_dist.squeeze(-1)
+            # standard / non-Bayesian critic
+            critics = critics_dist
             critics = critics.reshape(self._mini_batch_length-1, -1,
-                                      *critics.shape[1:])
-            # in order to work with alf TDLoss, expand critics such that
-            # its first dimension is of size T
-            zeros = torch.zeros(1, *critics.shape[1:])
-            critics = torch.cat([critics, zeros], dim=0)
-            if reward_noise is not None:
-                if self._common_td_target:
-                    neg_logp = [self._critic_loss(
-                        info=info._replace(reward=info.reward + reward_noise[i]), 
-                        value=critics[:,:,i,...],
-                        target_value=targets).loss for i in range(num_particles)]
-                else:
-                    neg_logp = [self._critic_loss( 
-                        info=info._replace(reward=info.reward + reward_noise[i]), 
-                        value=critics[:,:,i,...],
-                        target_value=targets[:,:,i,...]).loss \
-                            for i in range(num_particles)]
-            else:
-                if self._common_td_target:
-                    neg_logp = [self._critic_loss(
-                        info=info, 
-                        value=critics[:,:,i,...],
-                        target_value=targets).loss for i in range(num_particles)]
-                else:
-                    neg_logp = [self._critic_loss( 
-                        info=info, 
-                        value=critics[:,:,i,...],
-                        target_value=targets[:,:,i,...]).loss \
-                            for i in range(num_particles)]
-            neg_logp = torch.stack(neg_logp).reshape(num_particles, -1)
+                                      *critics.shape[1:]) # [T-1, B, n, ...]
+            neg_logp, td_error = self._critic_loss.compute_td_error(
+                critics, td_targets)  # [T-1, B, n, ...]
         else:
+            # Bayesian critic
             critics_mean = critics_dist.base_dist.mean.reshape(
                 self._mini_batch_length-1, -1,
                 *critics_dist.base_dist.mean.shape[1:])
             critics_std = critics_dist.base_dist.stddev.reshape(
                 self._mini_batch_length-1, -1,
                 *critics_dist.base_dist.stddev.shape[1:])
-            if reward_noise is not None:
-                if self._common_td_target:
-                    td_targets = [self._critic_loss.compute_td_target(
-                        info._replace(reward=info.reward + reward_noise[i]), 
-                        targets) for i in range(num_particles)]
-                else:
-                    td_targets = [self._critic_loss.compute_td_target(
-                        info._replace(reward=info.reward + reward_noise[i]), 
-                            targets[:,:,i,...]) for i in range(num_particles)]
-                td_targets = torch.stack(td_targets, dim=2)
-            else:
-                if self._common_td_target:
-                    td_targets = self._critic_loss.compute_td_target(info, targets)
-                    td_targets = td_targets.unsqueeze(2)
-                else:
-                    td_targets = [self._critic_loss.compute_td_target(
-                        info, targets[:, :, i, ...]) for i in range(num_particles)]
-                    td_targets = torch.stack(td_targets, dim=2)
 
-            value_dist = td.Normal(loc=critics_mean,
-                                    scale=critics_std)
-            neg_logp = -value_dist.log_prob(td_targets) * weights
-            neg_logp = neg_logp.transpose(0, 2)
-            neg_logp = neg_logp.reshape(num_particles, -1)
+            value_dist = td.Normal(loc=critics_mean, scale=critics_std)
+            neg_logp = -value_dist.log_prob(td_targets)
+
+        # summarize values, returns, and td losses
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = info.step_type[:-1] != StepType.LAST
+            with alf.summary.scope(self._name):
+
+                def _summarize(v, r, loss, suffix):
+                    if isinstance(v, tuple):
+                        v_mean, v_std = v
+                        alf.summary.scalar(
+                            "explained_variance_of_return_by_value_mean" \
+                                + suffix,
+                            tensor_utils.explained_variance(
+                                v_mean, r, mask))
+                        safe_mean_hist_summary(
+                            'value_means' + suffix, v_mean, mask)
+                        safe_mean_hist_summary(
+                            'value_stds' + suffix, v_std, mask)
+                        safe_mean_hist_summary(
+                            "neg_logp" + suffix, loss, mask)
+                    else:
+                        alf.summary.scalar(
+                            "explained_variance_of_return_by_value" \
+                                + suffix,
+                            tensor_utils.explained_variance(v, r, mask))
+                        safe_mean_hist_summary(
+                            'values' + suffix, v, mask)
+                        safe_mean_hist_summary(
+                            "td_error" + suffix, loss, mask)
+                    safe_mean_hist_summary('returns' + suffix, r, mask)
+
+                if self._deterministic_critic:
+                    critics = critics.reshape(
+                        critics.shape[0], critics.shape[1], -1).squeeze(-1)
+                    td_targets = td_targets.reshape(
+                        td_targets.shape[0], td_targets.shape[1], -1).squeeze(-1)
+                    td_error = td_error.reshape(
+                        td_error.shape[0], td_error.shape[1], -1).squeeze(-1)
+
+                    if critics.ndim == 2:
+                        _summarize(critics, td_targets, td_error, '')
+                    else:
+                        for i in range(critics.shape[2]):
+                            if self._common_td_target:
+                                td_target = td_targets
+                            else:
+                                td_target = td_targets[..., i]
+                            suffix = '/' + str(i)
+                            _summarize(critics[..., i], td_target,
+                                       td_error[..., i], suffix)
+                else:
+                    critics_mean = critics_mean.reshape(
+                        critics_mean.shape[0], critics_mean.shape[1], 
+                        -1).squeeze(-1)
+                    critics_std = critics_std.reshape(
+                        critics_std.shape[0], critics_std.shape[1], 
+                        -1).squeeze(-1)
+                    td_targets = td_targets.reshape(
+                        td_targets.shape[0], td_targets.shape[1], -1).squeeze(-1)
+                    neglogp = neg_logp.reshape(
+                        neg_logp.shape[0], neg_logp.shape[1], -1).squeeze(-1)
+
+                    if critics_mean.ndim == 2:
+                        _summarize((critics_mean, critics_std), 
+                                   td_targets, neglogp, '')
+                    else:
+                        for i in range(critics_mean.shape[2]):
+                            if self._common_td_target:
+                                td_target = td_targets
+                            else:
+                                td_target = td_targets[..., i]
+                            suffix = '/' + str(i)
+                            _summarize(
+                                (critics_mean[..., i], critics_std[..., i]),
+                                td_target, neglogp[..., i], suffix)
+
+        # reweight training (s, a) paris with opt_std
+        if hasattr(critics_info, "opt_std") and \
+            self._critic_training_weight is not None:
+            weights = critics_info.opt_std  # [bs, d_out] or [bs]
+            weights = weights.reshape(
+                self._mini_batch_length-1, -1, *weights.shape[1:])
+            weights = weights ** self._critic_training_weight
+            weights = weights.unsqueeze(2) / weights.sum()
+            neg_logp *= weights
+
+        # add (s, a) mask
+        if self._critic_module.initial_train_stage():
+            if self._critic_train_mask is None:
+                mask = torch.randint(0, 2, neg_logp.shape)
+                self._critic_train_mask = mask.float()
+                neg_logp *= mask
+            
+        neg_logp = neg_logp.transpose(0, 2)
+        neg_logp = neg_logp.reshape(num_particles, -1)
 
         return neg_logp.mean(-1)
 

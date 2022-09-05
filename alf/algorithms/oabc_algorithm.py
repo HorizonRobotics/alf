@@ -51,7 +51,7 @@ class OabcAlgorithm(AbcAlgorithm):
                  deterministic_actor=False,
                  deterministic_critic=False,
                  reward_weights=None,
-                 weighted_critic_training=False,
+                 critic_training_weight=1.0,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=True,
@@ -83,8 +83,6 @@ class OabcAlgorithm(AbcAlgorithm):
             critic_module_cls
             deterministic_actor
             deterministic_critic
-            weighted_critic_training (bool): whether or not weight :math:`(s,a)`
-                pairs for critic training according to opt_std of :math:`Q(s,a)`
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
@@ -101,7 +99,7 @@ class OabcAlgorithm(AbcAlgorithm):
             deterministic_actor=deterministic_actor,
             deterministic_critic=deterministic_critic,
             reward_weights=reward_weights,
-            weighted_critic_training=weighted_critic_training,
+            critic_training_weight=critic_training_weight,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
             use_q_mean_train_actor=use_q_mean_train_actor,

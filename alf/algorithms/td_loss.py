@@ -160,6 +160,38 @@ class TDLoss(nn.Module):
 
         return returns
 
+    def compute_td_error(self, values, td_targets):
+        """Caculate the td error from value and return. 
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
+
+        Args:
+            values (torch.Tensor): the time-major tensor for the value 
+                at time step [0, T-1].
+            td_targets (torch.Tensor): the time-major tensor for the returns 
+                at time step [1, T].
+
+        Returns:
+            loss: the loss between values and td_targets
+            td_error: td_targets - values
+        """
+        if self._normalize_target:
+            if self._target_normalizer is None:
+                self._target_normalizer = AdaptiveNormalizer(
+                    alf.TensorSpec(values.shape[2:]),
+                    auto_update=False,
+                    debug_summaries=self._debug_summaries,
+                    name=self._name + ".target_normalizer")
+
+            self._target_normalizer.update(td_targets)
+            td_targets = self._target_normalizer.normalize(td_targets)
+            values = self._target_normalizer.normalize(values)
+
+        td_error = td_targets - values
+        loss = self._td_error_loss_fn(td_targets.detach(), values)
+
+        return loss, td_error
+
     def forward(self, info: namedtuple, value: torch.Tensor,
                 target_value: torch.Tensor):
         """Calculate the loss.
@@ -185,19 +217,8 @@ class TDLoss(nn.Module):
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
 
-        if self._normalize_target:
-            if self._target_normalizer is None:
-                self._target_normalizer = AdaptiveNormalizer(
-                    alf.TensorSpec(value.shape[2:]),
-                    auto_update=False,
-                    debug_summaries=self._debug_summaries,
-                    name=self._name + ".target_normalizer")
+        loss, td_error = self.compute_td_error(value, returns)
 
-            self._target_normalizer.update(returns)
-            returns = self._target_normalizer.normalize(returns)
-            value = self._target_normalizer.normalize(value)
-
-        td_error = returns - value
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
@@ -217,8 +238,6 @@ class TDLoss(nn.Module):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i],
                                    td_error[..., i], suffix)
-
-        loss = self._td_error_loss_fn(returns.detach(), value)
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions

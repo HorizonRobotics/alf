@@ -691,6 +691,6 @@ class NormalProjectionParamNetwork(Network):
         # [B, n, D] or [B, D] (n=1)
         means = self._mean_transform(self._means_projection_layer(inputs))
         stds = self._std_transform(self._std_projection_layer(inputs))
-        means = means.squeeze(-1)
-        stds = stds.squeeze(-1)
+        # means = means.squeeze(-1)
+        # stds = stds.squeeze(-1)
         return self._normal_dist(means, stds), state

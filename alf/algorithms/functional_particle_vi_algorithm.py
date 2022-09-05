@@ -424,11 +424,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 return super().train_step(
                     loss_func=functools.partial(self._neglogprob, inputs),
                     entropy_regularization=entropy_regularization,
+                    loss_mask=loss_mask,
                     state=())
         else:
             return super().train_step(
                 loss_func=loss_func,
                 entropy_regularization=entropy_regularization,
+                loss_mask=loss_mask,
                 state=())
 
     def initial_train_stage(self):
