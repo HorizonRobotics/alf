@@ -263,18 +263,22 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                        state=(), 
                        info=MbeInfo(total_std=total_std, opt_std=opt_std))
 
-    # def reward_perturbation(self, info):
-    #     reward_std = torch.std(info.reward.view(-1))
-    #     return torch.randn(
-    #         self.num_particles, *info.reward.shape) * reward_std
+    def gen_input_mask(self, batchsize):
+        """generate input mask for all particles. 
 
-        # def _input_bootstrap_fn(input):
-        #     total_batch_size = input.shape[0]
-        #     assert total_batch_size % self.num_particles_per_basin == 0, (
-        #         "first dim of input must be multiples of num_particles_per_basin") 
-        #     batch_size = int(total_batch_size / self.num_particles_per_basin)
-        #     input = input.reshape(
-        #         batch_size, self.num_particles_per_basin, *input.shape[1:])
-        #     return input.repeat(1, self.num_basins, *(1,)*(input.ndim - 2))
-        #     
-        # return alf.nest.map_structure(_input_bootstrap_fn, inputs) 
+        Args:
+            batchsize (int): batchsize for masks
+
+        Returns:
+            mask (Tensor): binary mask of shape [batchsize, num_particles]
+        """
+        sample_size = int(batchsize / 2)
+        mask = []
+        for i in range(self.num_particles_per_basin):
+            sampled_idx = torch.randperm(batchsize)[:sample_size]
+            vec_mask = torch.zeros(batchsize)
+            vec_mask[sampled_idx] = 1
+            mask.append(vec_mask)
+        mask = torch.stack(mask, dim=1)  # [batchsize, np]
+
+        return mask.repeat(1, self.num_basins)  # [batchsize, nb*np]

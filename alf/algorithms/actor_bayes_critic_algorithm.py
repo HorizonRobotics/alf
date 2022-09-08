@@ -232,15 +232,13 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._target_entropy = _set_target_entropy(
             self.name, target_entropy, nest.flatten(self._action_spec))
 
-        self._mini_batch_size = alf.get_config_value(
+        mini_batch_size = alf.get_config_value(
             'TrainerConfig.mini_batch_size')
         self._mini_batch_length = alf.get_config_value(
             'TrainerConfig.mini_batch_length')
         replay_buffer_length = alf.get_config_value(
             'TrainerConfig.replay_buffer_length')
-        self._unroll_length = alf.get_config_value(
-            'TrainerConfig.unroll_length')
-        self._min_entropy_regularization = self._mini_batch_size / replay_buffer_length
+        self._min_entropy_regularization = mini_batch_size / replay_buffer_length
 
         self._training_started = False
         self._beta_ub = beta_ub
@@ -264,7 +262,11 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._target_critic_params = torch.nn.Parameter(target_critic_params)
         target_critic_network.set_parameters(self._target_critic_params)
         self._target_critic_network = target_critic_network
-        self._critic_train_mask = None
+        if hasattr(self._critic_module, 'gen_input_mask'):
+            mask = self._critic_module.gen_input_mask(mini_batch_size)
+            self._critic_train_mask = mask.unsqueeze(0).unsqueeze(-1)
+        else:
+            self._critic_train_mask = None
 
         if use_basin_mean_for_target_critic:
             param_fn = self._critic_module.get_particles
@@ -764,11 +766,11 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             neg_logp *= weights
 
         # add (s, a) mask
-        if self._critic_module.initial_train_stage():
-            if self._critic_train_mask is None:
-                mask = torch.randint(0, 2, neg_logp.shape)
-                self._critic_train_mask = mask.float()
-                neg_logp *= mask
+        if self._critic_module.initial_train_stage() and \
+            self._critic_train_mask is not None:
+            # mask = torch.randint(0, 2, neg_logp.shape)
+            # self._critic_train_mask = mask.float()
+            neg_logp *= self._critic_train_mask
             
         neg_logp = neg_logp.transpose(0, 2)
         neg_logp = neg_logp.reshape(num_particles, -1)
