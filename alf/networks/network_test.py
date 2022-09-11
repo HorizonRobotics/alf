@@ -20,12 +20,13 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.tensor_specs import TensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.initializers import _numerical_calculate_gain
 from alf.initializers import _calculate_gain
 from alf.networks import (ActorNetwork, ActorRNNNetwork, EncodingNetwork,
                           LSTMEncodingNetwork, PreprocessorNetwork,
-                          TransformerNetwork, ValueNetwork, ValueRNNNetwork)
+                          TransformerNetwork, ValueNetwork, ValueRNNNetwork,
+                          BetaProjectionNetwork)
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.networks.network import NaiveParallelNetwork
 
@@ -154,6 +155,21 @@ class NaiveParallelNetworkTest(alf.test.TestCase):
             alf.utils.dist_utils.extract_spec(state),
             [(TensorSpec((4, 30)), TensorSpec((4, 30))),
              (TensorSpec((4, 40)), TensorSpec((4, 40)))])
+
+    def test_distribution(self):
+        input_size = 100
+        action_spec = BoundedTensorSpec((4, ))
+        network = BetaProjectionNetwork(
+            input_size=input_size, action_spec=action_spec)
+        pnet = NaiveParallelNetwork(network, 2)
+        x = torch.zeros((
+            5,
+            input_size,
+        ))
+
+        dist, _ = pnet(x)
+        self.assertEqual(dist.event_shape, action_spec.shape)
+        self.assertEqual(dist.batch_shape, (5, 2))
 
 
 class NetworkWrapperTest(alf.test.TestCase):
