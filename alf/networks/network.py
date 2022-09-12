@@ -27,7 +27,9 @@ import typing
 import alf
 from alf.tensor_specs import TensorSpec
 from alf.nest.utils import get_outer_rank
-from alf.utils.dist_utils import DistributionSpec, extract_spec
+from alf.utils.dist_utils import (DistributionSpec, extract_spec,
+                                  distributions_to_params,
+                                  params_to_distributions)
 import alf.utils.math_ops as math_ops
 from alf.utils import common
 
@@ -314,6 +316,7 @@ class NaiveParallelNetwork(Network):
                 "state should have shape [B, %d, ...] " % self._n)
 
         output_states = []
+        output_state_spec = None
         for i in range(self._n):
             if outer_rank == 1:
                 inp = inputs
@@ -321,14 +324,20 @@ class NaiveParallelNetwork(Network):
                 inp = alf.nest.map_structure(lambda x: x[:, i, ...], inputs)
             s = alf.nest.map_structure(lambda x: x[:, i, ...], state)
             ret = self._networks[i](inp, s)
+            if output_state_spec is None:
+                output_state_spec = extract_spec(ret)
             output_states.append(ret)
+
+        output_states = distributions_to_params(output_states)
         if self._n > 1:
-            output, new_state = alf.nest.map_structure(
-                lambda *tensors: torch.stack(tensors, dim=1), *output_states)
+            output, new_state = alf.nest.utils.stack_nests(
+                output_states, dim=1)
         else:
             output, new_state = alf.nest.map_structure(
                 lambda x: x.unsqueeze(1), output_states[0])
 
+        output, new_state = params_to_distributions((output, new_state),
+                                                    output_state_spec)
         return output, new_state
 
 
