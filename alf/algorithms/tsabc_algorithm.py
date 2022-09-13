@@ -26,7 +26,8 @@ from alf.optimizers import AdamTF
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import dist_utils, summary_utils
+from alf.utils import dist_utils
+from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 @alf.configurable
@@ -39,7 +40,6 @@ class TsabcAlgorithm(AbcAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  explore_network_cls=ActorDistributionNetwork,
                  critic_module_cls=FuncParVIAlgorithm,
-                 num_critic_replicas=10,
                  deterministic_actor=False,
                  deterministic_critic=False,
                  reward_weights=None,
@@ -60,6 +60,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
+                 use_epistemic_alpha=True,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -85,7 +86,6 @@ class TsabcAlgorithm(AbcAlgorithm):
         self._idx = 0
         # self._cyclic_unroll_steps = 0
         self._random_actor_every_step = random_actor_every_step
-        self._num_critic_replicas = num_critic_replicas
 
         super().__init__(
             observation_spec=observation_spec,
@@ -164,8 +164,8 @@ class TsabcAlgorithm(AbcAlgorithm):
         critic_module = critic_module_cls(
             input_tensor_spec=input_tensor_spec,
             param_net=critic_network,
-            num_particles=self._num_critic_replicas,
             optimizer=critic_optimizer)
+        self._num_critic_replicas = critic_module.num_particles
 
         explore_network = explore_network.make_parallel(
             self._num_critic_replicas)
@@ -231,6 +231,13 @@ class TsabcAlgorithm(AbcAlgorithm):
             q_total_std = info.total_std
         else:
             q_total_std = critics.std(1)  # [bs, d_out] or [bs]
+        if hasattr(info, "opt_std"):
+            q_opt_std = info.opt_std  # [bs, d_out] or [bs]
+            q_epi_std = q_total_std - q_opt_std
+        else:
+            q_opt_std = None
+            q_epi_std = q_total_std
+
         if explore:
             q_value = critics
         else:
@@ -241,9 +248,12 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
-            summary_utils.add_mean_hist_summary(prefix + "critics_batch_mean",
-                                                q_mean)
-            summary_utils.add_mean_hist_summary(
+            safe_mean_hist_summary(prefix + "critics_batch_mean",
+                                   q_mean)
+            safe_mean_hist_summary(
                 prefix + "critics_total_std", q_total_std)
+            if q_opt_std is not None:
+                safe_mean_hist_summary(
+                    prefix + "critic_opt_std", q_opt_std)
 
-        return q_value
+        return q_value, q_epi_std
