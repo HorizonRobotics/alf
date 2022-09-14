@@ -36,6 +36,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[BC](alf/algorithms/bc_algorithm.py)|Offline RL|Pomerleau "ALVINN: An Autonomous Land Vehicle in a Neural Network" [NeurIPS 1988](https://papers.nips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html) <br>  Bain et al. "A framework for behavioural cloning" [Machine Intelligence 1999](http://www.cse.unsw.edu.au/~claude/papers/MI15.pdf)|
 |[IQL](alf/algorithms/iql_algorithm.py)|Offline RL|Kostrikov, et al. "Offline Reinforcement Learning with Implicit Q-Learning" [arXiv:2110.06169](https://arxiv.org/abs/2110.06169)|
 |[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
+|[MoNet](alf/algorithms/monet_algorithm.py)|Unsupervised learning|Burgess et al. "MONet: Unsupervised Scene Decomposition and Representation" [arXiv:1901.11390](https://arxiv.org/abs/1901.11390)|
 |[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
 |[HyperNetwork](alf/algorithms/hypernetwork_algorithm.py)|General|Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, Performant Neural Networks" [arXiv:1901.11058](https://arxiv.org/abs/1901.11058)|
 |[MCTS](alf/algorithms/mcts_algorithm.py)|General|Grill et al. "Monte-Carlo tree search as regularized policy optimization" [arXiv:2007.12509](https://arxiv.org/abs/2007.12509)|
@@ -45,6 +46,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[SVGD optimizer](alf/optimizers/optimizers.py)|General|Liu et al. "Stein Variational Gradient Descent: A General Purpose Bayesian Inference Algorithm" [arXiv:1608.04471](https://arxiv.org/abs/1608.04471)|
 |[VAE](alf/algorithms/vae.py)|General|Higgins et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework" [ICLR2017](https://openreview.net/forum?id=Sy2fzU9gl)|
 |[RealNVP](alf/networks/normalizing_flow_networks.py)|General|Dinh et al. "Density estimation using Real NVP" [arXiv:1605.08803](https://arxiv.org/abs/1605.08803)|
+|[SpatialBroadcastDecoder](alf/networks/encoding_networks.py)|General|Watters et al. "Spatial Broadcast Decoder: A Simple Architecture for Learning Disentangled Representations in VAEs" [arXiv:1901.07017](https://arxiv.org/abs/1901.07017)|
 
 ## Installation
 

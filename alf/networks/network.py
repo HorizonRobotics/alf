@@ -418,3 +418,28 @@ def wrap_as_network(net, input_tensor_spec):
         raise ValueError("input_tensor_spec is undefined for net of "
                          "type: %s" % type(net))
     return NetworkWrapper(net, input_tensor_spec)
+
+
+class BatchSquashNetwork(Network):
+    """Wrap a network so that it works on multiple batch dims.
+
+    Args:
+        network: the network to be wrapped
+        batch_dims: how many batch dims to squash before forward
+    """
+
+    def __init__(self,
+                 network: Network,
+                 batch_dims: int = 2,
+                 name: str = "BatchSquashNetwork"):
+        super().__init__(network.input_tensor_spec, network.state_spec, name)
+        assert isinstance(network, Network)
+        self._network = network
+        self._bs = alf.layers.BatchSquash(batch_dims)
+
+        self._output_spec = network.output_spec
+
+    def forward(self, x, state=()):
+        x, state = alf.nest.map_structure(self._bs.flatten, (x, state))
+        output, new_state = self._network(x, state)
+        return alf.nest.map_structure(self._bs.unflatten, (output, new_state))

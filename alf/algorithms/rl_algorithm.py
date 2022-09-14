@@ -630,8 +630,6 @@ class RLAlgorithm(Algorithm):
             next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
-            self.observe_for_metrics(time_step.cpu())
-
             # For typical cases, there is no impact since the action at the
             # current time step is the same as the prev_action of the next
             # time step. In some cases, for example, for data collection,

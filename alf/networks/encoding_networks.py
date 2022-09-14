@@ -252,6 +252,7 @@ class ImageDecodingNetworkV2(_Sequential):
                  upsample_conv_layer_params: Tuple[Union[int, Tuple[int]]],
                  start_decoding_size: Union[int, Tuple[int]],
                  start_decoding_channels: int,
+                 preprocess_fc_layer_params=None,
                  upsampling_mode: str = 'nearest',
                  same_padding: bool = False,
                  activation: Callable = torch.relu_,
@@ -317,14 +318,25 @@ class ImageDecodingNetworkV2(_Sequential):
             start_decoding_size[1]
         ]
 
-        nets = [
+        nets = []
+        if preprocess_fc_layer_params is not None:
+            for size in preprocess_fc_layer_params:
+                nets.append(
+                    layers.FC(
+                        input_size,
+                        size,
+                        activation=activation,
+                        kernel_initializer=kernel_initializer))
+                input_size = size
+
+        nets.extend([
             layers.FC(
                 input_size,
                 np.prod(start_decoding_shape),
                 activation=activation,
                 kernel_initializer=kernel_initializer),
             alf.layers.Reshape(start_decoding_shape)
-        ]
+        ])
 
         in_channels = start_decoding_channels
         for i, paras in enumerate(upsample_conv_layer_params):
@@ -354,6 +366,73 @@ class ImageDecodingNetworkV2(_Sequential):
                 in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
+
+
+def SpatialBroadcastDecodingNetwork(
+        input_size: int,
+        output_height: int,
+        conv_layer_params: Tuple[Tuple[int]],
+        output_width: int = None,
+        fc_layer_params: Tuple[int] = None,
+        activation: Callable = torch.relu_,
+        output_activation: Callable = alf.utils.math_ops.identity,
+        name: str = "SpatialBroadcastDecodingNetwork"):
+    """Implements the spatial broadcast decoder in
+
+    `Watters et al. 2019,
+    Spatial Broadcast Decoder: A Simple Architecture for Learning Disentangled
+    Representations in VAEs <https://arxiv.org/abs/1901.07017>`_.
+
+    In short, given a latent embedding and target output height/width, this
+    decoder first spatially broadcast the embedding over ``height*width``, append
+    a uniform ``xy`` meshgrid in [-1,1], and apply conv layers.
+
+    Args:
+        input_size: the latent embedding size
+        output_height: the target output image height
+        conv_layer_params: a tuple of conv layer params after broadcasting
+        output_width: if None, it's equal to ``output_height``
+        fc_layer_params: a tuple of fc layers applied to the input embedding before
+            broadcasting
+        activation: activation of the intermediate conv layers
+        output_activation: the final activation
+    """
+
+    input_tensor_spec = TensorSpec((input_size, ))
+    proj = alf.math.identity
+    if fc_layer_params is not None:
+        proj = EncodingNetwork(
+            input_tensor_spec=input_tensor_spec,
+            fc_layer_params=fc_layer_params,
+            activation=activation)
+
+    if output_width is None:
+        output_width = output_height
+
+    preproc_net = alf.nn.Sequential(
+        proj,
+        functools.partial(
+            alf.utils.tensor_utils.spatial_broadcast,
+            im_shape=(output_height, output_width)),
+        alf.utils.tensor_utils.append_coordinate,
+        input_tensor_spec=input_tensor_spec)
+
+    assert isinstance(conv_layer_params, tuple) and len(conv_layer_params) > 0
+    conv_net = ImageEncodingNetwork(
+        input_channels=preproc_net.output_spec.shape[0],
+        input_size=preproc_net.output_spec.shape[1:],
+        conv_layer_params=conv_layer_params[:-1],
+        same_padding=True,
+        activation=activation)
+
+    last_conv_net = ImageEncodingNetwork(
+        input_channels=conv_net.output_spec.shape[0],
+        input_size=conv_net.output_spec.shape[1:],
+        conv_layer_params=conv_layer_params[-1:],
+        same_padding=True,
+        activation=output_activation)
+
+    return alf.nn.Sequential(preproc_net, conv_net, last_conv_net, name=name)
 
 
 @alf.configurable
