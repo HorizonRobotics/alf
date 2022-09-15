@@ -1055,10 +1055,14 @@ def detach(nests: alf.nest.Nest):
         detached Tensors/Distributions with same structure as nests
     """
 
-    spec = dist_utils.extract_spec(nests)
-    params = dist_utils.distributions_to_params(nests)
-    params = nest.map_structure(lambda t: t.detach(), params)
-    return dist_utils.params_to_distributions(params, spec)
+    def _detach_dist_or_tensor(dist_or_tensor):
+        if isinstance(dist_or_tensor, td.Distribution):
+            builder, params = dist_utils._get_builder(dist_or_tensor)
+            return builder(**detach(params))
+        else:
+            return dist_or_tensor.detach()
+
+    return nest.map_structure(_detach_dist_or_tensor, nests)
 
 
 # A catch all mode.  Currently includes on-policy training on unrolled experience.
