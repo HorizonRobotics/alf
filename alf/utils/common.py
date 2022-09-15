@@ -1046,15 +1046,23 @@ def create_ou_process(action_spec, ou_stddev, ou_damping):
     return ou_process
 
 
-def detach(nests):
-    """Detach nested Tensors.
+def detach(nests: alf.nest.Nest):
+    """Detach nested Tensors or Distributions
 
     Args:
-        nests (nested Tensor): tensors to be detached
+        nests: tensors or distributions to be detached
     Returns:
-        detached Tensors with same structure as nests
+        detached Tensors/Distributions with same structure as nests
     """
-    return nest.map_structure(lambda t: t.detach(), nests)
+
+    def _detach_dist_or_tensor(dist_or_tensor):
+        if isinstance(dist_or_tensor, td.Distribution):
+            builder, params = dist_utils._get_builder(dist_or_tensor)
+            return builder(**detach(params))
+        else:
+            return dist_or_tensor.detach()
+
+    return nest.map_structure(_detach_dist_or_tensor, nests)
 
 
 # A catch all mode.  Currently includes on-policy training on unrolled experience.
