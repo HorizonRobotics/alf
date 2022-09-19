@@ -28,7 +28,7 @@ To run grid search on DDPG for training gym `Pendulum`:
 For using ALF conf, replace "--gin_file" with "--conf" and "--gin_param" with
 "--conf_param".
 """
-
+import math
 from absl import app
 from absl import flags
 from absl import logging
@@ -235,7 +235,7 @@ class GridSearch(object):
                            id,
                            repeat,
                            token_len=20,
-                           max_len=50,
+                           max_len=100,
                            tree_dir=False):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy comparison between different search runs without going
@@ -262,6 +262,9 @@ class GridSearch(object):
                 return _slugify('_'.join([w[:len_per_word] for w in words]))
 
             if isinstance(x, str):
+                # Jerry: for shorter naming on wandb
+                if x == 'True' or x == 'False':
+                    x = x[0]
                 tokens = x.replace("/", "_").split(".")
                 tokens = [_initials(t) for t in tokens]
                 return ".".join(tokens)
@@ -280,7 +283,9 @@ class GridSearch(object):
                 if isinstance(x, str):
                     x = x.split('.')[-1]
                 if not is_value:
-                    x = ''.join([str(s[0]) for s in x.split('_')])
+                    # Jerry: '[:3]' for shorter naming in wandb
+                    x = ''.join([str(s[0]) for s in x.split('_')[:3]])
+                    # x = ''.join([str(s[0]) for s in x.split('_')])
                 return _abbr_single(x, l)
 
         def _generate_name(max_token_len):
@@ -425,6 +430,7 @@ class GridSearch(object):
             # job of grid search
             if alf.get_config_value("TrainerConfig.use_wandb"):
                 common.setup_wandb(root_dir)
+            # wandb.config.update(dict) # dict of ['abbr', val]
             _train(root_dir)
 
             device_queue.put(device)

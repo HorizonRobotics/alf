@@ -1606,4 +1606,5 @@ def setup_wandb(root_dir, mode='train'):
         config=config,
         reinit=True,
         sync_tensorboard=True,
+        dir=root_dir
     )

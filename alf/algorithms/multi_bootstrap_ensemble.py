@@ -84,6 +84,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                  last_use_ln=False,
                  num_basins=5,
                  num_particles_per_basin=4,
+                 mask_sample_size=256,
                  loss_type="classification",
                  voting="soft",
                  num_train_classes=10,
@@ -132,6 +133,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                 to explore for the function space.
             num_particles_per_basin (int): number of particles to explore within 
                 each basin.
+            mask_sample_size (int): unmasked batchsize for gen_input_mask function.
 
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
@@ -208,6 +210,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
 
         self._num_basins = num_basins
         self._num_particles_per_basin = num_particles_per_basin
+        self._mask_sample_size = mask_sample_size
 
     @property
     def num_basins(self):
@@ -272,7 +275,10 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         Returns:
             mask (Tensor): binary mask of shape [batchsize, num_particles]
         """
-        sample_size = int(batchsize / 2)
+        if self._mask_sample_size < batchsize:
+            sample_size = self._mask_sample_size
+        else:
+            sample_size = batchsize
         mask = []
         for i in range(self.num_particles_per_basin):
             sampled_idx = torch.randperm(batchsize)[:sample_size]

@@ -6,21 +6,22 @@
     "use_gpu": true,
     "gpus": [
         0,
-        1,
-        2,
-        3
+        1
     ],
-    "max_worker_num": 12,
+    "max_worker_num": 6,
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "HalfCheetah-v2",
+            "HalfCheetah-v2"
         ],
-        "MultiBootstrapEnsemble.num_basins": "[5, 10]",
-        "MultiBootstrapEnsemble.num_particles_per_basin": "[3]",
-        "TsabcAlgorithm.beta_lb": "[0.5, 1.]",
+        "MultiBootstrapEnsemble.num_basins": "[5]",
+        "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
+        "MultiBootstrapEnsemble.mask_sample_size": "[256]",
+        "TsabcAlgorithm.beta_lb": "[1.]",
         "TsabcAlgorithm.common_td_target": "[True]",
-        "TsabcAlgorithm.use_basin_mean_for_target_critic": "[True]",
+        "TsabcAlgorithm.use_basin_mean_for_target_critic": "[False]",
+        "TsabcAlgorithm.use_q_mean_train_actor": "[True, False]",
+        "TsabcAlgorithm.use_epistemic_alpha": "[False]",
         "TrainerConfig.random_seed": "list(range(3))"
     }
 }
