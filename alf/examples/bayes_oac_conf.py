@@ -68,7 +68,7 @@ if use_multibootstrap:
         num_particles_per_basin=3,  # grid search
         mask_sample_size=256,
         initial_train_steps=1000000)
-    batch_size = 284
+    batch_size = 256
 else:
     critic_module_cls = MultiSwagAlgorithm
     alf.config(
@@ -97,7 +97,7 @@ alf.config(
     use_q_mean_train_actor=True,
     use_entropy_reward=False,
     use_epistemic_alpha=False,
-    use_basin_mean_for_target_critic=True,  # grid search
+    use_basin_mean_for_target_critic=False,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
     explore_optimizer=None,
@@ -114,8 +114,8 @@ alf.config('TrainerConfig',
            version='normal',
            use_wandb=True,
            async_eval=True,
-           entity="jiachenli",
-           project="bayesian-critics",
+           entity="runjerry",
+           project="Actor-Bayes-Critic",
            initial_collect_steps=10000,
            mini_batch_length=2,
            unroll_length=1,

@@ -280,11 +280,17 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         else:
             sample_size = batchsize
         mask = []
-        for i in range(self.num_particles_per_basin):
+        for i in range(self.num_particles):
             sampled_idx = torch.randperm(batchsize)[:sample_size]
             vec_mask = torch.zeros(batchsize)
             vec_mask[sampled_idx] = 1
             mask.append(vec_mask)
-        mask = torch.stack(mask, dim=1)  # [batchsize, np]
-
-        return mask.repeat(1, self.num_basins)  # [batchsize, nb*np]
+        return torch.stack(mask, dim=1)  # [batchsize, nb*np]
+            
+        # for i in range(self.num_particles_per_basin):
+        #     sampled_idx = torch.randperm(batchsize)[:sample_size]
+        #     vec_mask = torch.zeros(batchsize)
+        #     vec_mask[sampled_idx] = 1
+        #     mask.append(vec_mask)
+        # mask = torch.stack(mask, dim=1)  # [batchsize, np]
+        # return mask.repeat(1, self.num_basins)  # [batchsize, nb*np]

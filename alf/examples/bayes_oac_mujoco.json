@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 3 seeds on each environment"
     ],
-    "version": "multibootstrap",
+    "version": "multibootstrap_its",
     "use_gpu": true,
     "gpus": [
         0,
@@ -15,13 +15,12 @@
             "HalfCheetah-v2"
         ],
         "MultiBootstrapEnsemble.num_basins": "[5]",
-        "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
-        "MultiBootstrapEnsemble.mask_sample_size": "[256]",
-        "TsabcAlgorithm.beta_lb": "[1.]",
-        "TsabcAlgorithm.common_td_target": "[True]",
-        "TsabcAlgorithm.use_basin_mean_for_target_critic": "[False]",
-        "TsabcAlgorithm.use_q_mean_train_actor": "[True, False]",
-        "TsabcAlgorithm.use_epistemic_alpha": "[False]",
+        "MultiBootstrapEnsemble.num_particles_per_basin": "[5]",
+        "MultiBootstrapEnsemble.initial_train_steps": "[10, 100]",
+        "MultiBootstrapEnsemble.mask_sample_size": "[128]",
+        "BayesOacAlgorithm.beta_lb": "[1.]",
+        "BayesOacAlgorithm.use_q_mean_train_actor": "[True]",
+        "BayesOacAlgorithm.use_epistemic_alpha": "[False]",
         "TrainerConfig.random_seed": "list(range(3))"
     }
 }
