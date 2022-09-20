@@ -302,9 +302,9 @@ class CollisionSensor(SensorBase):
                                                           _max_num_collisions:]
 
             observation = np.stack([observation, collision_locations], axis=1)
+            self._cached_collision_locations = collision_locations
 
         self._cached_impulse = impulses
-        self._cached_collision_locations = collision_locations
         self._prev_cached_frame = current_frame
         return observation
 
