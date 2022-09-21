@@ -374,22 +374,24 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             explore (bool): whether or not to include UCB-like bonus for 
                 exploration.
             info (namedtuple): info of critic_step. If critic_module is 
-                ``MultiBoostEnsemble``, it contains ``total_std`` and
-                ``opt_std``.
+                ``MultiBoostEnsemble``, it contains ``total_var`` and
+                ``opt_var``.
 
         Returns:
             q_value (Tensor): the q_value for actor training.
         """
         q_mean = critics.mean(1)
-        if hasattr(info, "total_std"):
-            q_total_std = info.total_std
+        if hasattr(info, "total_var"):
+            q_total_var = info.total_var
         else:
-            q_total_std = critics.std(1)  # [bs, d_out] or [bs]
-        if hasattr(info, "opt_std"):
-            q_opt_std = info.opt_std  # [bs, d_out] or [bs]
-            q_epi_std = q_total_std - q_opt_std
+            q_total_var = critics.var(1)  # [bs, d_out] or [bs]
+        q_total_std = torch.sqrt(q_total_var)
+        if hasattr(info, "opt_var"):
+            q_opt_var = info.opt_var  # [bs, d_out] or [bs]
+            q_epi_var = q_total_var - q_opt_var
+            q_epi_std = torch.sqrt(q_epi_var)
         else:
-            q_opt_std = None
+            q_opt_var = None
             q_epi_std = q_total_std
 
         if explore:
@@ -405,10 +407,10 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             safe_mean_hist_summary(prefix + "critics_batch_mean",
                                    q_mean)
             safe_mean_hist_summary(
-                prefix + "critics_total_std", q_total_std)
-            if q_opt_std is not None:
+                prefix + "critics_total_var", q_total_var)
+            if q_opt_var is not None:
                 safe_mean_hist_summary(
-                    prefix + "critic_opt_std", q_opt_std)
+                    prefix + "critic_opt_var", q_opt_var)
 
         return q_value, q_epi_std
 
@@ -756,9 +758,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                 td_target, neglogp[..., i], suffix)
 
         # reweight training (s, a) paris with opt_std
-        if hasattr(critics_info, "opt_std") and \
+        if hasattr(critics_info, "opt_var") and \
             self._critic_training_weight is not None:
-            weights = critics_info.opt_std  # [bs, d_out] or [bs]
+            weights = torch.sqrt(critics_info.opt_var)  # [bs, d_out] or [bs]
             weights = weights.reshape(
                 self._mini_batch_length-1, -1, *weights.shape[1:])
             weights = weights ** self._critic_training_weight

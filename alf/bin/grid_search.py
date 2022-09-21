@@ -466,7 +466,7 @@ def launch_snapshot_gridsearch():
     else:
         with open(FLAGS.search_config) as f:
             search_conf = json.loads(f.read())
-        version = search_conf.get('version', "normal") + '-gs'
+        version = search_conf.get('version', "normal") # + '-gs'
 
         conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
         root_dir = os.path.join(root_dir, conf_name, version)

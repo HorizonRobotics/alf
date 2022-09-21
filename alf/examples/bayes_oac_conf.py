@@ -65,9 +65,9 @@ if use_multibootstrap:
     alf.config(
         'MultiBootstrapEnsemble',
         num_basins=5,  # grid search
-        num_particles_per_basin=3,  # grid search
-        mask_sample_size=256,
-        initial_train_steps=1000000)
+        num_particles_per_basin=4,  # grid search
+        mask_sample_size=128,
+        initial_train_steps=100)
     batch_size = 256
 else:
     critic_module_cls = MultiSwagAlgorithm
