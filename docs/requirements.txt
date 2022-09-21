@@ -4,13 +4,14 @@ bsuite
 carla
 metadrive-simulator==0.2.5.1
 fasteners
+furo
 git+https://github.com/HorizonRobotics/gin-config@master#egg=gin-config
 gym==0.15.4
 matplotlib
 opencv-python>=3.4.1.15
 pathos==0.2.4
 psutil
-sphinx==3.0
+sphinx==4.0
 docutils==0.16
 sphinx-autobuild
 git+https://github.com/hnyu/sphinx-autodoc-typehints@master#egg=sphinx_autodoc_typehints
