@@ -28,7 +28,7 @@ plt.style.use('seaborn-dark')
 import weakref
 import threading
 from unittest.mock import Mock
-
+from alf.utils.common import warning_once
 from alf.environments.carla_env.carla_utils import (
     TrafficLightHandler, MapHandler, _calculate_relative_position)
 
@@ -2215,7 +2215,7 @@ class DynamicObjectSensor(SensorBase):
         self._with_ego_history = with_ego_history
 
         self._object_filter = object_filter
-        self._max_object_numberr = max_object_number
+        self._max_object_number = max_object_number
 
         # dim3 = 1d "presence" + 2d [x, y]
         self._vehicle_fea_dim = 3
@@ -2261,7 +2261,7 @@ class DynamicObjectSensor(SensorBase):
 
         def is_within_distance(loc):
             distance = np.sqrt((ev_loc.x - loc.x)**2 + (ev_loc.y - loc.y)**2)
-            within_distance = (distance < self._distance_threshold)
+            within_distance = (distance < self._view_radius)
             c_ev = abs(ev_loc.x - loc.x) < 1.0 and abs(ev_loc.y - loc.y) < 1.0
             same_plane = (ev_loc.z - loc.z) < 1.0
 
@@ -2278,14 +2278,13 @@ class DynamicObjectSensor(SensorBase):
         K = self._max_object_number - 1
         assert K >= 0
         if len(vehicles) > K:
-            logging.warning(
+            warning_once(
                 "The number of dynamic objects {} is larger than the preset "
                 "max number of perceivable objects {}. Distant objects will "
                 "be excluded from observation.".format(len(vehicles), K))
-
-        idx = np.argpartition(distances, K - 1)
-        vehicles = [vehicles[i] for i in idx[:K]]
-        distances = [distances[i] for i in idx[:K]]
+            idx = np.argpartition(distances, K - 1)
+            vehicles = [vehicles[i] for i in idx[:K]]
+            distances = [distances[i] for i in idx[:K]]
 
         # also add ego into the queue
         ego = (-1, ev_transform, ev_loc, ev_bb_ext)

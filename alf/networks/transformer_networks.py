@@ -20,6 +20,11 @@ from alf.networks import PreprocessorNetwork
 from alf.networks.memory import FIFOMemory
 from alf.nest.utils import NestConcat
 
+import functools
+import torch.nn.functional as F
+from alf.initializers import variance_scaling_init
+import alf.layers as layers
+
 
 @alf.configurable
 class TransformerNetwork(PreprocessorNetwork):
@@ -222,3 +227,193 @@ class TransformerNetwork(PreprocessorNetwork):
                                                          -1), new_state
         else:
             return query, new_state
+
+
+@alf.configurable
+class SocialAttentionNetwork(PreprocessorNetwork):
+    """Simple graph encoding network, which takes as input a set of objects and
+        outputs one encoded feature vector.
+        Reference:
+            Leurent et al "Social Attention for Autonomous Decision-Making in
+            Dense Traffic", arXiv:1911.12250
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
+                 fc_layer_params=(128, 128),
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 num_of_heads=1,
+                 last_layer_size=None,
+                 last_activation=None,
+                 last_kernel_initializer=None,
+                 name="SocialAttentionNetwork"):
+        """
+        Args:
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then ``preprocessing_combiner`` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with ``input_tensor_spec``. This arg is helpful if you
+                want to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            fc_layer_params (tuple[int]): a tuple of integers
+                representing FC layer sizes for generating embeddings.
+            activation (nn.functional): activation used for all the layers but
+                the last layer.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If None, a variance_scaling_initializer will be
+                used.
+            use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            num_of_heads (int): number of heads for the mult-head attention
+            last_layer_size (None): nt used; for interface compatibility
+            last_activation (None): not used; for interface compatibility
+            last_kernel_initializer (None): not used; for interface compatibility
+            last_use_fc_bn (None): not used; for interface compatibility
+            name (str):
+        """
+        super().__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                mode='fan_in',
+                distribution='truncated_normal',
+                nonlinearity=activation)
+
+        embedding_layers = nn.ModuleList()
+        print(self._processed_input_tensor_spec)
+        assert self._processed_input_tensor_spec.ndim == 2, (
+            "expect the "
+            "processed spec to have the shape of [entity_num, feature_dim]")
+
+        for size in fc_layer_params:
+            embedding_layers.append(
+                layers.FC(
+                    self._processed_input_tensor_spec.shape[-1],
+                    size,
+                    # activation=activation,
+                    use_bn=use_fc_bn,
+                    kernel_initializer=kernel_initializer))
+            input_size = size
+        self._embedding_layers = embedding_layers
+
+        # input_size = N * d'
+        full_feature_dim = input_size
+        fea_dim = input_size
+        assert fea_dim % num_of_heads == 0, "improper value for num_of_heads"
+        self._num_of_heads = num_of_heads
+        self._fea_dim_per_head = fea_dim // num_of_heads
+
+        # attention related layers
+        self._value_proj = layers.FC(
+            full_feature_dim,
+            fea_dim,
+            use_bias=False,
+            kernel_initializer=kernel_initializer)
+        self._key_proj = layers.FC(
+            full_feature_dim,
+            fea_dim,
+            use_bias=False,
+            kernel_initializer=kernel_initializer)
+        self._query_proj = layers.FC(
+            full_feature_dim,
+            fea_dim,
+            use_bias=False,
+            kernel_initializer=kernel_initializer)
+
+        self._attention_res_branch = layers.FC(
+            fea_dim,
+            fea_dim,
+            use_bias=False,
+            kernel_initializer=kernel_initializer)
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (Tensor):  with the shape of [B, N, d], where
+                B denotes batch size, N the number of entities, and d the
+                feature dimension
+            state (nested Tensor): states
+        Returns:
+            - Tensor: shape is [B, k], where k denotes the dimension of output
+                feature
+        """
+        x, _ = super().forward(inputs, state)
+
+        def _attention(query, key, value):
+            """
+                Compute a Scaled Dot Product Attention.
+                Reference:
+                    Vaswani et al. "Attention Is All You Need", arXiv:1706.03762v5.
+
+                Args:
+                    query (Q): shape [B, head, 1, d]
+                    key (K):  shape [B, head, N, d]
+                    value (V): shape [B, head, N, d]
+                Return:
+                    - the attended results computed as: softmax(QK^T/sqrt(d))V
+                    - the attention weight, with the shape [B, head, 1, d]
+            """
+            d_k = query.size(-1)
+            scores = torch.matmul(query, key.transpose(-2, -1)) / torch.sqrt(
+                torch.tensor(d_k))
+
+            # [B, head, 1, N]
+            attention_weight = F.softmax(scores, dim=-1)
+
+            # [B, head, 1, d]
+            output = torch.matmul(attention_weight, value)
+
+            return output, attention_weight
+
+        B, N, d = x.shape
+
+        x = x.reshape(B * N, -1)
+
+        # forward through embedding layers shared across all entities
+        for i, net in enumerate(self._embedding_layers):
+            x = net(x)
+
+        # [B, N, d'] (batch, entities, features)
+        X = x.reshape(B, N, -1)
+
+        key = X[:, 0]
+
+        # query, key, value computation based on ego [B, head, 1, d']
+        # [B, head * d'] -> [B, head * d'] => [B, 1, head, d']
+        # query and key can use a feature_dim that is different from value
+        query = self._query_proj(key).reshape(B, 1, self._num_of_heads,
+                                              self._fea_dim_per_head)
+
+        key = self._key_proj(X).reshape(B, N, self._num_of_heads,
+                                        self._fea_dim_per_head)
+
+        value = self._value_proj(X).reshape(B, N, self._num_of_heads,
+                                            self._fea_dim_per_head)
+
+        # [B, N, head, d'] -> [B, head, N, d']
+        query = query.permute(0, 2, 1, 3)
+        key = key.permute(0, 2, 1, 3)
+        value = value.permute(0, 2, 1, 3)
+
+        v, _ = _attention(query=query, key=key, value=value)
+        out = v.reshape(B, -1)
+        return out, state
