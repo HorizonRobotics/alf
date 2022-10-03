@@ -68,9 +68,9 @@ class SegmentTree(nn.Module):
             """
             Calculate the parent value from its children.
             """
-            # need to use `//` here. Newer versions of pytorch will do automatic
-            # type promtion and will generate float indices if `/` is used.
-            indices = indices // 2
+            # Here ``torch.div`` with ``rounding_mode="floor"`` will produce
+            # result with integer dtype.
+            indices = torch.div(indices, 2, rounding_mode="floor")
             indices = torch.unique(indices)
             left = self._values[indices * 2]
             right = self._values[indices * 2 + 1]
