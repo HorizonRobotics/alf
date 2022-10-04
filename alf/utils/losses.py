@@ -414,7 +414,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         return pred
 
     def initialize_bias(self, bias: torch.Tensor):
-        """Initialize the bias of the last FC layer for the prediction properly.
+        r"""Initialize the bias of the last FC layer for the prediction properly.
 
         This function set the bias so that the initial distribution of the prediction
         in the original domain of target is approximatedly Cauchy: :math:`p(x) \propto \frac{1}{1+x^2}`
@@ -445,7 +445,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
 
 @alf.repr_wrapper
 class QuantileRegressionLoss(ScalarPredictionLoss):
-    """Multi-quantile Huber loss
+    r"""Multi-quantile Huber loss
 
     The loss for simultaneous multiple quantile regression. The number of quantiles
     n is ``quantiles.shape[-1]``. ``quantiles[..., k]`` is the quantile value

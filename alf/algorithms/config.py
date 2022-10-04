@@ -30,6 +30,11 @@ class TrainerConfig(object):
                  num_env_steps=0,
                  unroll_length=8,
                  unroll_with_grad=False,
+                 async_unroll: bool = False,
+                 max_unroll_length: int = 0,
+                 unroll_queue_size: int = 200,
+                 unroll_step_interval: float = 0,
+                 unroll_parameter_update_period: int = 10,
                  use_rollout_state=False,
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
@@ -126,6 +131,17 @@ class TrainerConfig(object):
                 is an on-policy sub-algorithm, we can enable this flag for its
                 training. ``OnPolicyAlgorithm`` always unrolls with grads and this
                 flag doesn't apply to it.
+            async_unroll: whether to unroll asynchronously. If True, unroll will
+                be performed in parallel with training.
+            max_unroll_length: the maximal length of unroll results for each iteration.
+                Only used if async_unroll is True。
+            unroll_queue_size: the size of the queue for transmitting unroll
+                results from the unroll process to the main process. Only used
+                if async_unroll is True.
+            unroll_step_interval: if not zero, the time interval in second
+                between each two environment steps. Only used if async_unroll is True。
+            unroll_parameter_update_period: update the parameter for the asynchronous
+                unroll every so many interations. Only used if async_unroll is True。
             use_rollout_state (bool): If True, when off-policy training, the RNN
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
@@ -276,6 +292,16 @@ class TrainerConfig(object):
         self.num_env_steps = num_env_steps
         self.unroll_length = unroll_length
         self.unroll_with_grad = unroll_with_grad
+        self.async_unroll = async_unroll
+        if async_unroll:
+            assert not unroll_with_grad, ("unroll_with_grad is not supportd "
+                                          "for async_unroll=True")
+            assert max_unroll_length > 0, ("max_unroll_length needs to be set "
+                                           "for async_unroll=True")
+        self.max_unroll_length = max_unroll_length or self.unroll_length
+        self.unroll_queue_size = unroll_queue_size
+        self.unroll_step_interval = unroll_step_interval
+        self.unroll_parameter_update_period = unroll_parameter_update_period
         self.use_rollout_state = use_rollout_state
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints

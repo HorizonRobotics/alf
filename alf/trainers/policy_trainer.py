@@ -638,6 +638,7 @@ class RLTrainer(Trainer):
 
     def _close(self):
         """Closing operations after training. """
+        self._algorithm.finish_train()
         self._close_envs()
         if self._evaluate:
             self._evaluator.close()
