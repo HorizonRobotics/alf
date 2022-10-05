@@ -39,8 +39,16 @@ UnrollJob = namedtuple(
 class AsyncUnroller(object):
     """A helper class for unroll asynchronously.
 
-    The following settings in TrainerConfig are related to the functionality of
-    AsyncUnroller: unroll_length, async_unroll, max_unroll_length,
+    The asynchronous unroll is performed in a different process. The unroll results
+    are transmitted to the main process through a Queue. The main process should
+    call ``gather_unroll_results()`` to retrieve the unroll results. Since the
+    unroll process has its own algorithm parameters, the main process needs to call
+    ``update_parameters()`` to update the parameters for the unroll process
+    periodically. Once the main process finishes, it should call close() to
+    release the resouces.
+
+    The following settings in ``TrainerConfig`` are related to the functionality
+    of ``AsyncUnroller``: unroll_length, async_unroll, max_unroll_length,
     unroll_queue_size, unroll_step_interval. See algorithms.config.py for their
     documentation.
 
@@ -218,6 +226,10 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             t1 = time.time()
             env_step_time = t1 - t0
 
+            # note that the step_time is actually the step_time for the previous
+            # step. It is used for informational purpose. When unroll_step_interval
+            # is specified, it is important to monitor the actual step_time to
+            # make sure it is around unroll_step_interval.
             unroll_result = UnrollResult(
                 time_step=time_step,
                 transformed_time_step=transformed_time_step,

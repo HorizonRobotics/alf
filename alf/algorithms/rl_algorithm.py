@@ -499,6 +499,8 @@ class RLAlgorithm(Algorithm):
         original_reward_list = []
         env_step_time = 0.
         store_exp_time = 0.
+        step_time = 0.
+        max_step_time = 0.
         unroll_results = self._async_unroller.gather_unroll_results(
             unroll_length, self._config.max_unroll_length)
         if self._rollout_info_spec is None and len(unroll_results) > 0:
@@ -511,6 +513,8 @@ class RLAlgorithm(Algorithm):
             policy_state = unroll_result.policy_state
 
             env_step_time += unroll_result.env_step_time
+            step_time += unroll_result.step_time
+            max_step_time = max(max_step_time, unroll_result.step_time)
             self.observe_for_metrics(time_step.cpu())
             exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
@@ -535,6 +539,10 @@ class RLAlgorithm(Algorithm):
                 len(unroll_results)))
         if not unroll_results:
             return None
+
+        alf.summary.scalar("time/avg_unroll_step_time",
+                           step_time / len(unroll_results))
+        alf.summary.scalar("time/max_unroll_step_time", max_step_time)
         original_reward = alf.nest.utils.stack_nests(original_reward_list)
         self.summarize_reward("rollout_reward/original_reward",
                               original_reward)

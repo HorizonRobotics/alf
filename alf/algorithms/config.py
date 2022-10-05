@@ -134,14 +134,22 @@ class TrainerConfig(object):
             async_unroll: whether to unroll asynchronously. If True, unroll will
                 be performed in parallel with training.
             max_unroll_length: the maximal length of unroll results for each iteration.
-                Only used if async_unroll is True。
+                If the time for one step of training is less than the time for
+                unrolling ``max_unroll_length`` steps, the length of the unroll
+                results will be less than ``max_unroll_length``. Only used if
+                ``async_unroll`` is True and unroll_length==0.
             unroll_queue_size: the size of the queue for transmitting unroll
                 results from the unroll process to the main process. Only used
-                if async_unroll is True.
+                if ``async_unroll`` is True. If the queue is full, the unroll process
+                will wait for the main process to retrieve unroll results from
+                the queue before performing more unrolls.
             unroll_step_interval: if not zero, the time interval in second
-                between each two environment steps. Only used if async_unroll is True。
+                between each two environment steps. Only used if ``async_unroll`` is True.
+                This is useful if the interaction with the environment happens
+                in real time (e.g. real world robot or real time simulation) and
+                you want a fixed interaction frequency with the environment.
             unroll_parameter_update_period: update the parameter for the asynchronous
-                unroll every so many interations. Only used if async_unroll is True。
+                unroll every so many interations. Only used if ``async_unroll`` is True.
             use_rollout_state (bool): If True, when off-policy training, the RNN
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
