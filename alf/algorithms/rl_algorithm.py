@@ -24,6 +24,7 @@ from absl import logging
 
 import alf
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.async_unroller import AsyncUnroller
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import (AlgStep, Experience, make_experience,
                                  TimeStep, BasicRolloutInfo, BasicRLInfo)
@@ -32,7 +33,6 @@ from alf.utils.summary_utils import record_time
 from alf.utils.distributed import data_distributed_when
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
-from .async_unroller import AsyncUnroller
 
 
 def adjust_replay_buffer_length(config: TrainerConfig,

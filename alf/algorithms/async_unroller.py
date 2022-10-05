@@ -24,7 +24,6 @@ from typing import Dict, List
 import alf
 from alf.utils import common
 from alf.algorithms.data_transformer import create_data_transformer
-from alf.trainers import policy_trainer
 from collections import namedtuple
 
 UnrollResult = namedtuple("UnrollResult", [
@@ -140,6 +139,8 @@ FLAGS = flags.FLAGS
 
 def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             conf_file: str, pre_configs: Dict, root_dir: str):
+    from alf.trainers import policy_trainer
+
     def _update_parameter(algorithm, job):
         # Some algorithms use scheduler depending on the global counter
         # or the training progress. So we make sure they are same as
