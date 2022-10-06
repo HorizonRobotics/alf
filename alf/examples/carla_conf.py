@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import torch
 
 import alf
@@ -70,6 +71,7 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
                     alf.layers.Reshape([len(history_idx), -1]),
                 ),
                 fc_layer_params=(encoding_dim, ),
+                activation=alf.math.identity,
                 num_of_heads=4,
                 last_layer_size=encoding_dim,
                 last_activation=alf.math.identity,
@@ -98,7 +100,7 @@ def create_input_preprocessor_masks():
                 'goal',
                 'radar',
         ]:  # mask selected seneors out of observation for training
-            print("-----skip {}".format(sensor))
+            logging.info("-----skip CARLA input: {}-----".format(sensor))
             observation_preprocessor_masks[sensor] = 0
         else:
             observation_preprocessor_masks[sensor] = 1

@@ -386,7 +386,6 @@ class Player(object):
         else:
             self._bev_sensor = None
 
-        self._with_dynamic_object_sensor = with_dynamic_object_sensor
         if with_dynamic_object_sensor:
             self._dynamic_object_sensor = DynamicObjectSensor(
                 actor, self._alf_world)

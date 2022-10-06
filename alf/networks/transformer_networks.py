@@ -309,7 +309,7 @@ class SocialAttentionNetwork(PreprocessorNetwork):
                 layers.FC(
                     self._processed_input_tensor_spec.shape[-1],
                     size,
-                    # activation=activation,
+                    activation=activation,
                     use_bn=use_fc_bn,
                     kernel_initializer=kernel_initializer))
             input_size = size
@@ -345,6 +345,8 @@ class SocialAttentionNetwork(PreprocessorNetwork):
             use_bias=False,
             kernel_initializer=kernel_initializer)
 
+        self._mha = alf.layers.MultiHeadAttention()
+
     def forward(self, inputs, state=()):
         """
         Args:
@@ -357,32 +359,6 @@ class SocialAttentionNetwork(PreprocessorNetwork):
                 feature
         """
         x, _ = super().forward(inputs, state)
-
-        def _attention(query, key, value):
-            """
-                Compute a Scaled Dot Product Attention.
-                Reference:
-                    Vaswani et al. "Attention Is All You Need", arXiv:1706.03762v5.
-
-                Args:
-                    query (Q): shape [B, head, 1, d]
-                    key (K):  shape [B, head, N, d]
-                    value (V): shape [B, head, N, d]
-                Return:
-                    - the attended results computed as: softmax(QK^T/sqrt(d))V
-                    - the attention weight, with the shape [B, head, 1, d]
-            """
-            d_k = query.size(-1)
-            scores = torch.matmul(query, key.transpose(-2, -1)) / torch.sqrt(
-                torch.tensor(d_k))
-
-            # [B, head, 1, N]
-            attention_weight = F.softmax(scores, dim=-1)
-
-            # [B, head, 1, d]
-            output = torch.matmul(attention_weight, value)
-
-            return output, attention_weight
 
         B, N, d = x.shape
 
@@ -397,9 +373,7 @@ class SocialAttentionNetwork(PreprocessorNetwork):
 
         key = X[:, 0]
 
-        # query, key, value computation based on ego [B, head, 1, d']
-        # [B, head * d'] -> [B, head * d'] => [B, 1, head, d']
-        # query and key can use a feature_dim that is different from value
+        # [B, head * d'] -> [B, 1, head, d']
         query = self._query_proj(key).reshape(B, 1, self._num_of_heads,
                                               self._fea_dim_per_head)
 
@@ -414,6 +388,6 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         key = key.permute(0, 2, 1, 3)
         value = value.permute(0, 2, 1, 3)
 
-        v, _ = _attention(query=query, key=key, value=value)
+        v, _ = self._mha(query=query, key=key, value=value)
         out = v.reshape(B, -1)
         return out, state
