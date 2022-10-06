@@ -68,10 +68,7 @@ class SegmentTree(nn.Module):
             """
             Calculate the parent value from its children.
             """
-            # Here ``torch.div`` with ``rounding_mode="floor"`` will produce
-            # result with integer dtype.
-            indices = torch.div(indices, 2, rounding_mode="floor")
-            indices = torch.unique(indices)
+            indices = torch.unique(indices >> 1)
             left = self._values[indices * 2]
             right = self._values[indices * 2 + 1]
             self._values[indices] = op(left, right)
