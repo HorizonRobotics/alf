@@ -126,7 +126,9 @@ def _train(root_dir, rank=0, world_size=1):
         world_size (int): The number of processes in total. If set to 1, it is
             interpreted as "non distributed mode".
     """
-    trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
+    conf_file = common.get_conf_file()
+    trainer_conf = policy_trainer.TrainerConfig(
+        root_dir=root_dir, conf_file=conf_file)
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1

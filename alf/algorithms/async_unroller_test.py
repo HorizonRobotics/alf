@@ -37,13 +37,8 @@ class AsyncUnrollerTest(alf.test.TestCase):
             conf_file = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), '..', 'examples',
                 'sac_cart_pole_conf.py')
-            flags.DEFINE_string('conf', conf_file,
-                                'Path to the alf config file.')
-            flags.DEFINE_string('root_dir', root_dir,
-                                'Path to the alf config file.')
-            flags.FLAGS.mark_as_parsed()
             common.parse_conf_file(conf_file)
-            config = TrainerConfig(root_dir=root_dir)
+            config = TrainerConfig(root_dir=root_dir, conf_file=conf_file)
             env = alf.get_env()
             env.reset()
             data_transformer = create_data_transformer(

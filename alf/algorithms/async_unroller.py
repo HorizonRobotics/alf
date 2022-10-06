@@ -22,8 +22,9 @@ import torch
 from typing import Dict, List
 
 import alf
-from alf.utils import common
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.utils import common
 from collections import namedtuple
 
 UnrollResult = namedtuple("UnrollResult", [
@@ -64,23 +65,22 @@ class AsyncUnroller(object):
         conf_file: config file name
     """
 
-    def __init__(self, algorithm, unroll_queue_size: int, root_dir: str,
-                 conf_file: str):
+    def __init__(self, algorithm, config: TrainerConfig):
         # The following line is needed for avoiding
         # "RuntimeError: unable to open shared memory object"
         # See https://github.com/facebookresearch/maskrcnn-benchmark/issues/103#issuecomment-785815218
         mp.set_sharing_strategy('file_system')
-        if conf_file.endswith('.gin'):
+        if config.conf_file.endswith('.gin'):
             assert not self._async, "async_unroll is not supported for gin_file"
         ctx = mp.get_context('spawn')
         self._job_queue = ctx.Queue()
         self._done_queue = ctx.Queue()
-        self._result_queue = ctx.Queue(unroll_queue_size)
+        self._result_queue = ctx.Queue(config.unroll_queue_size)
         pre_configs = dict(alf.get_handled_pre_configs())
         self._worker = ctx.Process(
             target=_worker,
             args=(self._job_queue, self._done_queue, self._result_queue,
-                  conf_file, pre_configs, root_dir))
+                  config.conf_file, pre_configs, config.root_dir))
         self._worker.start()
         self.update_parameter(algorithm)
         self._closed = False
@@ -135,13 +135,6 @@ class AsyncUnroller(object):
         self._closed = True
 
 
-def _define_flags():
-    flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
-    flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-    flags.DEFINE_string('conf', None, 'Path to the alf config file.')
-    flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
-
-
 FLAGS = flags.FLAGS
 
 
@@ -161,10 +154,6 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
         done_queue.put(None)
 
     try:
-        _define_flags()
-        FLAGS(sys.argv, known_only=True)
-        FLAGS.mark_as_parsed()
-        FLAGS.alsologtostderr = True
         logging.set_verbosity(logging.INFO)
         logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
         logging.use_absl_handler()

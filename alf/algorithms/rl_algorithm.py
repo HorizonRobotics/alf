@@ -483,9 +483,7 @@ class RLAlgorithm(Algorithm):
             return self._unroll(unroll_length)
         if self._async_unroller is None:
             # self._env.close()
-            self._async_unroller = AsyncUnroller(
-                self, self._config.unroll_queue_size, self._config.root_dir,
-                common.get_conf_file())
+            self._async_unroller = AsyncUnroller(self, self._config)
         elif alf.summary.get_global_counter(
         ) % self._config.unroll_parameter_update_period == 0:
             self._async_unroller.update_parameter(self)
