@@ -149,6 +149,8 @@ class TrainerConfig(object):
                 This is useful if the interaction with the environment happens
                 in real time (e.g. real world robot or real time simulation) and
                 you want a fixed interaction frequency with the environment.
+                Note that this will not has any effect if environment step and
+                rollout step together spend more than unroll_step_interval.
             unroll_parameter_update_period: update the parameter for the asynchronous
                 unroll every so many interations. Only used if ``async_unroll`` is True.
             use_rollout_state (bool): If True, when off-policy training, the RNN

@@ -479,9 +479,15 @@ class RLAlgorithm(Algorithm):
     @common.mark_rollout
     @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def unroll(self, unroll_length: int):
-        if not self._config.async_unroll:
-            return self._unroll(unroll_length)
+        if self._config.async_unroll:
+            return self._async_unroll(unroll_length)
+        else:
+            return self._sync_unroll(unroll_length)
+
+    def _async_unroll(self, unroll_length: int):
         if self._async_unroller is None:
+            # env is no longer needed for rollout in the main process.
+            # Close it to release resources.
             # self._env.close()
             self._async_unroller = AsyncUnroller(self, self._config)
         elif alf.summary.get_global_counter(
@@ -493,12 +499,19 @@ class RLAlgorithm(Algorithm):
             "support overwrite_policy_output")
         assert not self.on_policy, ("async_unroll does not support on-policy "
                                     "training")
+
+        if self._current_transform_state is None:
+            self._current_transform_state = self.get_initial_transform_state(
+                self._env.batch_size)
+        trans_state = self._current_transform_state
+
         experience_list = []
         original_reward_list = []
         env_step_time = 0.
         store_exp_time = 0.
         step_time = 0.
         max_step_time = 0.
+        qsize = self._async_unroller.get_queue_size()
         unroll_results = self._async_unroller.gather_unroll_results(
             unroll_length, self._config.max_unroll_length)
         if self._rollout_info_spec is None and len(unroll_results) > 0:
@@ -509,32 +522,28 @@ class RLAlgorithm(Algorithm):
             time_step = unroll_result.time_step
             policy_step = unroll_result.policy_step
             policy_state = unroll_result.policy_state
+            # Some data transformers contain parameters which are updated during
+            # rollout (e.g. ObservationNormalizer and RewardNormalizer with
+            # update_mode="rollout"). So we need to redo the transform_timestep
+            # so that those parameters are correctly updated.
+            transformed_time_step, trans_state = self.transform_timestep(
+                time_step, trans_state)
 
             env_step_time += unroll_result.env_step_time
             step_time += unroll_result.step_time
             max_step_time = max(max_step_time, unroll_result.step_time)
-            self.observe_for_metrics(time_step.cpu())
-            exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
-            t0 = time.time()
-            self.observe_for_replay(exp)
-            store_exp_time += time.time() - t0
-
-            exp_for_training = Experience(
-                time_step=unroll_result.transformed_time_step,
-                action=unroll_result.policy_step.output,
-                rollout_info=dist_utils.distributions_to_params(
-                    policy_step.info),
-                state=policy_state)
-
-            experience_list.append(exp_for_training)
-            original_reward_list.append(time_step.reward)
+            store_exp_time += self._process_unroll_step(
+                policy_step, policy_step.output, time_step,
+                transformed_time_step, policy_state, experience_list,
+                original_reward_list)
 
         alf.summary.scalar("time/unroll_env_step", env_step_time)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         if unroll_length == 0:
-            alf.summary.scalar("time/unroll_length", float(
-                len(unroll_results)))
+            alf.summary.scalar("async_unroll/unroll_length",
+                               float(len(unroll_results)))
+        alf.summary.scalar("async_unroll/queue_size", qsize)
         if not unroll_results:
             return None
 
@@ -550,9 +559,33 @@ class RLAlgorithm(Algorithm):
             rollout_info=dist_utils.params_to_distributions(
                 experience.rollout_info, self._rollout_info_spec))
 
+        self._current_transform_state = common.detach(trans_state)
+
         return experience
 
-    def _unroll(self, unroll_length: int):
+    def _process_unroll_step(self, policy_step, action, time_step,
+                             transformed_time_step, policy_state,
+                             experience_list, original_reward_list):
+        self.observe_for_metrics(time_step.cpu())
+        exp = make_experience(time_step.cpu(), policy_step, policy_state)
+
+        store_exp_time = 0
+        if not self.on_policy:
+            t0 = time.time()
+            self.observe_for_replay(exp)
+            store_exp_time = time.time() - t0
+
+        exp_for_training = Experience(
+            time_step=transformed_time_step,
+            action=action,
+            rollout_info=dist_utils.distributions_to_params(policy_step.info),
+            state=policy_state)
+
+        experience_list.append(exp_for_training)
+        original_reward_list.append(time_step.reward)
+        return store_exp_time
+
+    def _sync_unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
         Because the ``self._env`` is a batched environment. The total number of
@@ -608,23 +641,10 @@ class RLAlgorithm(Algorithm):
             if self._overwrite_policy_output:
                 policy_step = policy_step._replace(
                     output=next_time_step.prev_action)
+            store_exp_time += self._process_unroll_step(
+                policy_step, action, time_step, transformed_time_step,
+                policy_state, experience_list, original_reward_list)
 
-            exp = make_experience(time_step.cpu(), policy_step, policy_state)
-
-            if not self.on_policy:
-                t0 = time.time()
-                self.observe_for_replay(exp)
-                store_exp_time += time.time() - t0
-
-            exp_for_training = Experience(
-                time_step=transformed_time_step,
-                action=action,
-                rollout_info=dist_utils.distributions_to_params(
-                    policy_step.info),
-                state=policy_state)
-
-            experience_list.append(exp_for_training)
-            original_reward_list.append(time_step.reward)
             time_step = next_time_step
             policy_state = policy_step.state
 

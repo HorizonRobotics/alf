@@ -14,9 +14,8 @@
 
 from absl import logging
 from absl import flags
-from queue import Empty, Full
+from queue import Empty
 import torch.multiprocessing as mp
-import sys
 import time
 import torch
 from typing import Dict, List
@@ -27,10 +26,9 @@ from alf.algorithms.data_transformer import create_data_transformer
 from alf.utils import common
 from collections import namedtuple
 
-UnrollResult = namedtuple("UnrollResult", [
-    "time_step", "transformed_time_step", "policy_step", "policy_state",
-    "env_step_time", "step_time"
-])
+UnrollResult = namedtuple(
+    "UnrollResult",
+    ["time_step", "policy_step", "policy_state", "env_step_time", "step_time"])
 
 UnrollJob = namedtuple(
     "UnrollJob", ["type", "step_metrics", "global_counter", "state_dict"],
@@ -84,6 +82,9 @@ class AsyncUnroller(object):
         self._worker.start()
         self.update_parameter(algorithm)
         self._closed = False
+
+    def get_queue_size(self) -> int:
+        return self._result_queue.qsize()
 
     def gather_unroll_results(self, unroll_length: int,
                               max_unroll_length: int) -> List[UnrollResult]:
@@ -153,6 +154,17 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
         algorithm.load_state_dict(job.state_dict)
         done_queue.put(None)
 
+    def _process_job(job):
+        # return True if stop unroll
+        if job.type == "update_parameter":
+            _update_parameter(algorithm, job)
+            return False
+        elif job.type == "stop":
+            return True
+        else:
+            raise KeyError('Received message of unknown type {}'.format(
+                job.type))
+
     try:
         logging.set_verbosity(logging.INFO)
         logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
@@ -203,8 +215,6 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
                 policy_state, initial_state, time_step.is_first())
             transformed_time_step, trans_state = algorithm.transform_timestep(
                 time_step, trans_state)
-            transformed_time_step, trans_state = algorithm.transform_timestep(
-                time_step, trans_state)
             policy_step = algorithm.rollout_step(transformed_time_step,
                                                  policy_state)
 
@@ -221,7 +231,6 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             # make sure it is around unroll_step_interval.
             unroll_result = UnrollResult(
                 time_step=time_step,
-                transformed_time_step=transformed_time_step,
                 policy_step=policy_step,
                 policy_state=policy_state,
                 env_step_time=env_step_time,
@@ -235,15 +244,9 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             while result_queue.full():
                 if not job_queue.empty():
                     job = job_queue.get()
-                    if job.type == "update_parameter":
-                        _update_parameter(algorithm, job)
-                    elif job.type == "stop":
-                        stopped = True
+                    stopped = _process_job(job)
+                    if stopped:
                         break
-                    else:
-                        raise KeyError(
-                            'Received message of unknown type {}'.format(
-                                job.type))
                 else:
                     time.sleep(0.1)
             if stopped:
@@ -265,13 +268,8 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             except Empty:
                 job = None
             if job is not None:
-                if job.type == "update_parameter":
-                    _update_parameter(algorithm, job)
-                elif job.type == "stop":
+                if _process_job(job):
                     break
-                else:
-                    raise KeyError(
-                        'Received message of unknown type {}'.format(job.type))
             t1 = time.time()
             step_time = t1 - t
             remaining = config.unroll_step_interval - step_time
