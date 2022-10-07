@@ -386,7 +386,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         if hasattr(info, "total_var"):
             q_total_var = info.total_var
         else:
-            q_total_var = critics.var(1)  # [bs, d_out] or [bs]
+            q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
         q_total_std = torch.sqrt(q_total_var)
         if hasattr(info, "opt_var"):
             q_opt_var = info.opt_var  # [bs, d_out] or [bs]
@@ -474,7 +474,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             target_critics = target_critics_dist.mean
 
-        target_critics_std = target_critics.std(1)
+        target_critics_std = target_critics.std(1, unbiased=False)
         if self._common_td_target:
             # use common td_target for all critic
             target_critics_mean = target_critics.mean(1)

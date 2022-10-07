@@ -37,11 +37,10 @@ from alf.utils.summary_utils import record_time
 from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
-MbeInfo = namedtuple("MbeInfo",
-                     ["total_var", "opt_var"],
-                     default_value=())
+MbeInfo = namedtuple("MbeInfo", ["total_var", "opt_var"], default_value=())
 
-@alf.configurable 
+
+@alf.configurable
 class MultiBootstrapEnsemble(FuncParVIAlgorithm):
     """MultiBootstrapEnsemble
 
@@ -249,24 +248,24 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         outputs, _ = self._param_net(inputs)  # [bs, np, d_out]
         # [bs, np, d_out] or [bs, np]
         if isinstance(outputs, td.Distribution):
-            outputs_mean = outputs.mean  
+            outputs_mean = outputs.mean
         else:
             outputs_mean = outputs
-        total_var = outputs_mean.var(1)  # [bs, d_out] or [bs]
+        total_var = outputs_mean.var(1, unbiased=False)  # [bs, d_out] or [bs]
         outputs_mean = outputs_mean.reshape(
-            outputs_mean.shape[0],
-            self.num_basins, 
-            self.num_particles_per_basin, 
+            outputs_mean.shape[0], self.num_basins,
+            self.num_particles_per_basin,
             *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
         basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
-        sse = (outputs_mean - basin_means.unsqueeze(2)) ** 2 
+        sse = (outputs_mean - basin_means.unsqueeze(2))**2
         # [bs, d_out] or [bs]
         opt_var = sse.sum(dim=(1,2)) / \
             (self.num_basins * self.num_particles_per_basin - 1)
 
-        return AlgStep(output=outputs,
-                       state=(), 
-                       info=MbeInfo(total_var=total_var, opt_var=opt_var))
+        return AlgStep(
+            output=outputs,
+            state=(),
+            info=MbeInfo(total_var=total_var, opt_var=opt_var))
 
     def gen_input_mask(self, batchsize):
         """generate input mask for all particles. 
@@ -288,7 +287,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             vec_mask[sampled_idx] = 1
             mask.append(vec_mask)
         return torch.stack(mask, dim=1)  # [batchsize, nb*np]
-            
+
         # for i in range(self.num_particles_per_basin):
         #     sampled_idx = torch.randperm(batchsize)[:sample_size]
         #     vec_mask = torch.zeros(batchsize)

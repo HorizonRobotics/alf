@@ -79,13 +79,14 @@ class RandomSpace(Subspace):
     def cov_factor(self):
         return self.subspace
 
+
 @alf.configurable
 @Subspace.register_subclass('covariance')
 class CovarianceSpace(Subspace):
-    def __init__(self, 
-                 num_parameters, 
+    def __init__(self,
+                 num_parameters,
                  use_subspace_mean=True,
-                 var_clamp=1e-6, 
+                 var_clamp=1e-6,
                  max_rank=20):
         super(CovarianceSpace, self).__init__()
 
@@ -111,7 +112,8 @@ class CovarianceSpace(Subspace):
 
     @property
     def variance(self):
-        return torch.clamp(self.samples.var(dim=0), self._var_clamp)
+        return torch.clamp(
+            self.samples.var(dim=0, unbiased=False), self._var_clamp)
         # return torch.clamp(self.sq_mean - self.mean**2, self._var_clamp)
 
     @property
@@ -122,8 +124,11 @@ class CovarianceSpace(Subspace):
     def get_space(self):
         return self.mean, self.variance, self.cov_factor
 
-    def sample(self, n_sample, scale=0.5, 
-               diag_noise=True, use_subspace_mean=None):
+    def sample(self,
+               n_sample,
+               scale=0.5,
+               diag_noise=True,
+               use_subspace_mean=None):
         if use_subspace_mean is None:
             use_subspace_mean = self._use_subspace_mean
         if n_sample == 1 and use_subspace_mean:

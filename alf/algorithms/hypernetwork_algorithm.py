@@ -697,8 +697,9 @@ class HyperNetwork(Algorithm):
         entropy_outlier = torch.distributions.Categorical(
             mean_probs_outlier).entropy()
 
-        variance = F.softmax(outputs, -1).var(0).sum(-1)
-        variance_outlier = F.softmax(outputs_outlier, -1).var(0).sum(-1)
+        variance = F.softmax(outputs, -1).var(0, unbiased=False).sum(-1)
+        variance_outlier = F.softmax(outputs_outlier, -1).var(
+            0, unbiased=False).sum(-1)
 
         auroc_entropy = auc_score(entropy, entropy_outlier)
         auroc_variance = auc_score(variance, variance_outlier)
