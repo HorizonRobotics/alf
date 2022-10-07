@@ -226,9 +226,9 @@ class ReplayBuffer(RingBuffer):
 
     def _index_to_env_id_idx(self, indices):
         """Convert indices used by SegmentTree to (env_id, idx)."""
-        # need to use `//` here. Newer versions of pytorch will do automatic
-        # type promtion and will generate float indices if `/` is used.
-        env_ids = indices // self._max_length
+        # Here ``torch.div`` with ``rounding_mode="floor"`` will produce
+        # result with integer dtype.
+        env_ids = torch.div(indices, self._max_length, rounding_mode="floor")
         return env_ids, indices % self._max_length
 
     def _change_mini_batch_length(self, mini_batch_length):
@@ -530,10 +530,12 @@ class ReplayBuffer(RingBuffer):
         n = (current_pos - idx - 1) / L
         """
 
-        # need to use `//` here. Newer versions of pytorch will do automatic
-        # type promtion and will generate float indices if `/` is used.
-        return ((self._current_pos[env_ids] - x - 1) //
-                self._max_length) * self._max_length + x
+        # Here ``torch.div`` with ``rounding_mode="floor"`` will produce
+        # result with integer dtype.
+        return torch.div(
+            self._current_pos[env_ids] - x - 1,
+            self._max_length,
+            rounding_mode="floor") * self._max_length + x
 
     def _set_default_return(self, env_ids):
         ind = (env_ids, self.circular(self._current_pos[env_ids] - 1))
