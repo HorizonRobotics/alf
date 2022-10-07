@@ -346,8 +346,8 @@ class SocialAttentionNetwork(PreprocessorNetwork):
                 feature dimension
             state (nested Tensor): states
         Returns:
-            - Tensor: shape is [B, d'], where d' denotes the dimension of output
-                feature (fea_dim)
+            - Tensor: shape is [B, d'], where d' denotes the output dimension of
+            the last layer specified by fc_layer_params (i.e. fc_layer_params[-1])
         """
         x, _ = super().forward(inputs, state)
 
