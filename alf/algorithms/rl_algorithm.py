@@ -24,6 +24,7 @@ from absl import logging
 
 import alf
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.async_unroller import AsyncUnroller
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import (AlgStep, Experience, make_experience,
                                  TimeStep, BasicRolloutInfo, BasicRLInfo)
@@ -278,7 +279,7 @@ class RLAlgorithm(Algorithm):
                     buffer_size=metric_buf_size,
                     example_time_step=example_time_step)
             ]
-
+        self._async_unroller = None
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
@@ -478,6 +479,113 @@ class RLAlgorithm(Algorithm):
     @common.mark_rollout
     @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def unroll(self, unroll_length: int):
+        if self._config.async_unroll:
+            return self._async_unroll(unroll_length)
+        else:
+            return self._sync_unroll(unroll_length)
+
+    def _async_unroll(self, unroll_length: int):
+        if self._async_unroller is None:
+            # env is no longer needed for rollout in the main process.
+            # Close it to release resources.
+            # self._env.close()
+            self._async_unroller = AsyncUnroller(self, self._config)
+        elif alf.summary.get_global_counter(
+        ) % self._config.unroll_parameter_update_period == 0:
+            self._async_unroller.update_parameter(self)
+
+        assert not self._overwrite_policy_output, (
+            "async_unroll does not "
+            "support overwrite_policy_output")
+        assert not self.on_policy, ("async_unroll does not support on-policy "
+                                    "training")
+
+        if self._current_transform_state is None:
+            self._current_transform_state = self.get_initial_transform_state(
+                self._env.batch_size)
+        trans_state = self._current_transform_state
+
+        experience_list = []
+        original_reward_list = []
+        env_step_time = 0.
+        store_exp_time = 0.
+        step_time = 0.
+        max_step_time = 0.
+        qsize = self._async_unroller.get_queue_size()
+        unroll_results = self._async_unroller.gather_unroll_results(
+            unroll_length, self._config.max_unroll_length)
+        if self._rollout_info_spec is None and len(unroll_results) > 0:
+            self._rollout_info_spec = dist_utils.extract_spec(
+                unroll_results[0].policy_step.info)
+
+        for unroll_result in unroll_results:
+            time_step = unroll_result.time_step
+            policy_step = unroll_result.policy_step
+            policy_state = unroll_result.policy_state
+            # Some data transformers contain parameters which are updated during
+            # rollout (e.g. ObservationNormalizer and RewardNormalizer with
+            # update_mode="rollout"). So we need to redo the transform_timestep
+            # so that those parameters are correctly updated.
+            transformed_time_step, trans_state = self.transform_timestep(
+                time_step, trans_state)
+
+            env_step_time += unroll_result.env_step_time
+            step_time += unroll_result.step_time
+            max_step_time = max(max_step_time, unroll_result.step_time)
+
+            store_exp_time += self._process_unroll_step(
+                policy_step, policy_step.output, time_step,
+                transformed_time_step, policy_state, experience_list,
+                original_reward_list)
+
+        alf.summary.scalar("time/unroll_env_step", env_step_time)
+        alf.summary.scalar("time/unroll_store_exp", store_exp_time)
+        if unroll_length == 0:
+            alf.summary.scalar("async_unroll/unroll_length",
+                               float(len(unroll_results)))
+        alf.summary.scalar("async_unroll/queue_size", qsize)
+        if not unroll_results:
+            return None
+
+        alf.summary.scalar("time/avg_unroll_step_time",
+                           step_time / len(unroll_results))
+        alf.summary.scalar("time/max_unroll_step_time", max_step_time)
+        original_reward = alf.nest.utils.stack_nests(original_reward_list)
+        self.summarize_reward("rollout_reward/original_reward",
+                              original_reward)
+
+        experience = alf.nest.utils.stack_nests(experience_list)
+        experience = experience._replace(
+            rollout_info=dist_utils.params_to_distributions(
+                experience.rollout_info, self._rollout_info_spec))
+
+        self._current_transform_state = common.detach(trans_state)
+
+        return experience
+
+    def _process_unroll_step(self, policy_step, action, time_step,
+                             transformed_time_step, policy_state,
+                             experience_list, original_reward_list):
+        self.observe_for_metrics(time_step.cpu())
+        exp = make_experience(time_step.cpu(), policy_step, policy_state)
+
+        store_exp_time = 0
+        if not self.on_policy:
+            t0 = time.time()
+            self.observe_for_replay(exp)
+            store_exp_time = time.time() - t0
+
+        exp_for_training = Experience(
+            time_step=transformed_time_step,
+            action=action,
+            rollout_info=dist_utils.distributions_to_params(policy_step.info),
+            state=policy_state)
+
+        experience_list.append(exp_for_training)
+        original_reward_list.append(time_step.reward)
+        return store_exp_time
+
+    def _sync_unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
         Because the ``self._env`` is a batched environment. The total number of
@@ -533,23 +641,10 @@ class RLAlgorithm(Algorithm):
             if self._overwrite_policy_output:
                 policy_step = policy_step._replace(
                     output=next_time_step.prev_action)
+            store_exp_time += self._process_unroll_step(
+                policy_step, action, time_step, transformed_time_step,
+                policy_state, experience_list, original_reward_list)
 
-            exp = make_experience(time_step.cpu(), policy_step, policy_state)
-
-            if not self.on_policy:
-                t0 = time.time()
-                self.observe_for_replay(exp)
-                store_exp_time += time.time() - t0
-
-            exp_for_training = Experience(
-                time_step=transformed_time_step,
-                action=action,
-                rollout_info=dist_utils.distributions_to_params(
-                    policy_step.info),
-                state=policy_state)
-
-            experience_list.append(exp_for_training)
-            original_reward_list.append(time_step.reward)
             time_step = next_time_step
             policy_state = policy_step.state
 
@@ -626,7 +721,8 @@ class RLAlgorithm(Algorithm):
 
         unrolled = False
         if (alf.summary.get_global_counter() >=
-                self._rl_train_after_update_steps and unroll_length > 0
+                self._rl_train_after_update_steps
+                and (unroll_length > 0 or self._config.unroll_length == 0)
                 and (self._config.num_env_steps == 0
                      or self.get_step_metrics()[1].result() <
                      self._config.num_env_steps)):
@@ -643,8 +739,9 @@ class RLAlgorithm(Algorithm):
                     with alf.summary.record_if(lambda: self.
                                                _need_to_summarize_rollout):
                         experience = self.unroll(unroll_length)
-                        self.summarize_rollout(experience)
-                        self.summarize_metrics()
+                        if experience:
+                            self.summarize_rollout(experience)
+                            self.summarize_metrics()
                     self._need_to_summarize_rollout = False
 
         # replay buffer may not have been created for two different reasons:
@@ -874,3 +971,9 @@ class RLAlgorithm(Algorithm):
                     "Unsupported outer rank %s of `exp`" % outer_rank)
 
         _load_data(exp)
+
+    def finish_train(self):
+        """Finish training and release resources if necessary."""
+        if self._async_unroller is not None:
+            self._async_unroller.close()
+            self._async_unroller = None

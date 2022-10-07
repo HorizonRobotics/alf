@@ -16,6 +16,7 @@ Converted to PyTorch from the TF version.
 """
 import collections
 import numpy as np
+import sys
 import torch
 
 import alf.nest as nest
@@ -42,6 +43,15 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
     else:
         prototype = T(*default_values)
     T.__new__.__defaults__ = tuple(prototype)
+    # For pickling to work, the __module__ variable needs to be set to the frame
+    # where the named tuple is created.  Bypass this step in environments where
+    # sys._getframe is not defined (Jython for example) or sys._getframe is not
+    # defined for arguments greater than 0 (IronPython).
+    try:
+        module = sys._getframe(1).f_globals.get('__name__', '__main__')
+        T.__module__ = module
+    except (AttributeError, ValueError):
+        pass
     return T
 
 

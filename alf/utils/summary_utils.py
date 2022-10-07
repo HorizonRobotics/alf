@@ -16,7 +16,6 @@ from absl import logging
 import functools
 import numpy as np
 import os
-from tensorboard.plugins.histogram import metadata
 import time
 import torch
 import torch.distributions as td

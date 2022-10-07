@@ -14,12 +14,9 @@
 
 from absl import logging
 from absl import flags
-import queue
 import torch.multiprocessing as mp
-import traceback
 import os
 import sys
-import time
 import torch
 from typing import Dict, List, Optional
 
@@ -55,7 +52,7 @@ class Evaluator(object):
     """
 
     def __init__(self, config: TrainerConfig, conf_file: str):
-        # The following line is needed for avoid
+        # The following line is needed for avoiding
         # "RuntimeError: unable to open shared memory object"
         # See https://github.com/facebookresearch/maskrcnn-benchmark/issues/103#issuecomment-785815218
         mp.set_sharing_strategy('file_system')

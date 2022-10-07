@@ -84,6 +84,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             raise ValueError(
                 'All environments must have the same time_step_spec.')
         self._flatten = flatten
+        self._closed = False
 
     @property
     def envs(self):
@@ -165,9 +166,12 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
     def close(self):
         """Close all external process."""
+        if self._closed:
+            return
         logging.info('Closing all processes.')
         for env in self._envs:
             env.close()
+        self._closed = True
         logging.info('All processes closed.')
 
     def _stack_time_steps(self, time_steps):
