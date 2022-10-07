@@ -65,7 +65,7 @@ from .alf_environment import AlfEnvironment
 from .carla_sensors import (
     BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
     LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor,
-    ObstacleDetectionSensor, World, get_scaled_image_size,
+    DynamicObjectSensor, ObstacleDetectionSensor, World, get_scaled_image_size,
     MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 from alf.environments.carla_env.carla_utils import (
@@ -258,6 +258,7 @@ class Player(object):
                  with_camera_sensor=True,
                  with_radar_sensor=True,
                  with_bev_sensor=False,
+                 with_dynamic_object_sensor=False,
                  data_collection_mode=False,
                  with_red_light_sensor=False,
                  with_obstacle_sensor=False,
@@ -384,6 +385,14 @@ class Player(object):
             self._observation_sensors['bev'] = self._bev_sensor
         else:
             self._bev_sensor = None
+
+        if with_dynamic_object_sensor:
+            self._dynamic_object_sensor = DynamicObjectSensor(
+                actor, self._alf_world)
+            self._observation_sensors[
+                'dynamic_object'] = self._dynamic_object_sensor
+        else:
+            self._dynamic_object_sensor = None
 
         self._data_collection_mode = data_collection_mode
         if self._data_collection_mode:

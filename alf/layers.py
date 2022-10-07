@@ -3612,3 +3612,35 @@ class AMPWrapper(nn.Module):
                 lambda x: x.float() if x.dtype.is_floating_point else x, input)
         with torch.cuda.amp.autocast(self._enabled):
             return self._net(input)
+
+
+class SimpleAttention(nn.Module):
+    """Simple Attention Module."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, query, key, value):
+        """Simple attention computation based on the inputs.
+        Args:
+            query (Q): shape [B, head, M, d]
+            key   (K): shape [B, head, N, d]
+            value (V): shape [B, head, N, d]
+            where B denotes the batch size, head denotes the number of heads,
+            N the number of entities, and d the feature dimension.
+        Return:
+            - the attended results computed as: softmax(QK^T/sqrt(d))V,
+                with the shape [B, head, M, d]
+            - the attention weight, with the shape [B, head, M, N]
+        """
+        d_k = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1)) / torch.sqrt(
+            torch.tensor(d_k))
+
+        # [B, head, M, N]
+        attention_weight = F.softmax(scores, dim=-1)
+
+        # [B, head, M, d]
+        output = torch.matmul(attention_weight, value)
+
+        return output, attention_weight

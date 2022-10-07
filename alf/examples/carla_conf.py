@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import torch
 
 import alf
 from alf.algorithms.merlin_algorithm import ResnetEncodingNetwork
 from alf.environments import suite_carla
 from alf.environments.alf_wrappers import ActionObservationWrapper, ScalarRewardWrapper
+from alf.networks import SocialAttentionNetwork
 
 alf.config(
     'suite_carla.load',
@@ -26,6 +28,13 @@ alf.config(
 alf.config('CameraSensor', image_size_x=192, image_size_y=96, fov=135)
 
 alf.config('CollisionSensor', include_collision_location=True)
+
+history_idx = [-16, -11, -6, -1]
+alf.config(
+    'DynamicObjectSensor',
+    with_ego_history=True,
+    history_idx=history_idx,
+    max_object_number=6)
 
 alf.config(
     'create_environment',
@@ -53,8 +62,21 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
             observation_preprocessors[sensor] = ResnetEncodingNetwork(
                 input_tensor_spec=spec,
                 output_size=encoding_dim,
-                output_activation=alf.math.identity,
+                output_activation=alf.math.identity)
+        elif sensor == "dynamic_object":
+            observation_preprocessors[sensor] = SocialAttentionNetwork(
+                input_tensor_spec=spec,
+                input_preprocessors=torch.nn.Sequential(
+                    alf.layers.Permute(1, 0, 2, 3),
+                    alf.layers.Reshape([len(history_idx), -1]),
+                ),
+                fc_layer_params=(encoding_dim, ),
+                activation=alf.math.identity,
+                num_of_heads=4,
+                last_layer_size=encoding_dim,
+                last_activation=alf.math.identity,
                 use_fc_bn=preproc_bn)
+
         else:
             observation_preprocessors[sensor] = _make_simple_preproc(spec)
 
@@ -66,3 +88,21 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
                 prev_action_spec,
                 use_bias='camera' not in observation_spec['observation']),
     }
+
+
+def create_input_preprocessor_masks():
+    # create input mask for flexibily mask out some sensors
+    observation_spec = alf.get_observation_spec()
+    observation_preprocessor_masks = {}
+    for sensor, spec in observation_spec['observation'].items():
+        if sensor in [
+                'gnss',
+                'goal',
+                'radar',
+        ]:  # mask selected seneors out of observation for training
+            logging.info("-----skip CARLA input: {}-----".format(sensor))
+            observation_preprocessor_masks[sensor] = 0
+        else:
+            observation_preprocessor_masks[sensor] = 1
+
+    return {'observation': observation_preprocessor_masks, 'prev_action': 1}
