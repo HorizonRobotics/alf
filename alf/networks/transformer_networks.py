@@ -299,15 +299,14 @@ class SocialAttentionNetwork(PreprocessorNetwork):
                 nonlinearity=activation)
 
         embedding_layers = nn.ModuleList()
-        print(self._processed_input_tensor_spec)
         assert self._processed_input_tensor_spec.ndim == 2, (
             "expect the "
             "processed spec to have the shape of [entity_num, feature_dim]")
-
+        input_size = self._processed_input_tensor_spec.shape[-1]
         for size in fc_layer_params:
             embedding_layers.append(
                 layers.FC(
-                    self._processed_input_tensor_spec.shape[-1],
+                    input_size,
                     size,
                     activation=activation,
                     use_bn=use_fc_bn,
@@ -315,8 +314,6 @@ class SocialAttentionNetwork(PreprocessorNetwork):
             input_size = size
         self._embedding_layers = embedding_layers
 
-        # input_size = N * d'
-        full_feature_dim = input_size
         fea_dim = input_size
         assert fea_dim % num_of_heads == 0, "improper value for num_of_heads"
         self._num_of_heads = num_of_heads
@@ -324,28 +321,22 @@ class SocialAttentionNetwork(PreprocessorNetwork):
 
         # attention related layers
         self._value_proj = layers.FC(
-            full_feature_dim,
+            fea_dim,
             fea_dim,
             use_bias=False,
             kernel_initializer=kernel_initializer)
         self._key_proj = layers.FC(
-            full_feature_dim,
+            fea_dim,
             fea_dim,
             use_bias=False,
             kernel_initializer=kernel_initializer)
         self._query_proj = layers.FC(
-            full_feature_dim,
-            fea_dim,
-            use_bias=False,
-            kernel_initializer=kernel_initializer)
-
-        self._attention_res_branch = layers.FC(
             fea_dim,
             fea_dim,
             use_bias=False,
             kernel_initializer=kernel_initializer)
 
-        self._mha = alf.layers.MultiHeadAttention()
+        self._simple_attention = alf.layers.SimpleAttention()
 
     def forward(self, inputs, state=()):
         """
@@ -355,8 +346,8 @@ class SocialAttentionNetwork(PreprocessorNetwork):
                 feature dimension
             state (nested Tensor): states
         Returns:
-            - Tensor: shape is [B, k], where k denotes the dimension of output
-                feature
+            - Tensor: shape is [B, d'], where d' denotes the dimension of output
+                feature (fea_dim)
         """
         x, _ = super().forward(inputs, state)
 
@@ -368,7 +359,7 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         for i, net in enumerate(self._embedding_layers):
             x = net(x)
 
-        # [B, N, d'] (batch, entities, features)
+        # [B, N, d'] (batch, entities, fea_dim)
         X = x.reshape(B, N, -1)
 
         key = X[:, 0]
@@ -388,6 +379,6 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         key = key.permute(0, 2, 1, 3)
         value = value.permute(0, 2, 1, 3)
 
-        v, _ = self._mha(query=query, key=key, value=value)
+        v, _ = self._simple_attention(query=query, key=key, value=value)
         out = v.reshape(B, -1)
         return out, state

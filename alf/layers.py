@@ -3614,32 +3614,33 @@ class AMPWrapper(nn.Module):
             return self._net(input)
 
 
-class MultiHeadAttention(nn.Module):
-    """Multi-Head Attention Module."""
+class SimpleAttention(nn.Module):
+    """Simple Attention Module."""
 
     def __init__(self):
         super().__init__()
 
     def forward(self, query, key, value):
-        """Multi-Head attention computation based on the inputs.
+        """Simple attention computation based on the inputs.
         Args:
-            query (Q): shape [B, head, 1, d]
-            key (K):  shape [B, head, N, d]
+            query (Q): shape [B, head, M, d]
+            key   (K): shape [B, head, N, d]
             value (V): shape [B, head, N, d]
             where B denotes the batch size, head denotes the number of heads,
             N the number of entities, and d the feature dimension.
         Return:
-            - the attended results computed as: softmax(QK^T/sqrt(d))V
-            - the attention weight, with the shape [B, head, 1, d]
+            - the attended results computed as: softmax(QK^T/sqrt(d))V,
+                with the shape [B, head, M, d]
+            - the attention weight, with the shape [B, head, M, N]
         """
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) / torch.sqrt(
             torch.tensor(d_k))
 
-        # [B, head, 1, N]
+        # [B, head, M, N]
         attention_weight = F.softmax(scores, dim=-1)
 
-        # [B, head, 1, d]
+        # [B, head, M, d]
         output = torch.matmul(attention_weight, value)
 
         return output, attention_weight
