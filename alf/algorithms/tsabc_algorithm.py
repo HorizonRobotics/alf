@@ -33,6 +33,7 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 @alf.configurable
 class TsabcAlgorithm(AbcAlgorithm):
     r"""Soft Actor and Bayesian Critic Algorithm. """
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -133,8 +134,8 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         assert actor_network_cls is not None, (
             "ActorNetwork must be provided!")
-        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
-                                          action_spec=action_spec)
+        actor_network = actor_network_cls(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
 
         assert explore_network_cls is not None, (
             "ExploreNetwork must be provided!")
@@ -182,24 +183,22 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         new_state = AbcActionState()
         if explore:
-            # deterministic explore_network
-            action, explore_network_state = self._explore_networks(
-                observation, state=state.explore_network)
+            if self._training_started:
+                # deterministic explore_network
+                action, explore_network_state = self._explore_networks(
+                    observation, state=state.explore_network)
+                new_state = new_state._replace(
+                    explore_network=explore_network_state)
+                if not train:
+                    if self._random_actor_every_step:
+                        self._idx = torch.randint(self._num_critic_replicas,
+                                                  ())
+                    action = action[:, self._idx, :]
+            else:
+                action = alf.nest.map_structure(
+                    lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                    self._action_spec)
             action_dist = ()
-            new_state = new_state._replace(
-                explore_network=explore_network_state)
-            if not train:
-                # if self._cyclic_unroll_steps == 0:
-                if self._random_actor_every_step:
-                    self._idx = torch.randint(self._num_critic_replicas, ())
-                action = action[:, self._idx, :]
-
-                # action, explore_network_state = self._explore_networks[self._idx](
-                #     observation, state=state.explore_network)
-
-                # self._cyclic_unroll_steps += 1
-                # if self._cyclic_unroll_steps >= 100:
-                #     self._cyclic_unroll_steps = 0
         else:
             if self._deterministic_actor:
                 action_dist = ()
@@ -250,12 +249,9 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
-            safe_mean_hist_summary(prefix + "critics_batch_mean",
-                                   q_mean)
-            safe_mean_hist_summary(
-                prefix + "critics_total_var", q_total_var)
+            safe_mean_hist_summary(prefix + "critics_batch_mean", q_mean)
+            safe_mean_hist_summary(prefix + "critics_total_var", q_total_var)
             if q_opt_var is not None:
-                safe_mean_hist_summary(
-                    prefix + "critic_opt_var", q_opt_var)
+                safe_mean_hist_summary(prefix + "critic_opt_var", q_opt_var)
 
         return q_value, q_epi_std

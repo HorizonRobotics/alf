@@ -154,41 +154,48 @@ class BayesOacAlgorithm(AbcAlgorithm):
             return mu + shift
 
         if explore:
-            critic_action = normal_dist.mean.detach().clone()
-            critic_action.requires_grad = True
-            transformed_action = critic_action
-            with torch.enable_grad():
-                for transform in action_dist.transforms:
-                    transformed_action = transform(transformed_action)
+            if self._training_started:
+                critic_action = normal_dist.mean.detach().clone()
+                critic_action.requires_grad = True
+                transformed_action = critic_action
+                with torch.enable_grad():
+                    for transform in action_dist.transforms:
+                        transformed_action = transform(transformed_action)
 
-                critic_step = self._critic_module.predict_step(
-                    inputs=(observation, transformed_action),
-                    state=state.critic)
-                critics_state = critic_step.state
-                new_state = new_state._replace(critic=critics_state)
-                if self._deterministic_critic:
-                    critics = critic_step.output
+                    critic_step = self._critic_module.predict_step(
+                        inputs=(observation, transformed_action),
+                        state=state.critic)
+                    critics_state = critic_step.state
+                    new_state = new_state._replace(critic=critics_state)
+                    if self._deterministic_critic:
+                        critics = critic_step.output
+                    else:
+                        critics_dist = critic_step.output
+                        critics = critics_dist.mean
+                    critics_info = critic_step.info
+
+                    q_ub, _ = self._consensus_q_for_actor_train(
+                        critics, explore=True, info=critics_info)
+                    dqda = nest_utils.grad(critic_action, q_ub.sum())
+                shifted_mean = nest.map_structure(
+                    mean_shift_fn, unsquashed_mean, dqda, unsquashed_var,
+                    self._deterministic_explore)
+                if self._deterministic_explore:
+                    action = shifted_mean
+                    action_dist = ()
                 else:
-                    critics_dist = critic_step.output
-                    critics = critics_dist.mean
-                critics_info = critic_step.info
-
-                q_ub, _ = self._consensus_q_for_actor_train(
-                    critics, explore=True, info=critics_info)
-                dqda = nest_utils.grad(critic_action, q_ub.sum())
-            shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
-                                              dqda, unsquashed_var,
-                                              self._deterministic_explore)
-            if self._deterministic_explore:
-                action = shifted_mean
-                action_dist = ()
+                    normal_dist = dist_utils.DiagMultivariateNormal(
+                        loc=shifted_mean, scale=unsquashed_std)
+                    action_dist = td.TransformedDistribution(
+                        base_distribution=normal_dist,
+                        transforms=action_dist.transforms)
+                    action = dist_utils.rsample_action_distribution(
+                        action_dist)
             else:
-                normal_dist = dist_utils.DiagMultivariateNormal(
-                    loc=shifted_mean, scale=unsquashed_std)
-                action_dist = td.TransformedDistribution(
-                    base_distribution=normal_dist,
-                    transforms=action_dist.transforms)
-                action = dist_utils.rsample_action_distribution(action_dist)
+                action = alf.nest.map_structure(
+                    lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                    self._action_spec)
+                action_dist = ()
         else:
             if eps_greedy_sampling:
                 action = dist_utils.epsilon_greedy_sample(
@@ -223,12 +230,9 @@ class BayesOacAlgorithm(AbcAlgorithm):
 
         if not explore:
             with alf.summary.scope(self._name):
-                safe_mean_hist_summary("critics_batch_mean",
-                                       q_mean)
-                safe_mean_hist_summary(
-                    "critics_total_var", q_total_var)
+                safe_mean_hist_summary("critics_batch_mean", q_mean)
+                safe_mean_hist_summary("critics_total_var", q_total_var)
                 if q_opt_var is not None:
-                    safe_mean_hist_summary(
-                        "critic_opt_var", q_opt_var)
+                    safe_mean_hist_summary("critic_opt_var", q_opt_var)
 
         return q_value, q_epi_std

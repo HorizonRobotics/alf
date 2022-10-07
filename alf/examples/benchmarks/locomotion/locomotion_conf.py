@@ -31,7 +31,7 @@ alf.config(
     "NormalProjectionNetwork",
     state_dependent_std=True,
     scale_distribution=True,
-    std_transform=partial(clipped_exp, clip_value_min=-10, clip_value_max=2))
+    std_transform=partial(clipped_exp, clip_value_min=-20, clip_value_max=2))
 
 actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork, fc_layer_params=hidden_layers)
@@ -45,7 +45,11 @@ alf.config(
     "TrainerConfig",
     temporally_independent_train_step=True,
     use_rollout_state=True,
-    initial_collect_steps=50000,
+    use_wandb=True,
+    async_eval=True,
+    entity="runjerry",
+    project="Actor-Bayes-Critic",
+    initial_collect_steps=10000,
     unroll_length=1,
     mini_batch_length=2,
     mini_batch_size=256,
@@ -57,6 +61,7 @@ alf.config(
     eval_interval=20000,
     num_eval_episodes=20,
     debug_summaries=True,
-    summarize_grads_and_vars=0,
-    num_summaries=1000,
+    summarize_grads_and_vars=True,
+    summary_interval=1000,
+    # num_summaries=10000,
     replay_buffer_length=int(1e6))

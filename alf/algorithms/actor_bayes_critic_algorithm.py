@@ -33,33 +33,32 @@ import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, math_ops 
-from alf.utils import tensor_utils, dist_utils 
+from alf.utils import losses, common, math_ops
+from alf.utils import tensor_utils, dist_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
 
-
-AbcActionState = namedtuple("AbcActionState",
-                             ["actor_network", "explore_network", "critic"],
-                             default_value=())
+AbcActionState = namedtuple(
+    "AbcActionState", ["actor_network", "explore_network", "critic"],
+    default_value=())
 
 AbcCriticState = namedtuple("AbcCriticState", ["critics", "target_critics"])
 
-AbcState = namedtuple("AbcState", ["action", "actor", "explore", "critic"],
-                       default_value=())
+AbcState = namedtuple(
+    "AbcState", ["action", "actor", "explore", "critic"], default_value=())
 
 AbcCriticInfo = namedtuple(
     "AbcCriticInfo", ["critic_state", "target_critic"], default_value=())
 
-AbcActorInfo = namedtuple("AbcActorInfo", ["actor_loss", "neg_entropy"],
-                           default_value=())
+AbcActorInfo = namedtuple(
+    "AbcActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
-AbcExploreInfo = namedtuple("AbcExploreInfo",
-                             ["explore_loss", "neg_entropy"],
-                             default_value=())
+AbcExploreInfo = namedtuple(
+    "AbcExploreInfo", ["explore_loss", "neg_entropy"], default_value=())
 
-AbcInfo = namedtuple("AbcInfo", [
-    "observation", "reward", "step_type", "discount", "action", 
-    "action_distribution", "actor", "explore", "critic", "alpha", "log_pi"
+AbcInfo = namedtuple(
+    "AbcInfo", [
+        "observation", "reward", "step_type", "discount", "action",
+        "action_distribution", "actor", "explore", "critic", "alpha", "log_pi"
     ],
     default_value=())
 
@@ -85,6 +84,7 @@ def get_target_updater(param_fn, target_param, tau=1.0, period=1, copy=True):
     Returns:
         Callable: a callable that performs a soft update of the target parameter.
     """
+
     def _copy_parameter(s, t):
         t.data.copy_(s)
 
@@ -107,6 +107,7 @@ def get_target_updater(param_fn, target_param, tau=1.0, period=1, copy=True):
 @alf.configurable
 class AbcAlgorithm(OffPolicyAlgorithm):
     r"""Actor and Bayesian Critic Algorithm. """
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -187,7 +188,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             actor_network=actor_network.state_spec)
         if explore_network is not None:
             action_state_spec._replace(
-            explore_network=explore_network.state_spec)
+                explore_network=explore_network.state_spec)
 
         super().__init__(
             observation_spec=observation_spec,
@@ -225,15 +226,14 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
-        critic_loss_ctor = functools.partial(critic_loss_ctor,
-                                             debug_summaries=debug_summaries)
+        critic_loss_ctor = functools.partial(
+            critic_loss_ctor, debug_summaries=debug_summaries)
         self._critic_loss = critic_loss_ctor(name="critic_loss")
 
         self._target_entropy = _set_target_entropy(
             self.name, target_entropy, nest.flatten(self._action_spec))
 
-        mini_batch_size = alf.get_config_value(
-            'TrainerConfig.mini_batch_size')
+        mini_batch_size = alf.get_config_value('TrainerConfig.mini_batch_size')
         self._mini_batch_length = alf.get_config_value(
             'TrainerConfig.mini_batch_length')
         replay_buffer_length = alf.get_config_value(
@@ -286,8 +286,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         assert actor_network_cls is not None, (
             "ActorNetwork must be provided!")
-        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
-                                          action_spec=action_spec)
+        actor_network = actor_network_cls(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
 
         if explore_network_cls is not None:
             explore_network = explore_network_cls(
@@ -305,9 +305,10 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         if critic_optimizer is None:
             critic_optimizer = AdamTF(lr=3e-4)
-        critic_module = critic_module_cls(input_tensor_spec=input_tensor_spec,
-                                          param_net=critic_network,
-                                          optimizer=critic_optimizer)
+        critic_module = critic_module_cls(
+            input_tensor_spec=input_tensor_spec,
+            param_net=critic_network,
+            optimizer=critic_optimizer)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
@@ -325,7 +326,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             state (Tensor): network state (for RNN).
             epsilon_greedy (float):
             eps_greedy_sampling (bool):
-            explore (bool): whether or not predict exploration action
+            # explore (bool): whether or not predict exploration action
             train (bool): whether or not predict action for training
         Returns:
             action_dist (torch.distributions): action distribution 
@@ -341,9 +342,10 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
 
-        return AlgStep(output=action,
-                       state=AbcState(action=action_state),
-                       info=AbcInfo(action_distribution=action_dist))
+        return AlgStep(
+            output=action,
+            state=AbcState(action=action_state),
+            info=AbcInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: AbcState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -356,15 +358,15 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=1.0,
             eps_greedy_sampling=True,
-            explore=self._training_started)
+            explore=True)
 
-        new_state = AbcState(action=action_state,
-                             actor=state.actor,
-                             explore=state.explore,
-                             critic=state.critic)
+        new_state = AbcState(
+            action=action_state,
+            actor=state.actor,
+            explore=state.explore,
+            critic=state.critic)
         return AlgStep(
-            output=action, state=new_state, info=AbcInfo(
-                action=action))
+            output=action, state=new_state, info=AbcInfo(action=action))
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
         """Get q_value for _actor_train_step. 
@@ -404,13 +406,10 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
-            safe_mean_hist_summary(prefix + "critics_batch_mean",
-                                   q_mean)
-            safe_mean_hist_summary(
-                prefix + "critics_total_var", q_total_var)
+            safe_mean_hist_summary(prefix + "critics_batch_mean", q_mean)
+            safe_mean_hist_summary(prefix + "critics_total_var", q_total_var)
             if q_opt_var is not None:
-                safe_mean_hist_summary(
-                    prefix + "critic_opt_var", q_opt_var)
+                safe_mean_hist_summary(prefix + "critic_opt_var", q_opt_var)
 
         return q_value, q_epi_std
 
@@ -458,17 +457,15 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         if explore:
             extra = AbcExploreInfo(explore_loss=actor_loss)
         else:
-            extra = AbcActorInfo(actor_loss=actor_loss,
-                                 neg_entropy=neg_entropy)
+            extra = AbcActorInfo(
+                actor_loss=actor_loss, neg_entropy=neg_entropy)
         actor_info = LossInfo(loss=actor_loss + entropy_loss, extra=extra)
 
         return critics_state, actor_info
 
-    def _compute_critic_train_info(self, 
-                                   inputs: TimeStep, 
+    def _compute_critic_train_info(self, inputs: TimeStep,
                                    state: AbcCriticState,
-                                   rollout_info: AbcInfo, 
-                                   action):
+                                   rollout_info: AbcInfo, action):
         target_critics_dist, target_critics_state = self._target_critic_network(
             (inputs.observation, action), state.target_critics)
 
@@ -485,30 +482,29 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             # use separate td_target for each critic
             overestimation = target_critics_std.unsqueeze(1)
-            targets = target_critics - self._beta_lb * overestimation 
+            targets = target_critics - self._beta_lb * overestimation
 
         targets = targets.detach()
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 target_critics_mean = target_critics.mean(1)
-                safe_mean_hist_summary(
-                    "target_critics_batch_mean", target_critics_mean)
+                safe_mean_hist_summary("target_critics_batch_mean",
+                                       target_critics_mean)
                 safe_mean_hist_summary("target_critics_std",
                                        target_critics_std)
 
-        critic_info = AbcCriticInfo(critic_state=state.critics,
-                                    target_critic=targets)
+        critic_info = AbcCriticInfo(
+            critic_state=state.critics, target_critic=targets)
 
-        state = AbcCriticState(critics=(),
-                               target_critics=target_critics_state)
+        state = AbcCriticState(critics=(), target_critics=target_critics_state)
 
         return state, critic_info
 
     def _alpha_train_step(self, log_pi):
         alpha_loss = nest.map_structure(
-            lambda la, lp, t: la * (-lp - t).detach(), 
-            self._log_alpha, log_pi, self._target_entropy)
+            lambda la, lp, t: la * (-lp - t).detach(), self._log_alpha, log_pi,
+            self._target_entropy)
         return sum(nest.flatten(alpha_loss))
 
     def train_step(self, inputs: TimeStep, state: AbcState,
@@ -538,18 +534,15 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             _, explore_action, explore_action_state = \
                 self._predict_action(
-                    inputs.observation, 
-                    state=state.action, 
-                    explore=True, 
+                    inputs.observation,
+                    state=state.action,
+                    explore=True,
                     train=True)
             action_state = action_state._replace(
                 explore_network=explore_action_state.explore_network)
 
             explore_state, explore_loss = self._actor_train_step(
-                inputs,
-                state.explore,
-                explore_action,
-                explore=True)
+                inputs, state.explore, explore_action, explore=True)
 
         # compute train_info for critic_module, trained in calc_loss
         critic_state, critic_info = self._compute_critic_train_info(
@@ -560,10 +553,11 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             alpha_loss = self._alpha_train_step(log_pi)
 
-        state = AbcState(action=action_state,
-                         actor=actor_state,
-                         explore=explore_state,
-                         critic=critic_state)
+        state = AbcState(
+            action=action_state,
+            actor=actor_state,
+            explore=explore_state,
+            critic=critic_state)
         info = AbcInfo(
             observation=inputs.observation,
             reward=inputs.reward,
@@ -595,16 +589,14 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         # train critic_module
         critic_step = self._critic_module.train_step(
-            inputs=None,
-            loss_func=functools.partial(self._neglogprob, info))
+            inputs=None, loss_func=functools.partial(self._neglogprob, info))
         critic_loss, _ = self._critic_module.update_with_gradient(
             critic_step.info)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 alf.summary.scalar("alpha", self._log_alpha.exp())
-                safe_mean_hist_summary("critics_losses",
-                                       critic_loss.extra)
+                safe_mean_hist_summary("critics_losses", critic_loss.extra)
 
         if self._deterministic_actor:
             loss = math_ops.add_ignore_empty(actor_loss.loss,
@@ -642,8 +634,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         observation = info.observation[:-1, ...]
         action = info.action[:-1, ...]
 
-        observation = observation.reshape(
-            -1, self._observation_spec.shape[0])
+        observation = observation.reshape(-1, self._observation_spec.shape[0])
         action = action.reshape(-1, self._action_spec.shape[0])
 
         critic_step = self._critic_module.predict_step(
@@ -656,27 +647,30 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         # compute td_targets
         if self._common_td_target:
             td_targets = self._critic_loss.compute_td_target(info, targets)
-            td_targets = td_targets.unsqueeze(2) # [T-1, B, 1, ...]
+            td_targets = td_targets.unsqueeze(2)  # [T-1, B, 1, ...]
         else:
-            td_targets = [self._critic_loss.compute_td_target(
-                info, targets[:, :, i, ...]) for i in range(num_particles)]
-            td_targets = torch.stack(td_targets, dim=2) # [T-1, B, n, ...]
+            td_targets = [
+                self._critic_loss.compute_td_target(info,
+                                                    targets[:, :, i, ...])
+                for i in range(num_particles)
+            ]
+            td_targets = torch.stack(td_targets, dim=2)  # [T-1, B, n, ...]
 
         # compute critic_loss
         if self._deterministic_critic:
             # standard / non-Bayesian critic
             critics = critics_dist
-            critics = critics.reshape(self._mini_batch_length-1, -1,
-                                      *critics.shape[1:]) # [T-1, B, n, ...]
+            critics = critics.reshape(self._mini_batch_length - 1, -1,
+                                      *critics.shape[1:])  # [T-1, B, n, ...]
             neg_logp, td_error = self._critic_loss.compute_td_error(
                 critics, td_targets)  # [T-1, B, n, ...]
         else:
             # Bayesian critic
             critics_mean = critics_dist.base_dist.mean.reshape(
-                self._mini_batch_length-1, -1,
+                self._mini_batch_length - 1, -1,
                 *critics_dist.base_dist.mean.shape[1:])
             critics_std = critics_dist.base_dist.stddev.reshape(
-                self._mini_batch_length-1, -1,
+                self._mini_batch_length - 1, -1,
                 *critics_dist.base_dist.stddev.shape[1:])
 
             value_dist = td.Normal(loc=critics_mean, scale=critics_std)
@@ -695,28 +689,26 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                 + suffix,
                             tensor_utils.explained_variance(
                                 v_mean, r, mask))
-                        safe_mean_hist_summary(
-                            'value_means' + suffix, v_mean, mask)
-                        safe_mean_hist_summary(
-                            'value_stds' + suffix, v_std, mask)
-                        safe_mean_hist_summary(
-                            "neg_logp" + suffix, loss, mask)
+                        safe_mean_hist_summary('value_means' + suffix, v_mean,
+                                               mask)
+                        safe_mean_hist_summary('value_stds' + suffix, v_std,
+                                               mask)
+                        safe_mean_hist_summary("neg_logp" + suffix, loss, mask)
                     else:
                         alf.summary.scalar(
                             "explained_variance_of_return_by_value" \
                                 + suffix,
                             tensor_utils.explained_variance(v, r, mask))
-                        safe_mean_hist_summary(
-                            'values' + suffix, v, mask)
-                        safe_mean_hist_summary(
-                            "td_error" + suffix, loss, mask)
+                        safe_mean_hist_summary('values' + suffix, v, mask)
+                        safe_mean_hist_summary("td_error" + suffix, loss, mask)
                     safe_mean_hist_summary('returns' + suffix, r, mask)
 
                 if self._deterministic_critic:
-                    critics = critics.reshape(
-                        critics.shape[0], critics.shape[1], -1).squeeze(-1)
-                    td_targets = td_targets.reshape(
-                        td_targets.shape[0], td_targets.shape[1], -1).squeeze(-1)
+                    critics = critics.reshape(critics.shape[0],
+                                              critics.shape[1], -1).squeeze(-1)
+                    td_targets = td_targets.reshape(td_targets.shape[0],
+                                                    td_targets.shape[1],
+                                                    -1).squeeze(-1)
                     td_error = td_error.reshape(
                         td_error.shape[0], td_error.shape[1], -1).squeeze(-1)
 
@@ -733,19 +725,20 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                        td_error[..., i], suffix)
                 else:
                     critics_mean = critics_mean.reshape(
-                        critics_mean.shape[0], critics_mean.shape[1], 
+                        critics_mean.shape[0], critics_mean.shape[1],
                         -1).squeeze(-1)
-                    critics_std = critics_std.reshape(
-                        critics_std.shape[0], critics_std.shape[1], 
-                        -1).squeeze(-1)
-                    td_targets = td_targets.reshape(
-                        td_targets.shape[0], td_targets.shape[1], -1).squeeze(-1)
+                    critics_std = critics_std.reshape(critics_std.shape[0],
+                                                      critics_std.shape[1],
+                                                      -1).squeeze(-1)
+                    td_targets = td_targets.reshape(td_targets.shape[0],
+                                                    td_targets.shape[1],
+                                                    -1).squeeze(-1)
                     neglogp = neg_logp.reshape(
                         neg_logp.shape[0], neg_logp.shape[1], -1).squeeze(-1)
 
                     if critics_mean.ndim == 2:
-                        _summarize((critics_mean, critics_std), 
-                                   td_targets, neglogp, '')
+                        _summarize((critics_mean, critics_std), td_targets,
+                                   neglogp, '')
                     else:
                         for i in range(critics_mean.shape[2]):
                             if self._common_td_target:
@@ -761,9 +754,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         if hasattr(critics_info, "opt_var") and \
             self._critic_training_weight is not None:
             weights = torch.sqrt(critics_info.opt_var)  # [bs, d_out] or [bs]
-            weights = weights.reshape(
-                self._mini_batch_length-1, -1, *weights.shape[1:])
-            weights = weights ** self._critic_training_weight
+            weights = weights.reshape(self._mini_batch_length - 1, -1,
+                                      *weights.shape[1:])
+            weights = weights**self._critic_training_weight
             weights = weights.unsqueeze(2) / weights.sum()
             neg_logp *= weights
 
@@ -773,7 +766,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             # mask = torch.randint(0, 2, neg_logp.shape)
             # self._critic_train_mask = mask.float()
             neg_logp *= self._critic_train_mask
-            
+
         neg_logp = neg_logp.transpose(0, 2)
         neg_logp = neg_logp.reshape(num_particles, -1)
 

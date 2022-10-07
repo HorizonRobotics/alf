@@ -41,6 +41,7 @@ from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 @alf.configurable
 class OabcAlgorithm(AbcAlgorithm):
     r"""Soft Actor and Bayesian Critic Algorithm. """
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -136,13 +137,17 @@ class OabcAlgorithm(AbcAlgorithm):
         del train
         new_state = AbcActionState()
         if explore:
-            # deterministic explore_network
-            action, explore_network_state = self._explore_network(
-                observation, state=state.explore_network)
+            if self._training_started:
+                # deterministic explore_network
+                action, explore_network_state = self._explore_network(
+                    observation, state=state.explore_network)
+                new_state = new_state._replace(
+                    explore_network=explore_network_state)
+            else:
+                action = alf.nest.map_structure(
+                    lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                    self._action_spec)
             action_dist = ()
-
-            new_state = new_state._replace(
-                explore_network=explore_network_state)
         else:
             if self._deterministic_actor:
                 action_dist = ()

@@ -70,6 +70,7 @@ class OacAlgorithm(SacAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  debug_summaries=False,
+                 reproduce_locomotion=False,
                  name="OacAlgorithm"):
         """
         Refer to SacAlgorithm for Args besides the following.
@@ -108,6 +109,7 @@ class OacAlgorithm(SacAlgorithm):
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
             debug_summaries=debug_summaries,
+            reproduce_locomotion=reproduce_locomotion,
             name=name)
 
         if explore:
@@ -123,6 +125,7 @@ class OacAlgorithm(SacAlgorithm):
                         state: SacActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
+                        rollout=False,
                         explore=False):
         """
         Differences between SacAlgorithm._predict_action:
@@ -171,7 +174,7 @@ class OacAlgorithm(SacAlgorithm):
                 if critics.shape[1] == 2:
                     q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
                 else:
-                    q_std = critics.std(1)
+                    q_std = critics.std(1, unbiased=False)
                 q_ub = q_mean + self._beta_ub * q_std
                 dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
@@ -189,6 +192,14 @@ class OacAlgorithm(SacAlgorithm):
             else:
                 action = dist_utils.rsample_action_distribution(action_dist)
 
+        if (self._reproduce_locomotion and rollout
+                and not self._training_started):
+            # This uniform sampling seems important because for a squashed Gaussian,
+            # even with a large scale, a random policy is not nearly uniform.
+            action = alf.nest.map_structure(
+                lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                self._action_spec)
+
         return action_dist, action, None, new_state
 
     def rollout_step(self, inputs: TimeStep, state: SacState):
@@ -200,6 +211,7 @@ class OacAlgorithm(SacAlgorithm):
             state=state.action,
             epsilon_greedy=1.0,
             eps_greedy_sampling=True,
+            rollout=True,
             explore=self._explore)
 
         if self.need_full_rollout_state():
@@ -242,7 +254,7 @@ class OacAlgorithm(SacAlgorithm):
             apply_reward_weights=False)
 
         target_critics_mean = target_critics.mean(1)
-        target_critics_std = target_critics.std(1)
+        target_critics_std = target_critics.std(1, unbiased=False)
         target_critics = target_critics_mean - self._beta_lb * target_critics_std
 
         target_critic = target_critics.reshape(inputs.reward.shape)

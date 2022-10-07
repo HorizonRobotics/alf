@@ -1,22 +1,20 @@
 {
     "desc": [
-        "All MuJoCo tasks with 5 seeds on each environment"
+        "All MuJoCo tasks with 6 seeds on each environment"
     ],
-    "version": "cluster-is-deter",
+    "version": "mujoco_benchmark-new-default-aidi",
     "use_gpu": true,
     "gpus": [
         0,
         1,
-        2,
-        3
+        2
     ],
-    "max_worker_num": 12,
+    "max_worker_num": 6,
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "Humanoid-v2",
-            "HalfCheetah-v2"
+            "Walker2d-v2"
         ],
-        "TrainerConfig.random_seed": "list(range(4))"
+        "TrainerConfig.random_seed": "[0, 1, 2, 3, 4, 5]"
     }
 }

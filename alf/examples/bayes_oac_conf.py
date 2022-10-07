@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import partial
+import math
 
 import alf
 from alf.algorithms.bayes_oac_algorithm import BayesOacAlgorithm
@@ -27,15 +28,15 @@ from alf.utils.math_ops import clipped_exp
 from alf.examples import sac_conf
 
 # experiment settings
-use_multibootstrap = True
+use_multibootstrap = False
 deterministic_actor = False
 deterministic_critic = False
-state_dependent_std = True
 
 # environment config
-alf.config('create_environment',
-           env_name="HalfCheetah-v2",
-           num_parallel_environments=1)
+alf.config(
+    'create_environment',
+    env_name="HalfCheetah-v2",
+    num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
@@ -56,9 +57,10 @@ else:
 
 alf.config('calc_default_target_entropy', min_prob=0.184)
 
-alf.config('CriticDistributionParamNetwork',
-           joint_fc_layer_params=joint_fc_layer_params,
-           state_dependent_std=state_dependent_std)
+alf.config(
+    'CriticDistributionParamNetwork',
+    joint_fc_layer_params=joint_fc_layer_params,
+    state_dependent_std=True)
 
 if use_multibootstrap:
     critic_module_cls = MultiBootstrapEnsemble
@@ -88,10 +90,11 @@ alf.config(
     beta_ub=4.66,
     beta_lb=1.,
     explore_delta=6.86,
+    initial_log_alpha=math.log(0.05),
     # entropy_regularization_weight=1.,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
-    deterministic_explore=True,
+    deterministic_explore=False,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,
@@ -110,24 +113,25 @@ alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 # training config
 alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
 
-alf.config('TrainerConfig',
-           version='normal',
-           use_wandb=True,
-           async_eval=True,
-           entity="runjerry",
-           project="Actor-Bayes-Critic",
-           initial_collect_steps=10000,
-           mini_batch_length=2,
-           unroll_length=1,
-           mini_batch_size=batch_size,
-           num_updates_per_train_iter=1,
-           num_iterations=2500000,
-           num_checkpoints=1,
-           evaluate=True,
-           eval_interval=1000,
-           num_eval_episodes=5,
-           debug_summaries=True,
-           random_seed=1,
-           summarize_grads_and_vars=True,
-           summary_interval=1000,
-           replay_buffer_length=int(1e6))
+alf.config(
+    'TrainerConfig',
+    version='normal',
+    use_wandb=True,
+    async_eval=True,
+    entity="runjerry",
+    project="Actor-Bayes-Critic",
+    initial_collect_steps=10000,
+    mini_batch_length=2,
+    unroll_length=1,
+    mini_batch_size=batch_size,
+    num_updates_per_train_iter=1,
+    num_iterations=2500000,
+    num_checkpoints=1,
+    evaluate=True,
+    eval_interval=1000,
+    num_eval_episodes=5,
+    debug_summaries=True,
+    random_seed=1,
+    summarize_grads_and_vars=True,
+    summary_interval=1000,
+    replay_buffer_length=int(1e6))
