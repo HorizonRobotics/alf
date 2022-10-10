@@ -126,12 +126,7 @@ class MoNetAgent(RLAlgorithm):
         return alg_step._replace(output=action)
 
     def calc_loss(self, info: MoNetInfo):
-        return LossInfo(
-            loss=info.loss,
-            extra=dict(
-                kld=info.kld,
-                rec_loss=info.rec_loss,
-                mask_rec_loss=info.mask_rec_loss))
+        return self._monet.calc_loss(info)
 
 
 alf.config(

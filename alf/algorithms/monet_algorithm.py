@@ -21,7 +21,7 @@ import torch.distributions as td
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.vae import VAEOutput
-from alf.data_structures import namedtuple, AlgStep
+from alf.data_structures import namedtuple, AlgStep, LossInfo
 from alf.utils import tensor_utils
 
 
@@ -138,7 +138,7 @@ class MoNetUNet(alf.networks.Network):
 
 MoNetInfo = namedtuple(
     "MoNetInfo",
-    ['loss', 'kld', 'rec_loss', 'mask_rec_loss', 'full_rec', 'mask', 'z_dist'],
+    ['kld', 'rec_loss', 'mask_rec_loss', 'full_rec', 'mask', 'z_dist'],
     default_value=())
 
 
@@ -360,11 +360,7 @@ class MoNetAlgorithm(Algorithm):
         rec_loss, mask_rec_loss = self._rec_loss_step(inputs, rec, mask,
                                                       mask_rec)
 
-        loss = rec_loss + self._gamma * mask_rec_loss
-        if kld != ():
-            loss = loss + self._beta * kld
         info = MoNetInfo(
-            loss=loss,
             kld=kld,
             rec_loss=rec_loss,
             mask_rec_loss=mask_rec_loss,
@@ -373,3 +369,14 @@ class MoNetAlgorithm(Algorithm):
             z_dist=z_dist)
 
         return AlgStep(output=output, info=info)
+
+    def calc_loss(self, info: MoNetInfo):
+        loss = info.rec_loss + self._gamma * info.mask_rec_loss
+        if info.kld != ():
+            loss = loss + self._beta * info.kld
+        return LossInfo(
+            loss=loss,
+            extra=MoNetInfo(
+                kld=info.kld,
+                rec_loss=info.rec_loss,
+                mask_rec_loss=info.mask_rec_loss))
