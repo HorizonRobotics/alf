@@ -138,12 +138,14 @@ class OabcAlgorithm(AbcAlgorithm):
         new_state = AbcActionState()
         if explore:
             if self._training_started:
-                # deterministic explore_network
+                # explore_network is deterministic
                 action, explore_network_state = self._explore_network(
                     observation, state=state.explore_network)
                 new_state = new_state._replace(
                     explore_network=explore_network_state)
             else:
+                # This uniform sampling during initial collect stage is
+                # important since current explore_network is deterministic
                 action = alf.nest.map_structure(
                     lambda spec: spec.sample(outer_dims=observation.shape[:1]),
                     self._action_spec)

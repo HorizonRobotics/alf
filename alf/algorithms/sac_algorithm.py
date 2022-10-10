@@ -366,6 +366,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._training_started = False
         self._reproduce_locomotion = reproduce_locomotion
+        self._mini_batch_length = alf.get_config_value(
+            'TrainerConfig.mini_batch_length')
 
         self._entropy_normalizer = None
         if normalize_entropy_reward:
@@ -814,11 +816,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._reproduce_locomotion:
             policy_l = math_ops.add_ignore_empty(actor_loss.loss, alpha_loss)
             policy_mask = torch.ones_like(policy_l)
-            policy_mask[0, :] = 0.
+            policy_mask[-1, :] = 0.
             critic_l = critic_loss.loss
             critic_mask = torch.ones_like(critic_l)
             critic_mask[-1, :] = 0.
             loss = critic_l * critic_mask + policy_l * policy_mask
+            loss *= self._mini_batch_length / (self._mini_batch_length - 1)
         else:
             loss = math_ops.add_ignore_empty(actor_loss.loss,
                                              critic_loss.loss + alpha_loss)

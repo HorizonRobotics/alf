@@ -192,6 +192,9 @@ class BayesOacAlgorithm(AbcAlgorithm):
                     action = dist_utils.rsample_action_distribution(
                         action_dist)
             else:
+                # This uniform sampling seems important because for a
+                # squashed Gaussian, even with a large scale,
+                # a random policy is not nearly uniform.
                 action = alf.nest.map_structure(
                     lambda spec: spec.sample(outer_dims=observation.shape[:1]),
                     self._action_spec)

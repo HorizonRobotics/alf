@@ -526,11 +526,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         # train explore_network
         if self._explore_network is None:
-            explore_state = state.actor
-            explore_loss = LossInfo(
-                loss=torch.zeros_like(actor_loss.loss),
-                extra=AbcExploreInfo(
-                    explore_loss=torch.zeros_like(actor_loss.loss)))
+            explore_state = ()
+            explore_loss = LossInfo()
         else:
             _, explore_action, explore_action_state = \
                 self._predict_action(
@@ -598,13 +595,12 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("alpha", self._log_alpha.exp())
                 safe_mean_hist_summary("critics_losses", critic_loss.extra)
 
-        if self._deterministic_actor:
-            loss = math_ops.add_ignore_empty(actor_loss.loss,
-                                             explore_loss.loss)
-            alpha_loss = ()
-        else:
-            loss = math_ops.add_ignore_empty(
-                actor_loss.loss + explore_loss.loss, alpha_loss)
+        loss = math_ops.add_ignore_empty(actor_loss.loss, explore_loss.loss)
+        loss = math_ops.add_ignore_empty(loss, alpha_loss)
+        policy_mask = torch.ones_like(loss)
+        policy_mask[-1, :] = 0.
+        loss = loss * policy_mask * self._mini_batch_length \
+                / (self._mini_batch_length - 1)
         return LossInfo(
             loss=loss,
             extra=AbcLossInfo(
