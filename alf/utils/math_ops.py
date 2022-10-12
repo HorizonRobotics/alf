@@ -461,5 +461,13 @@ class Log1pTransform(InvertibleTransform):
 
 
 def binary_neg_entropy(p: torch.Tensor):
+    """Negative entropy for binary outcome.
+
+    Args:
+        p: the probability of one outcome and hence 1-p are the probabilites for
+            the other outcome
+    Returns:
+        Tensor with the same shape as p
+    """
     q = 1 - p
     return p.xlogy(p) + q.xlogy(q)
