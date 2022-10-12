@@ -490,12 +490,12 @@ class TrainPlayTest(alf.test.TestCase):
 
     def test_mbrl_pendulum(self):
         self._test(
-            conf_file='mbrl_pendulum.gin',
+            conf_file='mbrl_pendulum_conf.py',
             extra_train_params=MBRL_TRAIN_PARAMS)
 
     def test_mbrl_latent_pendulum(self):
         self._test(
-            conf_file='mbrl_latent_pendulum.gin',
+            conf_file='mbrl_latent_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_mdq_pendulum(self):

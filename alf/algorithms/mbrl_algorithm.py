@@ -16,7 +16,7 @@
 from functools import partial
 
 import torch
-from typing import Callable
+from typing import Any, Callable, Optional
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -47,11 +47,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
 
     def __init__(self,
                  observation_spec,
-                 feature_spec,
                  action_spec,
-                 dynamics_module: DynamicsLearningAlgorithm,
                  reward_module: RewardEstimationAlgorithm,
-                 planner_module: PlanAlgorithm,
+                 planner_module_ctor: Callable[[Any, Any], PlanAlgorithm],
+                 feature_spec: Optional[TensorSpec] = None,
+                 dynamics_module_ctor: Optional[
+                     Callable[[Any, Any], DynamicsLearningAlgorithm]] = None,
                  reward_spec=TensorSpec(()),
                  particles_per_replica=1,
                  epsilon_greedy=None,
@@ -71,17 +72,18 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
 
         Args:
             action_spec (BoundedTensorSpec): representing the actions.
-            dynamics_module (DynamicsLearningAlgorithm): module for learning to
-                predict the next feature based on the previous feature and action.
-                It should accept input with spec [feature_spec,
-                encoded_action_spec] and output a tensor of shape
-                feature_spec. For discrete action, encoded_action is an one-hot
-                representation of the action. For continuous action, encoded
-                action is same as the original action.
+            dynamics_module_ctor: used to construct the module for learning to
+                predict the next feature based on the previous feature and
+                action. It should accept input with spec [feature_spec,
+                encoded_action_spec] and output a tensor of shape feature_spec.
+                For discrete action, encoded_action is an one-hot representation
+                of the action. For continuous action, encoded action is same as
+                the original action.
             reward_module (RewardEstimationAlgorithm): module for calculating
                 the reward, i.e.,  evaluating the reward for a (s, a) pair
-            planner_module (PlanAlgorithm): module for generating planned action
-                based on specified reward function and dynamics function
+            planner_module_ctor:: used to construct the module for generating
+                planned action based on specified reward function and dynamics
+                function
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             particles_per_replica (int): number of particles for each replica
@@ -102,6 +104,14 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
 
         """
+        if feature_spec is None:
+            feature_spec = observation_spec
+        dynamics_module = None
+        if dynamics_module_ctor is not None:
+            dynamics_module = dynamics_module_ctor(
+                feature_spec=feature_spec, action_spec=action_spec)
+        planner_module = planner_module_ctor(
+            feature_spec=feature_spec, action_spec=action_spec)
         train_state_spec = MbrlState(
             dynamics=dynamics_module.train_state_spec
             if dynamics_module is not None else (),
@@ -332,7 +342,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 planner_module: PlanAlgorithm,
+                 planner_module_ctor: Callable[[Any, Any], PlanAlgorithm],
                  reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
@@ -358,8 +368,8 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (BoundedTensorSpec): representing the actions.
-            planner_module (PlanAlgorithm): module for generating planned action
-                based on specified reward function and dynamics function
+            planner_module_ctor: used to constrcut module for generating planned
+                action based on specified reward function and dynamics function
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             env (Environment): The environment to interact with. env is a batched
@@ -379,9 +389,9 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
             feature_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
-            dynamics_module=None,
+            dynamics_module_ctor=None,
             reward_module=None,
-            planner_module=planner_module,
+            planner_module_ctor=planner_module_ctor,
             planner_optimizer=planner_optimizer,
             env=env,
             config=config,
@@ -448,10 +458,13 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
 
     def _predict_with_planning(self, time_step: TimeStep, state,
                                epsilon_greedy):
-        action, state = self._planner_module.predict_plan(
-            time_step, state, epsilon_greedy)
+        action, planner_state = self._planner_module.predict_plan(
+            time_step, state.planner, epsilon_greedy)
 
-        return AlgStep(output=action, state=state, info=MbrlInfo())
+        return AlgStep(
+            output=action,
+            state=state._replace(planner=planner_state),
+            info=MbrlInfo())
 
     def train_step(self, exp: Experience, state: MbrlState, rollout_info=None):
         # overwrite the behavior of base class ``train_step``
