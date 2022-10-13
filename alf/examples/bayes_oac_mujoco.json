@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "multiswag-fixed_alpha-aidi",
+    "version": "mujoco_multiswag-default-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,15 +12,15 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "Humanoid-v2"
+            "HalfCheetah-v2"
         ],
-        "CriticDistributionParamNetwork.state_dependent_std": "[False]",
+        "CriticDistributionParamNetwork.state_dependent_std": "[True]",
         "MultiSwagAlgorithm.num_particles": "[10]",
         "MultiSwagAlgorithm.num_samples_per_model": "[1]",
         "MultiSwagAlgorithm.subspace_after_update_steps": "[10000]",
         "BayesOacAlgorithm.beta_lb": "[1.]",
         "BayesOacAlgorithm.deterministic_explore": "[False]",
-        "BayesOacAlgorithm.use_q_mean_train_actor": "[False]",
+        "BayesOacAlgorithm.use_q_mean_train_actor": "[True]",
         "BayesOacAlgorithm.use_basin_mean_for_target_critic": "[True]",
         "BayesOacAlgorithm.use_epistemic_alpha": "[False]",
         "TrainerConfig.random_seed": "list(range(4))"
