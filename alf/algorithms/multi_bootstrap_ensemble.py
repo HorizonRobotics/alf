@@ -83,12 +83,13 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                  last_use_ln=False,
                  num_basins=5,
                  num_particles_per_basin=4,
-                 mask_sample_size=256,
+                 mask_sample_ratio=0.5,
                  loss_type="classification",
                  voting="soft",
                  num_train_classes=10,
                  optimizer=None,
-                 initial_train_steps=100,
+                 initial_train_steps=1000,
+                 masked_train_steps=1000,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -132,7 +133,8 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                 to explore for the function space.
             num_particles_per_basin (int): number of particles to explore within 
                 each basin.
-            mask_sample_size (int): unmasked batchsize for gen_input_mask function.
+            mask_sample_ratio (int): ratio of mask out samples for gen_input_mask 
+                function.
 
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
@@ -143,6 +145,9 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             initial_train_steps (int): if positive, number of steps that the 
                 algorithm is trained with preprocessed inputs (reward_perturbation
                 for now) before regular train_step.
+            masked_train_steps (int): if positive, number of steps that the algorithm
+                is trained with randomly masked training batches to encourage
+                diversity among particles.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
@@ -209,7 +214,8 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
 
         self._num_basins = num_basins
         self._num_particles_per_basin = num_particles_per_basin
-        self._mask_sample_size = mask_sample_size
+        self._mask_sample_ratio = mask_sample_ratio
+        self._masked_train_steps = masked_train_steps
 
     @property
     def num_basins(self):
@@ -267,6 +273,11 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             state=(),
             info=MbeInfo(total_var=total_var, opt_var=opt_var))
 
+    def masked_train_stage(self):
+        masked_train_steps = self._train_step_counter - self._initial_train_steps
+        return masked_train_steps >= 0 and \
+            masked_train_steps < self._masked_train_steps
+
     def gen_input_mask(self, batchsize):
         """generate input mask for all particles. 
 
@@ -276,17 +287,17 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         Returns:
             mask (Tensor): binary mask of shape [batchsize, num_particles]
         """
-        if self._mask_sample_size < batchsize:
-            sample_size = self._mask_sample_size
+        if self._mask_sample_ratio > 0 and self._mask_sample_ratio < 1:
+            mask_size = int((1 - self._mask_sample_ratio) * batchsize)
+            mask = []
+            for i in range(self.num_particles):
+                mask_idx = torch.randperm(batchsize)[:mask_size]
+                vec_mask = torch.ones(batchsize)
+                vec_mask[mask_idx] = 0.
+                mask.append(vec_mask)
+            return torch.stack(mask, dim=1)  # [batchsize, nb*np]
         else:
-            sample_size = batchsize
-        mask = []
-        for i in range(self.num_particles):
-            sampled_idx = torch.randperm(batchsize)[:sample_size]
-            vec_mask = torch.zeros(batchsize)
-            vec_mask[sampled_idx] = 1
-            mask.append(vec_mask)
-        return torch.stack(mask, dim=1)  # [batchsize, nb*np]
+            return None
 
         # for i in range(self.num_particles_per_basin):
         #     sampled_idx = torch.randperm(batchsize)[:sample_size]

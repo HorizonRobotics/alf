@@ -757,7 +757,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             neg_logp *= weights
 
         # add (s, a) mask
-        if self._critic_module.initial_train_stage() and \
+        if self._critic_module.masked_train_stage() and \
             self._critic_train_mask is not None:
             # mask = torch.randint(0, 2, neg_logp.shape)
             # self._critic_train_mask = mask.float()
