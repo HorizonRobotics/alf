@@ -944,3 +944,49 @@ class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
             time_step = time_step._replace(discount=np.float32(0))
         self._prev_lives = lives
         return time_step
+
+
+@alf.configurable
+class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
+    """Adding temporally correlated noise to actions.
+    Reference:
+    ::
+        Swamy et al. Causal Imitation Learning under Temporally Correlated Noise, arXiv:2202.01312
+    """
+
+    def __init__(self, env, sigma=1.0, past_weight=0.5, current_weight=0.1):
+        """Create a Temporally Correlated Noise wrapper, which adds temporally
+        correlated noise to the action before interacting with the environment:
+
+        noisy_action = action + past_weight * past_noise + current_weight * current_noise
+
+        Args:
+            sigma (float): standard deviation of the noise.
+        """
+        super().__init__(env)
+        self._action_spec = env.action_spec()
+        self._past_weight = past_weight
+        self._current_weight = current_weight
+        self._past_noise = None
+        self._sigma = sigma
+
+    def _reset(self):
+        self._past_noise = None
+        return self._env.reset()
+
+    def _step(self, action):
+        if self._past_noise is None:
+            self._past_noise = np.random.randn(*action.shape) * self._sigma
+
+        current_noise = np.random.randn(*action.shape) * self._sigma
+        noisy_action = action + self._past_weight * self._past_noise + self._current_weight * current_noise
+        self._past_noise = current_noise
+
+        noisy_action = np.clip(
+            noisy_action,
+            a_min=self._action_spec.minimum,
+            a_max=self._action_spec.maximum).astype(np.float32)
+
+        time_step = self._env.step(noisy_action)
+
+        return time_step
