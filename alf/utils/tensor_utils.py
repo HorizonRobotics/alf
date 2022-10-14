@@ -416,11 +416,14 @@ def append_coordinate(im: torch.Tensor):
 
     Args:
         im: an image of shape ``[B,C,H,W]``.
+    Returns:
+        torch.Tensor: an output image of shape ``[B,C+2,H,W]`` where the extra 2
+            dimensions are xy meshgrid from -1 to 1.
     """
     assert len(im.shape) == 4, "Image must have a shape of [B,C,H,W]!"
     y = torch.arange(-1., 1., step=2. / im.shape[-2])
     x = torch.arange(-1., 1., step=2. / im.shape[-1])
-    yy, xx = torch.meshgrid(y, x, indexing='ij')
+    yy, xx = torch.meshgrid(y, x)
     # [H,W] -> [B,H,W]
     yy = alf.utils.tensor_utils.tensor_extend_new_dim(yy, dim=0, n=im.shape[0])
     xx = alf.utils.tensor_utils.tensor_extend_new_dim(xx, dim=0, n=im.shape[0])
@@ -433,7 +436,10 @@ def spatial_broadcast(z: torch.Tensor, im_shape: Tuple[int]):
     is assumed to be channel-first.
 
     Args:
-        z: an embedding to be broadcast spatially
+        z: embedding of shape ``[...,D]`` to be broadcast spatially
         im_shape: a tuple of ints where the last two are height and width.
+    Returns:
+        torch.Tensor: a broadcast image of spec ``[...,D,H,W]`` where ``D`` is the
+            input embedding size and ``[H,W]`` are input height and width.
     """
     return z.reshape(z.shape + (1, 1)).expand(*(z.shape + im_shape[-2:]))

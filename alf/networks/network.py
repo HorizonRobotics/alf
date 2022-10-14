@@ -421,7 +421,9 @@ def wrap_as_network(net, input_tensor_spec):
 
 
 class BatchSquashNetwork(Network):
-    """Wrap a network so that it works on multiple batch dims.
+    """Wrap a network so that it works on multiple batch dims. Note that the
+    output spec of this network is the *same* with that of the wrapped network (
+    it won't include batch dims).
 
     Args:
         network: the network to be wrapped

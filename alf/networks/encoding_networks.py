@@ -252,7 +252,7 @@ class ImageDecodingNetworkV2(_Sequential):
                  upsample_conv_layer_params: Tuple[Union[int, Tuple[int]]],
                  start_decoding_size: Union[int, Tuple[int]],
                  start_decoding_channels: int,
-                 preprocess_fc_layer_params=None,
+                 preprocess_fc_layer_params: Tuple[int] = None,
                  upsampling_mode: str = 'nearest',
                  same_padding: bool = False,
                  activation: Callable = torch.relu_,
@@ -291,6 +291,9 @@ class ImageDecodingNetworkV2(_Sequential):
                 project an input latent vector into a vector of an appropriate
                 length so that it can be reshaped into (``start_decoding_channels``,
                 ``start_decoding_height``, ``start_decoding_width``).
+            preprocess_fc_layer_params: if not None, then the input will be fed
+                to a list of fc layers specified by this argument, before doing
+                deconvolution.
             upsampling_mode: the argument for choosing an upsampling algorithm
                 for ``torch.nn.Upsample``.
             same_padding: similar to TF's conv2d ``same`` padding mode. If

@@ -119,6 +119,11 @@ class MoNetUNet(alf.networks.Network):
         Args:
             inputs: the input image of shape ``[B,C,H,W]`` where ``C`` can be
                 any value.
+        Returns:
+            tuple:
+            - output: an output image of the shape ``[B,K,H,W]``, where ``K`` is
+                ``output_channels``. The output image is non-activated.
+            - state: empty
         """
         output = inputs
         outputs = []
@@ -189,18 +194,29 @@ class MoNetAlgorithm(Algorithm):
                 the slots. Depending on the value of ``recurrent_attention``, this unet
                 input and output channels might change. The user doesn't need to specify
                 the input and output specs for this UNet, as it is automatically handled
-                by the algorithm. If ``recurrent_attention==True``, this UNet receives
-                4 channels (RGB+attetion_scope) and outputs 2 channels (current attention
-                logits); otherwise it receives 3 channels (RGB) and outputs ``n_slots``
-                channels (all attention logits).
+                by the algorithm.
+
+                - If ``recurrent_attention==True``, this UNet receives RGB+attention_scope
+                  and outputs attention logits for the current iteration. Input shape:
+                  ``[B,C+1,H,W]``; output shape: ``[B,2,H,W]``.
+                - Otherwise it receives RGB and outputs ``n_slots`` channels
+                  (all attention logits). Input shape: ``[B,C,H,W]``; output shape:
+                  ``[B,n_slots,H,W]``.
+
+                In either case, the UNet's output should be *non-activated*.
             encoder_cls: creates the posterior encoder of MoNet. Note that this encoder
                 operates on each individual slot independently, and thus it's invariant
-                to the slot order. The encoder accepts the image and an attention mask
-                for the slot.
+                to the slot order. For each slot, the encoder accepts a concatenation
+                of the image and an attention mask for the slot, in a shape of
+                ``[B,C+1,H,W]``. The encoder outputs a *non-activated* vector of shape
+                ``[B,2*slot_size]``, representing the mean and log variance of the
+                slot Gaussian posterior.
             decoder_cls: creates the decoder of MoNet. The decoder also operates on
                 each individual slot independently, and it should reconstruct both
-                the image (the part masked by the attention) and the attention mask input to
-                the encoder.
+                the image (the part masked by the attention; 3 channels) and the
+                attention mask input to the encoder (1 channel). The output should
+                be *non-activated*. Input shape: ``[B,slot_size]``; output shape:
+                ``[B,C+1,H,W]``.
             recurrent_attention: if True, recurrently generates attention masks where
                 each iteration conditions on the scope as the remaining attention;
                 otherwise all attention masks are generated once.
@@ -209,6 +225,14 @@ class MoNetAlgorithm(Algorithm):
                 reconstructed masks. A positive value might help make the masks more
                 regular and compact.
         """
+
+        # Notation convention in the code comments:
+        # B - batch size
+        # G - number of slots (n_slots)
+        # D - vector size per slot (slot_size)
+        # C - image channels
+        # H - image height
+        # W - image width
 
         super(MoNetAlgorithm, self).__init__(name=name)
 
@@ -249,8 +273,9 @@ class MoNetAlgorithm(Algorithm):
 
     @staticmethod
     def make_gaussian(z_mean_and_log_var):
-        z_mean = z_mean_and_log_var[..., :z_mean_and_log_var.shape[-1] // 2]
-        z_log_var = z_mean_and_log_var[..., z_mean_and_log_var.shape[-1] // 2:]
+        D = z_mean_and_log_var.shape[-1] // 2
+        z_mean = z_mean_and_log_var[..., :D]
+        z_log_var = z_mean_and_log_var[..., D:]
         # [B,G,D]
         return td.Independent(
             td.Normal(loc=z_mean, scale=z_log_var.exp()),
@@ -296,27 +321,34 @@ class MoNetAlgorithm(Algorithm):
         # z - [B,G,D]
         # [B,G,C+1,H,W]
         decoded = self._decoder(z)[0]
-        # First 3 channels are RGB; last is the predicted mask (Alpha)
+        # First 3 channels are RGB; last is the predicted log mask (Alpha)
         return decoded[:, :, :-1, ...], decoded[:, :, -1:, ...]
 
     def _rec_loss_step(self, inputs, rec, mask, mask_rec):
+        # inputs: [B,C,H,W]
+        # rec: [B,G,C,H,W]
+        # mask: [B,G,1,H,W]
+        # mask_rec: [B,G,1,H,W]
         def _reduce_loss(l):
-            return l.mean(list(range(1, l.ndim)))
+            return l.sum(list(range(1, l.ndim)))
 
-        rec_log_prob = 0.5 * (
-            self._inv_var.log() - np.log(np.pi * 2) -
-            self._inv_var * alf.math.square(rec - inputs.unsqueeze(1)))
-        rec_loss = _reduce_loss(-torch.logsumexp(rec_log_prob + mask, dim=1))
+        def _compute_rec_loss(rec, target):
+            rec_log_prob = (self._inv_var.log() -
+                            self._inv_var * alf.math.square(rec - target))
+            return _reduce_loss(-torch.logsumexp(rec_log_prob + mask, dim=1))
+
+        rec_loss = _compute_rec_loss(rec, inputs.unsqueeze(1))
+        with torch.no_grad():
+            # Compute a lower bound loss to have a more interpretable
+            # loss curve (removing constant offset). This won't affect training.
+            lower_bound_loss = _compute_rec_loss(rec, rec)
+        rec_loss = rec_loss - lower_bound_loss
 
         mask_rec = torch.nn.functional.log_softmax(mask_rec, dim=1)
         mask_rec_loss = _reduce_loss(
-            torch.sum(
-                torch.nn.functional.kl_div(
-                    input=mask_rec,
-                    target=mask,
-                    reduction='none',
-                    log_target=True),
-                dim=1))
+            torch.nn.functional.kl_div(
+                input=mask_rec, target=mask, reduction='none',
+                log_target=True).sum(dim=1))
         return rec_loss, mask_rec_loss  # [B]
 
     def train_step(self, inputs: torch.Tensor, state=()):
@@ -331,7 +363,7 @@ class MoNetAlgorithm(Algorithm):
             - state: empty
             - info (MoNetInfo):
                 - loss: the overall loss
-                - kld: kl divergence between posterior and prior (before ``bete``)
+                - kld: kl divergence between posterior and prior (before ``beta``)
                 - rec_loss: image reconstruction loss
                 - mask_rec_loss: mask reconstruction loss (before ``gamma``)
                 - full_rec: the fully reconstructed image from all slots (shape
