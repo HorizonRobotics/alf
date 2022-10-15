@@ -28,6 +28,22 @@ from alf.utils import tensor_utils
 class MoNetUNet(alf.networks.Network):
     """Implement the UNet architecture used by MoNet. See Appendix B.2 of the
     MoNet paper `<https://arxiv.org/abs/1901.11390>`_ for details.
+
+    The architecture is slightly different from the one in the paper, where for
+    the downsampling path, we don't downsample for the first block but always
+    downsample for the other blocks. For an illustration,
+
+    ::
+
+                         (img) 16       16 (output)
+                    (3x3 conv) |  skip  | (3x3 conv + 1x1 conv)
+                               16 ----> 16
+        (3x3 conv + maxpool 2) |  skip  | (3x3 conv + upsample 2)
+                               8 -----> 8
+        (3x3 conv + maxpool 2) |  skip  | (3x3 conv + upsample 2)
+                               4 -----> 4
+                                \      /
+                                  MLP
     """
 
     def __init__(self,
