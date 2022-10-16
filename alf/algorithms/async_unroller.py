@@ -99,6 +99,7 @@ class AsyncUnroller(object):
         Returns:
             A list of ``UnrollResult``
         """
+        assert self._worker.is_alive()
         unroll_results = []
         if unroll_length > 0:
             for i in range(unroll_length):
