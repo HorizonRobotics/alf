@@ -1158,6 +1158,60 @@ def get_mode(dist):
     return mode
 
 
+def get_rmode(dist):
+    """Get the mode of the distribution that support backpropogation.
+    Note that if ``dist`` is a transformed
+    distribution, the result may not be the actual mode of ``dist``.
+
+    Args:
+        dist (td.Distribution):
+    Returns:
+        The mode of the distribution. If ``dist`` is a transformed distribution,
+        the result is calculated by transforming the mode of its base
+        distribution and may not be the actual mode for ``dist``.
+    Raises:
+        NotImplementedError: if dist or its base distribution is not
+            ``td.Categorical``, ``td.Normal``, ``td.Independent`` or
+            ``td.TransformedDistribution``.
+    """
+    if isinstance(dist, td.categorical.Categorical):
+        mode = torch.argmax(dist.logits, -1)
+    elif isinstance(
+            dist,
+        (OneHotCategoricalStraightThrough, OneHotCategoricalGumbelSoftmax)):
+        # Our version of one-hot st supports mode with grad
+        mode = dist.mode
+    elif isinstance(
+            dist, (td.OneHotCategorical, td.OneHotCategoricalStraightThrough)):
+        mode = torch.nn.functional.one_hot(
+            torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
+    elif isinstance(dist, td.normal.Normal):
+        mode = dist.mean
+    elif isinstance(dist, StableCauchy):
+        mode = dist.loc
+    elif isinstance(dist, td.Independent):
+        mode = get_rmode(dist.base_dist)
+    elif isinstance(dist, td.TransformedDistribution):
+        base_mode = get_rmode(dist.base_dist)
+        mode = base_mode
+        for transform in dist.transforms:
+            mode = transform(mode)
+    elif isinstance(dist, Beta):
+        alpha = dist.concentration1
+        beta = dist.concentration0
+        mode = torch.where((alpha > 1) & (beta > 1),
+                           (alpha - 1) / (alpha + beta - 2),
+                           torch.where(alpha < beta, torch.zeros(()),
+                                       torch.ones(())))
+    elif isinstance(dist, TruncatedDistribution):
+        return dist.mode
+    else:
+        raise NotImplementedError(
+            "Distribution type %s is not supported" % type(dist))
+
+    return mode
+
+
 def get_base_dist(dist):
     """Get the base distribution.
 
