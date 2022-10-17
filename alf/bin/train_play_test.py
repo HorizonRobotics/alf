@@ -516,6 +516,11 @@ class TrainPlayTest(alf.test.TestCase):
             test_play=False,  # render mode 'human' is not implemented
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_monet_bouncing_squares(self):
+        self._test(
+            conf_file='monet_bouncing_squares_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_muzero_tic_tac_toe(self):
         self._test(
             conf_file='muzero_tic_tac_toe.gin',

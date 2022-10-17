@@ -20,7 +20,8 @@ from .dynamics_networks import *
 from .encoding_networks import *
 from .mdq_critic_networks import *
 from .memory import *
-from .network import Network, NaiveParallelNetwork, wrap_as_network, NetworkWrapper
+from .network import (Network, NaiveParallelNetwork, wrap_as_network,
+                      NetworkWrapper, BatchSquashNetwork)
 from .networks import *
 from .normalizing_flow_networks import RealNVPNetwork
 from .ou_process import OUProcess

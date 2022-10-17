@@ -13,6 +13,8 @@
 # limitations under the License.
 """Collection of tensor utility functions."""
 
+from typing import Tuple
+
 import numpy as np
 import torch
 
@@ -406,3 +408,38 @@ class BatchSquash(object):
         return torch.reshape(
             tensor, (tuple(self._original_tensor_shape[:self._batch_dims]) +
                      tuple(tensor.shape[1:])))
+
+
+def append_coordinate(im: torch.Tensor):
+    """For the image, we append coordinates as two channels. The image is assumed
+    to be channel-first. The coordinates will range from -1 to 1 evenly.
+
+    Args:
+        im: an image of shape ``[B,C,H,W]``.
+    Returns:
+        torch.Tensor: an output image of shape ``[B,C+2,H,W]`` where the extra 2
+            dimensions are xy meshgrid from -1 to 1.
+    """
+    assert len(im.shape) == 4, "Image must have a shape of [B,C,H,W]!"
+    y = torch.arange(-1., 1., step=2. / im.shape[-2])
+    x = torch.arange(-1., 1., step=2. / im.shape[-1])
+    yy, xx = torch.meshgrid(y, x)
+    # [H,W] -> [B,H,W]
+    yy = alf.utils.tensor_utils.tensor_extend_new_dim(yy, dim=0, n=im.shape[0])
+    xx = alf.utils.tensor_utils.tensor_extend_new_dim(xx, dim=0, n=im.shape[0])
+    # [B,C+2,H,W]
+    return torch.cat([im, yy.unsqueeze(1), xx.unsqueeze(1)], dim=1)
+
+
+def spatial_broadcast(z: torch.Tensor, im_shape: Tuple[int]):
+    """Broadcasting an embedding across the image spatial domain. The image shape
+    is assumed to be channel-first.
+
+    Args:
+        z: embedding of shape ``[...,D]`` to be broadcast spatially
+        im_shape: a tuple of ints where the last two are height and width.
+    Returns:
+        torch.Tensor: a broadcast image of spec ``[...,D,H,W]`` where ``D`` is the
+            input embedding size and ``[H,W]`` are input height and width.
+    """
+    return z.reshape(z.shape + (1, 1)).expand(*(z.shape + im_shape[-2:]))

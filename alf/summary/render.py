@@ -693,6 +693,7 @@ def render_text(name: str,
                 fig_height: float = 0.4,
                 img_height: int = None,
                 img_width: int = None,
+                dpi=200,
                 **kwargs):
     """Render a text string.
 
