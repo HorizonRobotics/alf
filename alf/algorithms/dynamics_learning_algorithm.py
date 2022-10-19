@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections import namedtuple
+from typing import Callable, Optional, Any
 import torch
 
 import alf
@@ -173,7 +174,8 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
                  feature_spec,
                  hidden_size=256,
                  num_replicas=1,
-                 dynamics_network: DynamicsNetwork = None,
+                 dynamics_network_ctor: Optional[
+                     Callable[[Any, Any], DynamicsNetwork]] = None,
                  name="DeterministicDynamicsAlgorithm"):
         """Create a DeterministicDynamicsAlgorithm.
 
@@ -181,14 +183,21 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
             hidden_size (int|tuple): size of hidden layer(s)
             num_replicas (int): number of network replicas to be used
                 in the ensemble for dynamics learning
-            dynamics_network (Network): network for predicting the change of
+            dynamics_network_ctor: Used to construct a network for predicting the change of
                 the next feature based on the previous feature and action.
                 It should accept input with spec of the format
                 [feature_spec, encoded_action_spec] and output a tensor of the
                 shape feature_spec. For discrete action case, encoded_action
                 is a one-hot representation of the action. For continuous
                 action, encoded action is the original action.
+
         """
+        dynamics_network = None
+        if dynamics_network_ctor is not None:
+            dynamics_network = dynamics_network_ctor(
+                input_tensor_spec=(feature_spec, action_spec),
+                output_tensor_spec=feature_spec)
+
         if dynamics_network is not None:
             dynamics_network_state_spec = dynamics_network.state_spec
 
@@ -367,7 +376,8 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
                  feature_spec,
                  hidden_size=256,
                  num_replicas=1,
-                 dynamics_network: DynamicsNetwork = None,
+                 dynamics_network_ctor: Optional[
+                     Callable[[Any, Any], DynamicsNetwork]] = None,
                  name="StochasticDynamicsAlgorithm"):
         """Create a StochasticDynamicsAlgorithm.
 
@@ -375,21 +385,20 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
             hidden_size (int|tuple): size of hidden layer(s)
             num_replicas (int): number of network replicas to be used
                 in the ensemble for dynamics learning
-            dynamics_network (Network): network for predicting next feature
-                based on the previous feature and action. It should accept
-                input with spec [feature_spec, encoded_action_spec] and output
-                a tensor of shape feature_spec. For discrete action,
-                encoded_action is an one-hot representation of the action.
-                For continuous action, encoded action is the original action.
+            dynamics_network_ctor: used to construct network for predicting next
+                feature based on the previous feature and action. It should
+                accept input with spec [feature_spec, encoded_action_spec] and
+                output a tensor of shape feature_spec. For discrete action,
+                encoded_action is an one-hot representation of the action. For
+                continuous action, encoded action is the original action.
         """
-
-        assert dynamics_network._prob, "should use probabilistic network"
         super().__init__(
             action_spec=action_spec,
             feature_spec=feature_spec,
             hidden_size=hidden_size,
             num_replicas=num_replicas,
-            dynamics_network=dynamics_network)
+            dynamics_network_ctor=dynamics_network_ctor)
+        assert self._dynamics_network._prob, "should use probabilistic network"
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
         """Predict the next observation given the current time_step.

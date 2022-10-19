@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 
 import torch
 
@@ -147,7 +148,7 @@ class AdamW(Optimizer):
                 # record the step after step update
                 state_steps.append(state['step'])
 
-            torch.optim._functional.adamw(
+            _adamw(
                 params_with_grad,
                 grads,
                 exp_avgs,
@@ -162,3 +163,17 @@ class AdamW(Optimizer):
                 eps=group['eps'])
 
         return loss
+
+
+# NOTE(breakds): This is to make the torch.optim._functional.adamw() call
+# compatible with both pytorch 1.9- and 1.10+. In 1.10 new required parameters
+# are introduced in this function, and the following wrapper supplies the
+# default value for such parameters.
+if "maximize" in inspect.signature(torch.optim._functional.adamw).parameters:
+
+    def _adamw(*args, **kwargs):
+        return torch.optim._functional.adamw(*args, **kwargs, maximize=False)
+else:
+
+    def _adamw(*args, **kwargs):
+        return torch.optim._functional.adamw(*args, **kwargs)

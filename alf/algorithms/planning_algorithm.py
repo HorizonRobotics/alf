@@ -296,6 +296,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
+            population_size=population_size,
             reward_spec=reward_spec,
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
@@ -320,7 +321,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         else:
             self._scalar_var = scalar_var
 
-    def predict_plan(self, time_step: TimeStep, state: PlannerState):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epislon_greedy):
         prev_plan = state.prev_plan
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
