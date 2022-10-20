@@ -954,23 +954,20 @@ class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
         Swamy et al. Causal Imitation Learning under Temporally Correlated Noise, arXiv:2202.01312
     """
 
-    def __init__(self, env, sigma=1.0, past_weight=0.5, current_weight=None):
+    def __init__(self, env, sigma=0.5, past_noise_weight=1.0):
         """Create a Temporally Correlated Noise wrapper, which adds temporally
         correlated noise to the action before interacting with the environment:
 
-        noisy_action = action + past_weight * past_noise + current_weight * current_noise
+        noisy_action = action + past_noise_weight * past_noise + current_noise
 
         Args:
             sigma (float): standard deviation of the noise.
-            past_weight (float): the weight for the noise from the past.
-            current_weight (float|None): the weight for the noise newly sampled
-                for the current step. If None, its value will be set as 1-past_weight.
+            past_noise_weight (float): the weight for the noise from the past
+                when adding into the action for the current time step.
         """
         super().__init__(env)
         self._action_spec = env.action_spec()
-        self._past_weight = max(past_weight, 0)
-        self._current_weight = (current_weight if current_weight is not None
-                                else 1 - self._past_weight)
+        self._past_noise_weight = max(past_noise_weight, 0)
         self._past_noise = None
         self._sigma = sigma
 
@@ -983,7 +980,7 @@ class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
             self._past_noise = np.random.randn(*action.shape) * self._sigma
 
         current_noise = np.random.randn(*action.shape) * self._sigma
-        noisy_action = action + self._past_weight * self._past_noise + self._current_weight * current_noise
+        noisy_action = action + self._past_noise_weight * self._past_noise + current_noise
         self._past_noise = current_noise
 
         noisy_action = np.clip(
