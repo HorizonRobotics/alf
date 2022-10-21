@@ -128,6 +128,7 @@ function test() {
         alf.utils.dist_utils_test \
         alf.utils.distributions_test \
         alf.utils.lean_function_test \
+        alf.utils.losses_test \
         alf.utils.math_ops_test \
         alf.utils.normalizers_test \
         alf.utils.schedulers_test \

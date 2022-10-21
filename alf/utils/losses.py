@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from typing import Optional, Tuple
 
 import alf
-from alf.utils.math_ops import InvertibleTransform
+from alf.utils.math_ops import InvertibleTransform, binary_neg_entropy
 from alf.utils import summary_utils
 
 
@@ -258,6 +258,9 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
             low = self._transform.inverse_transform(low)
             high = self._transform.inverse_transform(high)
             w2 = (original_target - low) / (high - low)
+        # Due to limited numerical precision, w2 may be slightly out of the range
+        # of [0, 1]. So we clamp it to the right range.
+        w2 = w2.clamp(0, 1)
         return bin1, bin2, w2
 
 
@@ -305,7 +308,8 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
         nlp = -F.log_softmax(logits, dim=-1)
         B = _get_indexer(logits.shape[:-1])
         loss = w1 * nlp[B + (bin1, )] + w2 * nlp[B + (bin2, )]
-        return loss
+        neg_entropy = w1.xlogy(w1) + w2.xlogy(w2)
+        return (loss + neg_entropy).relu()
 
     def calc_expectation(self, logits):
         """Calculate the expected predition in the untransfomred domain from ``pred``.
@@ -388,9 +392,10 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         B = _get_indexer(target.shape)
         w[B + (bin2, )] = w2
         w[B + (bin1, )] = 1
-        loss = F.binary_cross_entropy_with_logits(
-            logits, w, reduction='none').sum(dim=-1)
-        return loss
+        cross_entropy = F.binary_cross_entropy_with_logits(
+            logits, w, reduction='none')
+        kld = cross_entropy + binary_neg_entropy(w)
+        return kld.relu().sum(dim=-1)
 
     def calc_expectation(self, logits: torch.Tensor):
         """Calculate the expected predition in the untransfomred domain from ``pred``.
@@ -652,11 +657,13 @@ class MeanSquaredLoss(object):
                  batch_dims: int = 1,
                  debug_summaries: bool = True,
                  name: str = "MSELoss"):
+        super().__init__()
         self._debug_summaries = debug_summaries
         self._name = name
         self._batch_dims = batch_dims
 
-    def __call__(self, pred: Tensor, target: Tensor) -> Tensor:
+    @alf.summary.enter_summary_scope
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Calculate the loss.
 
         Args:
@@ -667,9 +674,8 @@ class MeanSquaredLoss(object):
         """
         assert pred.shape == target.shape
         if self._debug_summaries and alf.summary.should_record_summaries():
-            with alf.summary.scope(self._name):
-                pred = summary_utils.summarize_tensor_gradients(
-                    "pred_grad", pred, clone=True)
+            pred = summary_utils.summarize_tensor_gradients(
+                "pred_grad", pred, clone=True)
         ndim = pred.ndim
         assert ndim >= self._batch_dims
         loss = (pred - target)**2
