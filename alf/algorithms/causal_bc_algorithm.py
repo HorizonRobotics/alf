@@ -35,8 +35,8 @@ BcLossInfo = namedtuple(
 @alf.configurable
 class CausalBcAlgorithm(OffPolicyAlgorithm):
     r"""Causal behavior cloning algorithm.
-
-    Reference:
+    This is the implementation of ResiduIL algorithm proposed in the following
+    paper:
     ::
         Swamy et al. Causal Imitation Learning under Temporally Correlated Noise,
         ICML 2022
