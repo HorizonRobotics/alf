@@ -210,12 +210,12 @@ class BayesOacAlgorithm(AbcAlgorithm):
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
         q_mean = critics.mean(1)
-        if hasattr(info, "total_var"):
+        if hasattr(info, "total_var") and not isinstance(info.total_var, tuple):
             q_total_var = info.total_var
         else:
             q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
         q_total_std = torch.sqrt(q_total_var)
-        if hasattr(info, "opt_var"):
+        if hasattr(info, "opt_var") and not isinstance(info.opt_var, tuple):
             q_opt_var = info.opt_var  # [bs, d_out] or [bs]
             q_epi_var = q_total_var - q_opt_var
             q_epi_std = torch.sqrt(q_epi_var)

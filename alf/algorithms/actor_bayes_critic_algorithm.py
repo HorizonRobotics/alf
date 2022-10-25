@@ -383,18 +383,18 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             q_value (Tensor): the q_value for actor training.
         """
         q_mean = critics.mean(1)
-        if hasattr(info, "total_var"):
+        if hasattr(info, "total_var") and not isinstance(info.total_var, tuple):
             q_total_var = info.total_var
         else:
             q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
         q_total_std = torch.sqrt(q_total_var)
-        if hasattr(info, "opt_var"):
+        q_epi_std = q_total_std
+        q_opt_var = None
+        if hasattr(info, "opt_var") and not isinstance(info.opt_var, tuple):
             q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-            q_epi_var = q_total_var - q_opt_var
-            q_epi_std = torch.sqrt(q_epi_var)
-        else:
-            q_opt_var = None
-            q_epi_std = q_total_std
+            if not self._critic_module.masked_train_stage():
+                q_epi_var = q_total_var - q_opt_var
+                q_epi_std = torch.sqrt(q_epi_var)
 
         if explore:
             q_value = q_mean + self._beta_ub * q_epi_std
@@ -589,6 +589,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             inputs=None, loss_func=functools.partial(self._neglogprob, info))
         critic_loss, _ = self._critic_module.update_with_gradient(
             critic_step.info)
+        self._critic_module.increment_train_step_counter()
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):

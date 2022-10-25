@@ -90,6 +90,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                  optimizer=None,
                  initial_train_steps=1000,
                  masked_train_steps=1000,
+                 unbiased_total_var=True,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -216,6 +217,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         self._num_particles_per_basin = num_particles_per_basin
         self._mask_sample_ratio = mask_sample_ratio
         self._masked_train_steps = masked_train_steps
+        self._unbiased_total_var = unbiased_total_var
 
     @property
     def num_basins(self):
@@ -225,16 +227,16 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
     def num_particles_per_basin(self):
         return self._num_particles_per_basin
 
-    def get_particles(self):
-        if self.num_particles_per_basin > 1:
-            particles = self.particles.reshape(
-                self.num_basins, self.num_particles_per_basin, -1)
-            particles = torch.repeat_interleave(
-                particles.mean(dim=1), self.num_particles_per_basin, dim=0)
-        else:
-            particles = self.particles
-
-        return particles
+    # def get_particles(self):
+    #     if self.num_particles_per_basin > 1:
+    #         particles = self.particles.reshape(
+    #             self.num_basins, self.num_particles_per_basin, -1)
+    #         particles = torch.repeat_interleave(
+    #             particles.mean(dim=1), self.num_particles_per_basin, dim=0)
+    #     else:
+    #         particles = self.particles
+    #
+    #     return particles
 
     def predict_step(self, inputs, training=False, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
@@ -257,21 +259,26 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             outputs_mean = outputs.mean
         else:
             outputs_mean = outputs
-        total_var = outputs_mean.var(1, unbiased=False)  # [bs, d_out] or [bs]
-        outputs_mean = outputs_mean.reshape(
-            outputs_mean.shape[0], self.num_basins,
-            self.num_particles_per_basin,
-            *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
-        basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
-        sse = (outputs_mean - basin_means.unsqueeze(2))**2
         # [bs, d_out] or [bs]
-        opt_var = sse.sum(dim=(1,2)) / \
-            (self.num_basins * self.num_particles_per_basin - 1)
+        total_var = outputs_mean.var(1, unbiased=self._unbiased_total_var)
+        info = MbeInfo(total_var=total_var)
+
+        if self.num_particles_per_basin > 1:
+            outputs_mean = outputs_mean.reshape(
+                outputs_mean.shape[0], self.num_basins,
+                self.num_particles_per_basin,
+                *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
+            basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
+            sse = (outputs_mean - basin_means.unsqueeze(2))**2
+            # [bs, d_out] or [bs]
+            opt_var = sse.sum(dim=(1,2)) / \
+                (self.num_basins * self.num_particles_per_basin - 1)
+            info = info._replace(opt_var=opt_var) 
 
         return AlgStep(
             output=outputs,
             state=(),
-            info=MbeInfo(total_var=total_var, opt_var=opt_var))
+            info=info)
 
     def masked_train_stage(self):
         masked_train_steps = self._train_step_counter - self._initial_train_steps
@@ -288,7 +295,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             mask (Tensor): binary mask of shape [batchsize, num_particles]
         """
         if self._mask_sample_ratio > 0 and self._mask_sample_ratio < 1:
-            mask_size = int((1 - self._mask_sample_ratio) * batchsize)
+            mask_size = int(self._mask_sample_ratio * batchsize)
             mask = []
             for i in range(self.num_particles):
                 mask_idx = torch.randperm(batchsize)[:mask_size]

@@ -24,7 +24,7 @@ from alf.networks import ActorNetwork
 from alf.optimizers import AdamTF
 
 # experiment settings
-use_multibootstrap = False
+use_multibootstrap = True
 deterministic_actor = False
 deterministic_critic = False
 
@@ -37,25 +37,28 @@ else:
 alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=locomotion_conf.hidden_layers,
-    state_dependent_std=True)
+    state_dependent_std=False)
 
 if use_multibootstrap:
     critic_module_cls = MultiBootstrapEnsemble
     alf.config(
         'MultiBootstrapEnsemble',
         num_basins=5,  # grid search
-        num_particles_per_basin=4,  # grid search
+        num_particles_per_basin=2,  # grid search
         mask_sample_ratio=0.5,
-        initial_train_steps=100)
+        unbiased_total_var=True,
+        initial_train_steps=1000,
+        masked_train_steps=1000)
     batch_size = 256
 else:
     critic_module_cls = MultiSwagAlgorithm
     alf.config(
         'MultiSwagAlgorithm',
         num_particles=10,
-        num_samples_per_model=1,
+        num_samples_per_model=5,
         subspace_max_rank=20,
-        subspace_after_update_steps=10000)
+        subspace_after_update_steps=10000,
+        debug_summaries=True)
     batch_size = 256
 
 alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
@@ -66,7 +69,7 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_module_cls=critic_module_cls,
     beta_ub=4.66,
-    beta_lb=1.,
+    beta_lb=.5,
     explore_delta=6.86,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
@@ -76,7 +79,7 @@ alf.config(
     use_q_mean_train_actor=True,
     use_entropy_reward=False,
     use_epistemic_alpha=False,
-    use_basin_mean_for_target_critic=False,
+    use_basin_mean_for_target_critic=True,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
@@ -90,4 +93,6 @@ alf.config(
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
     summarize_gradient_noise_scale=True,
-    summarize_action_distributions=True)
+    summarize_action_distributions=True,
+    # version="multibootstrap_npp-2",
+    random_seed=0)

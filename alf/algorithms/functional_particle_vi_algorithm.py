@@ -176,7 +176,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
-                types are [``svgd``, ``gfsf``, ``minmax``]
+                types are [``svgd``, ``gfsf``, ``minmax``, ``None``]
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
                   the same batch of particles.
@@ -296,6 +296,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     def reset_param_net(self, params):
         self._param_net.set_parameters(params)
 
+    def increment_train_step_counter(self):
+        self._train_step_counter += 1
+
     def set_data_loader(self,
                         train_loader,
                         test_loader=None,
@@ -366,6 +369,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 target = target.to(alf.get_default_device())
                 alg_step = self.train_step((data, target), state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
+                self.increment_train_step_counter()
                 loss += loss_info.extra.loss
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.extra)
@@ -405,7 +409,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             - state: not used
             - info (LossInfo): loss
         """
-        self._train_step_counter += 1
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
@@ -435,6 +438,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
     def initial_train_stage(self):
         return self._train_step_counter < self._initial_train_steps
+
+    def masked_train_stage(self):
+        return False
 
     def _function_transform(self, data, params):
         """

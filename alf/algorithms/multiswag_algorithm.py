@@ -32,7 +32,7 @@ from alf.networks import Network, EncodingNetwork, ParamNetwork
 from alf.tensor_specs import TensorSpec
 from alf.nest.utils import get_outer_rank
 from alf.utils import common, math_ops, summary_utils
-from alf.utils.summary_utils import record_time
+from alf.utils.summary_utils import record_time, safe_mean_hist_summary
 from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
@@ -253,6 +253,10 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
         cur_weights = self.particles.detach()
         for i in range(self.num_models):
             self._subspaces[i].update(cur_weights[i])
+            if self._debug_summaries and alf.summary.should_record_summaries():
+                with alf.summary.scope(self._name):
+                    safe_mean_hist_summary('subspace_var/' + str(i), 
+                                           self._subspaces[i].variance)
 
     def update_with_gradient(self,
                              loss_info,
