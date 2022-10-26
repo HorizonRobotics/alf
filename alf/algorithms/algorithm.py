@@ -1179,6 +1179,13 @@ class Algorithm(AlgorithmInterface):
         if self._grad_scaler is not None:
             self._grad_scaler.update()
 
+        unused_parameters = []
+        for p in all_params:
+            if p.grad is None:
+                unused_parameters.append(self._param_to_name[p])
+        common.warning_once("Find unused parameters, please double check: %s",
+                            unused_parameters)
+
         all_params = [(self._param_to_name[p], p) for p in all_params]
         return all_params, simple_gns
 
