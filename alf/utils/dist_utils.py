@@ -457,6 +457,16 @@ class Beta(td.Beta):
     def concentration1(self):
         return self._concentration1
 
+    @property
+    def mode(self):
+        alpha = self.concentration1
+        beta = self.concentration0
+        mode = torch.where((alpha > 1) & (beta > 1),
+                           (alpha - 1) / (alpha + beta - 2),
+                           torch.where(alpha < beta, torch.zeros(()),
+                                       torch.ones(())))
+        return mode
+
     def rsample(self, sample_shape=()):
         """We override the original ``rsample()`` in order to clamp the output
         to avoid `NaN` and `Inf` values in the gradients. See Pyro's
@@ -1142,14 +1152,7 @@ def get_mode(dist):
             mode = base_mode
             for transform in dist.transforms:
                 mode = transform(mode)
-    elif isinstance(dist, Beta):
-        alpha = dist.concentration1
-        beta = dist.concentration0
-        mode = torch.where((alpha > 1) & (beta > 1),
-                           (alpha - 1) / (alpha + beta - 2),
-                           torch.where(alpha < beta, torch.zeros(()),
-                                       torch.ones(())))
-    elif isinstance(dist, TruncatedDistribution):
+    elif isinstance(dist, Beta) or isinstance(dist, TruncatedDistribution):
         return dist.mode
     else:
         raise NotImplementedError(
@@ -1171,24 +1174,15 @@ def get_rmode(dist):
         distribution and may not be the actual mode for ``dist``.
     Raises:
         NotImplementedError: if dist or its base distribution is not
-            ``td.Categorical``, ``td.Normal``, ``td.Independent`` or
-            ``td.TransformedDistribution``.
+            ``td.Normal``, ``StableCauchy``, ``Beta``, ``TruncatedDistribution``,
+            ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if isinstance(dist, td.categorical.Categorical):
-        mode = torch.argmax(dist.logits, -1)
-    elif isinstance(
-            dist,
-        (OneHotCategoricalStraightThrough, OneHotCategoricalGumbelSoftmax)):
-        # Our version of one-hot st supports mode with grad
-        mode = dist.mode
-    elif isinstance(
-            dist, (td.OneHotCategorical, td.OneHotCategoricalStraightThrough)):
-        mode = torch.nn.functional.one_hot(
-            torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
-    elif isinstance(dist, td.normal.Normal):
+    if isinstance(dist, td.normal.Normal):
         mode = dist.mean
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
+    elif isinstance(dist, Beta) or isinstance(dist, TruncatedDistribution):
+        return dist.mode
     elif isinstance(dist, td.Independent):
         mode = get_rmode(dist.base_dist)
     elif isinstance(dist, td.TransformedDistribution):
@@ -1196,15 +1190,6 @@ def get_rmode(dist):
         mode = base_mode
         for transform in dist.transforms:
             mode = transform(mode)
-    elif isinstance(dist, Beta):
-        alpha = dist.concentration1
-        beta = dist.concentration0
-        mode = torch.where((alpha > 1) & (beta > 1),
-                           (alpha - 1) / (alpha + beta - 2),
-                           torch.where(alpha < beta, torch.zeros(()),
-                                       torch.ones(())))
-    elif isinstance(dist, TruncatedDistribution):
-        return dist.mode
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))

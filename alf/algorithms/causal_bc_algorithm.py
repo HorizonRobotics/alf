@@ -71,6 +71,10 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
             actor_network_cls (Callable): is used to construct the actor network.
                 The constructed actor network is a determinstic network and
                 will be used to generate continuous actions.
+            discriminator_network_cls (Callable): is used to construct the
+                discriminator network. The discrimonator is trained in a way
+                that is adversarial to the training of the policy, ot help with
+                the learning of a robust policy.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             discriminator_optimizer (torch.optim.optimizer): the optimizer for
                 discriminator.
@@ -150,15 +154,21 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
     def residuIL_loss(self, targets, predictions, pred_residuals):
 
         # train policy (detach discriminator)
-        policy_loss = (2 * (targets - predictions) * pred_residuals.detach()
-                       ).mean(-1) + self._bc_regulatization_weight * (
-                           torch.square(targets - predictions)).mean(-1)
+        target_prediction_differences = targets - predictions
+
+        # bc_regularization is optionally used according to Appendix of the
+        # paper (Tabel 4 and 5)
+        policy_loss = (
+            2 * (target_prediction_differences) * pred_residuals.detach()
+        ).mean(-1) + self._bc_regulatization_weight * (
+            torch.square(target_prediction_differences)).mean(-1)
 
         # train discriminator (detach policy)
         discriminator_loss = -(
-            2 * (targets - predictions).detach() * pred_residuals -
+            2 * (target_prediction_differences).detach() * pred_residuals -
             pred_residuals * pred_residuals).mean(-1)
 
+        # f_norm_penalty is used according to Appendix of the paper (Tabel 4 and 5)
         discriminator_loss = (
             discriminator_loss +
             self._f_norm_penalty_weight * torch.linalg.norm(pred_residuals))
@@ -186,7 +196,7 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss_offline(self, info, pre_train=False):
 
-        #[T, B, 1]
+        #[T, B, action_dim]
         predictions = info.actor
         pred_residuals = info.discriminator
         targets = info.target
