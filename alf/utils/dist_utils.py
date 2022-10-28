@@ -1152,7 +1152,7 @@ def get_mode(dist):
             mode = base_mode
             for transform in dist.transforms:
                 mode = transform(mode)
-    elif isinstance(dist, Beta) or isinstance(dist, TruncatedDistribution):
+    elif isinstance(dist, (Beta, TruncatedDistribution)):
         return dist.mode
     else:
         raise NotImplementedError(

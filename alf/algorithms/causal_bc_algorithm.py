@@ -67,14 +67,16 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
                 a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
             reward_spec (Callable): a rank-1 or rank-0 tensor spec representing
                 the reward(s). For interface compatiblity purpose. Not actually
-                used in BcAlgorithm.
+                used in CausalBcAlgorithm.
             actor_network_cls (Callable): is used to construct the actor network.
                 The constructed actor network is a determinstic network and
                 will be used to generate continuous actions.
             discriminator_network_cls (Callable): is used to construct the
                 discriminator network. The discrimonator is trained in a way
-                that is adversarial to the training of the policy, ot help with
-                the learning of a robust policy.
+                that is adversarial to the training of the policy, to help with
+                the learning of a robust policy. It takes the observation from
+                the previous time step to generate the lagrange multiplier
+                for the current step.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             discriminator_optimizer (torch.optim.optimizer): the optimizer for
                 discriminator.
