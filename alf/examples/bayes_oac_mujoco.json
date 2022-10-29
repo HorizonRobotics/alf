@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap-test-Newton",
+    "version": "mujoco_multibootstrap_upd-ctw_0.2-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -26,6 +26,7 @@
         "BayesOacAlgorithm.use_q_mean_train_actor": "[True]",
         "BayesOacAlgorithm.use_basin_mean_for_target_critic": "[True]",
         "BayesOacAlgorithm.target_update_tau": "[0.005]",
+        "BayesOacAlgorithm.critic_training_weight": "[0.2]",
         "BayesOacAlgorithm.use_epistemic_alpha": "[False]",
         "TrainerConfig.random_seed": "list(range(4))"
     }

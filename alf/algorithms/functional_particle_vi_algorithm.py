@@ -87,7 +87,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  last_activation=math_ops.identity,
                  last_use_bias=True,
                  last_use_ln=False,
-                 particles = None,
+                 particles=None,
                  num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
@@ -442,6 +442,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
     def masked_train_stage(self):
         return False
 
+    def warmup_train_stage(self):
+        return self.initial_train_stage()
+
     def _function_transform(self, data, params):
         """
         Transform the particles to its corresponding function values
@@ -626,8 +629,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             mean_probs_outlier).entropy()
 
         variance = F.softmax(outputs, -1).var(0, unbiased=False).sum(-1)
-        variance_outlier = F.softmax(
-            outputs_outlier, -1).var(0, unbiased=False).sum(-1)
+        variance_outlier = F.softmax(outputs_outlier, -1).var(
+            0, unbiased=False).sum(-1)
 
         auroc_entropy = auc_score(entropy, entropy_outlier)
         auroc_variance = auc_score(variance, variance_outlier)

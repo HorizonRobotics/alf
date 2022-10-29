@@ -238,6 +238,10 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
     #
     #     return particles
 
+    @property
+    def warmup_train_steps(self):
+        return self._initial_train_steps + self._masked_train_steps
+
     def predict_step(self, inputs, training=False, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
@@ -263,7 +267,8 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         total_var = outputs_mean.var(1, unbiased=self._unbiased_total_var)
         info = MbeInfo(total_var=total_var)
 
-        if self.num_particles_per_basin > 1:
+        if self.num_particles_per_basin > 1 and not self.warmup_train_stage():
+            # whether to compute opt_var
             outputs_mean = outputs_mean.reshape(
                 outputs_mean.shape[0], self.num_basins,
                 self.num_particles_per_basin,
@@ -273,17 +278,15 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             # [bs, d_out] or [bs]
             opt_var = sse.sum(dim=(1,2)) / \
                 (self.num_basins * self.num_particles_per_basin - 1)
-            info = info._replace(opt_var=opt_var) 
+            info = info._replace(opt_var=opt_var)
 
-        return AlgStep(
-            output=outputs,
-            state=(),
-            info=info)
+        return AlgStep(output=outputs, state=(), info=info)
 
     def masked_train_stage(self):
-        masked_train_steps = self._train_step_counter - self._initial_train_steps
-        return masked_train_steps >= 0 and \
-            masked_train_steps < self._masked_train_steps
+        return self.warmup_train_stage() and not self.initial_train_stage()
+
+    def warmup_train_stage(self):
+        return self._train_step_counter < self.warmup_train_steps
 
     def gen_input_mask(self, batchsize):
         """generate input mask for all particles. 
@@ -294,7 +297,8 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         Returns:
             mask (Tensor): binary mask of shape [batchsize, num_particles]
         """
-        if self._mask_sample_ratio > 0 and self._mask_sample_ratio < 1:
+        if self._mask_sample_ratio > 0 and self._mask_sample_ratio < 1 and \
+            self.num_particles_per_basin > 1:
             mask_size = int(self._mask_sample_ratio * batchsize)
             mask = []
             for i in range(self.num_particles):

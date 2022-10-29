@@ -19,7 +19,7 @@ import torch.distributions as td
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
 from alf.nest import nest
 import alf.nest.utils as nest_utils
@@ -210,18 +210,18 @@ class BayesOacAlgorithm(AbcAlgorithm):
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
         q_mean = critics.mean(1)
-        if hasattr(info, "total_var") and not isinstance(info.total_var, tuple):
-            q_total_var = info.total_var
-        else:
-            q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
+        q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
+        if hasattr(info, "total_var"):
+            if not ignore(info.total_var):
+                q_total_var = info.total_var
         q_total_std = torch.sqrt(q_total_var)
-        if hasattr(info, "opt_var") and not isinstance(info.opt_var, tuple):
-            q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-            q_epi_var = q_total_var - q_opt_var
-            q_epi_std = torch.sqrt(q_epi_var)
-        else:
-            q_opt_var = None
-            q_epi_std = q_total_std
+        q_epi_std = q_total_std
+        q_opt_var = None
+        if hasattr(info, "opt_var"):
+            if not ignore(info.opt_var):
+                q_opt_var = info.opt_var  # [bs, d_out] or [bs]
+                q_epi_var = q_total_var - q_opt_var
+                q_epi_std = torch.sqrt(q_epi_var)
 
         if explore:
             q_value = q_mean + self._beta_ub * q_epi_std

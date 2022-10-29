@@ -67,6 +67,10 @@ AbcLossInfo = namedtuple(
     default_value=())
 
 
+def ignore(inputs):
+    return inputs is None or (isinstance(inputs, tuple) and len(inputs) == 0)
+
+
 def get_target_updater(param_fn, target_param, tau=1.0, period=1, copy=True):
     r"""Performs a soft update of the target parameter.
     For param :math:`w_s` and its corresponding target_param :math:`w_t`, 
@@ -262,11 +266,11 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._target_critic_params = torch.nn.Parameter(target_critic_params)
         target_critic_network.set_parameters(self._target_critic_params)
         self._target_critic_network = target_critic_network
+        self._critic_train_mask = None
         if hasattr(self._critic_module, 'gen_input_mask'):
             mask = self._critic_module.gen_input_mask(mini_batch_size)
-            self._critic_train_mask = mask.unsqueeze(0).unsqueeze(-1)
-        else:
-            self._critic_train_mask = None
+            if mask is not None:
+                self._critic_train_mask = mask.unsqueeze(0).unsqueeze(-1)
 
         if use_basin_mean_for_target_critic:
             param_fn = self._critic_module.get_particles
@@ -383,16 +387,16 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             q_value (Tensor): the q_value for actor training.
         """
         q_mean = critics.mean(1)
-        if hasattr(info, "total_var") and not isinstance(info.total_var, tuple):
-            q_total_var = info.total_var
-        else:
-            q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
+        q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
+        if hasattr(info, "total_var"):
+            if not ignore(info.total_var):
+                q_total_var = info.total_var
         q_total_std = torch.sqrt(q_total_var)
         q_epi_std = q_total_std
         q_opt_var = None
-        if hasattr(info, "opt_var") and not isinstance(info.opt_var, tuple):
-            q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-            if not self._critic_module.masked_train_stage():
+        if hasattr(info, "opt_var"):
+            if not ignore(info.opt_var):
+                q_opt_var = info.opt_var  # [bs, d_out] or [bs]
                 q_epi_var = q_total_var - q_opt_var
                 q_epi_std = torch.sqrt(q_epi_var)
 
@@ -750,12 +754,20 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         # reweight training (s, a) paris with opt_std
         if hasattr(critics_info, "opt_var") and \
             self._critic_training_weight is not None:
-            weights = torch.sqrt(critics_info.opt_var)  # [bs, d_out] or [bs]
-            weights = weights.reshape(self._mini_batch_length - 1, -1,
-                                      *weights.shape[1:])
-            weights = weights**self._critic_training_weight
-            weights = weights.unsqueeze(2) / weights.sum()
-            neg_logp *= weights
+            if not ignore(critics_info.opt_var):
+                weights = torch.sqrt(
+                    critics_info.opt_var)  # [bs, d_out] or [bs]
+                batch_size = weights.nelement()
+                weights = weights.reshape(self._mini_batch_length - 1, -1,
+                                          *weights.shape[1:])
+                weights = weights**self._critic_training_weight
+                weights = weights.unsqueeze(2) * batch_size / weights.sum()
+                neg_logp *= weights
+                if self._debug_summaries and alf.summary.should_record_summaries(
+                ):
+                    with alf.summary.scope(self._name):
+                        safe_mean_hist_summary('critic_training_weights/',
+                                               weights.view(-1))
 
         # add (s, a) mask
         if self._critic_train_mask is not None:

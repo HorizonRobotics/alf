@@ -48,7 +48,8 @@ if use_multibootstrap:
         mask_sample_ratio=0.5,
         unbiased_total_var=True,
         initial_train_steps=1000,
-        masked_train_steps=1000)
+        masked_train_steps=1000,
+        debug_summaries=True)
     batch_size = 256
 else:
     critic_module_cls = MultiSwagAlgorithm
