@@ -61,7 +61,7 @@ class BayesOacAlgorithm(AbcAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
-                 use_epistemic_alpha=True,
+                 epistemic_alpha_coeff=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -102,7 +102,7 @@ class BayesOacAlgorithm(AbcAlgorithm):
             target_entropy=target_entropy,
             initial_log_alpha=initial_log_alpha,
             max_log_alpha=max_log_alpha,
-            use_epistemic_alpha=use_epistemic_alpha,
+            epistemic_alpha_coeff=epistemic_alpha_coeff,
             target_update_tau=target_update_tau,
             target_update_period=target_update_period,
             dqda_clipping=dqda_clipping,
@@ -207,35 +207,3 @@ class BayesOacAlgorithm(AbcAlgorithm):
                 action = dist_utils.rsample_action_distribution(action_dist)
 
         return action_dist, action, new_state
-
-    def _consensus_q_for_actor_train(self, critics, explore, info=()):
-        q_mean = critics.mean(1)
-        q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
-        if hasattr(info, "total_var"):
-            if not ignore(info.total_var):
-                q_total_var = info.total_var
-        q_total_std = torch.sqrt(q_total_var)
-        q_epi_std = q_total_std
-        q_opt_var = None
-        if hasattr(info, "opt_var"):
-            if not ignore(info.opt_var):
-                q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-                q_epi_var = q_total_var - q_opt_var
-                q_epi_std = torch.sqrt(q_epi_var)
-
-        if explore:
-            q_value = q_mean + self._beta_ub * q_epi_std
-        else:
-            if self._use_q_mean_train_actor:
-                q_value = q_mean
-            else:
-                q_value = q_mean - self._beta_lb * q_total_std
-
-        if not explore:
-            with alf.summary.scope(self._name):
-                safe_mean_hist_summary("critics_batch_mean", q_mean)
-                safe_mean_hist_summary("critics_total_var", q_total_var)
-                if q_opt_var is not None:
-                    safe_mean_hist_summary("critic_opt_var", q_opt_var)
-
-        return q_value, q_epi_std

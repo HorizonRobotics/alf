@@ -28,6 +28,11 @@ use_multibootstrap = True
 deterministic_actor = False
 deterministic_critic = False
 
+# if env_name() == "Humanoid-v2":
+#     fixed_alpha = 0.05
+# else:
+#     fixed_alpha = 0.2
+
 if deterministic_actor:
     actor_network_cls = partial(
         ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
@@ -79,7 +84,7 @@ alf.config(
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,
     use_entropy_reward=False,
-    use_epistemic_alpha=False,
+    epistemic_alpha_coeff=None,
     use_basin_mean_for_target_critic=True,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),

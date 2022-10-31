@@ -138,7 +138,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
-                 use_epistemic_alpha=True,
+                 epistemic_alpha_coeff=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -161,7 +161,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
-            use_epistemic_alpha
+            epistemic_alpha_coeff (float|None): if not None, use epistemic_std 
+                to the power of epistemic_alpha_coeff as alpha weights.
             explore_optimizer
             explore_alpha_optimizer
         """
@@ -253,7 +254,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         self._use_entropy_reward = use_entropy_reward
         self._use_q_mean_train_actor = use_q_mean_train_actor
-        self._use_epistemic_alpha = use_epistemic_alpha
+        self._epistemic_alpha_coeff = epistemic_alpha_coeff
         self._dqda_clipping = dqda_clipping
         self._critic_training_weight = critic_training_weight
 
@@ -412,6 +413,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         with alf.summary.scope(self._name):
             safe_mean_hist_summary(prefix + "critics_batch_mean", q_mean)
             safe_mean_hist_summary(prefix + "critics_total_var", q_total_var)
+            safe_mean_hist_summary(prefix + "critics_epistemic_std", q_epi_std)
             if q_opt_var is not None:
                 safe_mean_hist_summary(prefix + "critic_opt_var", q_opt_var)
 
@@ -443,8 +445,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             cont_alpha = torch.exp(self._log_alpha).detach()
             entropy_loss = cont_alpha * log_pi
-            if self._use_epistemic_alpha:
-                entropy_loss = q_epi_std.squeeze().detach() * entropy_loss
+            if self._epistemic_alpha_coeff is not None:
+                entropy_loss *= (q_epi_std.squeeze().detach()) \
+                                ** self._epistemic_alpha_coeff
             neg_entropy = sum(nest.flatten(log_pi))
 
         def actor_loss_fn(dqda, action):
