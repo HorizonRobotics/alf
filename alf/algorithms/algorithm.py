@@ -1180,6 +1180,10 @@ class Algorithm(AlgorithmInterface):
             self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
+        unused_parameters = [p[0] for p in all_params if p[1].grad is None]
+        common.warning_once(
+            "Find parameters without gradients, please double check: %s",
+            unused_parameters)
         return all_params, simple_gns
 
     # Subclass may override calc_loss() to allow more sophisticated loss
