@@ -16,7 +16,7 @@
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
 from __future__ import annotations
-from typing import Union, Tuple, Dict, List
+from typing import Optional, Union, Tuple, Dict, List
 
 import numpy as np
 
@@ -86,7 +86,9 @@ class TensorSpec(object):
         assert isinstance(array, (np.ndarray, np.number))
         return TensorSpec(array.shape[from_dim:], str(array.dtype))
 
-    def replace(self, shape=None, dtype=None) -> TensorSpec:
+    def replace(self,
+                shape: Union[None, tuple, torch.Size] = None,
+                dtype: Optional[torch.dtype] = None) -> TensorSpec:
         """Create a new TensorSpec with part of the properties replaced.
 
         For example, if we have a TensorSpec like
@@ -312,8 +314,12 @@ class BoundedTensorSpec(TensorSpec):
             maximum, dtype=torch_dtype_to_str(self._dtype))
         self._maximum.setflags(write=False)
 
-    def replace(self, shape=None, dtype=None, minimum=None,
-                maximum=None) -> BoundedTensorSpec:
+    def replace(self,
+                shape: Union[None, tuple, torch.Size] = None,
+                dtype: Optional[torch.dtype] = None,
+                minimum: Union[None, float, np.ndarray] = None,
+                maximum: Union[None, float, np.ndarray] = None
+                ) -> BoundedTensorSpec:
         """Create a new BoundedTensorSpec with part of the properties replaced.
 
         For example, if we have a BoundedTensorSpec like
