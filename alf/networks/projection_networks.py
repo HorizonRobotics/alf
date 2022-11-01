@@ -15,7 +15,7 @@
 from functools import partial
 import math
 import numpy as np
-from typing import Callable
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -164,6 +164,7 @@ class NormalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
                  action_spec,
+                 parallelism: Optional[int] = None,
                  activation=math_ops.identity,
                  projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
@@ -182,6 +183,11 @@ class NormalProjectionNetwork(Network):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
+            parallelism: when specified, this network will be parallelized. As
+                a result, a batch dimension of ``parallelism`` will be appended
+                to the batch shape of the output distribution, while the event
+                shape remains the same. This is useful when you are creating
+                a mixture of policies.
             activation (Callable): activation function to use in
                 dense layers.
             projection_output_init_gain (float): Output gain for initializing
@@ -219,8 +225,8 @@ class NormalProjectionNetwork(Network):
                 ("When squashing the mean or scaling the distribution, bounds "
                  + "are required for the action spec!")
 
-            action_high = torch.as_tensor(action_spec.maximum)
-            action_low = torch.as_tensor(action_spec.minimum)
+            action_high = torch.tensor(action_spec.maximum)
+            action_low = torch.tensor(action_spec.minimum)
             self._action_means = (action_high + action_low) / 2
             self._action_magnitudes = (action_high - action_low) / 2
             # Do not transform mean if scaling distribution
@@ -239,157 +245,26 @@ class NormalProjectionNetwork(Network):
         if std_transform is not None:
             self._std_transform = std_transform
 
-        self._means_projection_layer = layers.FC(
+        fc_ctor = layers.FC if parallelism is None else partial(
+            layers.ParallelFC, n=parallelism)
+        self._means_projection_layer = fc_ctor(
             input_size,
             action_spec.shape[0],
             activation=activation,
             kernel_init_gain=projection_output_init_gain)
 
         if state_dependent_std:
-            self._std_projection_layer = layers.FC(
+            self._std_projection_layer = fc_ctor(
                 input_size,
                 action_spec.shape[0],
                 activation=activation,
                 kernel_init_gain=projection_output_init_gain,
                 bias_init_value=std_bias_initializer_value)
         else:
-            self._std = nn.Parameter(
-                action_spec.constant(std_bias_initializer_value),
-                requires_grad=True)
-            self._std_projection_layer = lambda _: self._std
-
-    def _normal_dist(self, means, stds):
-        normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
-        if self._scale_distribution:
-            # The transformed distribution can also do reparameterized sampling
-            # i.e., `.has_rsample=True`
-            # Note that in some cases kl_divergence might no longer work for this
-            # distribution! Assuming the same `transforms`, below will work:
-            # ````
-            # kl_divergence(Independent, Independent)
-            #
-            # kl_divergence(TransformedDistribution(Independent, transforms),
-            #               TransformedDistribution(Independent, transforms))
-            # ````
-            squashed_dist = td.TransformedDistribution(
-                base_distribution=normal_dist, transforms=self._transforms)
-            return squashed_dist
-        else:
-            return normal_dist
-
-    def forward(self, inputs, state=()):
-        means = self._mean_transform(self._means_projection_layer(inputs))
-        stds = self._std_transform(self._std_projection_layer(inputs))
-        return self._normal_dist(means, stds), state
-
-    def make_parallel(self, n):
-        """Create a ``ParallelNormalProjectionNetwork`` using ``n``
-        replicas of ``self``. The initialized layer parameters will
-        be different.
-        """
-        parallel_proj_net_args = dict(**self.saved_args)
-        parallel_proj_net_args.update(n=n, name="parallel_" + self.name)
-        return ParallelNormalProjectionNetwork(**parallel_proj_net_args)
-
-
-@alf.configurable
-class ParallelNormalProjectionNetwork(Network):
-    def __init__(self,
-                 input_size,
-                 action_spec,
-                 n,
-                 activation=math_ops.identity,
-                 projection_output_init_gain=0.3,
-                 std_bias_initializer_value=0.0,
-                 squash_mean=True,
-                 state_dependent_std=False,
-                 std_transform=nn.functional.softplus,
-                 scale_distribution=False,
-                 dist_squashing_transform=dist_utils.StableTanh(),
-                 name="ParallelNormalProjectionNetwork"):
-        """Creates an instance of ParallelNormalProjectionNetwork.
-
-
-        Args:
-            input_size (int): input vector dimension
-            action_spec (TensorSpec): a tensor spec containing the information
-                of the output distribution.
-            activation (torch.nn.Functional): activation function to use in
-                dense layers.
-            projection_output_init_gain (float): Output gain for initializing
-                action means and std weights.
-            std_bias_initializer_value (float): Initial value for the bias of the
-                `std_projection_layer`.
-            squash_mean (bool): If True, squash the output mean to fit the
-                action spec. If `scale_distribution` is also True, this value
-                will be ignored.
-            state_dependent_std (bool): If True, std will be generated depending
-                on the current state; otherwise a global std will be generated
-                regardless of the current state.
-            std_transform (Callable): Transform to apply to the std, on top of
-                `activation`.
-            scale_distribution (bool): Whether or not to scale the output
-                distribution to ensure that the output aciton fits within the
-                `action_spec`. Note that this is different from `mean_transform`
-                which merely squashes the mean to fit within the spec.
-            dist_squashing_transform (td.Transform):  A distribution Transform
-                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
-            name (str): name of this network.
-        """
-        super(ParallelNormalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
-
-        assert isinstance(action_spec, TensorSpec)
-        assert len(action_spec.shape) == 1, "Only support 1D action spec!"
-
-        self._action_spec = action_spec
-        self._mean_transform = math_ops.identity
-        self._scale_distribution = scale_distribution
-
-        if squash_mean or scale_distribution:
-            assert isinstance(action_spec, BoundedTensorSpec), \
-                ("When squashing the mean or scaling the distribution, bounds "
-                 + "are required for the action spec!")
-
-            action_high = torch.as_tensor(action_spec.maximum)
-            action_low = torch.as_tensor(action_spec.minimum)
-            self._action_means = (action_high + action_low) / 2
-            self._action_magnitudes = (action_high - action_low) / 2
-            # Do not transform mean if scaling distribution
-            if not scale_distribution:
-                self._mean_transform = (
-                    lambda inputs: self._action_means + self._action_magnitudes
-                    * inputs.tanh())
-            else:
-                self._transforms = [
-                    dist_squashing_transform,
-                    dist_utils.AffineTransform(
-                        loc=self._action_means, scale=self._action_magnitudes)
-                ]
-
-        self._std_transform = math_ops.identity
-        if std_transform is not None:
-            self._std_transform = std_transform
-
-        self._means_projection_layer = layers.ParallelFC(
-            input_size,
-            action_spec.shape[0],
-            n,
-            activation=activation,
-            kernel_init_gain=projection_output_init_gain)
-
-        if state_dependent_std:
-            self._std_projection_layer = layers.ParallelFC(
-                input_size,
-                action_spec.shape[0],
-                n,
-                activation=activation,
-                kernel_init_gain=projection_output_init_gain,
-                bias_init_value=std_bias_initializer_value)
-        else:
+            outer_dims = None if parallelism is None else (parallelism, )
             self._std = nn.Parameter(
                 action_spec.constant(
-                    std_bias_initializer_value, outer_dims=(n, )),
+                    std_bias_initializer_value, outer_dims=outer_dims),
                 requires_grad=True)
             self._std_projection_layer = lambda _: self._std
 
@@ -435,6 +310,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
+                 parallelism: Optional[int] = None,
                  activation=math_ops.identity,
                  projection_output_init_gain=1e-5,
                  squash_mean=True,
@@ -457,6 +333,11 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                 of the output distribution.
             activation (Callable): activation function to use in
                 dense layers.
+            parallelism: when specified, this network will be parallelized. As
+                a result, a batch dimension of ``parallelism`` will be appended
+                to the batch shape of the output distribution, while the event
+                shape remains the same. This is useful when you are creating
+                a mixture of policies.
             projection_output_init_gain (float): Output gain for initializing
                 action means and std weights.
             squash_mean (bool): If True, squash the output mean to fit the
@@ -503,6 +384,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         super().__init__(
             input_size=input_size,
             action_spec=action_spec,
+            parallelism=parallelism,
             activation=activation,
             projection_output_init_gain=projection_output_init_gain,
             std_bias_initializer_value=std_bias_initializer_value,
@@ -606,8 +488,8 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
 
 def _get_transformer(action_spec):
     """Transform from [0,1] to [action_low, action_high]."""
-    action_high = torch.as_tensor(action_spec.maximum)
-    action_low = torch.as_tensor(action_spec.minimum)
+    action_high = torch.tensor(action_spec.maximum)
+    action_low = torch.tensor(action_spec.minimum)
     if ((action_low == 0) & (action_high == 1)).all():
         return lambda x: x
     else:
@@ -628,6 +510,7 @@ class BetaProjectionNetwork(Network):
     def __init__(self,
                  input_size,
                  action_spec,
+                 parallelism: Optional[int] = None,
                  activation=nn.functional.softplus,
                  min_concentration=0.,
                  projection_output_init_gain=0.0,
@@ -639,6 +522,11 @@ class BetaProjectionNetwork(Network):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
+            parallelism: when specified, this network will be parallelized. As
+                a result, a batch dimension of ``parallelism`` will be appended
+                to the batch shape of the output distribution, while the event
+                shape remains the same. This is useful when you are creating
+                a mixture of policies.
             activation (Callable): activation function to use in
                 dense layers.
             bias_init_value (float): the default value is chosen so that, for softplus
@@ -752,9 +640,9 @@ class TruncatedProjectionNetwork(Network):
                 requires_grad=True)
             self._scale_projection_layer = lambda _: self._scale
 
-        self._action_high = torch.as_tensor(action_spec.maximum).broadcast_to(
+        self._action_high = torch.tensor(action_spec.maximum).broadcast_to(
             action_spec.shape)
-        self._action_low = torch.as_tensor(action_spec.minimum).broadcast_to(
+        self._action_low = torch.tensor(action_spec.minimum).broadcast_to(
             action_spec.shape)
         self._dist_ctor = dist_ctor
 
