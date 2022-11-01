@@ -47,6 +47,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[VAE](alf/algorithms/vae.py)|General|Higgins et al. "beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework" [ICLR2017](https://openreview.net/forum?id=Sy2fzU9gl)|
 |[RealNVP](alf/networks/normalizing_flow_networks.py)|General|Dinh et al. "Density estimation using Real NVP" [arXiv:1605.08803](https://arxiv.org/abs/1605.08803)|
 |[SpatialBroadcastDecoder](alf/networks/encoding_networks.py)|General|Watters et al. "Spatial Broadcast Decoder: A Simple Architecture for Learning Disentangled Representations in VAEs" [arXiv:1901.07017](https://arxiv.org/abs/1901.07017)|
+|[VQ-VAE](alf/algorithms/vq_vae.py)|General|A van den Oord et al. "Neural Discrete Representation Learning" [NeurIPS2017](https://proceedings.neurips.cc/paper/2017/file/7a98af17e63a0ac09ce2e96d03992fbc-Paper.pdf)|
 
 ## Installation
 
