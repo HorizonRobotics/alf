@@ -190,9 +190,8 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         net = network_ctor(
             input_spec.shape[0],
             action_spec,
-            parallelism=5,
             state_dependent_std=state_dependent_std,
-            projection_output_init_gain=1.0)
+            projection_output_init_gain=1.0).make_parallel(5)
         dist, _ = net(embedding)
 
         self.assertEqual((100, 5), dist.batch_shape)

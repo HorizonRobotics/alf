@@ -292,6 +292,15 @@ class NormalProjectionNetwork(Network):
         stds = self._std_transform(self._std_projection_layer(inputs))
         return self._normal_dist(means, stds), state
 
+    def make_parallel(self, n):
+        parallel_proj_net_args = dict(**self.saved_args)
+        original_parallelism = parallel_proj_net_args.get("parallelism", None)
+        assert original_parallelism is None, (
+            "Calling make_parallel on a network that is already parallelized")
+        parallel_proj_net_args.update(
+            parallelism=n, name="parallel_" + self.name)
+        return type(self)(**parallel_proj_net_args)
+
 
 @alf.configurable
 class StableNormalProjectionNetwork(NormalProjectionNetwork):
