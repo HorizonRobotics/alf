@@ -16,7 +16,7 @@
 https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/tensor_spec.py
 """
 from __future__ import annotations
-from typing import Union, Tuple, Dict, List
+from typing import Optional, Union, Tuple, Dict, List
 
 import numpy as np
 
@@ -85,6 +85,28 @@ class TensorSpec(object):
         """
         assert isinstance(array, (np.ndarray, np.number))
         return TensorSpec(array.shape[from_dim:], str(array.dtype))
+
+    def replace(self,
+                shape: Union[None, tuple, torch.Size] = None,
+                dtype: Optional[torch.dtype] = None) -> TensorSpec:
+        """Create a new TensorSpec with part of the properties replaced.
+
+        For example, if we have a TensorSpec like
+
+        .. code-block:: python
+
+            spec = TensorSpec((3, 5), torch.int32)
+
+        You can explicitly create a similar spec with a different dtype by
+
+        .. code-block:: python
+
+            new_spec = spec.replace(dtype=torch.float32)
+
+        """
+        new_shape = shape or self.shape
+        new_dtype = dtype or self.dtype
+        return TensorSpec(shape=new_shape, dtype=new_dtype)
 
     @classmethod
     def is_bounded(cls):
@@ -291,6 +313,37 @@ class BoundedTensorSpec(TensorSpec):
         self._maximum = np.array(
             maximum, dtype=torch_dtype_to_str(self._dtype))
         self._maximum.setflags(write=False)
+
+    def replace(self,
+                shape: Union[None, tuple, torch.Size] = None,
+                dtype: Optional[torch.dtype] = None,
+                minimum: Union[None, float, np.ndarray] = None,
+                maximum: Union[None, float, np.ndarray] = None
+                ) -> BoundedTensorSpec:
+        """Create a new BoundedTensorSpec with part of the properties replaced.
+
+        For example, if we have a BoundedTensorSpec like
+
+        .. code-block:: python
+
+            spec = BoundedTensorSpec((3, 5), torch.int32, 0, 2)
+
+        You can explicitly create a similar spec with a different shape and minimum by
+
+        .. code-block:: python
+
+            new_spec = spec.replace(shape=(4, 8), minimum=-1)
+
+        """
+        new_shape = shape or self.shape
+        new_dtype = dtype or self.dtype
+        new_minimum = minimum if minimum is not None else self.minimum
+        new_maximum = maximum if maximum is not None else self.maximum
+        return BoundedTensorSpec(
+            shape=new_shape,
+            dtype=new_dtype,
+            minimum=new_minimum,
+            maximum=new_maximum)
 
     @classmethod
     def is_bounded(cls):
