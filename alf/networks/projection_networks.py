@@ -777,3 +777,78 @@ class OnehotCategoricalProjectionNetwork(Network):
                 reinterpreted_batch_ndims=len(self._output_shape) - 1), state
         else:
             return dist_cls(logits=logits), state
+
+
+@alf.configurable
+class MixtureProjectionNetwork(Network):
+    """A projection network that outputs MixtureSameFamily distributions.
+
+    The output distribution consists of 2 parts:
+
+    1. A categorical distribution for each of the component.
+    2. A components distribution of ``num_components`` replicas.
+    
+    """
+
+    def __init__(
+            self,
+            input_size: int,
+            action_spec: TensorSpec,
+            num_components: int,
+            component_ctor: Callable[[int, TensorSpec], Network],
+            mixture_ctor: Callable[[int, BoundedTensorSpec],
+                                   Network] = CategoricalProjectionNetwork,
+            name: str = "mix_proj_net"):
+        """Constructs an instance of MixtureProjectionNetwork.
+
+        Args
+
+            input_size: the input vector size
+            action_spec: a tensor spec containing the information of the output
+                distribution.
+            num_components: the number of component distributions.
+            component_ctor: constructor to a projection network that outputs
+                distribution for all the components. The ``make_parallel``
+                method of the projection network will be called to make the
+                actual projection network that has a replica of
+                ``num_components``.
+            mixture_ctor: constructor to a projection network that outputs the
+                mixture (categorical) distributions. The number of categories
+                equals ``num_components``.
+
+        """
+        self._num_components = num_components
+        components_proj = component_ctor(
+            input_size, action_spec).make_parallel(num_components)
+        mixture_proj = mixture_ctor(
+            input_size,
+            BoundedTensorSpec(
+                shape=(),
+                dtype=torch.int64,
+                minimum=0,
+                maximum=num_components - 1))
+
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )),
+            state_spec={
+                "mixture": mixture_proj.state_spec,
+                "components": components_proj.state_spec,
+            },
+            name=name)
+
+        self._components_proj = components_proj
+        self._mixture_proj = mixture_proj
+
+    @property
+    def num_components(self) -> int:
+        return self._num_components
+
+    def forward(self, inputs, state: dict = {"mixture": (), "components": ()}):
+        mix, state_mixture = self._mixture_proj(inputs, state=state["mixture"])
+        components, state_components = self._components_proj(
+            inputs, state=state["components"])
+
+        return td.MixtureSameFamily(mix, components), {
+            "mixture": state_mixture,
+            "components": state_components,
+        }

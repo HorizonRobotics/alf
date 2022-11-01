@@ -20,6 +20,8 @@ import torch
 import torch.distributions as td
 from functools import partial
 
+from torch.distributions.mixture_same_family import MixtureSameFamily
+
 import alf
 from alf.utils import math_ops
 import alf.utils.dist_utils as dist_utils
@@ -133,6 +135,21 @@ class DistributionSpecTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(sample.shape, logits.shape)
         self.assertTrue(sample.requires_grad)
         self.assertTrue(dist.mode.requires_grad)
+
+    def test_mixture_of_family(self):
+        components = dist_utils.DiagMultivariateNormal(
+            loc=torch.tensor([[[0.3, 0.5], [0.0, 0.8], [-0.1, 0.2]]]),
+            scale=torch.tensor([[[0.4, 0.05]]]))
+        mixture = td.Categorical(probs=torch.tensor([[0.1, 0.5, 0.4]]))
+        dist = td.MixtureSameFamily(mixture, components)
+
+        spec = dist_utils.DistributionSpec.from_distribution(dist)
+        params = dist_utils.extract_distribution_parameters(dist)
+        reconstructed = spec.build_distribution(params)
+
+        self.assertEqual(td.MixtureSameFamily, type(reconstructed))
+        self.assertEqual(dist.batch_shape, reconstructed.batch_shape)
+        self.assertEqual(dist.event_shape, reconstructed.event_shape)
 
 
 class TransformationAndInversionTest(parameterized.TestCase,
