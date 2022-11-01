@@ -553,7 +553,9 @@ class BetaProjectionNetwork(Network):
 
         self._transformer = _get_transformer(action_spec)
 
-        self._concentration_projection_layer = layers.FC(
+        fc_ctor = layers.FC if parallelism is None else partial(
+            layers.ParallelFC, n=parallelism)
+        self._concentration_projection_layer = fc_ctor(
             input_size,
             2 * action_spec.shape[0],
             activation=activation,
@@ -573,6 +575,15 @@ class BetaProjectionNetwork(Network):
             concentration.shape[-1] // 2, dim=-1)
         return self._transformer(
             dist_utils.DiagMultivariateBeta(*concentration10)), state
+
+    def make_parallel(self, n):
+        parallel_proj_net_args = dict(**self.saved_args)
+        original_parallelism = parallel_proj_net_args.get("parallelism", None)
+        assert original_parallelism is None, (
+            "Calling make_parallel on a network that is already parallelized")
+        parallel_proj_net_args.update(
+            parallelism=n, name="parallel_" + self.name)
+        return type(self)(**parallel_proj_net_args)
 
 
 @alf.configurable

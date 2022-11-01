@@ -244,6 +244,24 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(torch.any(samples <= 0))
         self.assertTrue(torch.any(samples >= 0))
 
+    def test_parallel_beta_projection_net(self):
+        """Test the parallel version of BetaProjectionNetwork."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        action_spec = BoundedTensorSpec((2, ),
+                                        minimum=-1.,
+                                        maximum=1.,
+                                        dtype=torch.float32)
+
+        net = BetaProjectionNetwork(
+            input_spec.shape[0], action_spec,
+            projection_output_init_gain=.0).make_parallel(5)
+
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual((100, 5), dist.batch_shape)
+        self.assertEqual((2, ), dist.event_shape)
+
     def test_truncated_projection_net(self):
         """Test max and min stds for BetaProjectionNetwork."""
         input_spec = TensorSpec((10, ), torch.float32)
