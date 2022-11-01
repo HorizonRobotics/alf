@@ -16,10 +16,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Callable
 
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
+from alf.networks import EncodingNetwork
 
 VqvaeLossInfo = namedtuple(
     "VqvaeLossInfo", ["quantization", "commitment", "reconstruction"],
@@ -44,15 +46,15 @@ class Vqvae(Algorithm):
     """
 
     def __init__(self,
-                 input_tensor_spec,
-                 num_embeddings,
-                 embedding_dim,
-                 encoder_ctor,
-                 decoder_ctor,
-                 optimizer=None,
-                 commitment_loss_weight=1.0,
-                 debug_summaries=False,
-                 name="Vqvae"):
+                 input_tensor_spec: alf.NestedTensorSpec,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 encoder_ctor: Callable = EncodingNetwork,
+                 decoder_ctor: Callable = EncodingNetwork,
+                 optimizer: torch.optim.Optimizer = None,
+                 commitment_loss_weight: float = 1.0,
+                 debug_summaries: bool = False,
+                 name: str = "Vqvae"):
         """
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of
@@ -74,10 +76,13 @@ class Vqvae(Algorithm):
         self._num_embeddings = num_embeddings
 
         # [n, d]
-        self._embedding = nn.Embedding(self._num_embeddings,
-                                       self._embedding_dim)
-        self._embedding.weight.data.uniform_(-1 / self._num_embeddings,
-                                             1 / self._num_embeddings)
+        self._embedding = torch.nn.Parameter(
+            torch.FloatTensor(self._num_embeddings, self._embedding_dim))
+
+        torch.nn.init.uniform_(
+            self._embedding,
+            a=-1 / self._num_embeddings,
+            b=1 / self._num_embeddings)
 
         self._encoding_net = encoder_ctor(input_tensor_spec)
 
@@ -101,23 +106,13 @@ class Vqvae(Algorithm):
 
         # calculate distances
         # [B, 1] + [n] + [B, n]
-        distances = (
-            torch.sum(input_embedding**2, dim=1, keepdim=True) + torch.sum(
-                self._embedding.weight**2, dim=1) -
-            2 * torch.matmul(input_embedding, self._embedding.weight.t()))
+        distances = (torch.sum(input_embedding**2, dim=1, keepdim=True) +
+                     torch.sum(self._embedding**2, dim=1) -
+                     2 * torch.matmul(input_embedding, self._embedding.t()))
 
-        # one-hot encoding
-        encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
+        encoding_indices = torch.argmin(distances, dim=1)
 
-        # [B, n]
-        onehot_encodings = torch.zeros(encoding_indices.shape[0],
-                                       self._num_embeddings)
-
-        onehot_encodings.scatter_(1, encoding_indices, 1)
-
-        # quantization
-        # [B, n] * [n, d] -> [B, d]
-        quantized = torch.matmul(onehot_encodings, self._embedding.weight)
+        quantized = self._embedding[encoding_indices]
 
         # straight through
         quantized_st = input_embedding + (quantized - input_embedding).detach()
