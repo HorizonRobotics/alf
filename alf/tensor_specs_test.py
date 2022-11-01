@@ -74,6 +74,29 @@ class TensorSpecTest(parameterized.TestCase, unittest.TestCase):
         self.assertEqual(sample.shape, (3, 10) + self._shape)
         self.assertTrue(torch.all(sample == 0))
 
+    def testTensorSpecReplace(self):
+        spec = TensorSpec(shape=(3, 4), dtype=torch.int32)
+        spec1 = spec.replace(shape=(4, 5))
+        spec2 = spec.replace(dtype=torch.float32)
+        spec3 = spec.replace(shape=(4, 5), dtype=torch.float32)
+        self.assertEqual(TensorSpec(shape=(4, 5), dtype=torch.int32), spec1)
+        self.assertEqual(TensorSpec(shape=(3, 4), dtype=torch.float32), spec2)
+        self.assertEqual(TensorSpec(shape=(4, 5), dtype=torch.float32), spec3)
+
+    def testBoundedTensorSpecReplace(self):
+        spec = BoundedTensorSpec(
+            shape=(3, 4),
+            dtype=torch.int32,
+            minimum=np.zeros(4),
+            maximum=np.ones(4))
+        new_spec = spec.replace(shape=(8, 4), minimum=np.full((4, ), -1))
+        self.assertEqual(
+            BoundedTensorSpec(
+                shape=(8, 4),
+                dtype=torch.int32,
+                minimum=np.array([-1, -1, -1, -1]),
+                maximum=np.array([1, 1, 1, 1])), new_spec)
+
 
 if __name__ == "__main__":
     unittest.main()
