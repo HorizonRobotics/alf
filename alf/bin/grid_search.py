@@ -51,6 +51,7 @@ import torch
 import traceback
 from typing import Iterable
 import unicodedata
+import wandb
 
 import alf
 from alf.bin.train import _define_flags as _train_define_flags
@@ -438,6 +439,8 @@ class GridSearch(object):
             logging.info(traceback.format_exc())
             raise e
         finally:
+            if alf.get_config_value("TrainerConfig.use_wandb"):
+                wandb.finish()
             alf.close_env()
 
 
