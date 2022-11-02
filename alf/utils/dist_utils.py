@@ -743,6 +743,21 @@ def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
     return new_builder, params
 
 
+def _get_mixture_same_family_builder(obj: td.MixtureSameFamily):
+    mixture_builder, mixture_params = _get_builder(obj.mixture_distribution)
+    components_builder, components_params = _get_builder(
+        obj.component_distribution)
+
+    def _mixture_builder(mixture, components):
+        return td.MixtureSameFamily(
+            mixture_builder(**mixture), components_builder(**components))
+
+    return _mixture_builder, {
+        "mixture": mixture_params,
+        "components": components_params
+    }
+
+
 _get_builder_map = {
     td.Categorical:
         _get_categorical_builder,
@@ -814,6 +829,8 @@ _get_builder_map = {
                 'loc': obj.loc,
                 'scale': obj.scale
             }),
+    td.MixtureSameFamily:
+        _get_mixture_same_family_builder,
 }
 
 

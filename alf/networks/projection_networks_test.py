@@ -13,6 +13,7 @@
 # limitations under the License.
 """Tests for alf.networks.projection_networks."""
 
+from functools import partial
 from absl.testing import parameterized
 
 import torch
@@ -24,6 +25,7 @@ from alf.networks import NormalProjectionNetwork
 from alf.networks import OnehotCategoricalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
 from alf.networks import TruncatedProjectionNetwork
+from alf.networks.projection_networks import MixtureProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
 from alf.utils.dist_utils import DistributionSpec
@@ -379,6 +381,75 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
             mode2, num_classes=dist2.base_dist.logits.shape[-1])
 
         self.assertTensorClose(onehot_mode1, onehot_mode2)
+
+
+class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
+    def test_mixture_of_gaussian_1d_action(self):
+        input_spec = TensorSpec((10, ), torch.float32)
+
+        net = MixtureProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((1, ), minimum=0.0, maximum=4.0),
+            num_components=3,
+            component_ctor=partial(
+                NormalProjectionNetwork,
+                projection_output_init_gain=0,
+                std_bias_initializer_value=0,
+                squash_mean=False,
+                state_dependent_std=True,
+                std_transform=math_ops.identity))
+
+        self.assertEqual(3, net.num_components)
+
+        embedding = input_spec.ones(outer_dims=(7, ))
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual(dist.batch_shape, (7, ))
+        x = dist.sample()
+        self.assertEqual((7, 1), x.shape)
+
+    def test_mixture_of_stable_normal_2d_action(self):
+        input_spec = TensorSpec((10, ), torch.float32)
+
+        net = MixtureProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((2, ), minimum=0.0, maximum=4.0),
+            num_components=3,
+            component_ctor=partial(
+                StableNormalProjectionNetwork,
+                state_dependent_std=True,
+                squash_mean=False,
+                scale_distribution=True,
+                min_std=1e-3,
+                max_std=10.0))
+
+        self.assertEqual(3, net.num_components)
+
+        embedding = input_spec.ones(outer_dims=(7, ))
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual(dist.batch_shape, (7, ))
+        x = dist.sample()
+        self.assertEqual((7, 2), x.shape)
+
+    def test_mixture_of_beta_2d_action(self):
+        input_spec = TensorSpec((10, ), torch.float32)
+
+        net = MixtureProjectionNetwork(
+            input_size=input_spec.shape[0],
+            action_spec=BoundedTensorSpec((2, ), minimum=0.0, maximum=4.0),
+            num_components=3,
+            component_ctor=partial(
+                BetaProjectionNetwork, min_concentration=1.0))
+
+        self.assertEqual(3, net.num_components)
+
+        embedding = input_spec.ones(outer_dims=(7, ))
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual(dist.batch_shape, (7, ))
+        x = dist.sample()
+        self.assertEqual((7, 2), x.shape)
 
 
 if __name__ == "__main__":
