@@ -273,6 +273,8 @@ def _worker(job_queue: mp.Queue,
                     job.type))
 
         env.close()
+        if config.use_wandb:
+            wandb.finish()
         done_queue.put(None)
     except Exception as e:
         logging.exception(f'{mp.current_process().name} - {e}')

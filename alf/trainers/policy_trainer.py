@@ -28,7 +28,6 @@ import torch
 import torch.nn as nn
 from PIL import Image
 import numpy as np
-import wandb
 
 import alf
 from alf.algorithms.algorithm import Algorithm, Loss
@@ -341,8 +340,6 @@ class Trainer(object):
                 ans = input("Do you want to save checkpoint? (y/n): ")
                 if ans.lower().startswith('y'):
                     self._save_checkpoint()
-            if alf.get_config_value("TrainerConfig.use_wandb"):
-                wandb.finish()
             self._close()
 
     @staticmethod

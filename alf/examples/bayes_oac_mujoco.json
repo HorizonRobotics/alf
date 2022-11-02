@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_upd-eac_0.5-aidi",
+    "version": "mujoco_multibootstrap_upd-its_10000-ila_0.05-ces",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,19 +12,19 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "Walker2d-v2"
+            "HalfCheetah-v2"
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
         "MultiBootstrapEnsemble.num_particles_per_basin": "[2]",
         "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",
-        "MultiBootstrapEnsemble.initial_train_steps": "[1000]",
+        "MultiBootstrapEnsemble.initial_train_steps": "[10000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[1000]",
         "MultiBootstrapEnsemble.unbiased_total_var": "[True]",
         "BayesOacAlgorithm.beta_lb": "[.5]",
         "BayesOacAlgorithm.critic_training_weight": "[None]",
-        "BayesOacAlgorithm.initial_log_alpha": "[-1.6]",
-        "BayesOacAlgorithm.epistemic_alpha_coeff": "[0.5]",
+        "BayesOacAlgorithm.initial_log_alpha": "[-3.]",
+        "BayesOacAlgorithm.epistemic_alpha_coeff": "[1.]",
         "BayesOacAlgorithm.alpha_optimizer": "[None]",
         "BayesOacAlgorithm.deterministic_explore": "[False]",
         "BayesOacAlgorithm.use_q_mean_train_actor": "[True]",

@@ -59,7 +59,9 @@ import sys
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import wandb
 
+import alf
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
@@ -193,6 +195,8 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
         # running the environments. In the case when training worker process
         # finishes ealier (e.g. when it raises an exception), it will hang
         # instead of quitting unless all child processes are killed.
+        if alf.get_config_value("TrainerConfig.use_wandb"):
+            wandb.finish()
         alf.close_env()
 
 
