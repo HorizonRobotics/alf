@@ -801,8 +801,7 @@ class MixtureProjectionNetwork(Network):
             name: str = "mix_proj_net"):
         """Constructs an instance of MixtureProjectionNetwork.
 
-        Args
-
+        Args:
             input_size: the input vector size
             action_spec: a tensor spec containing the information of the output
                 distribution.
