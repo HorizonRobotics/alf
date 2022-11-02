@@ -147,8 +147,7 @@ class Vqvae(Algorithm):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
-                alf.summary.embedding("vq_embedding",
-                                      self._embedding.weight.detach())
+                alf.summary.embedding("vq_embedding", self._embedding.detach())
 
         loss = (enc_loss + recon_loss)
         info = VqvaeLossInfo(
