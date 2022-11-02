@@ -128,9 +128,9 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         dist, _ = net(embedding)
         self.assertTrue(dist.mean.std() > 0)
         self.assertTrue(
-            torch.all(dist.mean > torch.as_tensor(action_spec.minimum)))
+            torch.all(dist.mean > torch.tensor(action_spec.minimum)))
         self.assertTrue(
-            torch.all(dist.mean < torch.as_tensor(action_spec.maximum)))
+            torch.all(dist.mean < torch.tensor(action_spec.maximum)))
 
     @parameterized.parameters((NormalProjectionNetwork, ),
                               (StableNormalProjectionNetwork, ))
@@ -162,16 +162,45 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
         # if scale_distribution=True, then squash_mean is ignored
         self.assertFalse(
-            torch.all(
-                dist.base_dist.mean > torch.as_tensor(action_spec.minimum)))
+            torch.all(dist.base_dist.mean > torch.tensor(action_spec.minimum)))
         self.assertFalse(
-            torch.all(
-                dist.base_dist.mean < torch.as_tensor(action_spec.maximum)))
+            torch.all(dist.base_dist.mean < torch.tensor(action_spec.maximum)))
 
         out = dist.sample((1, ))
         self.assertTrue(out.std() > 0)
-        self.assertTrue(torch.all(out >= torch.as_tensor(action_spec.minimum)))
-        self.assertTrue(torch.all(out <= torch.as_tensor(action_spec.maximum)))
+        self.assertTrue(torch.all(out >= torch.tensor(action_spec.minimum)))
+        self.assertTrue(torch.all(out <= torch.tensor(action_spec.maximum)))
+
+    @parameterized.parameters((NormalProjectionNetwork, True),
+                              (NormalProjectionNetwork, False),
+                              (StableNormalProjectionNetwork, True),
+                              (StableNormalProjectionNetwork, False))
+    def test_parallel_normal_projection_network(self, network_ctor,
+                                                state_dependent_std):
+        """Test normal projection net with specified parallelism of replicas.
+
+        """
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = input_spec.ones(outer_dims=(100, ))
+
+        action_spec = BoundedTensorSpec((2, ),
+                                        torch.float32,
+                                        minimum=(0, -0.01),
+                                        maximum=(0.01, 0))
+        net = network_ctor(
+            input_spec.shape[0],
+            action_spec,
+            state_dependent_std=state_dependent_std,
+            projection_output_init_gain=1.0).make_parallel(5)
+        dist, _ = net(embedding)
+
+        self.assertEqual((100, 5), dist.batch_shape)
+        self.assertEqual((2, ), dist.event_shape)
+        self.assertTrue(dist.mean.std() > 0)
+        self.assertTrue(
+            torch.all(dist.mean > torch.tensor(action_spec.minimum)))
+        self.assertTrue(
+            torch.all(dist.mean < torch.tensor(action_spec.maximum)))
 
     def test_stable_normal_projection_net_minmax_std(self):
         """Test max and min stds for StableNormalProjectionNetwork."""
@@ -214,6 +243,24 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(torch.all(samples <= 1))
         self.assertTrue(torch.any(samples <= 0))
         self.assertTrue(torch.any(samples >= 0))
+
+    def test_parallel_beta_projection_net(self):
+        """Test the parallel version of BetaProjectionNetwork."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        action_spec = BoundedTensorSpec((2, ),
+                                        minimum=-1.,
+                                        maximum=1.,
+                                        dtype=torch.float32)
+
+        net = BetaProjectionNetwork(
+            input_spec.shape[0], action_spec,
+            projection_output_init_gain=.0).make_parallel(5)
+
+        dist, _ = net(embedding)
+        self.assertTrue(isinstance(net.output_spec, DistributionSpec))
+        self.assertEqual((100, 5), dist.batch_shape)
+        self.assertEqual((2, ), dist.event_shape)
 
     def test_truncated_projection_net(self):
         """Test max and min stds for BetaProjectionNetwork."""
