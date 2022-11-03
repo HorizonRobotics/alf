@@ -40,6 +40,7 @@ class TrainerConfig(object):
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
+                 save_checkpoint_upon_crash: bool = False,
                  no_thread_env_for_conf=False,
                  evaluate=False,
                  num_evals=None,
@@ -169,6 +170,8 @@ class TrainerConfig(object):
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
+            save_checkpoint_upon_crash: whether to do chekpointing after crash.
+                If True, ``confirm_checkpoint_upon_crash`` will be ignored.
             no_thread_env_for_conf (bool): not to create an unwrapped env for
                 the purpose of showing operative configurations. If True, no
                 ``ThreadEnvironment`` will ever be created, regardless of the
@@ -318,6 +321,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
+        self.save_checkpoint_upon_crash = save_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf
         self.evaluate = evaluate
         self.num_evals = num_evals

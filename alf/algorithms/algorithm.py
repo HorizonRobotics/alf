@@ -785,8 +785,7 @@ class Algorithm(AlgorithmInterface):
         if destination is None:
             destination = OrderedDict()
             destination._metadata = OrderedDict()
-        destination._metadata[prefix[:-1]] = local_metadata = dict(
-            version=self._version)
+        destination._metadata[prefix[:-1]] = dict(version=self._version)
 
         if visited is None:
             visited = {self}

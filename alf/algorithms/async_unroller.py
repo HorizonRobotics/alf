@@ -35,6 +35,10 @@ UnrollJob = namedtuple(
     defaults=[None] * 4)
 
 
+class AsyncUnrollerQuit(Exception):
+    pass
+
+
 class AsyncUnroller(object):
     """A helper class for unroll asynchronously.
 
@@ -86,6 +90,17 @@ class AsyncUnroller(object):
     def get_queue_size(self) -> int:
         return self._result_queue.qsize()
 
+    def _get(self, queue):
+        while True:
+            try:
+                return queue.get(timeout=0.1)
+            except Empty:
+                self._check_alive()
+
+    def _check_alive(self):
+        if not self._worker.is_alive():
+            raise AsyncUnrollerQuit()
+
     def gather_unroll_results(self, unroll_length: int,
                               max_unroll_length: int) -> List[UnrollResult]:
         """Gather the unroll results:
@@ -102,11 +117,12 @@ class AsyncUnroller(object):
         unroll_results = []
         if unroll_length > 0:
             for i in range(unroll_length):
-                unroll_results.append(self._result_queue.get())
+                unroll_results.append(self._get(self._result_queue))
         else:
             while not self._result_queue.empty() and len(
                     unroll_results) < max_unroll_length:
-                unroll_results.append(self._result_queue.get())
+                unroll_results.append(self._get(self._result_queue))
+            self._check_alive()
         return unroll_results
 
     def update_parameter(self, algorithm):
@@ -123,11 +139,11 @@ class AsyncUnroller(object):
             global_counter=int(alf.summary.get_global_counter()),
             state_dict=algorithm.state_dict())
         self._job_queue.put(job)
-        self._done_queue.get()
+        self._get(self._done_queue)
 
     def close(self):
         """Close the unroller and release resources."""
-        if self._closed:
+        if self._closed or not self._worker.is_alive():
             return
         job = UnrollJob(type="stop")
         self._job_queue.put(job)
