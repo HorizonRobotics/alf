@@ -13,7 +13,9 @@
 # limitations under the License.
 """Wrappers for gym (numpy) environments. """
 
+from functools import partial
 from absl import logging
+from typing import List
 from collections import deque, OrderedDict
 import copy
 import cv2
@@ -306,7 +308,7 @@ class FrameResize(BaseObservationWrapper):
              env (gym.Env): the gym environment
              width (int): resize width
              height (int): resize height
-             fields (list[str]):  fields to be resize, A field str is a multi-level
+             fields (list[str]):  fields to be resized, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is resized
         """
         self._width = width
@@ -332,6 +334,110 @@ class FrameResize(BaseObservationWrapper):
 
 
 @alf.configurable
+class RandomFrameCrop(BaseObservationWrapper):
+    def __init__(self,
+                 env: gym.Env,
+                 cropping_fraction=0.8,
+                 channel_order: str = "channels_last",
+                 share_cropping: bool = True,
+                 fields: List[str] = None):
+        """Create a frame cropping wrapper that augments the data distribution
+        by randomly crops the image frame according to the specified fraction.
+        Each episode has a randomized cropping location which is consistent
+        over the episode.
+
+        Args:
+            env: the gym environment
+            cropping_fraction: the portion of the original image to crop (keep)
+            channel_order: The ordering of the dimensions in the input images
+                from the env, should either "channels_last" or "channels_first".
+            share_cropping: if there are multiple image fields, whether they
+                share the same cropping position at each time step. This might
+                be useful if there are multiple images with the same camera intrinsics,
+                e.g., RGB + depth.
+            fields: fields to be cropped. A field str is a multi-level
+                path denoted by "A.B.C". If None, then non-nested observation is
+                cropped.
+        """
+        assert 0 < cropping_fraction < 1
+
+        self._original_observation_space = self._dict_space(
+            env.observation_space)
+        self._cropping_fraction = cropping_fraction
+        self._channel_order = channel_order
+        self._share_cropping = share_cropping
+        assert channel_order in ['channels_last', 'channels_first']
+        super().__init__(env, fields=fields)
+        self._observation_space = self._dict_space(self.observation_space)
+        self._syx = alf.nest.map_structure(lambda _: None,
+                                           self._observation_space)
+
+    def _dict_space(self, space):
+        if isinstance(space, gym.spaces.Dict):
+            return space.spaces
+        return space
+
+    def observation(self, observation):
+        for field in self._fields:
+            syx = alf.nest.get_field(self._syx, field)
+            space = alf.nest.get_field(self._observation_space, field)
+            observation = transform_nest(
+                nested=observation,
+                field=field,
+                func=partial(
+                    self.transform_observation,
+                    sy=syx[0],
+                    sx=syx[1],
+                    space=space))
+        return observation
+
+    def _get_hwc(self, space):
+        assert len(
+            space.shape) == 3, "observation shape should be (H,W,C) or (C,H,W)"
+        if self._channel_order == "channels_last":
+            return space.shape
+        return space.shape[1:] + space.shape[:1]
+
+    def reset(self, **kwargs):
+        """Randomly select cropping start positions.
+        """
+        sy, sx = None, None
+        for field in self._fields:
+            if not self._share_cropping or sy is None:
+                ori_space = alf.nest.get_field(
+                    self._original_observation_space, field)
+                space = alf.nest.get_field(self._observation_space, field)
+                H, W, _ = self._get_hwc(ori_space)
+                h, w, _ = self._get_hwc(space)
+                sy, sx = np.random.randint(H - h), np.random.randint(W - w)
+            self._syx = alf.nest.set_field(
+                nested=self._syx, field=field, new_value=(sy, sx))
+        return super().reset(**kwargs)
+
+    def transform_space(self, observation_space):
+        H, W, C = self._get_hwc(observation_space)
+        h, w = int(self._cropping_fraction * H), int(
+            self._cropping_fraction * W)
+        if self._channel_order == "channels_last":
+            new_shape = (h, w, C)
+        else:
+            new_shape = (C, h, w)
+        return gym.spaces.Box(
+            low=observation_space.low.min(),
+            high=observation_space.high.max(),
+            shape=new_shape,
+            dtype=observation_space.dtype)
+
+    def transform_observation(self, observation, sy, sx, space):
+        h, w, _ = self._get_hwc(space)
+        if self._channel_order == "channels_last":
+            obs = observation[sy:sy + h, sx:sx + w, :]
+        else:
+            obs = observation[:, sy:sy + h, sx:sx + w]
+        return obs
+
+
+@alf.configurable
 class FrameCrop(BaseObservationWrapper):
     def __init__(self,
                  env,
@@ -351,8 +457,9 @@ class FrameCrop(BaseObservationWrapper):
              height (int): crop height
             channel_order (str): The ordering of the dimensions in the input images
                 from the env, should be one of `channels_last` or `channels_first`.
-             fields (list[str]):  fields to be resize, A field str is a multi-level
-                path denoted by "A.B.C". If None, then non-nested observation is resized
+             fields (list[str]):  fields to be cropped, A field str is a multi-level
+                path denoted by "A.B.C". If None, then non-nested observation is
+                cropped.
         """
         assert sx >= 0 and sy >= 0, (
             "The start positions should be non-negative",
