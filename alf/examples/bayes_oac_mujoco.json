@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_upd-its_10000-ila_0.05-ces",
+    "version": "mujoco_multibootstrap_new-ila_0.04-debug-newton",
     "use_gpu": true,
     "gpus": [
         0,
@@ -16,14 +16,14 @@
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
-        "MultiBootstrapEnsemble.num_particles_per_basin": "[2]",
+        "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
         "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",
-        "MultiBootstrapEnsemble.initial_train_steps": "[10000]",
-        "MultiBootstrapEnsemble.masked_train_steps": "[1000]",
+        "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
+        "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_total_var": "[True]",
         "BayesOacAlgorithm.beta_lb": "[.5]",
         "BayesOacAlgorithm.critic_training_weight": "[None]",
-        "BayesOacAlgorithm.initial_log_alpha": "[-3.]",
+        "BayesOacAlgorithm.initial_log_alpha": "[-3.2]",
         "BayesOacAlgorithm.epistemic_alpha_coeff": "[1.]",
         "BayesOacAlgorithm.alpha_optimizer": "[None]",
         "BayesOacAlgorithm.deterministic_explore": "[False]",

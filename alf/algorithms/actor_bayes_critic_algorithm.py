@@ -399,7 +399,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             if not ignore(info.opt_var):
                 q_opt_var = info.opt_var  # [bs, d_out] or [bs]
                 q_epi_var = q_total_var - q_opt_var
-                q_epi_std = torch.sqrt(q_epi_var)
+                q_epi_std = torch.sqrt(q_epi_var + 1e-6)
 
         if explore:
             q_value = q_mean + self._beta_ub * q_epi_std
@@ -759,7 +759,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             self._critic_training_weight is not None:
             if not ignore(critics_info.opt_var):
                 weights = torch.sqrt(
-                    critics_info.opt_var)  # [bs, d_out] or [bs]
+                    critics_info.opt_var.detach() + 1e-6)  # [bs, d_out] or [bs]
                 batch_size = weights.nelement()
                 weights = weights.reshape(self._mini_batch_length - 1, -1,
                                           *weights.shape[1:])
