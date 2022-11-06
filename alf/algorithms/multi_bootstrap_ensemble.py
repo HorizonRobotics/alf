@@ -37,8 +37,9 @@ from alf.utils.summary_utils import record_time
 from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
-MbeInfo = namedtuple("MbeInfo", ["total_var", "opt_var"], default_value=())
 
+MbeInfo = namedtuple("MbeInfo", ["total_std", "opt_std", "epi_std"], 
+                     default_value=())
 
 @alf.configurable
 class MultiBootstrapEnsemble(FuncParVIAlgorithm):
@@ -90,7 +91,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
                  optimizer=None,
                  initial_train_steps=1000,
                  masked_train_steps=1000,
-                 unbiased_total_var=True,
+                 unbiased_std=True,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -217,7 +218,7 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         self._num_particles_per_basin = num_particles_per_basin
         self._mask_sample_ratio = mask_sample_ratio
         self._masked_train_steps = masked_train_steps
-        self._unbiased_total_var = unbiased_total_var
+        self._unbiased_std = unbiased_std
 
     @property
     def num_basins(self):
@@ -264,21 +265,22 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         else:
             outputs_mean = outputs
         # [bs, d_out] or [bs]
-        total_var = outputs_mean.var(1, unbiased=self._unbiased_total_var)
-        info = MbeInfo(total_var=total_var)
+        total_std = outputs_mean.std(1, unbiased=self._unbiased_std)
+        info = MbeInfo(total_std=total_std)
 
         if self.num_particles_per_basin > 1 and not self.warmup_train_stage():
-            # whether to compute opt_var
+            # whether to compute opt_std and epi_std
             outputs_mean = outputs_mean.reshape(
                 outputs_mean.shape[0], self.num_basins,
                 self.num_particles_per_basin,
                 *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
             basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
-            sse = (outputs_mean - basin_means.unsqueeze(2))**2
-            # [bs, d_out] or [bs]
-            opt_var = sse.sum(dim=(1,2)) / \
-                (self.num_basins * self.num_particles_per_basin - 1)
-            info = info._replace(opt_var=opt_var)
+            # [bs, nb, d_out] or [bs, nb]
+            basin_stds = outputs_mean.std(2, unbiased=self._unbiased_std)
+
+            opt_std = basin_stds.mean(1)
+            epi_std = basin_means.std(1, unbiased=self._unbiased_std)
+            info = info._replace(opt_std=opt_std, epi_std=epi_std)
 
         return AlgStep(output=outputs, state=(), info=info)
 

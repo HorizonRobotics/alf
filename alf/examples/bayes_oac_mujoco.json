@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_new-ila_0.04-debug-newton",
+    "version": "mujoco_multibootstrap_std_upd-ila_0.04-ces",
     "use_gpu": true,
     "gpus": [
         0,
@@ -20,7 +20,7 @@
         "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",
         "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
-        "MultiBootstrapEnsemble.unbiased_total_var": "[True]",
+        "MultiBootstrapEnsemble.unbiased_std": "[True]",
         "BayesOacAlgorithm.beta_lb": "[.5]",
         "BayesOacAlgorithm.critic_training_weight": "[None]",
         "BayesOacAlgorithm.initial_log_alpha": "[-3.2]",

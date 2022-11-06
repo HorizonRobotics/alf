@@ -51,7 +51,7 @@ if use_multibootstrap:
         num_basins=5,  # grid search
         num_particles_per_basin=2,  # grid search
         mask_sample_ratio=0.5,
-        unbiased_total_var=True,
+        unbiased_std=True,
         initial_train_steps=1000,
         masked_train_steps=1000,
         debug_summaries=True)

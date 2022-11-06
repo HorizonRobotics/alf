@@ -381,25 +381,21 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             explore (bool): whether or not to include UCB-like bonus for 
                 exploration.
             info (namedtuple): info of critic_step. If critic_module is 
-                ``MultiBoostEnsemble``, it contains ``total_var`` and
-                ``opt_var``.
+                ``MultiBoostEnsemble``, it contains ``total_std``,
+                ``epi_std`` and ``opt_std``.
 
         Returns:
             q_value (Tensor): the q_value for actor training.
         """
         q_mean = critics.mean(1)
-        q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
-        if hasattr(info, "total_var"):
-            if not ignore(info.total_var):
-                q_total_var = info.total_var
-        q_total_std = torch.sqrt(q_total_var)
+        q_total_std = critics.std(1, unbiased=True)
+        if hasattr(info, "total_std"):
+            if not ignore(info.total_std):
+                q_total_std = info.total_std
         q_epi_std = q_total_std
-        q_opt_var = None
-        if hasattr(info, "opt_var"):
-            if not ignore(info.opt_var):
-                q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-                q_epi_var = q_total_var - q_opt_var
-                q_epi_std = torch.sqrt(q_epi_var + 1e-6)
+        if hasattr(info, "epi_std"):
+            if not ignore(info.epi_std):
+                q_epi_std = info.epi_std
 
         if explore:
             q_value = q_mean + self._beta_ub * q_epi_std
@@ -412,10 +408,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
             safe_mean_hist_summary(prefix + "critics_batch_mean", q_mean)
-            safe_mean_hist_summary(prefix + "critics_total_var", q_total_var)
-            safe_mean_hist_summary(prefix + "critics_epistemic_std", q_epi_std)
-            if q_opt_var is not None:
-                safe_mean_hist_summary(prefix + "critic_opt_var", q_opt_var)
+            safe_mean_hist_summary(prefix + "critics_total_std", q_total_std)
+            safe_mean_hist_summary(prefix + "critic_epi_std", q_epi_std)
 
         return q_value, q_epi_std
 
@@ -481,7 +475,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             target_critics = target_critics_dist.mean
 
-        target_critics_std = target_critics.std(1, unbiased=False)
+        target_critics_std = target_critics.std(1, unbiased=True)
         if self._common_td_target:
             # use common td_target for all critic
             target_critics_mean = target_critics.mean(1)
@@ -755,11 +749,11 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                 td_target, neglogp[..., i], suffix)
 
         # reweight training (s, a) paris with opt_std
-        if hasattr(critics_info, "opt_var") and \
+        if hasattr(critics_info, "opt_std") and \
             self._critic_training_weight is not None:
-            if not ignore(critics_info.opt_var):
+            if not ignore(critics_info.opt_std):
                 weights = torch.sqrt(
-                    critics_info.opt_var.detach() + 1e-6)  # [bs, d_out] or [bs]
+                    critics_info.opt_std.detach())  # [bs, d_out] or [bs]
                 batch_size = weights.nelement()
                 weights = weights.reshape(self._mini_batch_length - 1, -1,
                                           *weights.shape[1:])
@@ -769,14 +763,14 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                 if self._debug_summaries and alf.summary.should_record_summaries(
                 ):
                     with alf.summary.scope(self._name):
-                        safe_mean_hist_summary('critic_training_weights/',
+                        safe_mean_hist_summary('critic_opt_std',
+                                               critics_info.opt_std)
+                        safe_mean_hist_summary('critic_training_weights',
                                                weights.view(-1))
 
         # add (s, a) mask
         if self._critic_train_mask is not None:
             if self._critic_module.masked_train_stage():
-                # mask = torch.randint(0, 2, neg_logp.shape)
-                # self._critic_train_mask = mask.float()
                 neg_logp *= self._critic_train_mask
 
         neg_logp = neg_logp.transpose(0, 2)
