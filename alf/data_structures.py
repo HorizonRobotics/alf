@@ -38,7 +38,7 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
     """
     T = collections.namedtuple(typename, field_names)
     T.__new__.__defaults__ = (default_value, ) * len(T._fields)
-    if isinstance(default_values, collections.Mapping):
+    if isinstance(default_values, collections.abc.Mapping):
         prototype = T(**default_values)
     else:
         prototype = T(*default_values)
