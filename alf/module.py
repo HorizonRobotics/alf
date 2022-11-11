@@ -19,6 +19,19 @@
 """
 
 import torch
+
+# NOTE: Run ``import torch.fx`` before deleting ``Module.__getattr__`` is a
+# workaround to tame ``torch.fx``. When ``torch.fx`` is first imported and
+# evaluated, ``Module.__getattr__`` is accessed. This access will raise an error
+# if it is already deleted.
+#
+# Newer version of torchvision relies on ``torch.fx``, and there can be more use
+# of ``torch.fx`` in the future.
+try:
+    import torch.fx
+except ModuleNotFoundError:
+    pass
+
 from torch.nn import Module, Parameter
 
 del Module.__getattr__
