@@ -407,6 +407,10 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(dist.batch_shape, (7, ))
         x = dist.sample()
         self.assertEqual((7, 1), x.shape)
+        mode = dist_utils.get_mode(dist)
+        self.assertEqual((7, 1), mode.shape)
+        mode = dist_utils.get_rmode(dist)
+        self.assertEqual((7, 1), mode.shape)
 
     def test_mixture_of_stable_normal_2d_action(self):
         input_spec = TensorSpec((10, ), torch.float32)
@@ -431,6 +435,10 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(dist.batch_shape, (7, ))
         x = dist.sample()
         self.assertEqual((7, 2), x.shape)
+        mode = dist_utils.get_mode(dist)
+        self.assertEqual((7, 2), mode.shape)
+        mode = dist_utils.get_rmode(dist)
+        self.assertEqual((7, 2), mode.shape)
 
     def test_mixture_of_beta_2d_action(self):
         input_spec = TensorSpec((10, ), torch.float32)
@@ -450,6 +458,10 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(dist.batch_shape, (7, ))
         x = dist.sample()
         self.assertEqual((7, 2), x.shape)
+        mode = dist_utils.get_mode(dist)
+        self.assertEqual((7, 2), mode.shape)
+        mode = dist_utils.get_rmode(dist)
+        self.assertEqual((7, 2), mode.shape)
 
 
 if __name__ == "__main__":
