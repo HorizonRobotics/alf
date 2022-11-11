@@ -1160,6 +1160,9 @@ def get_mode(dist):
     elif isinstance(dist, td.normal.Normal):
         mode = dist.mean
     elif isinstance(dist, td.MixtureSameFamily):
+        # Note that this just computes an approximate mode. We use an approximate
+        # approach to compute the mode, by using the mode of the component
+        # distribution that has the highest component probability.
         # [B]
         ind = get_mode(dist.mixture_distribution)
         # [B, num_component, d]
