@@ -1167,7 +1167,7 @@ def get_mode(dist):
         ind = get_mode(dist.mixture_distribution)
         # [B, num_component, d]
         component_mode = get_mode(dist.component_distribution)
-        mode = component_mode[range(component_mode.shape[0]), ind]
+        mode = component_mode[torch.arange(component_mode.shape[0]), ind]
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
     elif isinstance(dist, td.Independent):
@@ -1211,7 +1211,7 @@ def get_rmode(dist):
         ind = get_mode(dist.mixture_distribution)
         # [B, num_component, d]
         component_mode = get_rmode(dist.component_distribution)
-        mode = component_mode[range(component_mode.shape[0]), ind]
+        mode = component_mode[torch.arange(component_mode.shape[0]), ind]
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
     elif isinstance(dist, Beta) or isinstance(dist, TruncatedDistribution):
