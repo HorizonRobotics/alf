@@ -334,7 +334,7 @@ class FrameResize(BaseObservationWrapper):
 
 
 @alf.configurable
-class RandomFrameCrop(BaseObservationWrapper):
+class EpisodicRandomFrameCrop(BaseObservationWrapper):
     def __init__(self,
                  env: gym.Env,
                  cropping_fraction=0.8,
@@ -343,7 +343,7 @@ class RandomFrameCrop(BaseObservationWrapper):
                  fields: List[str] = None):
         """Create a frame cropping wrapper that augments the data distribution
         by randomly crops the image frame according to the specified fraction.
-        Each episode has a randomized cropping location which is consistent
+        Each episode has a randomized cropping location which is *consistent*
         over the episode.
 
         Args:
@@ -361,21 +361,20 @@ class RandomFrameCrop(BaseObservationWrapper):
         """
         assert 0 < cropping_fraction < 1
 
-        self._original_observation_space = self._dict_space(
-            env.observation_space)
+        def _dict_space(space):
+            if isinstance(space, gym.spaces.Dict):
+                return space.spaces
+            return space
+
+        self._original_observation_space = _dict_space(env.observation_space)
         self._cropping_fraction = cropping_fraction
         self._channel_order = channel_order
         self._share_cropping = share_cropping
         assert channel_order in ['channels_last', 'channels_first']
         super().__init__(env, fields=fields)
-        self._observation_space = self._dict_space(self.observation_space)
+        self._observation_space = _dict_space(self.observation_space)
         self._syx = alf.nest.map_structure(lambda _: None,
                                            self._observation_space)
-
-    def _dict_space(self, space):
-        if isinstance(space, gym.spaces.Dict):
-            return space.spaces
-        return space
 
     def observation(self, observation):
         for field in self._fields:
