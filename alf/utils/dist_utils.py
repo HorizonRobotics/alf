@@ -1159,6 +1159,15 @@ def get_mode(dist):
             torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
     elif isinstance(dist, td.normal.Normal):
         mode = dist.mean
+    elif isinstance(dist, td.MixtureSameFamily):
+        # Note that this just computes an approximate mode. We use an approximate
+        # approach to compute the mode, by using the mode of the component
+        # distribution that has the highest component probability.
+        # [B]
+        ind = get_mode(dist.mixture_distribution)
+        # [B, num_component, d]
+        component_mode = get_mode(dist.component_distribution)
+        mode = component_mode[torch.arange(component_mode.shape[0]), ind]
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
     elif isinstance(dist, td.Independent):
@@ -1196,6 +1205,13 @@ def get_rmode(dist):
     """
     if isinstance(dist, td.normal.Normal):
         mode = dist.mean
+    elif isinstance(dist, td.MixtureSameFamily):
+        # note that for the mixture distribution, there is no gradient back-propagation
+        # [B]
+        ind = get_mode(dist.mixture_distribution)
+        # [B, num_component, d]
+        component_mode = get_rmode(dist.component_distribution)
+        mode = component_mode[torch.arange(component_mode.shape[0]), ind]
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
     elif isinstance(dist, Beta) or isinstance(dist, TruncatedDistribution):
