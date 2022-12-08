@@ -18,7 +18,7 @@ import torch
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
 from alf.algorithms.actor_bayes_critic_algorithm import AbcState
 from alf.data_structures import StepType, TimeStep
@@ -61,7 +61,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
-                 use_epistemic_alpha=True,
+                 epistemic_alpha_coeff=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -78,16 +78,19 @@ class TsabcAlgorithm(AbcAlgorithm):
             critic_module_cls
             deterministic_actor
             deterministic_critic
+            critic_training_weight (float|None): if not None, weight :math:`(s,a)`
+                pairs for critic training according to opt_std of :math:`Q(s,a)`
+                with exponent ``critic_training_weight``.
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
             beta_lb
+            epistemic_alpha_coeff (float|None): if not None, use epistemic_std 
+                to the power of epistemic_alpha_coeff as alpha weights.
+            random_actor_every_step (bool): whether or not resample explore
+                policy at each rollout_step.
             explore_optimizer
             explore_alpha_optimizer
         """
-        self._idx = 0
-        # self._cyclic_unroll_steps = 0
-        self._random_actor_every_step = random_actor_every_step
-
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -114,6 +117,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             target_entropy=target_entropy,
             initial_log_alpha=initial_log_alpha,
             max_log_alpha=max_log_alpha,
+            epistemic_alpha_coeff=epistemic_alpha_coeff,
             target_update_tau=target_update_tau,
             target_update_period=target_update_period,
             dqda_clipping=dqda_clipping,
@@ -125,6 +129,9 @@ class TsabcAlgorithm(AbcAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
+        self._idx = 0
+        # self._cyclic_unroll_steps = 0
+        self._random_actor_every_step = random_actor_every_step
         self._explore_networks = self._explore_network
 
     def _make_modules(self, observation_spec, action_spec, reward_spec,
@@ -141,16 +148,6 @@ class TsabcAlgorithm(AbcAlgorithm):
             "ExploreNetwork must be provided!")
         explore_network = explore_network_cls(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        # explore_networks = nn.ModuleList()
-        # for i in range(num_critic_replicas):
-        #     explore_networks.append(explore_network_cls(
-        #         input_tensor_spec=observation_spec,
-        #         action_spec=action_spec))
-
-        # explore_state_spec = alf.nest.map_structure(
-        #     lambda spec: alf.TensorSpec((num_critic_replicas, ) + spec.shape,
-        #                                  spec.dtype),
-        #     explore_network.state_spec)
 
         input_tensor_spec = (observation_spec, action_spec)
         critic_network = CriticDistributionParamNetwork(
@@ -227,19 +224,28 @@ class TsabcAlgorithm(AbcAlgorithm):
         return super().rollout_step(inputs, state)
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
+        """Get q_value for _actor_train_step. 
+
+        Args:
+            critics (Tensor): output of critic_step.
+            explore (bool): whether or not to include UCB-like bonus for 
+                exploration.
+            info (namedtuple): info of critic_step. If critic_module is 
+                ``MultiBoostEnsemble``, it contains ``total_std``,
+                ``epi_std`` and ``opt_std``.
+
+        Returns:
+            q_value (Tensor): the q_value for actor training.
+        """
         q_mean = critics.mean(1)
-        if hasattr(info, "total_var"):
-            q_total_var = info.total_var
-        else:
-            q_total_var = critics.var(1, unbiased=False)  # [bs, d_out] or [bs]
-        q_total_std = torch.sqrt(q_total_var)
-        if hasattr(info, "opt_var"):
-            q_opt_var = info.opt_var  # [bs, d_out] or [bs]
-            q_epi_var = q_total_var - q_opt_var
-            q_epi_std = torch.sqrt(q_epi_var)
-        else:
-            q_opt_var = None
-            q_epi_std = q_total_std
+        q_total_std = critics.std(1, unbiased=True)
+        if hasattr(info, "total_std"):
+            if not ignore(info.total_std):
+                q_total_std = info.total_std
+        q_epi_std = q_total_std
+        if hasattr(info, "epi_std"):
+            if not ignore(info.epi_std):
+                q_epi_std = info.epi_std
 
         if explore:
             q_value = critics
@@ -252,8 +258,7 @@ class TsabcAlgorithm(AbcAlgorithm):
         prefix = "explore_" if explore else ""
         with alf.summary.scope(self._name):
             safe_mean_hist_summary(prefix + "critics_batch_mean", q_mean)
-            safe_mean_hist_summary(prefix + "critics_total_var", q_total_var)
-            if q_opt_var is not None:
-                safe_mean_hist_summary(prefix + "critic_opt_var", q_opt_var)
+            safe_mean_hist_summary(prefix + "critics_total_std", q_total_std)
+            safe_mean_hist_summary(prefix + "critic_epi_std", q_epi_std)
 
         return q_value, q_epi_std

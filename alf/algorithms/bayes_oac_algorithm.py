@@ -19,7 +19,7 @@ import torch.distributions as td
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
 from alf.nest import nest
 import alf.nest.utils as nest_utils

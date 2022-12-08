@@ -16,7 +16,7 @@ from functools import partial
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bayes_oac_algorithm import BayesOacAlgorithm
+from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
 from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.examples.benchmarks.locomotion import locomotion_conf
@@ -38,6 +38,9 @@ if deterministic_actor:
         ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
 else:
     actor_network_cls = locomotion_conf.actor_distribution_network_cls
+
+explore_network_cls = partial(
+    ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
 
 alf.config(
     'CriticDistributionParamNetwork',
@@ -67,19 +70,18 @@ else:
         debug_summaries=True)
     batch_size = 256
 
-alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
+alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)
 # optimizer=locomotion_conf.optimizer)
 
 alf.config(
-    'BayesOacAlgorithm',
+    'TsabcAlgorithm',
     actor_network_cls=actor_network_cls,
+    explore_network_cls=explore_network_cls,
     critic_module_cls=critic_module_cls,
-    beta_ub=4.66,
+    beta_ub=1.,
     beta_lb=.5,
-    explore_delta=6.86,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
-    deterministic_explore=False,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,
@@ -87,7 +89,9 @@ alf.config(
     initial_log_alpha=0.0,
     epistemic_alpha_coeff=None,
     use_basin_mean_for_target_critic=True,
+    random_actor_every_step=False,
     actor_optimizer=AdamTF(lr=3e-4),
+    explore_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
     target_update_tau=0.005)

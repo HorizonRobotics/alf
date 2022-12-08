@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_std_upd-ila_0.04-ces",
+    "version": "mujoco_multibootstrap_std_ctw_upd-ctw_0.2-newton",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,7 +12,7 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "HalfCheetah-v2"
+            "Hopper-v2"
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
@@ -22,7 +22,8 @@
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
         "BayesOacAlgorithm.beta_lb": "[.5]",
-        "BayesOacAlgorithm.critic_training_weight": "[None]",
+        "BayesOacAlgorithm.beta_ub": "[4.]",
+        "BayesOacAlgorithm.critic_training_weight": "[0.2]",
         "BayesOacAlgorithm.initial_log_alpha": "[-3.2]",
         "BayesOacAlgorithm.epistemic_alpha_coeff": "[1.]",
         "BayesOacAlgorithm.alpha_optimizer": "[None]",
