@@ -3559,6 +3559,10 @@ class NaiveParallelLayer(nn.Module):
 
         return output
 
+    def reset_parameters(self):
+        for i in range(self._n):
+            reset_parameters(self._networks[i])
+
 
 def make_parallel_input(inputs, n: int):
     """Replicate ``inputs`` over dim 1 for ``n`` times so it can be processed by
