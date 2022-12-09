@@ -23,12 +23,12 @@
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
         "TsabcAlgorithm.beta_lb": "[.5]",
         "TsabcAlgorithm.critic_training_weight": "[0.2]",
-        "BayesOacAlgorithm.initial_log_alpha": "[-3.2]",
-        "BayesOacAlgorithm.epistemic_alpha_coeff": "[1.]",
-        "BayesOacAlgorithm.alpha_optimizer": "[None]",
-        "BayesOacAlgorithm.use_q_mean_train_actor": "[True]",
-        "BayesOacAlgorithm.use_basin_mean_for_target_critic": "[True]",
-        "BayesOacAlgorithm.target_update_tau": "[0.005]",
+        "TsabcAlgorithm.initial_log_alpha": "[-3.2]",
+        "TsabcAlgorithm.epistemic_alpha_coeff": "[1.]",
+        "TsabcAlgorithm.alpha_optimizer": "[None]",
+        "TsabcAlgorithm.use_q_mean_train_actor": "[True]",
+        "TsabcAlgorithm.use_basin_mean_for_target_critic": "[True]",
+        "TsabcAlgorithm.target_update_tau": "[0.005]",
         "TrainerConfig.random_seed": "list(range(4))"
     }
 }
