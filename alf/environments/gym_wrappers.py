@@ -437,6 +437,75 @@ class EpisodicRandomFrameCrop(BaseObservationWrapper):
 
 
 @alf.configurable
+class FrameFlip(BaseObservationWrapper):
+    def __init__(self,
+                 env: gym.Env,
+                 ud_flip_prob: float = 0.5,
+                 lr_flip_prob: float = 0.5,
+                 channel_order: str = 'channels_last',
+                 fields: List[str] = None):
+        """Create a frame flipping wrapper that randomly flips the image fields
+        either vertically or horizontally. For each episode, all fields will
+        have the SAME flipping operation.
+
+        The prob for each flipping result::
+
+            identical: (1 - udp) * (1 - lrp)
+            ud_flip: udp * (1 - lrp)
+            lr_flip: (1 - udp) * lrp
+            rotate180: udp * lrp
+
+        This wrapper is usually used for data augmentation.
+
+        Args:
+            env: the gym environment
+            ud_flip_prob: the prob of flipping up-down on the original image.
+            lr_flip_prob: the prob of flipping left-right, *after* the testing of
+                up-down flipping.
+            channel_order: The ordering of the dimensions in the input images
+                from the env, should either "channels_last" or "channels_first".
+            fields: fields to be cropped. A field str is a multi-level
+                path denoted by "A.B.C". If None, then non-nested observation is
+                cropped.
+        """
+        assert 1 >= ud_flip_prob >= 0
+        assert 1 >= lr_flip_prob >= 0
+        super().__init__(env, fields=fields)
+        self._channel_order = channel_order
+        assert channel_order in ['channels_last', 'channels_first']
+        self._ud_flip_prob = ud_flip_prob
+        self._lr_flip_prob = lr_flip_prob
+        self._flip_mode = 0
+
+    def reset(self, **kargs):
+        self._flip_mode = 0
+        if np.random.rand() < self._ud_flip_prob:
+            self._flip_mode |= 1
+        if np.random.rand() < self._lr_flip_prob:
+            self._flip_mode |= 2
+        # flip_mode: 0 - no flippng; 1 - up-down; 2 - left-right; 3 - rotate
+        return super().reset(**kargs)
+
+    def transform_space(self, observation_space):
+        assert len(observation_space.shape) == 3, (
+            "The observation space must be (C,H,W) or (H,W,C)!")
+        return observation_space
+
+    def transform_observation(self, observation):
+        if self._channel_order == 'channels_last':
+            if self._flip_mode & 1:
+                observation = observation[::-1, ...]
+            if self._flip_mode & 2:
+                observation = observation[:, ::-1, ...]
+        else:
+            if self._flip_mode & 1:
+                observation = observation[:, ::-1, :]
+            if self._flip_mode & 2:
+                observation = observation[..., ::-1]
+        return observation
+
+
+@alf.configurable
 class FrameCrop(BaseObservationWrapper):
     def __init__(self,
                  env,
