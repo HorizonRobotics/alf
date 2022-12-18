@@ -319,10 +319,10 @@ class FrameResize(BaseObservationWrapper):
         obs_shape = observation_space.shape
         assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
         return gym.spaces.Box(
-            low=0,
-            high=255,
+            low=observation_space.low.min(),
+            high=observation_space.high.max(),
             shape=[self._height, self._width] + list(obs_shape[2:]),
-            dtype=np.uint8)
+            dtype=observation_space.dtype)
 
     def transform_observation(self, observation):
         obs = cv2.resize(
