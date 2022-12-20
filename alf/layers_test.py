@@ -48,6 +48,9 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                 lambda p, n: self.assertTensorClose(p, n, tolerance), presult,
                 nresult)
 
+            # test reset parameter
+            nnet.reset_parameters()
+
     @parameterized.parameters(
         dict(n=1, act=torch.relu, use_bias=False, parallel_x=False),
         dict(n=1, act=math_ops.identity, use_bias=False, parallel_x=False),
