@@ -38,7 +38,8 @@ from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
 
-MbeInfo = namedtuple("MbeInfo", ["total_std", "opt_std", "epi_std"], 
+MbeInfo = namedtuple("MbeInfo", 
+                     ["total_std", "opt_std", "epi_std", "basin_means"], 
                      default_value=())
 
 @alf.configurable
@@ -268,19 +269,21 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
         total_std = outputs_mean.std(1, unbiased=self._unbiased_std)
         info = MbeInfo(total_std=total_std)
 
-        if self.num_particles_per_basin > 1 and not self.warmup_train_stage():
-            # whether to compute opt_std and epi_std
+        if self.num_particles_per_basin > 1:
             outputs_mean = outputs_mean.reshape(
                 outputs_mean.shape[0], self.num_basins,
                 self.num_particles_per_basin,
                 *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
             basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
-            # [bs, nb, d_out] or [bs, nb]
-            basin_stds = outputs_mean.std(2, unbiased=self._unbiased_std)
+            info = info._replace(basin_means=basin_means)
 
-            opt_std = basin_stds.mean(1)
-            epi_std = basin_means.std(1, unbiased=self._unbiased_std)
-            info = info._replace(opt_std=opt_std, epi_std=epi_std)
+            if not self.warmup_train_stage():
+            # whether to compute opt_std and epi_std
+                # [bs, nb, d_out] or [bs, nb]
+                basin_stds = outputs_mean.std(2, unbiased=self._unbiased_std)
+                opt_std = basin_stds.mean(1)
+                epi_std = basin_means.std(1, unbiased=self._unbiased_std)
+                info = info._replace(opt_std=opt_std, epi_std=epi_std)
 
         return AlgStep(output=outputs, state=(), info=info)
 

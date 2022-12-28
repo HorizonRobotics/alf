@@ -82,6 +82,7 @@ alf.config(
     beta_lb=.5,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
+    per_basin_explorer=True,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,

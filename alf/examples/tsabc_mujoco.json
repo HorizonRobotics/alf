@@ -21,6 +21,7 @@
         "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
+        "TsabcAlgorithm.per_basin_explorer": "[True]",
         "TsabcAlgorithm.beta_lb": "[.5]",
         "TsabcAlgorithm.critic_training_weight": "[0.2]",
         "TsabcAlgorithm.initial_log_alpha": "[-3.2]",

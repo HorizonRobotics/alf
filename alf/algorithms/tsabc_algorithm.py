@@ -43,6 +43,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                  critic_module_cls=FuncParVIAlgorithm,
                  deterministic_actor=False,
                  deterministic_critic=False,
+                 per_basin_explorer=True,
                  reward_weights=None,
                  critic_training_weight=1.0,
                  epsilon_greedy=None,
@@ -78,6 +79,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             critic_module_cls
             deterministic_actor
             deterministic_critic
+            per_basin_explorer,
             critic_training_weight (float|None): if not None, weight :math:`(s,a)`
                 pairs for critic training according to opt_std of :math:`Q(s,a)`
                 with exponent ``critic_training_weight``.
@@ -91,6 +93,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             explore_optimizer
             explore_alpha_optimizer
         """
+        self._per_basin_explorer = per_basin_explorer
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -163,10 +166,14 @@ class TsabcAlgorithm(AbcAlgorithm):
             input_tensor_spec=input_tensor_spec,
             param_net=critic_network,
             optimizer=critic_optimizer)
-        self._num_critic_replicas = critic_module.num_particles
-
+        if self._per_basin_explorer:
+            self._num_explorer_replicas = critic_module.num_basins
+            self._num_critics_per_explorer = critic_module.num_particles_per_basin
+        else:
+            self._num_explorer_replicas = critic_module.num_particles
         explore_network = explore_network.make_parallel(
-            self._num_critic_replicas)
+            self._num_explorer_replicas)
+            # self._num_critic_replicas)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
@@ -186,9 +193,14 @@ class TsabcAlgorithm(AbcAlgorithm):
                     observation, state=state.explore_network)
                 new_state = new_state._replace(
                     explore_network=explore_network_state)
-                if not train:
+                if train:
+                    if self._per_basin_explorer:
+                        action = torch.repeat_interleave(
+                            action, self._num_critics_per_explorer, dim=1)
+                else:
                     if self._random_actor_every_step:
-                        self._idx = torch.randint(self._num_critic_replicas,
+                        # self._idx = torch.randint(self._num_critic_replicas,
+                        self._idx = torch.randint(self._num_explorer_replicas,
                                                   ())
                     action = action[:, self._idx, :]
             else:
@@ -220,7 +232,8 @@ class TsabcAlgorithm(AbcAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: AbcState):
         if inputs.step_type == StepType.FIRST:
-            self._idx = torch.randint(self._num_critic_replicas, ())
+            self._idx = torch.randint(self._num_explorer_replicas, ())
+            # self._idx = torch.randint(self._num_critic_replicas, ())
         return super().rollout_step(inputs, state)
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
@@ -228,8 +241,8 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         Args:
             critics (Tensor): output of critic_step.
-            explore (bool): whether or not to include UCB-like bonus for 
-                exploration.
+            explore (bool): whether or not the outputs are for training
+                the explore actor.
             info (namedtuple): info of critic_step. If critic_module is 
                 ``MultiBoostEnsemble``, it contains ``total_std``,
                 ``epi_std`` and ``opt_std``.
@@ -249,6 +262,9 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         if explore:
             q_value = critics
+            if self._per_basin_explorer and hasattr(info, "basin_means"):
+                if not ignore(info.basin_means):
+                    q_value = info.basin_means
         else:
             if self._use_q_mean_train_actor:
                 q_value = q_mean
