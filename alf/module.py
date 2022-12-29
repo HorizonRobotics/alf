@@ -13,8 +13,8 @@
 # limitations under the License.
 """Patch torch.nn.Module for better performance.
 
-``torch.nn.Module.__getattr__`` is freqently used by all class derived from
-``nn.Module``. It can inrtroduce too much unnecessary overhead. So we patch
+``torch.nn.Module.__getattr__`` is frequently used by all class derived from
+``nn.Module``. It can introduce too much unnecessary overhead. So we patch
 ``nn.Module`` class to remove it.
 """
 
