@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_std_ctw_upd_pbe-newton",
+    "version": "mujoco_multibootstrap-newton",
     "use_gpu": true,
     "gpus": [
         0,

@@ -20,13 +20,16 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
 from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
-from alf.algorithms.actor_bayes_critic_algorithm import AbcState
-from alf.data_structures import StepType, TimeStep
+from alf.algorithms.actor_bayes_critic_algorithm import AbcState, AbcActorInfo
+from alf.algorithms.actor_bayes_critic_algorithm import AbcExploreInfo
+from alf.data_structures import LossInfo, StepType, TimeStep
 from alf.optimizers import AdamTF
+from alf.nest import nest
+import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
 from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import dist_utils
+from alf.utils import dist_utils, losses, math_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
 
 
@@ -193,11 +196,12 @@ class TsabcAlgorithm(AbcAlgorithm):
                     observation, state=state.explore_network)
                 new_state = new_state._replace(
                     explore_network=explore_network_state)
-                if train:
-                    if self._per_basin_explorer:
-                        action = torch.repeat_interleave(
-                            action, self._num_critics_per_explorer, dim=1)
-                else:
+                # if train:
+                #     if self._per_basin_explorer:
+                #         action = torch.repeat_interleave(
+                #             action, self._num_critics_per_explorer, dim=1)
+                # else:
+                if not train:
                     if self._random_actor_every_step:
                         # self._idx = torch.randint(self._num_critic_replicas,
                         self._idx = torch.randint(self._num_explorer_replicas,
@@ -278,3 +282,60 @@ class TsabcAlgorithm(AbcAlgorithm):
             safe_mean_hist_summary(prefix + "critic_epi_std", q_epi_std)
 
         return q_value, q_epi_std
+
+    def _actor_train_step(self,
+                          inputs: TimeStep,
+                          state,
+                          action,
+                          log_pi=(),
+                          explore=False):
+        if explore and self._per_basin_explorer:
+            action_input = torch.repeat_interleave(
+                action, self._num_critics_per_explorer, dim=1)
+        else:
+            action_input = action
+        critic_step = self._critic_module.predict_step(
+            inputs=(inputs.observation, action_input), state=state)
+        critics_state = critic_step.state
+        if self._deterministic_critic:
+            critics = critic_step.output
+        else:
+            critics_dist = critic_step.output
+            critics = critics_dist.mean
+        critics_info = critic_step.info
+
+        q_value, q_epi_std = self._consensus_q_for_actor_train(
+            critics, explore, critics_info)
+        dqda = nest_utils.grad(action, q_value.sum())
+
+        if self._deterministic_actor or explore:
+            neg_entropy = ()
+            entropy_loss = 0.
+        else:
+            cont_alpha = torch.exp(self._log_alpha).detach()
+            entropy_loss = cont_alpha * log_pi
+            if self._epistemic_alpha_coeff is not None:
+                entropy_loss *= (q_epi_std.squeeze().detach()) \
+                                ** self._epistemic_alpha_coeff
+            neg_entropy = sum(nest.flatten(log_pi))
+
+        def actor_loss_fn(dqda, action):
+            if self._dqda_clipping:
+                dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                   self._dqda_clipping)
+            loss = 0.5 * losses.element_wise_squared_loss(
+                (dqda + action).detach(), action)
+            return loss.sum(list(range(1, loss.ndim)))
+
+        actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+        actor_loss = math_ops.add_n(nest.flatten(actor_loss))
+
+        if explore:
+            extra = AbcExploreInfo(explore_loss=actor_loss)
+        else:
+            extra = AbcActorInfo(
+                actor_loss=actor_loss, neg_entropy=neg_entropy)
+        actor_info = LossInfo(loss=actor_loss + entropy_loss, extra=extra)
+
+        return critics_state, actor_info
+
