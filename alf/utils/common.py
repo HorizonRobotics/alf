@@ -1478,13 +1478,17 @@ def get_alf_snapshot_env_vars(root_dir):
     points to the ALF snapshot under this directory.
     """
     unzip_alf_snapshot(root_dir)
-    # legacy alf repo path for backward compatibility
     legacy_alf_repo = os.path.join(root_dir, "alf")
-    alf_repo = root_dir
+    if os.path.isfile(os.path.join(legacy_alf_repo, "alf")):
+        # legacy alf repo path for backward compatibility
+        # legacy tb dirs: root_dir/alf/alf/__init__.py
+        alf_repo = legacy_alf_repo
+    else:
+        # new tb dirs: root_dir/alf/__init__.py
+        alf_repo = root_dir
     alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join(
-        [alf_repo, legacy_alf_repo, alf_examples, python_path])
+    python_path = ":".join([alf_repo, alf_examples, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
