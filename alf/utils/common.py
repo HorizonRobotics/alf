@@ -1421,7 +1421,7 @@ def generate_alf_root_snapshot(alf_root, dest_path):
     model or launching a grid-search job in the waiting queue.
 
     Args:
-        alf_root (str): the path to the ALF repo
+        alf_root (str): the parent path of the 'alf' module
         dest_path (str): the path to generate a snapshot of ALF repo
     """
 
@@ -1444,12 +1444,9 @@ def generate_alf_root_snapshot(alf_root, dest_path):
 
     # these files are important for code status
     includes = ["*.py", "*.gin", "*.so", "*.json"]
-    rsync(alf_root, dest_path, includes)
-
-    # rename ALF repo to a unified dir name 'alf'
-    alf_dirname = os.path.basename(alf_root)
-    if alf_dirname != "alf":
-        os.system("mv %s/%s %s/alf" % (dest_path, alf_dirname, dest_path))
+    # Only copy the 'alf' module dir because the root dir might contain many
+    # other modules in the case where alf is pip installed in 'site-packages'.
+    rsync(alf_root + '/alf', dest_path, includes)
 
     # compress the snapshot repo into a ".tar.gz" file
     os.system("cd %s; tar -czf alf.tar.gz alf" % dest_path)
@@ -1481,10 +1478,13 @@ def get_alf_snapshot_env_vars(root_dir):
     points to the ALF snapshot under this directory.
     """
     unzip_alf_snapshot(root_dir)
-    alf_repo = os.path.join(root_dir, "alf")
+    # legacy alf repo path for backward compatibility
+    legacy_alf_repo = os.path.join(root_dir, "alf")
+    alf_repo = root_dir
     alf_examples = os.path.join(alf_repo, "alf/examples")
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_examples, python_path])
+    python_path = ":".join(
+        [alf_repo, legacy_alf_repo, alf_examples, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
