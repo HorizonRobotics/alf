@@ -3,6 +3,7 @@
 , pythonRelaxDepsHook
 , pytorchWithCuda11
 , torchvisionWithCuda11
+, torchWithoutCuda
 , numpy
 , einops
 , wandb
@@ -26,6 +27,8 @@
 , procgen
 , highway-env
 , metadrive-simulator
+# Options
+, useCuda ? true
 }:
 
 buildPythonPackage rec {
@@ -54,10 +57,13 @@ buildPythonPackage rec {
     "gym"
   ];
 
-  propagatedBuildInputs = [
-    # Machine Learning
+  propagatedBuildInputs = let torch-deps = if useCuda then [
     pytorchWithCuda11
     torchvisionWithCuda11
+  ] else [
+    torchWithoutCuda
+  ]; in [
+    # Machine Learning
     numpy
     einops
     wandb
@@ -85,7 +91,7 @@ buildPythonPackage rec {
     procgen
     highway-env
     metadrive-simulator
-  ];
+  ] ++ torch-deps;
 
   doCheck = false;
 
