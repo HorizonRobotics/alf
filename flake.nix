@@ -15,6 +15,7 @@
       pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
         (python-final: python-prev: {
           alf = python-final.callPackage ./default.nix {};
+          alf-cpu = python-final.callPackage ./default.nix { useCuda = false; };
         })
       ];
     };
@@ -22,13 +23,16 @@
     "x86_64-linux"
   ] (system: {
     devShells.default = inputs.alf-devenv.devShells."${system}".default;
-    packages.default = let pkgs = import nixpkgs {
+    packages = let pkgs = import nixpkgs {
       inherit system;
       config.allowUnfree = true;
       overlays = [
         inputs.alf-devenv.overlays.default        
         self.overlays.default
       ];
-    }; in pkgs.python3Packages.alf;
+    }; in {
+      default = pkgs.python3Packages.alf;
+      cpu = pkgs.python3Packages.alf-cpu;
+    };
   });
 }
