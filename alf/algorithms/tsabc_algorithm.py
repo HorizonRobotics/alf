@@ -20,9 +20,12 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
 from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
+from alf.algorithms.actor_bayes_critic_algorithm import AbcCriticInfo
+from alf.algorithms.actor_bayes_critic_algorithm import AbcCriticState
+from alf.algorithms.actor_bayes_critic_algorithm import AbcInfo
 from alf.algorithms.actor_bayes_critic_algorithm import AbcState, AbcActorInfo
 from alf.algorithms.actor_bayes_critic_algorithm import AbcExploreInfo
-from alf.data_structures import LossInfo, StepType, TimeStep
+from alf.data_structures import LossInfo, namedtuple, StepType, TimeStep
 from alf.optimizers import AdamTF
 from alf.nest import nest
 import alf.nest.utils as nest_utils
@@ -31,6 +34,9 @@ from alf.networks.param_networks import CriticDistributionParamNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils, losses, math_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
+
+TargetCriticInfo = namedtuple(
+    "TargetCriticInfo", ["total_std", "opt_std", "epi_std"], default_value=())
 
 
 @alf.configurable
@@ -176,7 +182,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             self._num_explorer_replicas = critic_module.num_particles
         explore_network = explore_network.make_parallel(
             self._num_explorer_replicas)
-            # self._num_critic_replicas)
+        # self._num_critic_replicas)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
@@ -290,8 +296,17 @@ class TsabcAlgorithm(AbcAlgorithm):
                           log_pi=(),
                           explore=False):
         if explore and self._per_basin_explorer:
-            action_input = torch.repeat_interleave(
-                action, self._num_critics_per_explorer, dim=1)
+
+            action_input = action.unsqueeze(2).expand(
+                *action.shape[:2], self._num_critics_per_explorer,
+                *action.shape[2:]).reshape(
+                    action.shape[0],
+                    action.shape[1] * self._num_critics_per_explorer,
+                    *action.shape[2:])
+
+            # action_input = torch.repeat_interleave(
+            #     action, self._num_critics_per_explorer, dim=1)
+
         else:
             action_input = action
         critic_step = self._critic_module.predict_step(
@@ -339,3 +354,57 @@ class TsabcAlgorithm(AbcAlgorithm):
 
         return critics_state, actor_info
 
+    def _compute_critic_train_info(self, inputs: TimeStep,
+                                   state: AbcCriticState,
+                                   rollout_info: AbcInfo, action):
+        target_critics_dist, target_critics_state = self._target_critic_network(
+            (inputs.observation, action), state.target_critics)
+
+        if self._deterministic_critic:
+            target_critics = target_critics_dist
+        else:
+            target_critics = target_critics_dist.mean
+
+        total_std = target_critics.std(1, unbiased=True).detach()
+        info = TargetCriticInfo(total_std=total_std)
+
+        if self._critic_module.num_particles_per_basin > 1:
+            target_critics_mean = target_critics.reshape(
+                target_critics.shape[0], self._critic_module.num_basins,
+                self._critic_module.num_particles_per_basin, *target_critics.
+                shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
+            basin_means = target_critics_mean.mean(2)
+
+            # if not self._critic_module.warmup_train_stage():
+            # whether to compute opt_std and epi_std
+            # [bs, nb, d_out] or [bs, nb]
+            basin_stds = target_critics_mean.std(2, unbiased=True)
+            opt_std = basin_stds.mean(1).detach()
+            epi_std = basin_means.std(1, unbiased=True).detach()
+            info = info._replace(opt_std=opt_std, epi_std=epi_std)
+
+        if self._common_td_target:
+            # use common td_target for all critic
+            targets = target_critics.mean(1) - self._beta_lb * total_std
+        else:
+            # use separate td_target for each critic
+            overestimation = total_std.unsqueeze(1)
+            targets = target_critics - self._beta_lb * overestimation
+
+        targets = targets.detach()
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                safe_mean_hist_summary("target_critics_batch_mean",
+                                       target_critics.mean(1))
+                safe_mean_hist_summary("target_critics_total_std", total_std)
+                safe_mean_hist_summary("target_critics_epi_std", epi_std)
+
+        critic_info = AbcCriticInfo(
+            critic_state=state.critics,
+            target_critic=targets,
+            target_critic_info=info)
+
+        state = AbcCriticState(critics=(), target_critics=target_critics_state)
+
+        return state, critic_info
