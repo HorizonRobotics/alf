@@ -37,10 +37,10 @@ from alf.utils.summary_utils import record_time
 from alf.utils.sl_utils import classification_loss, regression_loss, auc_score
 from alf.utils.sl_utils import predict_dataset
 
+MbeInfo = namedtuple(
+    "MbeInfo", ["total_std", "opt_std", "epi_std", "basin_means"],
+    default_value=())
 
-MbeInfo = namedtuple("MbeInfo", 
-                     ["total_std", "opt_std", "epi_std", "basin_means"], 
-                     default_value=())
 
 @alf.configurable
 class MultiBootstrapEnsemble(FuncParVIAlgorithm):
@@ -265,27 +265,30 @@ class MultiBootstrapEnsemble(FuncParVIAlgorithm):
             outputs_mean = outputs.mean
         else:
             outputs_mean = outputs
-        # [bs, d_out] or [bs]
-        total_std = outputs_mean.std(1, unbiased=self._unbiased_std)
+
+        info = self.std_info_process(outputs_mean)
+
+        return AlgStep(output=outputs, state=(), info=info)
+
+    def std_info_process(self, inputs):
+        # [..., d_out]
+        total_std = inputs.std(-2, unbiased=self._unbiased_std)
         info = MbeInfo(total_std=total_std)
 
         if self.num_particles_per_basin > 1:
-            outputs_mean = outputs_mean.reshape(
-                outputs_mean.shape[0], self.num_basins,
-                self.num_particles_per_basin,
-                *outputs_mean.shape[2:])  # [bs, nb, np, d_out] or [bs, nb, np]
-            basin_means = outputs_mean.mean(2)  # [bs, nb, d_out] or [bs, nb]
+            inputs = inputs.reshape(*inputs.shape[:-2], self.num_basins,
+                                    self.num_particles_per_basin,
+                                    inputs.shape[-1])  # [..., nb, np, d_out]
+            basin_means = inputs.mean(-2)  # [..., nb, d_out]
             info = info._replace(basin_means=basin_means)
-
             if not self.warmup_train_stage():
-            # whether to compute opt_std and epi_std
-                # [bs, nb, d_out] or [bs, nb]
-                basin_stds = outputs_mean.std(2, unbiased=self._unbiased_std)
-                opt_std = basin_stds.mean(1)
-                epi_std = basin_means.std(1, unbiased=self._unbiased_std)
+                # whether to compute opt_std and epi_std
+                # [..., nb, d_out]
+                basin_stds = inputs.std(-2, unbiased=self._unbiased_std)
+                opt_std = basin_stds.mean(-2)  # [..., d_out]
+                epi_std = basin_means.std(-2, unbiased=self._unbiased_std)
                 info = info._replace(opt_std=opt_std, epi_std=epi_std)
-
-        return AlgStep(output=outputs, state=(), info=info)
+        return info
 
     def masked_train_stage(self):
         return self.warmup_train_stage() and not self.initial_train_stage()

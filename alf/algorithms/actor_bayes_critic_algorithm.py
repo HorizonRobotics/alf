@@ -240,6 +240,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             self.name, target_entropy, nest.flatten(self._action_spec))
 
         mini_batch_size = alf.get_config_value('TrainerConfig.mini_batch_size')
+        self._mini_batch_size = alf.get_config_value(
+            'TrainerConfig.mini_batch_size')
         self._mini_batch_length = alf.get_config_value(
             'TrainerConfig.mini_batch_length')
         replay_buffer_length = alf.get_config_value(
@@ -476,28 +478,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         else:
             target_critics = target_critics_dist.mean
 
-        target_critics_std = target_critics.std(1, unbiased=True)
-        if self._common_td_target:
-            # use common td_target for all critic
-            target_critics_mean = target_critics.mean(1)
-            targets = target_critics_mean - self._beta_lb * target_critics_std
-        else:
-            # use separate td_target for each critic
-            overestimation = target_critics_std.unsqueeze(1)
-            targets = target_critics - self._beta_lb * overestimation
-
-        targets = targets.detach()
-
-        if self._debug_summaries and alf.summary.should_record_summaries():
-            with alf.summary.scope(self._name):
-                target_critics_mean = target_critics.mean(1)
-                safe_mean_hist_summary("target_critics_batch_mean",
-                                       target_critics_mean)
-                safe_mean_hist_summary("target_critics_std",
-                                       target_critics_std)
-
         critic_info = AbcCriticInfo(
-            critic_state=state.critics, target_critic=targets)
+            critic_state=state.critics, target_critic=target_critics)
 
         state = AbcCriticState(critics=(), target_critics=target_critics_state)
 
@@ -628,8 +610,9 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         self._critic_module.reset_param_net(params)
         num_particles = params.shape[0]
         critic_train_info = info.critic
-        targets = critic_train_info.target_critic
+        target_critics = critic_train_info.target_critic.detach()
 
+        # [T-1, B, ...]
         observation = info.observation[:-1, ...]
         action = info.action[:-1, ...]
 
@@ -643,11 +626,18 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         critics_dist = critic_step.output
         critics_info = critic_step.info
 
+        target_critics_std = target_critics.std(2, unbiased=True)
         # compute td_targets
         if self._common_td_target:
+            # use common td_target for all critic
+            target_critics_mean = target_critics.mean(2)
+            targets = target_critics_mean - self._beta_lb * target_critics_std
             td_targets = self._critic_loss.compute_td_target(info, targets)
             td_targets = td_targets.unsqueeze(2)  # [T-1, B, 1, ...]
         else:
+            # use separate td_target for each critic
+            overestimation = target_critics_std.unsqueeze(2)
+            targets = target_critics - self._beta_lb * overestimation
             td_targets = [
                 self._critic_loss.compute_td_target(info,
                                                     targets[:, :, i, ...])
@@ -749,19 +739,29 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                 (critics_mean[..., i], critics_std[..., i]),
                                 td_target, neglogp[..., i], suffix)
 
+        # if self._debug_summaries and alf.summary.should_record_summaries():
+        #     with alf.summary.scope(self._name):
+        #         target_critics_mean = target_critics.mean(1)
+        #         safe_mean_hist_summary("target_critics_batch_mean",
+        #                                target_critics_mean)
+        #         safe_mean_hist_summary("target_critics_std",
+        #                                target_critics_std)
+
         # reweight training (s, a) paris with target critic epi_std
-        targets_info = critic_train_info.target_critic_info
         if not self._critic_module.warmup_train_stage() and \
             self._critic_training_weight is not None:
-            weights = 1 / (targets_info.epi_std[1:, ...] + 1e-6)
-            batch_size = weights.shape[1]
-            weights = weights**self._critic_training_weight
-            weights = weights.unsqueeze(2) * batch_size / weights.sum()
-            neg_logp *= weights
-            if self._debug_summaries and alf.summary.should_record_summaries():
-                with alf.summary.scope(self._name):
-                    safe_mean_hist_summary('critic_training_weights',
-                                           weights.view(-1))
+            targets_info = self._critic_module.std_info_process(target_critics)
+            if not ignore(targets_info.epi_std):
+                weights = 1 / (targets_info.epi_std[1:, ...] + 1e-6)
+                weights = weights**self._critic_training_weight
+                weights = weights.unsqueeze(
+                    2) * self._mini_batch_size / weights.sum()
+                neg_logp *= weights
+                if self._debug_summaries and alf.summary.should_record_summaries(
+                ):
+                    with alf.summary.scope(self._name):
+                        safe_mean_hist_summary('critic_training_weights',
+                                               weights.view(-1))
 
         # # reweight training (s, a) paris with total_std
         # if self._critic_training_weight is not None:

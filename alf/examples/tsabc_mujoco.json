@@ -18,7 +18,7 @@
         "MultiBootstrapEnsemble.num_basins": "[5]",
         "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
         "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",
-        "MultiBootstrapEnsemble.initial_train_steps": "[10000]",
+        "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
         "TsabcAlgorithm.per_basin_explorer": "[False]",
