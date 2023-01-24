@@ -747,13 +747,17 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         #         safe_mean_hist_summary("target_critics_std",
         #                                target_critics_std)
 
-        # reweight training (s, a) paris with target critic epi_std
+        # reweight training (s, a) paris with critic opt_std & target critic epi_std
         if not self._critic_module.warmup_train_stage() and \
             self._critic_training_weight is not None:
             targets_info = self._critic_module.std_info_process(target_critics)
-            if not ignore(targets_info.epi_std):
-                weights = 1 / (targets_info.epi_std[1:, ...] + 1e-6)
-                weights = weights**self._critic_training_weight
+            if not ignore(targets_info.epi_std) and not ignore(
+                    critics_info.opt_std):
+                weights = critics_info.opt_std.detach(
+                )**self._critic_training_weight
+                weights = weights.reshape(self._mini_batch_length - 1, -1,
+                                          *weights.shape[1:])
+                weights = weights / (targets_info.epi_std[1:, ...] + 1e-6)
                 weights = weights.unsqueeze(
                     2) * self._mini_batch_size / weights.sum()
                 neg_logp *= weights
@@ -762,6 +766,26 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                     with alf.summary.scope(self._name):
                         safe_mean_hist_summary('critic_training_weights',
                                                weights.view(-1))
+                        safe_mean_hist_summary('critic_opt_std',
+                                               critics_info.opt_std.view(-1))
+                        safe_mean_hist_summary('target_critic_epi_std',
+                                               targets_info.epi_std.view(-1))
+
+        # # reweight training (s, a) paris with target critic epi_std
+        # if not self._critic_module.warmup_train_stage() and \
+        #     self._critic_training_weight is not None:
+        #     targets_info = self._critic_module.std_info_process(target_critics)
+        #     if not ignore(targets_info.epi_std):
+        #         weights = 1 / (targets_info.epi_std[1:, ...] + 1e-6)
+        #         weights = weights**self._critic_training_weight
+        #         weights = weights.unsqueeze(2) * self._mini_batch_size / weights.sum()
+        #         neg_logp *= weights
+        #         if self._debug_summaries and alf.summary.should_record_summaries():
+        #             with alf.summary.scope(self._name):
+        #                 safe_mean_hist_summary('critic_training_weights',
+        #                                        weights.view(-1))
+        #                 safe_mean_hist_summary('target_critic_epi_std',
+        #                                        targets_info.epi_std.view(-1))
 
         # # reweight training (s, a) paris with total_std
         # if self._critic_training_weight is not None:

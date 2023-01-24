@@ -2,7 +2,7 @@
     "desc": [
         "All MuJoCo tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_b9a41_tar_epi-ctw_1-aidi",
+    "version": "mujoco_multibootstrap_c4d24_opt-epi-ctw_1-aidi",
     "use_gpu": true,
     "gpus": [
         0,
