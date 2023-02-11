@@ -140,11 +140,14 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     def _reset(self):
         self._done = False
         batched = self._batch_size is not None
-        return ds.restart(
+        time_step = ds.restart(
             self._get_observation(),
             self._action_spec,
             env_id=self._env_id,
             batched=batched)
+        if self._use_tensor_time_step:
+            time_step = nest.map_structure(torch.as_tensor, time_step)
+        return time_step
 
     def _sample_spec(self, spec, outer_dims):
         """Sample the given TensorSpec."""

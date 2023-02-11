@@ -43,7 +43,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                  env_constructors,
                  start_serially=True,
                  blocking=False,
-                 flatten=True):
+                 flatten=True,
+                 num_spare_envs_for_reload=0):
         """
         Args:
             env_constructors (list[Callable]): a list of callable environment creators.
@@ -51,6 +52,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             blocking (bool): whether to step environments one after another.
             flatten (bool): whether to use flatten action and time_steps during
                 communication to reduce overhead.
+            num_spare_envs_for_reload (int): if positive, these environments will be
+                maintained in a separate queue and be used to handle slow env resets.
 
         Raises:
             ValueError: If the action or observation specs don't match.
@@ -62,6 +65,18 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
             self._envs.append(env)
             self._env_ids.append(env_id)
+        self._spare_queue = []
+        self._spare_promises = []
+        spare_env_id = len(self._envs)
+        self._num_spare_envs_for_reload = num_spare_envs_for_reload
+        if num_spare_envs_for_reload > 0:
+            assert not blocking, "Spare envs only allowed in non-blocking mode"
+            for i in range(num_spare_envs_for_reload):
+                spare_env = ProcessEnvironment(
+                    env_constructors[0], env_id=spare_env_id, flatten=flatten)
+                spare_env_id += 1
+                self._spare_queue.append(spare_env)
+            self._last_is_done = []
         self._num_envs = len(env_constructors)
         self._blocking = blocking
         self._start_serially = start_serially
@@ -91,13 +106,21 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         """The list of individual environment."""
         return self._envs
 
+    @property
+    def num_spare_envs_for_reload(self):
+        return self._num_spare_envs_for_reload
+
     def start(self):
         logging.info('Spawning all processes.')
         for env in self._envs:
             env.start(wait_to_start=self._start_serially)
+        for env in self._spare_queue:
+            env.start(wait_to_start=self._start_serially)
         if not self._start_serially:
             logging.info('Waiting for all processes to start.')
             for env in self._envs:
+                env.wait_start()
+            for env in self._spare_queue:
                 env.wait_start()
         logging.info('All processes started.')
 
@@ -141,6 +164,11 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         time_steps = [env.reset(self._blocking) for env in self._envs]
         if not self._blocking:
             time_steps = [promise() for promise in time_steps]
+        if self._spare_queue:
+            self._record_done(time_steps)
+            self._spare_promises = [
+                env.reset(self._blocking) for env in self._spare_queue
+            ]
         return self._stack_time_steps(time_steps)
 
     def _step(self, actions):
@@ -155,14 +183,59 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         Returns:
             Batch of observations, rewards, and done flags.
         """
-        time_steps = [
-            env.step(action, self._blocking)
-            for env, action in zip(self._envs, self._unstack_actions(actions))
-        ]
+        if self._spare_queue:
+            actions = self._unstack_actions(actions)
+            time_steps = self._handle_last_done(actions)
+        else:
+            time_steps = [
+                env.step(action, self._blocking) for env, action in zip(
+                    self._envs, self._unstack_actions(actions))
+            ]
+
         # When blocking is False we get promises that need to be called.
         if not self._blocking:
             time_steps = [promise() for promise in time_steps]
+
+        if self._spare_queue:
+            self._record_done(time_steps)
+
         return self._stack_time_steps(time_steps)
+
+    def _handle_last_done(self, actions):
+        time_steps = []
+        for i, last_is_done in enumerate(self._last_is_done):
+            env = self._envs[i]
+            if last_is_done:
+                # If last step is done, env should return without stepping.
+                spare_env = self._spare_queue.pop(0)
+                spare_env_id = spare_env._env_id
+                # spare_env is becoming an active env
+                spare_env._env_id = env._env_id
+                self._envs[i] = spare_env
+                # env is becoming a spare env.
+                # save env_id of spare env, just in case.
+                # Random seeds are handled separately.
+                env._env_id = spare_env_id
+                self._spare_queue.append(env)
+                # Handle promises of the reset()
+                ts = self._spare_promises.pop(0)
+                self._spare_promises.append(env.reset(blocking=False))
+            else:
+                if self._flatten:
+                    actions = list(actions)
+                ts = env.step(actions[i], self._blocking)
+            time_steps.append(ts)
+        return time_steps
+
+    def _record_done(self, time_steps):
+        if not self._last_is_done:
+            self._last_is_done = [False] * len(time_steps)
+        for i, ts in enumerate(time_steps):
+            if self._flatten:
+                ts = nest.pack_sequence_as(self._time_step_spec, ts)
+            step_type = ts.step_type
+            self._last_is_done[i] = (
+                step_type == alf.data_structures.StepType.LAST)
 
     def close(self):
         """Close all external process."""
@@ -170,6 +243,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             return
         logging.info('Closing all processes.')
         for env in self._envs:
+            env.close()
+        for env in self._spare_queue:
             env.close()
         self._closed = True
         logging.info('All processes closed.')
@@ -205,14 +280,19 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             ]
         return unstacked_actions
 
-    def seed(self, seeds):
-        """Seeds the parallel environments."""
-        if len(seeds) != len(self._envs):
+    def _seed(self, envs, seeds):
+        if len(seeds) != len(envs):
             raise ValueError(
                 'Number of seeds should match the number of parallel_envs.')
 
-        promises = [
-            env.call('seed', seed) for seed, env in zip(seeds, self._envs)
-        ]
+        promises = [env.call('seed', seed) for seed, env in zip(seeds, envs)]
         # Block until all envs are seeded.
         return [promise() for promise in promises]
+
+    def seed(self, seeds):
+        """Seeds the parallel environments."""
+        return self._seed(self._envs, seeds)
+
+    def seed_spare(self, seeds):
+        """Seeds the spare parallel environments."""
+        return self._seed(self._spare_queue, seeds)

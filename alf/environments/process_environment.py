@@ -138,6 +138,7 @@ class ProcessEnvironment(object):
         self._reward_spec = None
         self._time_step_spec = None
         self._env_info_spec = None
+        self._conn = None
 
     def start(self, wait_to_start=True):
         """Start the process.
@@ -154,6 +155,7 @@ class ProcessEnvironment(object):
         # inherit the alf configurations from the parent process, so that such
         # configuration are effective for the to-be-created environments in the
         # child process.
+        assert not self._conn, "Cannot start() ProcessEnvironment multiple times"
         mp_ctx = multiprocessing.get_context('fork')
         self._conn, conn = mp_ctx.Pipe()
         self._process = mp_ctx.Process(
@@ -166,6 +168,7 @@ class ProcessEnvironment(object):
 
     def wait_start(self):
         """Wait for the started process to finish initialization."""
+        assert self._conn, "Run ProcessEnvironment.start() first"
         result = self._conn.recv()
         if isinstance(result, Exception):
             self._conn.close()
@@ -210,6 +213,7 @@ class ProcessEnvironment(object):
         Returns:
             Value of the attribute.
         """
+        assert self._conn, "Run ProcessEnvironment.start() first"
         self._conn.send((_MessageType.ACCESS, name))
         return self._receive()
 
@@ -224,6 +228,7 @@ class ProcessEnvironment(object):
         Returns:
             Promise object that blocks and provides the return value when called.
         """
+        assert self._conn, "Run ProcessEnvironment.start() first"
         payload = name, args, kwargs
         self._conn.send((_MessageType.CALL, payload))
         return self._receive
@@ -280,6 +285,7 @@ class ProcessEnvironment(object):
         Returns:
             Payload object of the message.
         """
+        assert self._conn, "Run ProcessEnvironment.start() first"
         message, payload = self._conn.recv()
 
         # Re-raise exceptions in the main process.
