@@ -106,6 +106,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
 
     def test_non_blocking_reset_with_spare_envs(self):
         num_envs = 10
+        sleep_time = 1.
         self._set_default_specs()
 
         def slow_env_load(env_name, env_id=0):
@@ -114,7 +115,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
                 self.action_spec,
                 env_id=env_id,
                 max_duration=1,
-                time_sleep=1.0,
+                time_sleep=sleep_time,
                 use_tensor_time_step=False)
 
         start_time = time.time()
@@ -124,12 +125,13 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
             num_parallel_environments=num_envs,
             start_serially=False,
             num_spare_envs=num_envs)
-        end_time = time.time()
+        init_time = time.time()
+        init_time_diff = init_time - start_time
         self.assertLessEqual(
-            end_time - start_time,
-            num_envs - 0.5,
+            init_time_diff,
+            sleep_time * 2 - 0.5,
             msg=('Expected all processes to start together, '
-                 'got {} wait time').format(end_time - start_time))
+                 'got {} wait time').format(init_time_diff))
 
         time_step0 = env.reset()
         action_spec = env.action_spec()
@@ -137,14 +139,29 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         time_step1 = env.step(action)
         self.assertEqual(time_step0.observation.shape,
                          time_step1.observation.shape)
+        step1_time = time.time()
         time_step2 = env.step(action)
-        reset_time = time.time() - end_time
+        reset_time = time.time()
+        reset_time_diff = reset_time - step1_time
         self.assertEqual(time_step1.observation.shape,
                          time_step2.observation.shape)
         self.assertLessEqual(
-            reset_time,
-            5,
-            msg=(f'Reset with spare envs took {reset_time}, too long'))
+            reset_time_diff,
+            sleep_time - 0.5,
+            msg=(f'Reset with spare envs took {reset_time_diff}, too long'))
+        time_step3 = env.step(action)
+        step3_time = time.time()
+        step3_time_diff = step3_time - reset_time
+        self.assertLessEqual(
+            step3_time_diff,
+            0.5,
+            msg=(f'Regular step took {step3_time_diff}, too long'))
+        time_step4 = env.step(action)
+        step4_time_diff = time.time() - step3_time
+        self.assertGreaterEqual(
+            step4_time_diff,
+            sleep_time - 0.01,
+            msg=(f'Step without spare envs took {step4_time_diff}, too short'))
         env.close()
 
     def test_non_blocking_start_processes_in_parallel(self):
