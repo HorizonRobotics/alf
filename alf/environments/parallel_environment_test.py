@@ -105,7 +105,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         env.close()
 
     def test_non_blocking_reset_with_spare_envs(self):
-        num_envs = 10
+        num_envs = 2
         sleep_time = 1.
         self._set_default_specs()
 
@@ -146,6 +146,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         reset_time_diff = reset_time - step1_time
         self.assertEqual(time_step1.observation.shape,
                          time_step2.observation.shape)
+        assert torch.all(time_step2.env_id < num_envs)
         self.assertLessEqual(
             reset_time_diff,
             sleep_time - 0.5,

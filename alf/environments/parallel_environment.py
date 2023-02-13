@@ -259,6 +259,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         else:
             stacked = nest.fast_map_structure(
                 lambda *arrays: torch.stack(arrays), *time_steps)
+        if self._spare_queue:
+            env_ids = torch.tensor([e._env_id for e in self._envs])
+            stacked = stacked._replace(env_id=env_ids)
         stacked = nest.map_structure(
             lambda x: torch.as_tensor(x, device='cpu'), stacked)
         if alf.get_default_device() == "cuda":
