@@ -232,7 +232,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             self._last_is_done = [False] * len(time_steps)
         for i, ts in enumerate(time_steps):
             if self._flatten:
-                ts = nest.pack_sequence_as(self._time_step_spec, ts)
+                ts = nest.pack_sequence_as(self._time_step_with_env_info_spec,
+                                           ts)
             step_type = ts.step_type
             self._last_is_done[i] = (
                 step_type == alf.data_structures.StepType.LAST)

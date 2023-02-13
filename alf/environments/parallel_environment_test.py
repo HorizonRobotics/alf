@@ -134,6 +134,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
                  'got {} wait time').format(init_time_diff))
 
         time_step0 = env.reset()
+        assert torch.all(time_step0.step_type == ds.StepType.FIRST)
         action_spec = env.action_spec()
         action = torch.stack([action_spec.sample() for _ in range(num_envs)])
         time_step1 = env.step(action)
