@@ -76,7 +76,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                     env_constructors[0], env_id=spare_env_id, flatten=flatten)
                 spare_env_id += 1
                 self._spare_queue.append(spare_env)
-            self._last_is_done = []
+            self._last_is_done = None
         self._num_envs = len(env_constructors)
         self._blocking = blocking
         self._start_serially = start_serially
@@ -162,14 +162,23 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             Time step with batch dimension.
         """
         time_steps = [env.reset(self._blocking) for env in self._envs]
-        if not self._blocking:
-            time_steps = [promise() for promise in time_steps]
+
+        # handle spare promises
         if self._spare_queue:
-            self._record_done(time_steps)
+            [p() for p in self._spare_promises]
             self._spare_promises = [
                 env.reset(self._blocking) for env in self._spare_queue
             ]
-        return self._stack_time_steps(time_steps)
+
+        if not self._blocking:
+            time_steps = [promise() for promise in time_steps]
+
+        time_steps = self._stack_time_steps(time_steps)
+
+        if self._spare_queue:
+            self._record_done(time_steps)
+
+        return time_steps
 
     def _step(self, actions):
         """Forward a batch of actions to the wrapped environments.
@@ -185,7 +194,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         """
         if self._spare_queue:
             actions = self._unstack_actions(actions)
-            time_steps = self._handle_last_done(actions)
+            time_steps, reset_calls = self._step_or_handle_last_done(actions)
         else:
             time_steps = [
                 env.step(action, self._blocking) for env, action in zip(
@@ -196,16 +205,18 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         if not self._blocking:
             time_steps = [promise() for promise in time_steps]
 
+        time_steps = self._stack_time_steps(time_steps)
+
         if self._spare_queue:
-            self._record_done(time_steps)
+            self._record_done(time_steps, reset_calls)
 
-        return self._stack_time_steps(time_steps)
+        return time_steps
 
-    def _handle_last_done(self, actions):
-        time_steps = []
-        for i, last_is_done in enumerate(self._last_is_done):
+    def _step_or_handle_last_done(self, actions):
+        time_steps, reset_calls = [], []
+        for i in range(self._last_is_done.shape[0]):
             env = self._envs[i]
-            if last_is_done:
+            if self._last_is_done[i]:
                 # If last step is done, env should return without stepping.
                 spare_env = self._spare_queue.pop(0)
                 spare_env_id = spare_env._env_id
@@ -219,24 +230,23 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                 self._spare_queue.append(env)
                 # Handle promises of the reset()
                 ts = self._spare_promises.pop(0)
-                self._spare_promises.append(env.reset(blocking=False))
+                reset_calls.append(env.reset)
             else:
                 if self._flatten:
                     actions = list(actions)
                 ts = env.step(actions[i], self._blocking)
             time_steps.append(ts)
-        return time_steps
+        return time_steps, reset_calls
 
-    def _record_done(self, time_steps):
-        if not self._last_is_done:
-            self._last_is_done = [False] * len(time_steps)
-        for i, ts in enumerate(time_steps):
-            if self._flatten:
-                ts = nest.pack_sequence_as(self._time_step_with_env_info_spec,
-                                           ts)
-            step_type = ts.step_type
-            self._last_is_done[i] = (
-                step_type == alf.data_structures.StepType.LAST)
+    def _record_done(self, time_steps, reset_calls=[]):
+        if self._last_is_done is None:
+            self._last_is_done = torch.tensor([False] * len(time_steps))
+        self._last_is_done = (
+            time_steps.step_type == alf.data_structures.StepType.LAST)
+        [
+            self._spare_promises.append(reset(blocking=False))
+            for reset in reset_calls
+        ]
 
     def close(self):
         """Close all external process."""
