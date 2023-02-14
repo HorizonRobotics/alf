@@ -157,11 +157,22 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         self.assertLessEqual(
             step3_time, 0.5, msg=(f'Regular step took {step3_time}, too long'))
         time_step4 = env.step(action)
-        step4_time = time.time() - step3_t
+        step4_t = time.time()
+        step4_time = step4_t - step3_t
         self.assertGreaterEqual(
             step4_time,
             sleep_time - 0.01,
             msg=(f'Step without spare envs took {step4_time}, too short'))
+        time_step = env.step(action)  # reset is called here
+        time.sleep(sleep_time)
+        step5_t = time.time()
+        # should be fast due to reset being called before sleep
+        time_step = env.step(action)
+        step5_time = time.time() - step5_t
+        self.assertLessEqual(
+            step5_time,
+            sleep_time - 0.1,
+            msg=(f'Reset already called, took {step5_time}, too long'))
         env.close()
 
     def test_non_blocking_start_processes_in_parallel(self):
