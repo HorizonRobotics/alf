@@ -167,8 +167,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
         # handle spare promises
         if not self._blocking:
-            [p() for p in self._spare_promises]
             [p() for p in self._reset_ts if p is not None]
+            [p() for p in self._spare_promises]
             self._reset_ts = [None] * self._num_envs
             self._spare_promises = [
                 env.reset(self._blocking) for env in self._spare_queue
@@ -260,6 +260,10 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         if self._closed:
             return
         logging.info('Closing all processes.')
+        [p() for p in self._reset_ts if p is not None]
+        [p() for p in self._spare_promises]
+        self._reset_ts = []
+        self._spare_promises = []
         for env in self._envs:
             env.close()
         for env in self._spare_queue:
