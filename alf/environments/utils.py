@@ -61,6 +61,7 @@ def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        num_parallel_environments=30,
                        nonparallel=False,
+                       flatten=True,
                        start_serially=True,
                        num_spare_envs=0,
                        seed=None,
@@ -80,6 +81,11 @@ def create_environment(env_name='CartPole-v0',
         num_spare_envs (int): num of spare parallel envs for speed up reset.
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
+        start_serially (bool): start environments serially or in parallel.
+        flatten (bool): whether to use flatten action and time_steps during
+            communication to reduce overhead.
+        num_spare_envs (int): number of spare parallel environments to speed
+            up reset.  Useful when a reset is much slower than a regular step.
         seed (None|int): random number seed for environment.  A random seed is
             used if None.
         batched_wrappers (Iterable): a list of wrappers which can wrap batched
@@ -122,7 +128,7 @@ def create_environment(env_name='CartPole-v0',
         alf_env = parallel_environment.ParallelAlfEnvironment(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
-            flatten=True,
+            flatten=flatten,
             start_serially=start_serially,
             num_spare_envs_for_reload=num_spare_envs)
 
