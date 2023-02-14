@@ -268,6 +268,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                  b1_advantage_clipping=None,
                  max_repeat_steps=None,
                  target_entropy=None,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  name="TaacAlgorithmBase"):
         r"""
         Args:
@@ -330,6 +332,10 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
                 calculate a target entropy. If ``None``, a default entropy will
                 be calculated. To set separate entropy targets for the two
                 stage policies, this argument can be a tuple of two callables.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             name (str): name of the algorithm
         """
         assert len(
@@ -363,6 +369,8 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             reward_weights=reward_weights,
             env=env,
             config=config,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
 

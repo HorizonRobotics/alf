@@ -332,6 +332,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             exploration_policy_type: str = 'rkl',
             max_unroll_length=1000000,
             num_parallel_sims=1,
+            checkpoint_path=None,
+            checkpoint_prefix='',
             debug_summaries=False,
             name="MCTSAlgorithm",
     ):
@@ -429,6 +431,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 maximal allowed tree depth will be ``max_unroll_length-1``
             num_parallel_sims (int): expanding so many leaves at a time for one
                 tree. ``num_simulations`` must be divisable by ``num_parallel_sims``.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             name (str): the name of the algorithm.
         """
         assert not nest.is_nested(
@@ -511,6 +517,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 action_sampler_state=rollout_action_sampler_state_spec),
             train_state_spec=state_spec._replace(
                 action_sampler_state=rollout_action_sampler_state_spec),
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
         self._model = model

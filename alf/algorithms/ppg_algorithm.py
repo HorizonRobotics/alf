@@ -64,6 +64,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                  policy_optimizer: Optional[torch.optim.Optimizer] = None,
                  aux_optimizer: Optional[torch.optim.Optimizer] = None,
                  epsilon_greedy=None,
+                 checkpoint_path: Optional[str] = None,
+                 checkpoint_prefix: Optional[str] = '',
                  debug_summaries: bool = False,
                  name: str = "PPGAlgorithm"):
         """Args:
@@ -96,6 +98,10 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
                 It is used in ``predict_step()`` during evaluation.
+            checkpoint_path: the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix: the prefix to the contents in the checkpoint
+                to be loaded.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
 
@@ -117,6 +123,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             predict_state_spec=dual_actor_value_network.state_spec,
             train_state_spec=dual_actor_value_network.state_spec,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             optimizer=policy_optimizer)
 
         # When aux phase update is enabled, a sub algorithm named

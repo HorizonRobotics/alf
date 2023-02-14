@@ -88,6 +88,8 @@ class SarsaAlgorithm(RLAlgorithm):
                  use_smoothed_actor=False,
                  dqda_clipping=0.,
                  on_policy=False,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries=False,
                  name="SarsaAlgorithm"):
         """
@@ -153,6 +155,10 @@ class SarsaAlgorithm(RLAlgorithm):
             alpha_optimizer (torch.optim.Optimizer): The optimizer for alpha.
                 Only used if ``initial_alpha`` is not ``None``.
             on_policy (bool): whether it is used as an on-policy algorithm.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             debug_summaries (bool): ``True`` if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -201,6 +207,8 @@ class SarsaAlgorithm(RLAlgorithm):
                 critics=critic_networks.state_spec,
                 target_critics=critic_networks.state_spec,
             ),
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
         self._actor_network = actor_network

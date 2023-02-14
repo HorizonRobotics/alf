@@ -61,6 +61,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  dynamics_optimizer=None,
                  reward_optimizer=None,
                  planner_optimizer=None,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries=False,
                  name="MbrlAlgorithm"):
         """Create an MbrlAlgorithm.
@@ -100,6 +102,10 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs `train_iter()` by
                 itself.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
 
@@ -130,6 +136,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             train_state_spec=train_state_spec,
             env=env,
             config=config,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
 

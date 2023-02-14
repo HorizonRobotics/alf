@@ -53,6 +53,8 @@ class BcAlgorithm(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  env=None,
                  config: TrainerConfig = None,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries=False,
                  epsilon_greedy=None,
                  name="BcAlgorithm"):
@@ -78,6 +80,13 @@ class BcAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded. If the checkpoint comes from a previous ALF training
+                session, the standard prefix starts with "alg." (e.g. "alg._sub_alg1").
+                If "", the effects is the same as providing "alg.", which will
+                load the full 'alg' part of the checkpoint.
             debug_summaries (bool): True if debug summaries should be created.
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
@@ -105,6 +114,8 @@ class BcAlgorithm(OffPolicyAlgorithm):
             reward_weights=None,
             env=env,
             config=config,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
 

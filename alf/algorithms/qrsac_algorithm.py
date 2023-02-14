@@ -34,13 +34,13 @@ from alf.utils import dist_utils
 
 @alf.configurable
 class QrsacAlgorithm(SacAlgorithm):
-    """Quantile regression actor critic algorithm. 
-    
-    A SAC variant that applies the following quantile regression based 
+    """Quantile regression actor critic algorithm.
+
+    A SAC variant that applies the following quantile regression based
     distributional RL approach to model the critic function:
 
     ::
-        
+
         Dabney et al "Distributional Reinforcement Learning with Quantile Regression",
         arXiv:1710.10044
 
@@ -73,19 +73,25 @@ class QrsacAlgorithm(SacAlgorithm):
                  actor_optimizer: Optional[torch.optim.Optimizer] = None,
                  critic_optimizer: Optional[torch.optim.Optimizer] = None,
                  alpha_optimizer: Optional[torch.optim.Optimizer] = None,
+                 checkpoint_path: Optional[str] = None,
+                 checkpoint_prefix: Optional[str] = '',
                  debug_summaries: bool = False,
                  reproduce_locomotion: bool = False,
                  name: str = "QrsacAlgorithm"):
         """
-        Refer to SacAlgorithm for Args beside the following. Args used for 
+        Refer to SacAlgorithm for Args beside the following. Args used for
         discrete and mixed actions are omitted.
 
         Args:
-            min_critic_by_critic_mean: If True, compute the min quantile 
+            min_critic_by_critic_mean: If True, compute the min quantile
                 distribution of critic replicas by choosing the one with the
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
                 quantile value.
+            checkpoint_path: the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix: the prefix to the contents in the checkpoint
+                to be loaded.
         """
         super().__init__(
             observation_spec,
@@ -111,6 +117,8 @@ class QrsacAlgorithm(SacAlgorithm):
             actor_optimizer=actor_optimizer,
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             reproduce_locomotion=reproduce_locomotion,
             name=name)

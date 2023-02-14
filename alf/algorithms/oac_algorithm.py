@@ -68,19 +68,21 @@ class OacAlgorithm(SacAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries=False,
                  name="OacAlgorithm"):
         """
         Refer to SacAlgorithm for Args besides the following.
 
         Args:
-            explore (bool): default is True for OAC algorithm, where only 
-                continuous action space is supported. When 'explore' is False, 
-                OAC is the same as SAC. 
+            explore (bool): default is True for OAC algorithm, where only
+                continuous action space is supported. When 'explore' is False,
+                OAC is the same as SAC.
             explore_delta (float): parameter controlling how optimistic in shifting
                 the mean of the target policy to get the mean of the explore policy.
             beta_ub (float): parameter for computing the upperbound of Q value:
-                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
+                :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
         """
         super().__init__(
             observation_spec,
@@ -106,6 +108,8 @@ class OacAlgorithm(SacAlgorithm):
             actor_optimizer=actor_optimizer,
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
 
@@ -127,7 +131,7 @@ class OacAlgorithm(SacAlgorithm):
 
         1. Only continuous actions are supported.
 
-        2. Add a switch for explore mode where OAC explore policy is constructed 
+        2. Add a switch for explore mode where OAC explore policy is constructed
         from the target policy (actor_network) and used for action prediction.
         """
         new_state = SacActionState()

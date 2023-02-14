@@ -90,6 +90,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
                  value_optimizer=None,
                  expectile=0.8,
                  max_exp_advantage=100,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries=False,
                  name="IqlAlgorithm"):
         """
@@ -142,6 +144,10 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             expectile (float): the expectile value for value learning.
             max_exp_advantage (float): clamp the exponentiated advantages with
                 this value before being applied to weight the actor loss.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -172,6 +178,8 @@ class IqlAlgorithm(OffPolicyAlgorithm):
             reward_weights=reward_weights,
             env=env,
             config=config,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             debug_summaries=debug_summaries,
             name=name)
 

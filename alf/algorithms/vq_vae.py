@@ -53,6 +53,8 @@ class Vqvae(Algorithm):
                  decoder_ctor: Callable = EncodingNetwork,
                  optimizer: torch.optim.Optimizer = None,
                  commitment_loss_weight: float = 1.0,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  debug_summaries: bool = False,
                  name: str = "Vqvae"):
         """
@@ -69,8 +71,16 @@ class Vqvae(Algorithm):
             optimizer (Optimzer|None): if provided, it will be used to optimize
                 the parameter of encoder_net, decoder_net and embedding vectors.
             commitment_loss_weight (float): the weight for commitment loss.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
         """
-        super().__init__(debug_summaries=debug_summaries, name=name)
+        super().__init__(
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
+            debug_summaries=debug_summaries,
+            name=name)
 
         self._embedding_dim = embedding_dim
         self._num_embeddings = num_embeddings

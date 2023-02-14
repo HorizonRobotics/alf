@@ -65,6 +65,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             reward_transformer=None,
             config: Optional[TrainerConfig] = None,
             enable_amp: bool = True,
+            checkpoint_path=None,
+            checkpoint_prefix='',
             debug_summaries=False,
             name="MuZero"):
         """
@@ -92,6 +94,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 usually makes the algorithm run faster. However, the result may be
                 different (mostly likely due to random fluctuation). Note that
                 rollout_step is exempted from using AMP.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded.
             debug_summaries (bool):
             name (str):
 
@@ -125,6 +131,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             rollout_state_spec=mcts.rollout_state_spec,
             config=config,
             debug_summaries=debug_summaries,
+            checkpoint_path=checkpoint_path,
+            checkpoint_prefix=checkpoint_prefix,
             name=name)
 
         self._config = config

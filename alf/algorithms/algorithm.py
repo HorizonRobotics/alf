@@ -31,6 +31,7 @@ from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
+from alf.utils.common import AutoPostInitCallClass
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
@@ -58,7 +59,7 @@ def _flatten_module(module):
         return [module]
 
 
-class Algorithm(AlgorithmInterface):
+class Algorithm(AlgorithmInterface, metaclass=AutoPostInitCallClass):
     """Base implementation for AlgorithmInterface."""
 
     def __init__(self,
@@ -67,6 +68,8 @@ class Algorithm(AlgorithmInterface):
                  predict_state_spec=None,
                  is_on_policy=None,
                  optimizer=None,
+                 checkpoint_path=None,
+                 checkpoint_prefix='',
                  config: TrainerConfig = None,
                  debug_summaries=False,
                  name="Algorithm"):
@@ -81,6 +84,10 @@ class Algorithm(AlgorithmInterface):
         this is not checked by the framework. It's up to the user to make sure
         this is true.
 
+        An ``AutoPostInitCallClass`` metaclass is used to enable customized
+        behavior immediately after ``__init__`` is called. This is useful in
+        some cases such as loading parameter values from a checkpoint.
+
         Args:
             train_state_spec (nested TensorSpec): for the network state of
                 ``train_step()``.
@@ -93,6 +100,14 @@ class Algorithm(AlgorithmInterface):
             is_on_policy (None|bool):
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
+            checkpoint_path (str): the full path to the checkpoint file saved
+                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_prefix (str): the prefix to the contents in the checkpoint
+                to be loaded. If the checkpoint comes from a previous ALF training
+                session, the standard prefix starts with "alg." (e.g. "alg._sub_alg1").
+                If "", the effects is the same as providing "alg.", which will
+                load the full 'alg' part of the checkpoint.
+                checkpoint_prefix can be a multi-step path denoted by "A.B.C".
             config (TrainerConfig): config for training. ``config`` only needs to
                 be provided to the algorithm which performs a training iteration
                 by itself.
@@ -170,6 +185,62 @@ class Algorithm(AlgorithmInterface):
             self._rl_train_after_update_steps = config.rl_train_after_update_steps
             if config.summarize_gradient_noise_scale:
                 self._gns_estimator = GradientNoiseScaleEstimator()
+
+        self._checkpoint_path = checkpoint_path
+        self._checkpoint_prefix = checkpoint_prefix
+        self._checkpoint_pre_loaded = False
+
+    def _preload_checkpoint(self):
+        """Preload checkpoint to the algorithm, based on the specified
+            ``checkpoint_path`` and ``checkpoint_prefix``.
+        """
+
+        def _remove_prefix(s, prefix):
+            if s.startswith(prefix):
+                return s[len(prefix):]
+            else:
+                return s
+
+        if self._checkpoint_path is not None:
+            try:
+                assert (self._checkpoint_prefix == ''
+                        or 'alg.' in self._checkpoint_prefix), "worong prefix"
+                map_location = None
+                if not torch.cuda.is_available():
+                    map_location = torch.device('cpu')
+
+                checkpoint = torch.load(
+                    self._checkpoint_path, map_location=map_location)['alg']
+
+                if self._checkpoint_prefix != "":
+                    # the case when the checkpoint is a subset of the full
+                    # checkpoint file filter
+                    prefix = _remove_prefix(self._checkpoint_prefix, 'alg.')
+                    checkpoint = {
+                        _remove_prefix(k, prefix + '.'): v
+                        for k, v in checkpoint.items() if k.startswith(prefix)
+                    }
+
+                self.load_state_dict(checkpoint, strict=True)
+                self._checkpoint_pre_loaded = True
+            except:
+                raise RuntimeError(
+                    'Encountered error when pre-loading checkpoint')
+
+    @property
+    def pre_loaded(self):
+        """A property indicating whether a checkpoint for the current instance
+        has been pre-loaded, by specifying ``checkpoint_path`` (and optionally
+        ``checkpoint_prefix``).
+        """
+        return self._checkpoint_pre_loaded
+
+    def _post_init(self):
+        """This function will be called after the __init__ is called.
+        Algorithms can overwrite this function to provide customized post init
+        behavior.
+        """
+        self._preload_checkpoint()
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")
@@ -812,7 +883,7 @@ class Algorithm(AlgorithmInterface):
         return destination
 
     @common.add_method(nn.Module)
-    def load_state_dict(self, state_dict, strict=True):
+    def load_state_dict(self, state_dict, strict=True, skip_preloded=True):
         """Load state dictionary for the algorithm.
 
         Args:
@@ -822,7 +893,9 @@ class Algorithm(AlgorithmInterface):
                 ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
                 keep lists of missing and unexpected keys; if ``strict=False``,
                 missing/unexpected keys will be omitted. (Default: ``True``)
-
+            skip_preloded (bool): whether to skip the modules that support
+                pre-loading and have been pre-loaded. Currently only Algorithm
+                and its derivatives support pre-loading. (Default: ``True``)
         Returns:
             namedtuple:
             - missing_keys: a list of str containing the missing keys.
@@ -844,6 +917,8 @@ class Algorithm(AlgorithmInterface):
             if not is_checkpoint_enabled(module):
                 return
             if isinstance(module, Algorithm):
+                if skip_preloded and module.pre_loaded:
+                    return
                 module._setup_optimizers()
                 for i, opt in enumerate(module._optimizers):
                     opt_key = prefix + '_optimizers.%d' % i
