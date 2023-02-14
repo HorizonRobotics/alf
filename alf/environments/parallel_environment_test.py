@@ -32,12 +32,29 @@ import alf.tensor_specs as ts
 class SlowStartingEnvironment(RandomAlfEnvironment):
     def __init__(self, *args, **kwargs):
         self._time_sleep = kwargs.pop('time_sleep', 1.0)
+        self._reset_sleep = kwargs.pop('reset_sleep', 0.0)
         time.sleep(self._time_sleep)
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
 
     def reset(self):
-        time.sleep(self._time_sleep)
+        time.sleep(self._reset_sleep)
         return super().reset()
+
+
+def slow_env_load(observation_spec,
+                  action_spec,
+                  env_name,
+                  env_id=0,
+                  time_sleep=0,
+                  reset_sleep=0):
+    return SlowStartingEnvironment(
+        observation_spec,
+        action_spec,
+        env_id=env_id,
+        max_duration=1,
+        time_sleep=time_sleep,
+        reset_sleep=reset_sleep,
+        use_tensor_time_step=False)
 
 
 class ParallelAlfEnvironmentTest(alf.test.TestCase):
@@ -109,19 +126,15 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         sleep_time = 1.
         self._set_default_specs()
 
-        def slow_env_load(env_name, env_id=0):
-            return SlowStartingEnvironment(
-                self.observation_spec,
-                self.action_spec,
-                env_id=env_id,
-                max_duration=1,
-                time_sleep=sleep_time,
-                use_tensor_time_step=False)
-
         start_t = time.time()
         env = alf.environments.utils.create_environment(
             env_name="IgnoredName",
-            env_load_fn=slow_env_load,
+            env_load_fn=functools.partial(
+                slow_env_load,
+                self.observation_spec,
+                self.action_spec,
+                time_sleep=sleep_time,
+                reset_sleep=sleep_time),
             num_parallel_environments=num_envs,
             start_serially=False,
             num_spare_envs=num_envs)
@@ -174,6 +187,29 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
             sleep_time - 0.1,
             msg=(f'Reset already called, took {step5_time}, too long'))
         env.close()
+
+        env = alf.environments.utils.create_environment(
+            env_name="IgnoredName",
+            env_load_fn=functools.partial(
+                slow_env_load,
+                self.observation_spec,
+                self.action_spec,
+                time_sleep=0,
+                reset_sleep=sleep_time),
+            num_parallel_environments=num_envs,
+            start_serially=False,
+            num_spare_envs=0)
+        time_step0 = env.reset()
+        time_step1 = env.step(action)
+        time.sleep(sleep_time)
+        start_t = time.time()
+        time_step2 = env.step(action)
+        reset_time = time.time() - start_t
+        self.assertLessEqual(
+            reset_time,
+            sleep_time - 0.1,
+            msg=(f'Without spare env, Reset already called, '
+                 'took {reset_time}, too long'))
 
     def test_non_blocking_start_processes_in_parallel(self):
         self._set_default_specs()
