@@ -537,6 +537,10 @@ class RLTrainer(Trainer):
         if ddp_rank >= 0:
             # Activate the DDP training
             self._algorithm.activate_ddp(ddp_rank)
+            # Make sure the BN statistics of different processes are synced
+            # https://pytorch.org/docs/stable/generated/torch.nn.SyncBatchNorm.html#torch.nn.SyncBatchNorm
+            self._algorithm = torch.nn.SyncBatchNorm.convert_sync_batchnorm(
+                self._algorithm)
 
         # Create a thread env to expose subprocess gin/alf configurations
         # which otherwise will be marked as "inoperative". Only created when

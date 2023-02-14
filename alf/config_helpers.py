@@ -177,6 +177,13 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
             math.ceil(num_env_steps / multi_process_divider),
             raise_if_used=False)
 
+    tag = 'TrainerConfig.initial_collect_steps'
+    init_collect_steps = get_config_value(tag)
+    config1(
+        tag,
+        math.ceil(init_collect_steps / multi_process_divider),
+        raise_if_used=False)
+
     # Only allow process with rank 0 to have evaluate. Enabling evaluation for
     # other parallel processes is a waste as such evaluation does not offer more
     # information.
