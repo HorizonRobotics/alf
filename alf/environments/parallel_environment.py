@@ -166,13 +166,13 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         time_steps = [env.reset(self._blocking) for env in self._envs]
 
         # handle spare promises
-        if self._spare_queue:
+        if not self._blocking:
             [p() for p in self._spare_promises]
+            [p() for p in self._reset_ts if p is not None]
+            self._reset_ts = [None] * self._num_envs
             self._spare_promises = [
                 env.reset(self._blocking) for env in self._spare_queue
             ]
-
-        if not self._blocking:
             time_steps = [promise() for promise in time_steps]
 
         time_steps = self._stack_time_steps(time_steps)
@@ -228,8 +228,6 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
     def _handle_done(self, time_steps):
         for i, reset_ts in enumerate(self._reset_ts):
-            if reset_ts is not None:
-                reset_ts()  # release old unused promises
             env = self._envs[i]
             if time_steps.step_type[i] == alf.data_structures.StepType.LAST:
                 reset_ts = env.reset(blocking=False)

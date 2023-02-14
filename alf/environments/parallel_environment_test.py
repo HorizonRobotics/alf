@@ -154,6 +154,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         self.assertEqual(time_step0.observation.shape,
                          time_step1.observation.shape)
         step1_t = time.time()
+        # This step internally calls reset, because episodes are of length 1.
         time_step2 = env.step(action)
         reset_t = time.time()
         reset_time = reset_t - step1_t
@@ -210,6 +211,9 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
             sleep_time - 0.1,
             msg=(f'Without spare env, Reset already called, '
                  'took {reset_time}, too long'))
+        # make sure promises are properly cleaned up
+        time_step3 = env.step(action)
+        env.close()
 
     def test_non_blocking_start_processes_in_parallel(self):
         self._set_default_specs()
