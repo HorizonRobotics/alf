@@ -15,13 +15,15 @@
 import copy
 import numpy as np
 import torch
-from typing import Callable
+from typing import Callable, Any
 
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
 from . import adam_tf, adamw, nero_plus
 from .utils import get_opt_arg
+
+Optimizer = Any
 
 
 def _rbf_func(x):
@@ -186,6 +188,8 @@ def wrap_optimizer(cls):
             lr = float(self._lr_scheduler())
             for param_group in self.param_groups:
                 param_group['lr'] = lr
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar("lr/%s" % self.name, lr)
         params = []
         for param_group in self.param_groups:
             params.extend(param_group["params"])
