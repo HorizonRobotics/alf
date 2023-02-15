@@ -67,7 +67,7 @@ be separated from previous change. For the same reason, if you need to incorpora
 the latest code from master, please avoid rebase. If your code is rebased, you won't
 be able to push your PR without using `-f` option. So you should use :code:`git pull --rebase=false`
 instead of :code:`git pull`. You can globally change the default behavior of :code:`git pull`
-to not rebase by set :code:`git config --global pull.rebase false` so that you can simply
+to not rebase by setting :code:`git config --global pull.rebase false` so that you can simply
 use :code:`git pull`.
 
 Coding standard
