@@ -31,9 +31,30 @@ import alf.tensor_specs as ts
 
 class SlowStartingEnvironment(RandomAlfEnvironment):
     def __init__(self, *args, **kwargs):
-        time_sleep = kwargs.pop('time_sleep', 1.0)
-        time.sleep(time_sleep)
+        self._time_sleep = kwargs.pop('time_sleep', 1.0)
+        self._reset_sleep = kwargs.pop('reset_sleep', 0.0)
+        time.sleep(self._time_sleep)
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
+
+    def reset(self):
+        time.sleep(self._reset_sleep)
+        return super().reset()
+
+
+def slow_env_load(observation_spec,
+                  action_spec,
+                  env_name,
+                  env_id=0,
+                  time_sleep=0,
+                  reset_sleep=0):
+    return SlowStartingEnvironment(
+        observation_spec,
+        action_spec,
+        env_id=env_id,
+        max_duration=1,
+        time_sleep=time_sleep,
+        reset_sleep=reset_sleep,
+        use_tensor_time_step=False)
 
 
 class ParallelAlfEnvironmentTest(alf.test.TestCase):
@@ -98,6 +119,100 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         time_step2 = env.step(action)
         self.assertEqual(time_step.observation.shape,
                          time_step2.observation.shape)
+        env.close()
+
+    def test_non_blocking_reset_with_spare_envs(self):
+        num_envs = 2
+        sleep_time = 1.
+        self._set_default_specs()
+
+        start_t = time.time()
+        env = alf.environments.utils.create_environment(
+            env_name="IgnoredName",
+            env_load_fn=functools.partial(
+                slow_env_load,
+                self.observation_spec,
+                self.action_spec,
+                time_sleep=sleep_time,
+                reset_sleep=sleep_time),
+            num_parallel_environments=num_envs,
+            start_serially=False,
+            num_spare_envs=num_envs)
+        init_t = time.time()
+        init_time = init_t - start_t
+        self.assertLessEqual(
+            init_time,
+            sleep_time * 2 - 0.5,
+            msg=('Expected all processes to start together, '
+                 'got {} wait time').format(init_time))
+
+        time_step0 = env.reset()
+        assert torch.all(time_step0.step_type == ds.StepType.FIRST)
+        action_spec = env.action_spec()
+        action = torch.stack([action_spec.sample() for _ in range(num_envs)])
+        time_step1 = env.step(action)
+        self.assertEqual(time_step0.observation.shape,
+                         time_step1.observation.shape)
+        step1_t = time.time()
+        # This step internally calls reset, because episodes are of length 1.
+        time_step2 = env.step(action)
+        reset_t = time.time()
+        reset_time = reset_t - step1_t
+        self.assertEqual(time_step1.observation.shape,
+                         time_step2.observation.shape)
+        assert torch.all(time_step2.env_id < num_envs)
+        self.assertLessEqual(
+            reset_time,
+            sleep_time - 0.1,
+            msg=(f'Reset with spare envs took {reset_time}, too long'))
+        time_step3 = env.step(action)
+        step3_t = time.time()
+        step3_time = step3_t - reset_t
+        self.assertLessEqual(
+            step3_time, 0.5, msg=(f'Regular step took {step3_time}, too long'))
+        time_step4 = env.step(action)
+        step4_t = time.time()
+        step4_time = step4_t - step3_t
+        self.assertGreaterEqual(
+            step4_time,
+            sleep_time - 0.01,
+            msg=(f'Step without spare envs took {step4_time}, too short'))
+        time_step = env.step(action)  # reset is called here
+        time.sleep(sleep_time)
+        step5_t = time.time()
+        # should be fast due to reset being called before sleep
+        time_step = env.step(action)
+        step5_time = time.time() - step5_t
+        self.assertLessEqual(
+            step5_time,
+            sleep_time - 0.1,
+            msg=(f'Reset already called, took {step5_time}, too long'))
+        env.close()
+
+        env = alf.environments.utils.create_environment(
+            env_name="IgnoredName",
+            env_load_fn=functools.partial(
+                slow_env_load,
+                self.observation_spec,
+                self.action_spec,
+                time_sleep=0,
+                reset_sleep=sleep_time),
+            num_parallel_environments=num_envs,
+            start_serially=False,
+            num_spare_envs=0)
+        time_step0 = env.reset()
+        time_step1 = env.step(action)
+        time.sleep(sleep_time)
+        start_t = time.time()
+        time_step2 = env.step(action)
+        reset_time = time.time() - start_t
+        self.assertLessEqual(
+            reset_time,
+            sleep_time - 0.1,
+            msg=(f'Without spare env, Reset already called, '
+                 'took {reset_time}, too long'))
+        # make sure promises are properly cleaned up
+        time_step3 = env.step(action)
         env.close()
 
     def test_non_blocking_start_processes_in_parallel(self):

@@ -62,6 +62,8 @@ def create_environment(env_name='CartPole-v0',
                        num_parallel_environments=30,
                        nonparallel=False,
                        flatten=True,
+                       start_serially=True,
+                       num_spare_envs=0,
                        seed=None,
                        batched_wrappers=()):
     """Create a batched environment.
@@ -76,10 +78,14 @@ def create_environment(env_name='CartPole-v0',
             will be used to create the batched environment. Otherwise, a
             ``ParallAlfEnvironment`` will be created.
         num_parallel_environments (int): num of parallel environments
+        num_spare_envs (int): num of spare parallel envs for speed up reset.
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
+        start_serially (bool): start environments serially or in parallel.
         flatten (bool): whether to use flatten action and time_steps during
-                communication to reduce overhead.
+            communication to reduce overhead.
+        num_spare_envs (int): number of spare parallel environments to speed
+            up reset.  Useful when a reset is much slower than a regular step.
         seed (None|int): random number seed for environment.  A random seed is
             used if None.
         batched_wrappers (Iterable): a list of wrappers which can wrap batched
@@ -122,7 +128,9 @@ def create_environment(env_name='CartPole-v0',
         alf_env = parallel_environment.ParallelAlfEnvironment(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
-            flatten=flatten)
+            flatten=flatten,
+            start_serially=start_serially,
+            num_spare_envs_for_reload=num_spare_envs)
 
         if seed is None:
             alf_env.seed([
@@ -130,11 +138,22 @@ def create_environment(env_name='CartPole-v0',
                                   np.iinfo(np.int32).max)
                 for i in range(num_parallel_environments)
             ])
+            if num_spare_envs > 0:
+                alf_env.seed_spare([
+                    np.random.randint(0,
+                                      np.iinfo(np.int32).max)
+                    for i in range(num_spare_envs)
+                ])
         else:
             # We want deterministic behaviors for each environment, but different
             # behaviors among different individual environments (to increase the
             # diversity of environment data)!
             alf_env.seed([seed + i for i in range(num_parallel_environments)])
+            if num_spare_envs > 0:
+                alf_env.seed_spare([
+                    seed + i + num_parallel_environments
+                    for i in range(num_spare_envs)
+                ])
 
     for wrapper in batched_wrappers:
         alf_env = wrapper(alf_env)
