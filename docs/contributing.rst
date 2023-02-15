@@ -64,7 +64,11 @@ as NEW commit to your previous commits. Do not use :code:`--amend` option for th
 commit, because then you will have to use :code:`-f` option to push your change to
 github and review will be more difficult because the new change cannot
 be separated from previous change. For the same reason, if you need to incorporate
-the latest code from master, please use :code:`git pull` instead of :code:`git pull --rebase`.
+the latest code from master, please avoid rebase. If your code is rebased, you won't
+be able to push your PR without using `-f` option. So you should use :code:`git pull --rebase=false`
+instead of :code:`git pull`. You can globally change the default behavior of :code:`git pull`
+to not rebase by set :code:`git config --global pull.rebase false` so that you can simply
+use :code:`git pull`.
 
 Coding standard
 ---------------
