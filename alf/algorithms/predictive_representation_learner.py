@@ -342,6 +342,7 @@ class PredictiveRepresentationLearner(Algorithm):
             self.add_optimizer(postprocessor_optimizer, [postprocessor])
         self._output_spec = wrap_as_network(self._postprocessor,
                                             repr_spec).output_spec
+        self._post_init()
 
     @property
     def output_spec(self):

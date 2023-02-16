@@ -1567,15 +1567,3 @@ def call_stack() -> List[str]:
     debugging.
     """
     return [line.strip() for line in traceback.format_stack()]
-
-
-class AutoPostInitCallClass(type):
-    """A helper class to create customized post init behavior, by using this
-    class as the metaclass.
-    """
-
-    def __call__(cls, *args, **kwargs):
-        """This function will be called when creating subclass instances """
-        obj = type.__call__(cls, *args, **kwargs)
-        obj._post_init()
-        return obj

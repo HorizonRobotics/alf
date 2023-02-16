@@ -109,6 +109,7 @@ class TracAlgorithm(RLAlgorithm):
             return np.sqrt(action_dist_clip_per_dim * dims)
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
+        self._post_init()
 
     def predict_step(self, time_step: TimeStep, state):
         return self._ac_algorithm.predict_step(time_step, state)

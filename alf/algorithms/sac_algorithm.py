@@ -385,6 +385,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
+        self._post_init()
+
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
                        q_network_cls):

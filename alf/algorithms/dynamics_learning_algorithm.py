@@ -107,6 +107,8 @@ class DynamicsLearningAlgorithm(Algorithm):
         else:
             self._dynamics_network = dynamics_network
 
+        self._post_init()
+
     @property
     def num_replicas(self):
         return self._num_replicas

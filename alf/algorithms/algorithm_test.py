@@ -42,6 +42,7 @@ class MyAlg(Algorithm):
             name=name)
         self._module_list = nn.ModuleList(sub_algs)
         self._param_list = nn.ParameterList(params)
+        self._post_init()
 
     def calc_loss(self):
         loss = torch.tensor(0.)

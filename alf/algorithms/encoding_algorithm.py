@@ -110,6 +110,7 @@ class EncodingAlgorithm(Algorithm):
         self._output_fields = output_fields
         self._loss_fields = loss_fields
         self._loss_weights = loss_weights
+        self._post_init()
 
     @property
     def output_spec(self):

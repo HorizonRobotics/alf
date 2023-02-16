@@ -286,6 +286,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 **model_kwargs,
                 debug_summaries=debug_summaries,
                 name="reanalyze_algorithm")
+        self._post_init()
 
     @property
     def model(self):

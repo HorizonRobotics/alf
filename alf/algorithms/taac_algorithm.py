@@ -422,6 +422,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
             target_models=[self._target_critic_networks],
             tau=target_update_tau,
             period=target_update_period)
+        self._post_init()
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        actor_network_cls, actor_observation_processors,

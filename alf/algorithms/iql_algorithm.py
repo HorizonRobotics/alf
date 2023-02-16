@@ -215,6 +215,7 @@ class IqlAlgorithm(OffPolicyAlgorithm):
 
         self._expectile = expectile
         self._max_exp_advantage = max_exp_advantage
+        self._post_init()
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,

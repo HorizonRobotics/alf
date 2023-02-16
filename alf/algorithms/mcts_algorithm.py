@@ -524,6 +524,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         self._model = model
         self._rollout_action_sampler = rollout_action_sampler
         self._predict_action_sampler = predict_action_sampler
+        self._post_init()
 
     def set_model(self, model: MCTSModel):
         """Set the model used by the algorithm."""

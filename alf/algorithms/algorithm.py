@@ -31,7 +31,6 @@ from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import is_checkpoint_enabled
-from alf.utils.common import AutoPostInitCallClass
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
@@ -59,7 +58,7 @@ def _flatten_module(module):
         return [module]
 
 
-class Algorithm(AlgorithmInterface, metaclass=AutoPostInitCallClass):
+class Algorithm(AlgorithmInterface):
     """Base implementation for AlgorithmInterface."""
 
     def __init__(self,
@@ -83,10 +82,6 @@ class Algorithm(AlgorithmInterface, metaclass=AutoPostInitCallClass):
         algorithm which is a submodule of a non-algorithm module. Currently,
         this is not checked by the framework. It's up to the user to make sure
         this is true.
-
-        An ``AutoPostInitCallClass`` metaclass is used to enable customized
-        behavior immediately after ``__init__`` is called. This is useful in
-        some cases such as loading parameter values from a checkpoint.
 
         Args:
             train_state_spec (nested TensorSpec): for the network state of
@@ -190,6 +185,18 @@ class Algorithm(AlgorithmInterface, metaclass=AutoPostInitCallClass):
         self._checkpoint_prefix = checkpoint_prefix
         self._checkpoint_pre_loaded = False
 
+    def _post_init(self):
+        """This function should be called *explicitly* in the sub-class
+        at the end of the __init__ function, in order to activate _post_init
+        functionalities.
+        Algorithms can overwrite this function to provide customized post init
+        behavior.
+
+        TODO: enable automatically calling to ``_post_init``. Using metaclass
+        or decorator conflicts with alf.config.
+        """
+        self._preload_checkpoint()
+
     def _preload_checkpoint(self):
         """Preload checkpoint to the algorithm, based on the specified
             ``checkpoint_path`` and ``checkpoint_prefix``.
@@ -234,13 +241,6 @@ class Algorithm(AlgorithmInterface, metaclass=AutoPostInitCallClass):
         ``checkpoint_prefix``).
         """
         return self._checkpoint_pre_loaded
-
-    def _post_init(self):
-        """This function will be called after the __init__ is called.
-        Algorithms can overwrite this function to provide customized post init
-        behavior.
-        """
-        self._preload_checkpoint()
 
     def forward(self, *input):
         raise RuntimeError("forward() should not be called")

@@ -127,6 +127,8 @@ class VariationalAutoEncoder(Algorithm):
         if beta_optimizer is not None:
             self.add_optimizer(beta_optimizer, [self._log_beta])
 
+        self._post_init()
+
     def _sampling_forward(self, inputs):
         """Encode the data into latent space then do sampling.
 
