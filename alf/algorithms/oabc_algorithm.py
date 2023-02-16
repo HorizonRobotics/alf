@@ -54,7 +54,7 @@ class OabcAlgorithm(AbcAlgorithm):
                  reward_weights=None,
                  critic_training_weight=1.0,
                  epsilon_greedy=None,
-                 use_entropy_reward=True,
+                 use_entropy_reward=False,
                  use_q_mean_train_actor=True,
                  use_basin_mean_for_target_critic=True,
                  env=None,
@@ -68,6 +68,7 @@ class OabcAlgorithm(AbcAlgorithm):
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
+                 epistemic_alpha_coeff=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -87,6 +88,8 @@ class OabcAlgorithm(AbcAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            epistemic_alpha_coeff (float|None): if not None, use epistemic_std 
+                to the power of epistemic_alpha_coeff as alpha weights.
             explore_optimizer
             explore_alpha_optimizer
         """
@@ -116,6 +119,7 @@ class OabcAlgorithm(AbcAlgorithm):
             target_entropy=target_entropy,
             initial_log_alpha=initial_log_alpha,
             max_log_alpha=max_log_alpha,
+            epistemic_alpha_coeff=epistemic_alpha_coeff,
             target_update_tau=target_update_tau,
             target_update_period=target_update_period,
             dqda_clipping=dqda_clipping,

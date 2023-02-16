@@ -645,6 +645,14 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             ]
             td_targets = torch.stack(td_targets, dim=2)  # [T-1, B, n, ...]
 
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                target_critics_mean = target_critics.mean(2)
+                safe_mean_hist_summary("target_critics_batch_mean",
+                                       target_critics_mean.view(-1))
+                safe_mean_hist_summary("target_critics_std",
+                                       target_critics_std.view(-1))
+
         # compute critic_loss
         if self._deterministic_critic:
             # standard / non-Bayesian critic
@@ -738,14 +746,6 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                             _summarize(
                                 (critics_mean[..., i], critics_std[..., i]),
                                 td_target, neglogp[..., i], suffix)
-
-        # if self._debug_summaries and alf.summary.should_record_summaries():
-        #     with alf.summary.scope(self._name):
-        #         target_critics_mean = target_critics.mean(1)
-        #         safe_mean_hist_summary("target_critics_batch_mean",
-        #                                target_critics_mean)
-        #         safe_mean_hist_summary("target_critics_std",
-        #                                target_critics_std)
 
         # reweight training (s, a) paris with critic opt_std & target critic epi_std
         if not self._critic_module.warmup_train_stage() and \

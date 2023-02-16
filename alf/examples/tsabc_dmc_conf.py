@@ -19,7 +19,7 @@ from alf.algorithms.agent import Agent
 from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
 from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
-from alf.examples.benchmarks.locomotion import locomotion_conf
+from alf.examples import dmc_conf
 from alf.networks import ActorNetwork
 from alf.optimizers import AdamTF
 
@@ -35,16 +35,16 @@ deterministic_critic = False
 
 if deterministic_actor:
     actor_network_cls = partial(
-        ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
+        ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
 else:
-    actor_network_cls = locomotion_conf.actor_distribution_network_cls
+    actor_network_cls = dmc_conf.actor_distribution_network_cls
 
 explore_network_cls = partial(
-    ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
+    ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
 
 alf.config(
     'CriticDistributionParamNetwork',
-    joint_fc_layer_params=locomotion_conf.hidden_layers,
+    joint_fc_layer_params=dmc_conf.hidden_layers,
     state_dependent_std=False)
 
 if use_multibootstrap:
@@ -71,7 +71,6 @@ else:
     batch_size = 256
 
 alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)
-# optimizer=locomotion_conf.optimizer)
 
 alf.config(
     'TsabcAlgorithm',
@@ -96,8 +95,6 @@ alf.config(
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
     target_update_tau=0.005)
-
-alf.config('calc_default_target_entropy', min_prob=0.184)
 
 alf.config(
     'TrainerConfig',
