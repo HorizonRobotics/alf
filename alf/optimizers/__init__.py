@@ -17,3 +17,6 @@ from .optimizers import Adam
 from .optimizers import AdamW
 from .optimizers import SGD
 from .optimizers import NeroPlus
+
+from typing import Any
+Optimizer = Any

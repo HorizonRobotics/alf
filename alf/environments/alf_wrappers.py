@@ -991,3 +991,56 @@ class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
         time_step = self._env.step(noisy_action)
 
         return time_step
+
+
+class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
+    """Normalize actions into [-1,1].
+
+    The reason why we'd like to normalize the actions, even though our action
+    distribution networks can do this, is because we want to set target entropy
+    independent of action ranges for algorithms like SAC.
+
+    This wrapper is expected to be used only for individual envs (numpy array).
+    """
+
+    def __init__(self, env: AlfEnvironment):
+        """
+        Args:
+            env: ALF env to be wrapped
+        """
+        super().__init__(env)
+        action_spec = env.action_spec()
+        assert all([
+            isinstance(s, alf.BoundedTensorSpec)
+            for s in nest.flatten(action_spec)
+        ]), ("All action specs must be bounded! Got %s" % action_spec)
+
+        def _action_bounds(spec):
+            assert np.all(np.isfinite(spec.minimum))
+            assert np.all(np.isfinite(spec.maximum))
+            return spec.minimum, spec.maximum
+
+        self._bounds = nest.map_structure(_action_bounds, action_spec)
+        # overwrite all action bounds to [-1,1]
+        self._action_spec = nest.map_structure(
+            lambda spec: alf.BoundedTensorSpec(
+                minimum=-1., maximum=1., shape=spec.shape, dtype=spec.dtype),
+            action_spec)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _step(self, action):
+        def _scale_back(a, bound):
+            b0, b1 = bound
+            return (a + 1.) / 2. * (b1 - b0) + b0
+
+        scaled_action = nest.map_structure_up_to(action, _scale_back, action,
+                                                 self._bounds)
+        time_step = self._env.step(scaled_action)
+        return time_step._replace(prev_action=action)

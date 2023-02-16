@@ -15,15 +15,13 @@
 import copy
 import numpy as np
 import torch
-from typing import Callable, Any
+from typing import Callable
 
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
 from . import adam_tf, adamw, nero_plus
 from .utils import get_opt_arg
-
-Optimizer = Any
 
 
 def _rbf_func(x):
