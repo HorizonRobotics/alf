@@ -37,8 +37,8 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 @alf.configurable
-class TsabcAlgorithm(AbcAlgorithm):
-    r"""Thompson Sampling Actor and Bayesian Critic Algorithm. """
+class TsoabcAlgorithm(AbcAlgorithm):
+    r"""Thompson Sampling Optimistic Actor and Bayesian Critic Algorithm. """
 
     def __init__(self,
                  observation_spec,
@@ -62,7 +62,6 @@ class TsabcAlgorithm(AbcAlgorithm):
                  beta_ub=1.,
                  beta_lb=1.,
                  common_td_target: bool = True,
-                 random_actor_every_step: bool = True,
                  entropy_regularization_weight=1.,
                  entropy_regularization=None,
                  target_entropy=None,
@@ -94,8 +93,6 @@ class TsabcAlgorithm(AbcAlgorithm):
             beta_lb
             epistemic_alpha_coeff (float|None): if not None, use epistemic_std 
                 to the power of epistemic_alpha_coeff as alpha weights.
-            random_actor_every_step (bool): whether or not resample explore
-                policy at each rollout_step.
             explore_optimizer
             explore_alpha_optimizer
         """
@@ -138,9 +135,6 @@ class TsabcAlgorithm(AbcAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        self._idx = 0
-        # self._cyclic_unroll_steps = 0
-        self._random_actor_every_step = random_actor_every_step
         self._explore_networks = self._explore_network
 
     def _make_modules(self, observation_spec, action_spec, reward_spec,
@@ -179,7 +173,6 @@ class TsabcAlgorithm(AbcAlgorithm):
             self._num_explorer_replicas = critic_module.num_particles
         explore_network = explore_network.make_parallel(
             self._num_explorer_replicas)
-        # self._num_critic_replicas)
 
         return actor_network, explore_network, critic_module, target_critic_network
 
@@ -199,17 +192,35 @@ class TsabcAlgorithm(AbcAlgorithm):
                     observation, state=state.explore_network)
                 new_state = new_state._replace(
                     explore_network=explore_network_state)
-                # if train:
-                #     if self._per_basin_explorer:
-                #         action = torch.repeat_interleave(
-                #             action, self._num_critics_per_explorer, dim=1)
-                # else:
                 if not train:
-                    if self._random_actor_every_step:
-                        # self._idx = torch.randint(self._num_critic_replicas,
-                        self._idx = torch.randint(self._num_explorer_replicas,
-                                                  ())
-                    action = action[:, self._idx, :]
+                    # use optimistic Q-values to select action from
+                    # explore_networks's outputs
+                    critic_observation = observation.repeat_interleave(
+                        action.shape[1], dim=0)
+                    critic_action = action.reshape(
+                        action.shape[0] * action.shape[1], *action.shape[2:])
+                    critic_step = self._critic_module.predict_step(
+                        inputs=(critic_observation, critic_action),
+                        state=state.critic)
+                    critics_state = critic_step.state
+                    if self._deterministic_critic:
+                        critics = critic_step.output
+                    else:
+                        critics_dist = critic_step.output
+                        critics = critics_dist.mean  # [bs*num_actions, num_critics, 1]
+                    critics_info = critic_step.info
+                    assert hasattr(critics_info, "epi_std")
+                    if ignore(critics_info.epi_std):
+                        q_epi_std = critics.std(1, unbiased=True)
+                    else:
+                        q_epi_std = critics_info.epi_std
+                    action_q = critics.mean(1) + self._beta_ub * q_epi_std
+                    action_q = action_q.reshape(
+                        action.shape[0], action.shape[1], *action_q.shape[1:])
+                    action_idx = action_q.squeeze(-1).max(dim=-1)[1]
+                    batch_idx = torch.arange(
+                        action.shape[0]).type_as(action_idx)
+                    action = action[batch_idx, action_idx, :]
             else:
                 # This uniform sampling during initial collect stage is
                 # important since current explore_network is deterministic
@@ -236,12 +247,6 @@ class TsabcAlgorithm(AbcAlgorithm):
             new_state = new_state._replace(actor_network=actor_network_state)
 
         return action_dist, action, new_state
-
-    def rollout_step(self, inputs: TimeStep, state: AbcState):
-        if inputs.step_type == StepType.FIRST:
-            self._idx = torch.randint(self._num_explorer_replicas, ())
-            # self._idx = torch.randint(self._num_critic_replicas, ())
-        return super().rollout_step(inputs, state)
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
         """Get q_value for _actor_train_step. 
@@ -300,10 +305,6 @@ class TsabcAlgorithm(AbcAlgorithm):
                     action.shape[0],
                     action.shape[1] * self._num_critics_per_explorer,
                     *action.shape[2:])
-
-            # action_input = torch.repeat_interleave(
-            #     action, self._num_critics_per_explorer, dim=1)
-
         else:
             action_input = action
         critic_step = self._critic_module.predict_step(

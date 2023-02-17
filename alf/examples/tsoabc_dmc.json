@@ -2,7 +2,7 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "dmc_multibootstrap_10a9a_clip_blb_.1-aidi",
+    "version": "dmc_multibootstrap_7f68b_bub_2_blb_.1-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,7 +12,7 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "humanoid-run"
+            "walker-run"
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
@@ -21,15 +21,16 @@
         "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
-        "TsabcAlgorithm.per_basin_explorer": "[False]",
-        "TsabcAlgorithm.beta_lb": "[.1]",
-        "TsabcAlgorithm.critic_training_weight": "[None]",
-        "TsabcAlgorithm.initial_log_alpha": "[-3.2]",
-        "TsabcAlgorithm.epistemic_alpha_coeff": "[1.]",
-        "TsabcAlgorithm.alpha_optimizer": "[None]",
-        "TsabcAlgorithm.use_q_mean_train_actor": "[True]",
-        "TsabcAlgorithm.use_basin_mean_for_target_critic": "[True]",
-        "TsabcAlgorithm.target_update_tau": "[0.005]",
+        "TsoabcAlgorithm.per_basin_explorer": "[False]",
+        "TsoabcAlgorithm.beta_ub": "[2.]",
+        "TsoabcAlgorithm.beta_lb": "[.1]",
+        "TsoabcAlgorithm.critic_training_weight": "[None]",
+        "TsoabcAlgorithm.initial_log_alpha": "[-3.2]",
+        "TsoabcAlgorithm.epistemic_alpha_coeff": "[1.]",
+        "TsoabcAlgorithm.alpha_optimizer": "[None]",
+        "TsoabcAlgorithm.use_q_mean_train_actor": "[True]",
+        "TsoabcAlgorithm.use_basin_mean_for_target_critic": "[True]",
+        "TsoabcAlgorithm.target_update_tau": "[0.005]",
         "TrainerConfig.random_seed": "list(range(4))"
     }
 }

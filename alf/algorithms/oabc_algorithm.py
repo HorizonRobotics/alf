@@ -40,7 +40,7 @@ from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 
 @alf.configurable
 class OabcAlgorithm(AbcAlgorithm):
-    r"""Soft Actor and Bayesian Critic Algorithm. """
+    r"""Optimistic Actor and Bayesian Critic Algorithm. """
 
     def __init__(self,
                  observation_spec,
