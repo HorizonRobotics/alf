@@ -14,6 +14,7 @@
 """Runs a single environments in a separate thread. """
 
 from multiprocessing import dummy as mp_threads
+import numbers
 import numpy as np
 import torch
 
@@ -25,7 +26,7 @@ import alf.nest as nest
 def _array_to_tensor(data):
     def _array_to_tensor(obj):
         return torch.as_tensor(obj).unsqueeze(
-            dim=0) if isinstance(obj, (np.ndarray, np.number)) else obj
+            dim=0) if isinstance(obj, (np.ndarray, numbers.Number)) else obj
 
     return nest.map_structure(_array_to_tensor, data)
 
