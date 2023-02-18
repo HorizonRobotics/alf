@@ -991,3 +991,61 @@ class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
         time_step = self._env.step(noisy_action)
 
         return time_step
+
+
+class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
+    """Normalize actions into [-1,1].
+
+    The reason why we'd like to normalize the actions, even though our action
+    distribution networks can do this, is because we want to set target entropy
+    independent of action ranges for algorithms like SAC.
+
+    This wrapper can be used only for individual envs (numpy array) or a batched
+    env (tensor).
+    """
+
+    def __init__(self, env: AlfEnvironment):
+        """
+        Args:
+            env: ALF env to be wrapped
+        """
+        super().__init__(env)
+        action_spec = env.action_spec()
+        assert all([
+            isinstance(s, alf.BoundedTensorSpec)
+            for s in nest.flatten(action_spec)
+        ]), ("All action specs must be bounded! Got %s" % action_spec)
+
+        def _action_affine_paras(spec):
+            assert np.all(np.isfinite(spec.minimum))
+            assert np.all(np.isfinite(spec.maximum))
+            b0, b1 = spec.minimum, spec.maximum
+            b = 0.5 * (b1 - b0)
+            c = b0 + b
+            return b, c
+
+        self._affine_paras = nest.map_structure(_action_affine_paras,
+                                                action_spec)
+        # overwrite all action bounds to [-1,1]
+        self._action_spec = nest.map_structure(
+            lambda spec: alf.BoundedTensorSpec(
+                minimum=-1., maximum=1., shape=spec.shape, dtype=spec.dtype),
+            action_spec)
+        self._time_step_spec = env.time_step_spec()._replace(
+            prev_action=self._action_spec)
+
+    def action_spec(self):
+        return self._action_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _step(self, action):
+        def _scale_back(a, paras):
+            b, c = paras
+            return a * b + c
+
+        scaled_action = nest.map_structure_up_to(action, _scale_back, action,
+                                                 self._affine_paras)
+        time_step = self._env.step(scaled_action)
+        return time_step._replace(prev_action=action)

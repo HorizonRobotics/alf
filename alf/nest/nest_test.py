@@ -433,6 +433,9 @@ class TestTransformNest(alf.test.TestCase):
         res = nest.py_map_structure_with_path(_check_path, nested)
         nest.assert_same_structure(nested, res)
 
+        trans_tuples = transform_nest(tuples, "0.1", func=lambda x: x**2)
+        self.assertEqual(trans_tuples, [("a", 144), ("b", 13)])
+
 
 class TestTransformNests(alf.test.TestCase):
     def test_transform_nests(self):

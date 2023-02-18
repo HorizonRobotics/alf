@@ -787,8 +787,9 @@ def transform_nest(nested, field, func):
     Args:
         nested (nested Tensor): the structure to be applied the transformation.
         field (str): If a string, it's the field to be transformed, multi-level
-            path denoted by "A.B.C". If ``None``, then the root object is
-            transformed.
+            path denoted by "A.B.C". Levels can also be integers (e.g., "0.2"),
+            in which case the nest is expected to be tuples or lists at those levels.
+            If ``None``, then the root object is transformed.
         func (Callable): transform func, the function will be called as
             ``func(nested)`` and should return a new nest.
     Returns:
@@ -808,9 +809,13 @@ def transform_nest(nested, field, func):
             new_val[level] = _traverse_transform(
                 nested=nested[level], levels=levels[1:])
             return new_val
+        elif isinstance(nested, (list, tuple)):
+            new_val = list(nested).copy()
+            new_val[int(level)] = _traverse_transform(
+                nested=nested[int(level)], levels=levels[1:])
+            return type(nested)(new_val)
         else:
-            raise TypeError("If value is a nest, it must be either " +
-                            "a dict or namedtuple!")
+            raise TypeError("")
 
     return _traverse_transform(
         nested=nested, levels=field.split('.') if field else [])
