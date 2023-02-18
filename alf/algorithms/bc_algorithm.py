@@ -125,8 +125,6 @@ class BcAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(actor_optimizer, [actor_network])
         self._actor_optimizer = actor_optimizer
 
-        self._post_init()
-
     def _predict_action(self, observation, state):
         action_dist, actor_network_state = self._actor_network(
             observation, state=state)

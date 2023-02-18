@@ -266,7 +266,6 @@ class SarsaAlgorithm(RLAlgorithm):
                 critic_loss_cls(debug_summaries=debug_summaries and i == 0))
 
         self._is_rnn = len(alf.nest.flatten(critic_network.state_spec)) > 0
-        self._post_init()
 
     def _trainable_attributes_to_ignore(self):
         return ["_target_critic_networks", "_rollout_actor_network"]

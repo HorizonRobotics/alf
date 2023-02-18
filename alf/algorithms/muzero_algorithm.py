@@ -140,7 +140,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._mcts = mcts
         self._reward_transformer = reward_transformer
         self._enable_amp = enable_amp
-        self._post_init()
 
     def set_path(self, path):
         super().set_path(path)

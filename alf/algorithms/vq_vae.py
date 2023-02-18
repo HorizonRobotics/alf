@@ -106,8 +106,6 @@ class Vqvae(Algorithm):
 
         self._commitment_loss_weight = commitment_loss_weight
 
-        self._post_init()
-
     def _predict_step(self, inputs, state=()):
         """
         Args:

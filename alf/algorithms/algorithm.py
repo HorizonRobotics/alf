@@ -17,6 +17,7 @@ from absl import logging
 import copy
 from collections import OrderedDict
 from contextlib import nullcontext
+import functools
 import itertools
 import json
 import numpy as np
@@ -184,6 +185,23 @@ class Algorithm(AlgorithmInterface):
         self._checkpoint_path = checkpoint_path
         self._checkpoint_prefix = checkpoint_prefix
         self._checkpoint_pre_loaded = False
+
+    def __init_subclass__(cls, *args, **kwargs):
+        """This function is called at the creation of sub-classes of this class.
+        Here we customize the ``__init__``function of the input ``cls`` to have
+        a post init call when the input ``cls`` is the sub-class.
+        """
+        super().__init_subclass__(*args, **kwargs)
+
+        # use ``functools.warps`` to keep the signature of the original
+        # ``__init__`` function, to ensure alf.config work correctly.
+        @functools.wraps(cls.__init__)
+        def new_init(self, *args, init=cls.__init__, **kwargs):
+            init(self, *args, **kwargs)
+            if cls is type(self):
+                self._post_init()
+
+        cls.__init__ = new_init
 
     def _post_init(self):
         """This function should be called *explicitly* in the sub-class

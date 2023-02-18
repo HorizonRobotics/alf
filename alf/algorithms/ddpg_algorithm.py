@@ -219,7 +219,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             period=target_update_period)
 
         self._dqda_clipping = dqda_clipping
-        self._post_init()
 
     def predict_step(self, inputs: TimeStep, state):
         return self._predict_step(inputs, state, self._epsilon_greedy)

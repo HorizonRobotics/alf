@@ -147,8 +147,6 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
         self._bc_regulatization_weight = bc_regulatization_weight
         self._f_norm_penalty_weight = f_norm_penalty_weight
 
-        self._post_init()
-
     def _predict_action(self, observation, state):
         action_dist, actor_network_state = self._actor_network(
             observation, state=state)

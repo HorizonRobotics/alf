@@ -139,8 +139,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
 
-        self._post_init()
-
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 

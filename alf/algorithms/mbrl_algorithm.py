@@ -173,7 +173,6 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         if dynamics_module is not None:
             self._num_dynamics_replicas = dynamics_module.num_replicas
         self._particles_per_replica = particles_per_replica
-        self._post_init()
 
     def _predict_next_step(self, time_step, dynamics_state):
         """Predict the next step (observation and state) based on the current
