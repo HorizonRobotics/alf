@@ -142,8 +142,7 @@ class RLAlgorithm(Algorithm):
                  config: TrainerConfig = None,
                  optimizer=None,
                  overwrite_policy_output=False,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """
@@ -174,13 +173,10 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs a training iteration
                 by itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
-            checkpoint_path (str): the full path to the checkpoint file saved
-                by ALF, e.g. ``/path_to_experiment/train/algorithm/ckpt-100``.
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded. If the checkpoint comes from a previous ALF training
-                session, the standard prefix starts with "alg." (e.g. "alg._sub_alg1").
-                If "", the effects is the same as providing "alg.", which will
-                load the full 'alg' part of the checkpoint.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -194,8 +190,7 @@ class RLAlgorithm(Algorithm):
             is_on_policy=is_on_policy,
             optimizer=optimizer,
             config=config,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

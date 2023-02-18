@@ -73,8 +73,7 @@ class QrsacAlgorithm(SacAlgorithm):
                  actor_optimizer: Optional[torch.optim.Optimizer] = None,
                  critic_optimizer: Optional[torch.optim.Optimizer] = None,
                  alpha_optimizer: Optional[torch.optim.Optimizer] = None,
-                 checkpoint_path: Optional[str] = None,
-                 checkpoint_prefix: Optional[str] = '',
+                 checkpoint: Optional[str] = None,
                  debug_summaries: bool = False,
                  reproduce_locomotion: bool = False,
                  name: str = "QrsacAlgorithm"):
@@ -88,10 +87,10 @@ class QrsacAlgorithm(SacAlgorithm):
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
                 quantile value.
-            checkpoint_path: the full path to the checkpoint file saved
-                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix: the prefix to the contents in the checkpoint
-                to be loaded.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
         """
         super().__init__(
             observation_spec,
@@ -117,8 +116,7 @@ class QrsacAlgorithm(SacAlgorithm):
             actor_optimizer=actor_optimizer,
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             reproduce_locomotion=reproduce_locomotion,
             name=name)

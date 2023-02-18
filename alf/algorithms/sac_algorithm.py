@@ -170,8 +170,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  debug_summaries=False,
                  reproduce_locomotion=False,
                  name="SacAlgorithm"):
@@ -252,10 +251,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
             debug_summaries (bool): True if debug summaries should be created.
-            checkpoint_path (str): the full path to the checkpoint file saved
-                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             reproduce_locomotion (bool): if True, some slight tweaks are added
                 to the original SAC to roughly reproducing its reported results
                 on MuJoCo locomotion tasks. These include uniform action sampling
@@ -309,8 +308,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             reward_weights=reward_weights,
             env=env,
             config=config,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

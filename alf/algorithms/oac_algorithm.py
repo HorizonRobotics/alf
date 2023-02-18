@@ -68,8 +68,7 @@ class OacAlgorithm(SacAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  debug_summaries=False,
                  name="OacAlgorithm"):
         """
@@ -108,8 +107,7 @@ class OacAlgorithm(SacAlgorithm):
             actor_optimizer=actor_optimizer,
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

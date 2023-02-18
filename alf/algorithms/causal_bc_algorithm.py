@@ -54,8 +54,7 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
                  bc_regulatization_weight=5e-2,
                  env=None,
                  config: TrainerConfig = None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  debug_summaries=False,
                  epsilon_greedy=None,
                  name="CausalBcAlgorithm"):
@@ -93,10 +92,10 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            checkpoint_path (str): the full path to the checkpoint file saved
-                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): True if debug summaries should be created.
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
@@ -127,8 +126,7 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
             reward_weights=None,
             env=env,
             config=config,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

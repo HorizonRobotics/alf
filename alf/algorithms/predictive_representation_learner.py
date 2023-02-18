@@ -216,8 +216,7 @@ class PredictiveRepresentationLearner(Algorithm):
                  encoding_optimizer=None,
                  dynamics_optimizer=None,
                  postprocessor_optimizer=None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  debug_summaries=False,
                  name="PredictiveRepresentationLearner"):
         """
@@ -260,10 +259,10 @@ class PredictiveRepresentationLearner(Algorithm):
                 the parameter for the dynamics net.
             postprocessor_optimizer (Optimizer|None): if provided, will be used
                 to optimize the parameter for the postprocessor.
-            checkpoint_path (str): the full path to the checkpoint file saved
-                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance.
 
@@ -272,8 +271,7 @@ class PredictiveRepresentationLearner(Algorithm):
         super().__init__(
             train_state_spec=encoding_net.state_spec,
             config=config,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

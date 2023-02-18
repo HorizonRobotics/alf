@@ -62,8 +62,7 @@ class VariationalAutoEncoder(Algorithm):
                  beta: float = 1.0,
                  target_kld_per_dim: float = None,
                  beta_optimizer: torch.optim.Optimizer = None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  name: str = "VariationalAutoEncoder"):
         """
 
@@ -87,16 +86,14 @@ class VariationalAutoEncoder(Algorithm):
             target_kld_per_dim: if not None, then this will be used as the
                 target KLD per dim to automatically tune beta.
             beta_optimizer: if not None, will be used to train beta.
-            checkpoint_path (str): the full path to the checkpoint file saved
-                by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             name (str):
         """
         super(VariationalAutoEncoder, self).__init__(
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
-            name=name)
+            checkpoint=checkpoint, name=name)
 
         self._preprocess_network = preprocess_network
         if preprocess_network is None:

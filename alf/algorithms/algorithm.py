@@ -68,8 +68,7 @@ class Algorithm(AlgorithmInterface):
                  predict_state_spec=None,
                  is_on_policy=None,
                  optimizer=None,
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
                  name="Algorithm"):
@@ -96,14 +95,18 @@ class Algorithm(AlgorithmInterface):
             is_on_policy (None|bool):
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
-            checkpoint_path (str): the full path to the checkpoint file saved
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the
+                - "prefix" is the prefix to the contents in the checkpoint
+                to be loaded. It can be a multi-step path denoted by "A.B.C".
+                If the checkpoint comes from a previous ALF training
+                session, the standard prefix starts with "alg" (e.g. "alg._sub_alg1").
+                If prefix is omitted, the effects is the same as providing "alg",
+                which will load the full 'alg' part of the checkpoint.
+                - "path" is the full path to the checkpoint file saved
                 by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
-            checkpoint_prefix (str): the prefix to the contents in the checkpoint
-                to be loaded. If the checkpoint comes from a previous ALF training
-                session, the standard prefix starts with "alg." (e.g. "alg._sub_alg1").
-                If "", the effects is the same as providing "alg.", which will
-                load the full 'alg' part of the checkpoint.
-                checkpoint_prefix can be a multi-step path denoted by "A.B.C".
+                Therefore, an example value for ``checkpoint`` is
+                "alg._sub_alg1@/path_to_experiment/train/algorithm/ckpt-100".
             config (TrainerConfig): config for training. ``config`` only needs to
                 be provided to the algorithm which performs a training iteration
                 by itself.
@@ -182,8 +185,7 @@ class Algorithm(AlgorithmInterface):
             if config.summarize_gradient_noise_scale:
                 self._gns_estimator = GradientNoiseScaleEstimator()
 
-        self._checkpoint_path = checkpoint_path
-        self._checkpoint_prefix = checkpoint_prefix
+        self._checkpoint = checkpoint
         self._checkpoint_pre_loaded = False
 
     def __init_subclass__(cls, *args, **kwargs):
@@ -204,20 +206,16 @@ class Algorithm(AlgorithmInterface):
         cls.__init__ = new_init
 
     def _post_init(self):
-        """This function should be called *explicitly* in the sub-class
+        """This function will be called automatically in the sub-class
         at the end of the __init__ function, in order to activate _post_init
         functionalities.
         Algorithms can overwrite this function to provide customized post init
-        behavior.
-
-        TODO: enable automatically calling to ``_post_init``. Using metaclass
-        or decorator conflicts with alf.config.
+        behaviors.
         """
         self._preload_checkpoint()
 
     def _preload_checkpoint(self):
-        """Preload checkpoint to the algorithm, based on the specified
-            ``checkpoint_path`` and ``checkpoint_prefix``.
+        """Preload checkpoint to the algorithm, based on the specified ``checkpoint``.
         """
 
         def _remove_prefix(s, prefix):
@@ -226,21 +224,37 @@ class Algorithm(AlgorithmInterface):
             else:
                 return s
 
-        if self._checkpoint_path is not None:
+        if self._checkpoint is not None:
             try:
-                assert (self._checkpoint_prefix == ''
-                        or 'alg.' in self._checkpoint_prefix), "worong prefix"
+
+                prefix_and_path = self._checkpoint.split('@')
+                assert len(prefix_and_path) in [
+                    1, 2
+                ], ("invalid checkpoint: "
+                    "{}").format(prefix_and_path)
+
+                if len(prefix_and_path) == 1:
+                    # only path is provided
+                    checkpoint_path = prefix_and_path[0]
+                    checkpoint_prefix = ''
+                else:
+                    # only path is provided
+                    checkpoint_prefix, checkpoint_path = prefix_and_path
+
+                assert (checkpoint_prefix == ''
+                        or 'alg.' in checkpoint_prefix), "wrong prefix"
+
                 map_location = None
                 if not torch.cuda.is_available():
                     map_location = torch.device('cpu')
 
                 checkpoint = torch.load(
-                    self._checkpoint_path, map_location=map_location)['alg']
+                    checkpoint_path, map_location=map_location)['alg']
 
-                if self._checkpoint_prefix != "":
+                if checkpoint_prefix != '':
                     # the case when the checkpoint is a subset of the full
                     # checkpoint file filter
-                    prefix = _remove_prefix(self._checkpoint_prefix, 'alg.')
+                    prefix = _remove_prefix(checkpoint_prefix, 'alg.')
                     checkpoint = {
                         _remove_prefix(k, prefix + '.'): v
                         for k, v in checkpoint.items() if k.startswith(prefix)
@@ -250,13 +264,14 @@ class Algorithm(AlgorithmInterface):
                 self._checkpoint_pre_loaded = True
             except:
                 raise RuntimeError(
-                    'Encountered error when pre-loading checkpoint')
+                    'Encountered error when pre-loading checkpoint {}'.format(
+                        self._checkpoint))
 
     @property
     def pre_loaded(self):
         """A property indicating whether a checkpoint for the current instance
-        has been pre-loaded, by specifying ``checkpoint_path`` (and optionally
-        ``checkpoint_prefix``).
+        has been pre-loaded, by specifying ``checkpoint_prefix@checkpoint_path``
+        where ``checkpoint_prefix@`` is optional.
         """
         return self._checkpoint_pre_loaded
 

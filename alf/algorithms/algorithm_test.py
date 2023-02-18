@@ -32,14 +32,9 @@ class MyAlg(Algorithm):
                  optimizer=None,
                  sub_algs=[],
                  params=[],
-                 checkpoint_path=None,
-                 checkpoint_prefix='',
+                 checkpoint=None,
                  name="MyAlg"):
-        super().__init__(
-            optimizer=optimizer,
-            checkpoint_path=checkpoint_path,
-            checkpoint_prefix=checkpoint_prefix,
-            name=name)
+        super().__init__(optimizer=optimizer, checkpoint=checkpoint, name=name)
         self._module_list = nn.ModuleList(sub_algs)
         self._param_list = nn.ParameterList(params)
 
@@ -279,7 +274,7 @@ class AlgorithmTest(alf.test.TestCase):
             # checkpoint from alg_1
             new_alg = MyAlg(
                 params=[nn.Parameter(torch.Tensor([-10]))],
-                checkpoint_path=ckpt_path,
+                checkpoint=ckpt_path,  # an example where the prefix is omitted
                 name="new_alg")
 
             # 5) new_alg's state_dict should match with alg_1's state dict
@@ -325,8 +320,7 @@ class AlgorithmTest(alf.test.TestCase):
             # of alg_composed
             new_alg_1 = MyAlg(
                 params=[nn.Parameter(torch.Tensor([-200]))],
-                checkpoint_path=ckpt_path,
-                checkpoint_prefix="alg._sub_alg1")
+                checkpoint="alg._sub_alg1@" + ckpt_path)
 
             # 4) test new_alg_1 loaded successfully from the composed checkpoint
             self.assertTrue(new_alg_1.state_dict() == old_alg_1_state_dict)
@@ -379,8 +373,7 @@ class AlgorithmTest(alf.test.TestCase):
             # checkpoint
             new_alg_1 = MyAlg(
                 params=[nn.Parameter(torch.Tensor([-200]))],
-                checkpoint_path=ckpt_path,
-                checkpoint_prefix="")
+                checkpoint=ckpt_path)  # an example where the prefix is omitted
 
             # 4) construct a new composed algorithm alg_composed_new using new_alg_1
             alg_composed_new = ComposedAlg(
