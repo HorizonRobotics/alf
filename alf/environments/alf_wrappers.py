@@ -1024,8 +1024,8 @@ class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
             c = b0 + b
             return b, c
 
-        self._affine_paras = nest.map_structure(
-            _action_affine_paras, action_spec)
+        self._affine_paras = nest.map_structure(_action_affine_paras,
+                                                action_spec)
         # overwrite all action bounds to [-1,1]
         self._action_spec = nest.map_structure(
             lambda spec: alf.BoundedTensorSpec(
