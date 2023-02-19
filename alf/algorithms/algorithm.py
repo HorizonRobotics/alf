@@ -31,7 +31,8 @@ import alf
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.optimizers.utils import GradientNoiseScaleEstimator
-from alf.utils.checkpoint_utils import is_checkpoint_enabled
+from alf.utils.checkpoint_utils import (is_checkpoint_enabled,
+                                        extract_sub_state_dict_from_checkpoint)
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
@@ -218,54 +219,27 @@ class Algorithm(AlgorithmInterface):
         """Preload checkpoint to the algorithm, based on the specified ``checkpoint``.
         """
 
-        def _remove_prefix(s, prefix):
-            if s.startswith(prefix):
-                return s[len(prefix):]
-            else:
-                return s
-
         if self._checkpoint is not None:
-            try:
+            prefix_and_path = self._checkpoint.split('@')
+            assert len(prefix_and_path) in [1,
+                                            2], ("invalid checkpoint: "
+                                                 "{}").format(prefix_and_path)
 
-                prefix_and_path = self._checkpoint.split('@')
-                assert len(prefix_and_path) in [
-                    1, 2
-                ], ("invalid checkpoint: "
-                    "{}").format(prefix_and_path)
+            if len(prefix_and_path) == 1:
+                # only path is provided
+                checkpoint_path = prefix_and_path[0]
+                checkpoint_prefix = 'alg'
+            else:
+                # only path is provided
+                checkpoint_prefix, checkpoint_path = prefix_and_path
 
-                if len(prefix_and_path) == 1:
-                    # only path is provided
-                    checkpoint_path = prefix_and_path[0]
-                    checkpoint_prefix = ''
-                else:
-                    # only path is provided
-                    checkpoint_prefix, checkpoint_path = prefix_and_path
+            assert 'alg' in checkpoint_prefix, "wrong prefix"
 
-                assert (checkpoint_prefix == ''
-                        or 'alg.' in checkpoint_prefix), "wrong prefix"
+            stat_dict = extract_sub_state_dict_from_checkpoint(
+                checkpoint_prefix, checkpoint_path)
 
-                map_location = None
-                if not torch.cuda.is_available():
-                    map_location = torch.device('cpu')
-
-                checkpoint = torch.load(
-                    checkpoint_path, map_location=map_location)['alg']
-
-                if checkpoint_prefix != '':
-                    # the case when the checkpoint is a subset of the full
-                    # checkpoint file filter
-                    prefix = _remove_prefix(checkpoint_prefix, 'alg.')
-                    checkpoint = {
-                        _remove_prefix(k, prefix + '.'): v
-                        for k, v in checkpoint.items() if k.startswith(prefix)
-                    }
-
-                self.load_state_dict(checkpoint, strict=True)
-                self._checkpoint_pre_loaded = True
-            except:
-                raise RuntimeError(
-                    'Encountered error when pre-loading checkpoint {}'.format(
-                        self._checkpoint))
+            self.load_state_dict(stat_dict, strict=True)
+            self._checkpoint_pre_loaded = True
 
     @property
     def pre_loaded(self):
