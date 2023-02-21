@@ -54,7 +54,6 @@ class BcAlgorithm(OffPolicyAlgorithm):
                  env=None,
                  config: TrainerConfig = None,
                  checkpoint=None,
-                 checkpoint_prefix='',
                  debug_summaries=False,
                  epsilon_greedy=None,
                  name="BcAlgorithm"):

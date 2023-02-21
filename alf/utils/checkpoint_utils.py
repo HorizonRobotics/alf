@@ -49,8 +49,7 @@ def enable_checkpoint(module, flag=True):
 
 def extract_sub_state_dict_from_checkpoint(checkpoint_prefix, checkpoint_path):
     """Extract a (sub-)state-dictionary from a checkpoint file. The state
-    dictionary is can be a sub-dictionary specified by the
-    ``checkpoint_prefix``.
+    dictionary can be a sub-dictionary specified by the ``checkpoint_prefix``.
     Args:
         checkpoint_prefix (str): the prefix to the sub-dictionary in the
             checkpoint to be loaded. It can be a multi-step path denoted by

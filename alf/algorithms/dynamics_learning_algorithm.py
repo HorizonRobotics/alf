@@ -46,7 +46,6 @@ class DynamicsLearningAlgorithm(Algorithm):
                  num_replicas=1,
                  dynamics_network: DynamicsNetwork = None,
                  checkpoint=None,
-                 checkpoint_prefix='',
                  name="DynamicsLearningAlgorithm"):
         """Create a DynamicsLearningAlgorithm.
 

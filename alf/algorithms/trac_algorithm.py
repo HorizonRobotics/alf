@@ -62,7 +62,6 @@ class TracAlgorithm(RLAlgorithm):
                  ac_algorithm_cls=ActorCriticAlgorithm,
                  action_dist_clip_per_dim=0.01,
                  checkpoint=None,
-                 checkpoint_prefix='',
                  debug_summaries=False,
                  name="TracAlgorithm"):
         """

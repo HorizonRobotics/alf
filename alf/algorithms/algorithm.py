@@ -230,7 +230,6 @@ class Algorithm(AlgorithmInterface):
                 checkpoint_path = prefix_and_path[0]
                 checkpoint_prefix = 'alg'
             else:
-                # only path is provided
                 checkpoint_prefix, checkpoint_path = prefix_and_path
 
             assert 'alg' in checkpoint_prefix, "wrong prefix"
