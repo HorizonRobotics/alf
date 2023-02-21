@@ -13,19 +13,28 @@
 # limitations under the License.
 
 from absl import logging
+import copy
 import json
+import os
 import pprint
+import tempfile
 import torch
 import torch.nn as nn
 
 import alf
 from alf.data_structures import LossInfo
 from alf.algorithms.algorithm import Algorithm, _get_optimizer_params
+import alf.utils.checkpoint_utils as ckpt_utils
 
 
 class MyAlg(Algorithm):
-    def __init__(self, optimizer=None, sub_algs=[], params=[], name="MyAlg"):
-        super().__init__(optimizer=optimizer, name=name)
+    def __init__(self,
+                 optimizer=None,
+                 sub_algs=[],
+                 params=[],
+                 checkpoint=None,
+                 name="MyAlg"):
+        super().__init__(optimizer=optimizer, checkpoint=checkpoint, name=name)
         self._module_list = nn.ModuleList(sub_algs)
         self._param_list = nn.ParameterList(params)
 
@@ -37,6 +46,23 @@ class MyAlg(Algorithm):
 
     def _trainable_attributes_to_ignore(self):
         return ['ignored_param']
+
+
+class ComposedAlg(Algorithm):
+    def __init__(self,
+                 optimizer=None,
+                 sub_alg1=None,
+                 sub_alg2=None,
+                 params=[],
+                 name="ComposedAlg"):
+
+        super().__init__(
+            optimizer=optimizer,
+            name=name,
+        )
+        self._sub_alg1 = sub_alg1
+        self._sub_alg2 = sub_alg2
+        self._param_list = nn.ParameterList(params)
 
 
 class AlgorithmTest(alf.test.TestCase):
@@ -222,6 +248,151 @@ class AlgorithmTest(alf.test.TestCase):
         for param in alg_root.parameters():
             self.assertTrue(torch.all(param.grad == 1.0))
         self.assertEqual(loss_info.loss, 3.)
+
+    def test_full_checkpoint_preloading(self):
+        # test the case where the checkpoint direcly matches with the algorithm
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            # 1) construct the first algorithm instance and save a checkpoint
+            param = nn.Parameter(torch.Tensor([1]))
+            alg_1 = MyAlg(params=[param], name="alg")
+
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_1)
+            ckpt_mngr.save(0)
+
+            ckpt_path = ckpt_dir + '/ckpt-0'
+
+            # 2) construct a seoncd algorithm instance with different parameter
+            # values, without in-algorithm checkpoint pre-loading
+            new_alg = MyAlg(
+                params=[nn.Parameter(torch.Tensor([-10]))], name="new_alg")
+
+            # 3) new_alg's state_dict should be different from alg_1's state dict
+            self.assertTrue(new_alg.state_dict() != alg_1.state_dict())
+
+            # 4) construct a second algorithm instance with different parameter
+            # values and use in-algorithm pre-loading of a previously saved
+            # checkpoint from alg_1
+            new_alg = MyAlg(
+                params=[nn.Parameter(torch.Tensor([-10]))],
+                checkpoint=ckpt_path,  # an example where the prefix is omitted
+                name="new_alg")
+
+            # 5) new_alg's state_dict should match with alg_1's state dict
+            self.assertTrue(new_alg.state_dict() == alg_1.state_dict())
+
+    def test_subcheckpoint_preloading(self):
+        # test can load from a sub-set of a full checkpoint which corresponds
+        # to the full state dict of an algorithm
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            # 1) construct a composed algorithm
+            param_1 = nn.Parameter(torch.Tensor([1]))
+            alg_1 = MyAlg(params=[param_1], name="alg_1")
+
+            old_alg_1_state_dict = alg_1.state_dict()
+
+            param_2 = nn.Parameter(torch.Tensor([2]))
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
+            alg_2 = MyAlg(
+                params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
+            param_root = nn.Parameter(torch.Tensor([0]))
+
+            alg_composed = ComposedAlg(
+                params=[param_root],
+                optimizer=optimizer_root,
+                sub_alg1=alg_1,
+                sub_alg2=alg_2,
+                name="root")
+
+            # 2）save a checkpoint for the composed algorithm
+            ckpt_dir_composed = ckpt_dir + '/alg_composed/'
+            os.mkdir(ckpt_dir_composed)
+
+            ckpt_mngr_composed = ckpt_utils.Checkpointer(
+                ckpt_dir_composed, alg=alg_composed)
+            ckpt_mngr_composed.save(0)
+
+            ckpt_path = ckpt_dir_composed + '/ckpt-0'
+
+            # 3）test checkpoint loading with prefix
+            # construct another MyAlg instance, which is a sub-alg
+            # of alg_composed
+            new_alg_1 = MyAlg(
+                params=[nn.Parameter(torch.Tensor([-200]))],
+                checkpoint="alg._sub_alg1@" + ckpt_path)
+
+            # 4) test new_alg_1 loaded successfully from the composed checkpoint
+            self.assertTrue(new_alg_1.state_dict() == old_alg_1_state_dict)
+
+    def test_partial_preloading_and_then_checkpoint_loading(self):
+        # test the scenario that the sub-algorithm of a composed algorithm is
+        # pre-loaded first, and then load the full checkpoint using the standard
+        # checkpoint manager (as done in policy trainer).
+        # This scenario simulates the case when we want to use the parameters
+        # from a particular checkpoint for a sub-algorithm, instead of the
+        # parameters in the full checkpoint of the composed algorithm.
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            # 1) construct sub-algorithm alg_1 and save a checkpoint
+            param_1 = nn.Parameter(torch.Tensor([1]))
+            alg_1 = MyAlg(params=[param_1], name="alg_1")
+            ckpt_dir_1 = ckpt_dir + '/alg_1/'
+            os.mkdir(ckpt_dir_1)
+            ckpt_mngr_1 = ckpt_utils.Checkpointer(ckpt_dir_1, alg=alg_1)
+            ckpt_mngr_1.save(0)
+            ckpt_path = ckpt_dir_1 + '/ckpt-0'
+
+            # 2) construct a composed algorithm, where alg_1's parameter value
+            # is updated; then save the composed checkpoint
+            alg_1._param_list[0] = nn.Parameter(torch.Tensor([1000]))
+
+            param_2 = nn.Parameter(torch.Tensor([2]))
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
+            alg_2 = MyAlg(
+                params=[param_2], optimizer=optimizer_2, name="alg_2")
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
+            param_root = nn.Parameter(torch.Tensor([0]))
+
+            alg_composed = ComposedAlg(
+                params=[param_root],
+                optimizer=optimizer_root,
+                sub_alg1=alg_1,
+                sub_alg2=alg_2,
+                name="root")
+
+            ckpt_dir_composed = ckpt_dir + '/alg_composed/'
+            os.mkdir(ckpt_dir_composed)
+
+            ckpt_mngr_composed = ckpt_utils.Checkpointer(
+                ckpt_dir_composed, alg=alg_composed)
+            ckpt_mngr_composed.save(0)
+
+            # 3) construct a new sub-algorithm instance new_alg_1, with inital
+            # paramer value different from alg_1, with pre-loading from alg_1's
+            # checkpoint
+            new_alg_1 = MyAlg(
+                params=[nn.Parameter(torch.Tensor([-200]))],
+                checkpoint=ckpt_path)  # an example where the prefix is omitted
+
+            # 4) construct a new composed algorithm alg_composed_new using new_alg_1
+            alg_composed_new = ComposedAlg(
+                params=[param_root],
+                optimizer=alf.optimizers.Adam(lr=0.1),
+                sub_alg1=new_alg_1,
+                sub_alg2=alg_2,
+                name="root")
+
+            # 5) load the composed checkpoint for alg_composed_new using the
+            # checkpoint manager (simulating the case in policy trainer)
+            ckpt_mngr_composed = ckpt_utils.Checkpointer(
+                ckpt_dir_composed, alg=alg_composed_new)
+            ckpt_mngr_composed.load()
+
+            # 6) test checkpoint manager's loading won't overwrite in-algorithm
+            # loading
+            self.assertTrue(alg_composed_new.state_dict()
+                            ['_sub_alg1._param_list.0'] == torch.Tensor([1]))
 
 
 if __name__ == '__main__':

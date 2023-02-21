@@ -52,6 +52,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
+                 checkpoint=None,
                  debug_summaries=False,
                  name="ActorCriticAlgorithm"):
         """
@@ -92,6 +93,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss_class (type): the class of the loss. The signature of its
                 constructor: ``loss_class(debug_summaries)``
             optimizer (torch.optim.Optimizer): The optimizer for training
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
@@ -119,6 +124,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             env=env,
             config=config,
             optimizer=optimizer,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

@@ -79,6 +79,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  action_l2=0,
                  actor_optimizer=None,
                  critic_optimizer=None,
+                 checkpoint=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -136,6 +137,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             action_l2 (float): weight of squared action l2-norm on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -171,6 +176,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             reward_weights=reward_weights,
             env=env,
             config=config,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

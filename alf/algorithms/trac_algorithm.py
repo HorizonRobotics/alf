@@ -61,6 +61,7 @@ class TracAlgorithm(RLAlgorithm):
                  config=None,
                  ac_algorithm_cls=ActorCriticAlgorithm,
                  action_dist_clip_per_dim=0.01,
+                 checkpoint=None,
                  debug_summaries=False,
                  name="TracAlgorithm"):
         """
@@ -68,6 +69,10 @@ class TracAlgorithm(RLAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             ac_algorithm_cls (type): Actor Critic Algorithm cls.
             action_dist_clip_per_dim (float): action dist clip per dimension
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
@@ -87,6 +92,7 @@ class TracAlgorithm(RLAlgorithm):
             config=config,
             train_state_spec=ac_algorithm.train_state_spec,
             predict_state_spec=ac_algorithm.predict_state_spec,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 

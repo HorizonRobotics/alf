@@ -45,6 +45,7 @@ class DynamicsLearningAlgorithm(Algorithm):
                  hidden_size=256,
                  num_replicas=1,
                  dynamics_network: DynamicsNetwork = None,
+                 checkpoint=None,
                  name="DynamicsLearningAlgorithm"):
         """Create a DynamicsLearningAlgorithm.
 
@@ -57,8 +58,15 @@ class DynamicsLearningAlgorithm(Algorithm):
                 shape feature_spec. For discrete action case, encoded_action
                 is a one-hot representation of the action. For continuous
                 action, encoded action is the original action.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
         """
-        super().__init__(train_state_spec=train_state_spec, name=name)
+        super().__init__(
+            train_state_spec=train_state_spec,
+            checkpoint=checkpoint,
+            name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"

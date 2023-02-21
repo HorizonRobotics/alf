@@ -47,6 +47,50 @@ def enable_checkpoint(module, flag=True):
     module._alf_checkpoint_enabled = flag
 
 
+def extract_sub_state_dict_from_checkpoint(checkpoint_prefix, checkpoint_path):
+    """Extract a (sub-)state-dictionary from a checkpoint file. The state
+    dictionary can be a sub-dictionary specified by the ``checkpoint_prefix``.
+    Args:
+        checkpoint_prefix (str): the prefix to the sub-dictionary in the
+            checkpoint to be loaded. It can be a multi-step path denoted by
+            "A.B.C" (e.g. "alg._sub_alg1"). If prefix is '', the full dictionary
+            from the checkpoint file will be returned.
+        checkpoint_path (str): the full path to the checkpoint file saved
+            by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
+    """
+
+    map_location = None
+    if not torch.cuda.is_available():
+        map_location = torch.device('cpu')
+
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+
+    if checkpoint_prefix != '':
+        dict_key_and_prefix = checkpoint_prefix.split('.', maxsplit=1)
+        if len(dict_key_and_prefix) == 1:
+            dict_key = dict_key_and_prefix[0]
+            prefix = ''
+        else:
+            dict_key, prefix = dict_key_and_prefix
+
+        checkpoint = checkpoint[dict_key]
+
+        def _remove_prefix(s, prefix):
+            if s.startswith(prefix):
+                return s[len(prefix):]
+            else:
+                return s
+
+        # the case when the checkpoint is a subset of the full
+        # checkpoint file filter
+        checkpoint = {
+            _remove_prefix(k, prefix + '.'): v
+            for k, v in checkpoint.items() if k.startswith(prefix)
+        }
+
+    return checkpoint
+
+
 class Checkpointer(object):
     """A checkpoint manager for saving and loading checkpoints."""
 

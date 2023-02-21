@@ -117,6 +117,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             enable_amp: bool = True,
             random_action_after_episode_end=False,
             optimizer: Optional[torch.optim.Optimizer] = None,
+            checkpoint=None,
             debug_summaries=False,
             name="MuzeroRepresentationImpl"):
         """
@@ -201,6 +202,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 future states after the end of an episode will be the same as the
                 last action. If True, they will be uniformly sampled.
             optimizer: the optimizer for independently training the representation.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool):
             name (str):
 
@@ -227,6 +232,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             train_state_spec=(),
             config=config,
             optimizer=optimizer,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
         self._enable_amp = enable_amp

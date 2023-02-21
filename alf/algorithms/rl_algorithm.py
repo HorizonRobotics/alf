@@ -142,6 +142,7 @@ class RLAlgorithm(Algorithm):
                  config: TrainerConfig = None,
                  optimizer=None,
                  overwrite_policy_output=False,
+                 checkpoint=None,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """
@@ -172,6 +173,10 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs a training iteration
                 by itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
+            checkpoint (None|str): a string in the format of "prefix@path",
+                where the "prefix" is the multi-step path to the contents in the
+                checkpoint to be loaded. "path" is the full path to the checkpoint
+                file saved by ALF. Refer to ``Algorithm`` for more details.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -185,6 +190,7 @@ class RLAlgorithm(Algorithm):
             is_on_policy=is_on_policy,
             optimizer=optimizer,
             config=config,
+            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
 
