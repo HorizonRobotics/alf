@@ -285,23 +285,27 @@ class Trainer(object):
         self._random_seed = config.random_seed
         self._rank = ddp_rank
         self._conf_file_content = common.read_conf_file(root_dir)
+        self._pid = None
 
     def train(self):
         """Perform training."""
         self._restore_checkpoint()
         alf.summary.enable_summary()
 
+        if self._pid is None:
+            self._pid = os.getpid()
+
         self._checkpoint_requested = False
         signal.signal(signal.SIGUSR2, self._request_checkpoint)
         # kill -12 PID
         logging.info("Use `kill -%s %s` to request checkpoint during training."
-                     % (int(signal.SIGUSR2), os.getpid()))
+                     % (int(signal.SIGUSR2), self._pid))
 
         self._debug_requested = False
         # kill -10 PID
         signal.signal(signal.SIGUSR1, self._request_debug)
         logging.info("Use `kill -%s %s` to request debugging." % (int(
-            signal.SIGUSR1), os.getpid()))
+            signal.SIGUSR1), self._pid))
 
         checkpoint_saved = False
         try:
@@ -589,9 +593,9 @@ class RLTrainer(Trainer):
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
-                '%s%s -> %s: %s time=%.3f throughput=%0.2f' %
+                '%s [pid: %s] %s -> %s: %s time=%.3f throughput=%0.2f' %
                 ('' if self._rank == -1 else f'[rank {self._rank:02d}] ',
-                 common.get_conf_file(),
+                 self._pid, common.get_conf_file(),
                  os.path.basename(self._root_dir.strip('/')), iter_num, t,
                  int(train_steps) / t),
                 n_seconds=1)
