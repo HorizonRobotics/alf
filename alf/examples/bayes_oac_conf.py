@@ -94,7 +94,7 @@ alf.config(
     # entropy_regularization_weight=1.,
     deterministic_actor=deterministic_actor,
     deterministic_critic=False,
-    deterministic_explore=False,
+    deterministic_explorer=False,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,

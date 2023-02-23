@@ -121,6 +121,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  explore_network_cls=ActorDistributionNetwork,
                  critic_module_cls=FuncParVIAlgorithm,
                  deterministic_actor=False,
+                 deterministic_explorer=False,
                  deterministic_critic=False,
                  reward_weights=None,
                  critic_training_weight=1.0,
@@ -155,6 +156,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             explore_network_cls
             critic_module_cls
             deterministic_actor
+            deterministic_explorer
             deterministic_critic
             critic_training_weight (float|None): if not None, weight :math:`(s,a)`
                 pairs for critic training according to opt_std of :math:`Q(s,a)`
@@ -266,6 +268,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         self._critic_module = critic_module
         self._deterministic_actor = deterministic_actor
+        self._deterministic_explorer = deterministic_explorer
         self._deterministic_critic = deterministic_critic
         self._target_critic_params = torch.nn.Parameter(target_critic_params)
         target_critic_network.set_parameters(self._target_critic_params)
@@ -421,6 +424,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                           state,
                           action,
                           log_pi=(),
+                          deterministic=False,
                           explore=False):
         critic_step = self._critic_module.predict_step(
             inputs=(inputs.observation, action), state=state)
@@ -436,7 +440,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             critics, explore, critics_info)
         dqda = nest_utils.grad(action, q_value.sum())
 
-        if self._deterministic_actor or explore:
+        if deterministic:
             neg_entropy = ()
             entropy_loss = 0.
         else:
@@ -506,14 +510,18 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                                         action_dist, action)
             log_pi = sum(nest.flatten(log_pi))
         actor_state, actor_loss = self._actor_train_step(
-            inputs, state.actor, action, log_pi)
+            inputs,
+            state.actor,
+            action,
+            log_pi,
+            deterministic=self._deterministic_actor)
 
         # train explore_network
         if self._explore_network is None:
             explore_state = ()
             explore_loss = LossInfo()
         else:
-            _, explore_action, explore_action_state = \
+            explore_action_dist, explore_action, explore_action_state = \
                 self._predict_action(
                     inputs.observation,
                     state=state.action,
@@ -521,9 +529,21 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                     train=True)
             action_state = action_state._replace(
                 explore_network=explore_action_state.explore_network)
+            if self._deterministic_explorer:
+                explore_log_pi = ()
+            else:
+                explore_log_pi = nest.map_structure(
+                    lambda dist, a: dist.log_prob(a), explore_action_dist,
+                    explore_action)
+                explore_log_pi = sum(nest.flatten(explore_log_pi))
 
             explore_state, explore_loss = self._actor_train_step(
-                inputs, state.explore, explore_action, explore=True)
+                inputs,
+                state.explore,
+                explore_action,
+                explore_log_pi,
+                deterministic=self._deterministic_explorer,
+                explore=True)
 
         # compute train_info for critic_module, trained in calc_loss
         critic_state, critic_train_info = self._compute_critic_train_info(

@@ -19,8 +19,10 @@ import torch.distributions as td
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
-from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm
+from alf.algorithms.actor_bayes_critic_algorithm import AbcAlgorithm, ignore
 from alf.algorithms.actor_bayes_critic_algorithm import AbcActionState
+from alf.algorithms.actor_bayes_critic_algorithm import AbcState
+from alf.data_structures import StepType, TimeStep
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
@@ -30,8 +32,8 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 @alf.configurable
-class BayesOacAlgorithm(AbcAlgorithm):
-    r"""Optimistic Actor Critic with Bayesian Critics. """
+class BayesTsoacAlgorithm(AbcAlgorithm):
+    r"""Optimistic Actor Critic with Thompson Sampling Bayesian Critics. """
 
     def __init__(self,
                  observation_spec,
@@ -39,10 +41,11 @@ class BayesOacAlgorithm(AbcAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
                  explore_network_cls=None,
+                 num_explore_action_samples=10,
                  critic_module_cls=FuncParVIAlgorithm,
                  deterministic_actor=False,
                  deterministic_critic=False,
-                 deterministic_explorer=True,
+                 basin_wise_ts_critic=False,
                  reward_weights=None,
                  critic_training_weight=1.0,
                  epsilon_greedy=None,
@@ -71,7 +74,7 @@ class BayesOacAlgorithm(AbcAlgorithm):
                  alpha_optimizer=None,
                  explore_alpha_optimizer=None,
                  debug_summaries=False,
-                 name="BayesOacAlgorithm"):
+                 name="BayesTsoacAlgorithm"):
         """
         Refer to OacAlgorithm and AbcAlgorithm for Args.
         """
@@ -84,7 +87,7 @@ class BayesOacAlgorithm(AbcAlgorithm):
             explore_network_cls=None,
             critic_module_cls=critic_module_cls,
             deterministic_actor=deterministic_actor,
-            deterministic_explorer=deterministic_explorer,
+            deterministic_explorer=False,
             deterministic_critic=deterministic_critic,
             reward_weights=reward_weights,
             critic_training_weight=critic_training_weight,
@@ -116,6 +119,13 @@ class BayesOacAlgorithm(AbcAlgorithm):
             name=name)
 
         self._explore_delta = explore_delta
+        self._idx = 0
+        self._num_explore_action_samples = num_explore_action_samples
+        self._basin_wise_ts_critic = basin_wise_ts_critic
+        if basin_wise_ts_critic:
+            self._num_ts_critics = self._critic_module.num_basins
+        else:
+            self._num_ts_critics = self._critic_module.num_particles
 
     def _predict_action(self,
                         observation,
@@ -134,11 +144,7 @@ class BayesOacAlgorithm(AbcAlgorithm):
             "Squashed distribution is expected from actor_network.")
         new_state = new_state._replace(actor_network=actor_network_state)
 
-        def mean_shift_fn(mu, dqda, sigma, deterministic):
-            if deterministic:
-                cov = 1.
-            else:
-                cov = sigma
+        def mean_shift_fn(mu, dqda, cov):
             if self._dqda_clipping:
                 dqda = torch.clamp(dqda, -self._dqda_clipping,
                                    self._dqda_clipping)
@@ -168,7 +174,6 @@ class BayesOacAlgorithm(AbcAlgorithm):
                         inputs=(observation, transformed_action),
                         state=state.critic)
                     critics_state = critic_step.state
-                    new_state = new_state._replace(critic=critics_state)
                     if self._deterministic_critic:
                         critics = critic_step.output
                     else:
@@ -179,20 +184,48 @@ class BayesOacAlgorithm(AbcAlgorithm):
                     q_ub, _ = self._consensus_q_for_actor_train(
                         critics, explore=True, info=critics_info)
                     dqda = nest_utils.grad(critic_action, q_ub.sum())
+
                 shifted_mean = nest.map_structure(
-                    mean_shift_fn, unsquashed_mean, dqda, unsquashed_var,
-                    self._deterministic_explorer)
-                if self._deterministic_explorer:
-                    action = shifted_mean
-                    action_dist = ()
+                    mean_shift_fn, unsquashed_mean, dqda, unsquashed_var)
+                normal_dist = dist_utils.DiagMultivariateNormal(
+                    loc=shifted_mean, scale=unsquashed_std)
+                action_dist = td.TransformedDistribution(
+                    base_distribution=normal_dist,
+                    transforms=action_dist.transforms)
+                action = action_dist.sample(
+                    sample_shape=[self._num_explore_action_samples])
+                critic_observation = observation.unsqueeze(
+                    0).repeat_interleave(
+                        self._num_explore_action_samples, dim=0)
+                critic_action = action.reshape(
+                    action.shape[0] * action.shape[1], *action.shape[2:])
+                critic_observation = critic_observation.reshape(
+                    critic_observation.shape[0] * critic_observation.shape[1],
+                    *critic_observation.shape[2:])
+                critic_step = self._critic_module.predict_step(
+                    inputs=(critic_observation, critic_action),
+                    state=critics_state)
+                critics_state = critic_step.state
+                new_state = new_state._replace(critic=critics_state)
+                if self._deterministic_critic:
+                    critics = critic_step.output
                 else:
-                    normal_dist = dist_utils.DiagMultivariateNormal(
-                        loc=shifted_mean, scale=unsquashed_std)
-                    action_dist = td.TransformedDistribution(
-                        base_distribution=normal_dist,
-                        transforms=action_dist.transforms)
-                    action = dist_utils.rsample_action_distribution(
-                        action_dist)
+                    critics_dist = critic_step.output
+                    critics = critics_dist.mean  # [num_actions*bs, num_critics, 1]
+                critics_info = critic_step.info
+
+                if self._basin_wise_ts_critic and hasattr(
+                        critics_info, "basin_means"):
+                    if not ignore(critics_info.basin_means):
+                        critics = critics_info.basin_means
+
+                action_q = critics[:, self._idx, :]
+                action_q = action_q.reshape(action.shape[0], action.shape[1],
+                                            *action_q.shape[1:])
+                action_idx = action_q.squeeze(-1).max(dim=0)[1]
+                batch_idx = torch.arange(action.shape[1]).type_as(action_idx)
+                action = action[action_idx, batch_idx, :]
+
             else:
                 # This uniform sampling seems important because for a
                 # squashed Gaussian, even with a large scale,
@@ -209,3 +242,8 @@ class BayesOacAlgorithm(AbcAlgorithm):
                 action = dist_utils.rsample_action_distribution(action_dist)
 
         return action_dist, action, new_state
+
+    def rollout_step(self, inputs: TimeStep, state: AbcState):
+        if inputs.step_type == StepType.FIRST:
+            self._idx = torch.randint(self._num_ts_critics, ())
+        return super().rollout_step(inputs, state)

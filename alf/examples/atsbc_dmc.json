@@ -1,0 +1,36 @@
+{
+    "desc": [
+        "DM Control tasks with 4 seeds on each environment"
+    ],
+    "version": "dmc_multibootstrap_7f68b_bl_.05_nea_20_-aidi",
+    "use_gpu": true,
+    "gpus": [
+        0,
+        1
+    ],
+    "max_worker_num": 4,
+    "repeats": 1,
+    "parameters": {
+        "create_environment.env_name": [
+            "walker-run"
+        ],
+        "CriticDistributionParamNetwork.state_dependent_std": "[False]",
+        "MultiBootstrapEnsemble.num_basins": "[5]",
+        "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
+        "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",
+        "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
+        "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
+        "MultiBootstrapEnsemble.unbiased_std": "[True]",
+        "AtsbcAlgorithm.beta_lb": "[.05]",
+        "AtsbcAlgorithm.basin_wise_ts_critic": "[False]",
+        "AtsbcAlgorithm.num_explore_action_samples": "[20]",
+        "AtsbcAlgorithm.critic_training_weight": "[None]",
+        "AtsbcAlgorithm.initial_log_alpha": "[-3.2]",
+        "AtsbcAlgorithm.epistemic_alpha_coeff": "[1.]",
+        "AtsbcAlgorithm.alpha_optimizer": "[None]",
+        "AtsbcAlgorithm.use_q_mean_train_actor": "[True]",
+        "AtsbcAlgorithm.use_basin_mean_for_target_critic": "[True]",
+        "AtsbcAlgorithm.target_update_tau": "[0.005]",
+        "TrainerConfig.random_seed": "list(range(4))"
+    }
+}

@@ -19,7 +19,7 @@ from alf.algorithms.agent import Agent
 from alf.algorithms.bayes_oac_algorithm import BayesOacAlgorithm
 from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
-from alf.examples.benchmarks.locomotion import locomotion_conf
+from alf.examples import dmc_conf
 from alf.networks import ActorNetwork
 from alf.optimizers import AdamTF
 
@@ -35,13 +35,13 @@ deterministic_critic = False
 
 if deterministic_actor:
     actor_network_cls = partial(
-        ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
+        ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
 else:
-    actor_network_cls = locomotion_conf.actor_distribution_network_cls
+    actor_network_cls = dmc_conf.actor_distribution_network_cls
 
 alf.config(
     'CriticDistributionParamNetwork',
-    joint_fc_layer_params=locomotion_conf.hidden_layers,
+    joint_fc_layer_params=dmc_conf.hidden_layers,
     state_dependent_std=False)
 
 if use_multibootstrap:
@@ -68,7 +68,6 @@ else:
     batch_size = 256
 
 alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
-# optimizer=locomotion_conf.optimizer)
 
 alf.config(
     'BayesOacAlgorithm',
@@ -78,10 +77,10 @@ alf.config(
     beta_lb=.5,
     explore_delta=6.86,
     deterministic_actor=deterministic_actor,
-    deterministic_critic=False,
+    deterministic_critic=deterministic_critic,
     deterministic_explorer=False,
     critic_training_weight=None,
-    common_td_target=True,  # grid search
+    common_td_target=True,
     use_q_mean_train_actor=True,
     use_entropy_reward=False,
     initial_log_alpha=0.0,

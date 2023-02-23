@@ -16,32 +16,34 @@ from functools import partial
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bayes_oac_algorithm import BayesOacAlgorithm
+from alf.algorithms.oabc_algorithm import OabcAlgorithm
 from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
-from alf.examples.benchmarks.locomotion import locomotion_conf
+from alf.examples import dmc_conf
 from alf.networks import ActorNetwork
 from alf.optimizers import AdamTF
 
 # experiment settings
 use_multibootstrap = True
 deterministic_actor = False
+deterministic_explorer = False
 deterministic_critic = False
-
-# if env_name() == "Humanoid-v2":
-#     fixed_alpha = 0.05
-# else:
-#     fixed_alpha = 0.2
 
 if deterministic_actor:
     actor_network_cls = partial(
-        ActorNetwork, fc_layer_params=locomotion_conf.hidden_layers)
+        ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
 else:
-    actor_network_cls = locomotion_conf.actor_distribution_network_cls
+    actor_network_cls = dmc_conf.actor_distribution_network_cls
+
+if deterministic_explorer:
+    explore_network_cls = partial(
+        ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
+else:
+    explore_network_cls = dmc_conf.actor_distribution_network_cls
 
 alf.config(
     'CriticDistributionParamNetwork',
-    joint_fc_layer_params=locomotion_conf.hidden_layers,
+    joint_fc_layer_params=dmc_conf.hidden_layers,
     state_dependent_std=False)
 
 if use_multibootstrap:
@@ -67,19 +69,18 @@ else:
         debug_summaries=True)
     batch_size = 256
 
-alf.config('Agent', rl_algorithm_cls=BayesOacAlgorithm)
-# optimizer=locomotion_conf.optimizer)
+alf.config('Agent', rl_algorithm_cls=OabcAlgorithm)
 
 alf.config(
-    'BayesOacAlgorithm',
+    'OabcAlgorithm',
     actor_network_cls=actor_network_cls,
+    explore_network_cls=explore_network_cls,
     critic_module_cls=critic_module_cls,
-    beta_ub=4.66,
+    beta_ub=1.,
     beta_lb=.5,
-    explore_delta=6.86,
     deterministic_actor=deterministic_actor,
-    deterministic_critic=False,
-    deterministic_explorer=False,
+    deterministic_explorer=deterministic_explorer,
+    deterministic_critic=deterministic_critic,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,
@@ -88,11 +89,10 @@ alf.config(
     epistemic_alpha_coeff=None,
     use_basin_mean_for_target_critic=True,
     actor_optimizer=AdamTF(lr=3e-4),
+    explore_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     alpha_optimizer=AdamTF(lr=3e-4),
     target_update_tau=0.005)
-
-alf.config('calc_default_target_entropy', min_prob=0.184)
 
 alf.config(
     'TrainerConfig',

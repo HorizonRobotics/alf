@@ -1,8 +1,8 @@
 {
     "desc": [
-        "All MuJoCo tasks with 4 seeds on each environment"
+        "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "mujoco_multibootstrap_std_ctw_upd-ctw_0.2-newton",
+    "version": "dmc_multibootstrap_10a9a_clip_bu_2_bl_.2-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,7 +12,7 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "Hopper-v2"
+            "walker-run"
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
@@ -21,9 +21,9 @@
         "MultiBootstrapEnsemble.initial_train_steps": "[5000]",
         "MultiBootstrapEnsemble.masked_train_steps": "[5000]",
         "MultiBootstrapEnsemble.unbiased_std": "[True]",
-        "BayesOacAlgorithm.beta_lb": "[.5]",
-        "BayesOacAlgorithm.beta_ub": "[4.]",
-        "BayesOacAlgorithm.critic_training_weight": "[0.2]",
+        "BayesOacAlgorithm.beta_ub": "[2.]",
+        "BayesOacAlgorithm.beta_lb": "[.2]",
+        "BayesOacAlgorithm.critic_training_weight": "[None]",
         "BayesOacAlgorithm.initial_log_alpha": "[-3.2]",
         "BayesOacAlgorithm.epistemic_alpha_coeff": "[1.]",
         "BayesOacAlgorithm.alpha_optimizer": "[None]",
