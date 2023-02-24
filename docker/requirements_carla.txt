@@ -16,6 +16,6 @@ sphinx==2.4.4
 sphinxcontrib-napoleon==0.7
 sphinx-rtd-theme==0.4.3
 tensorboard == 2.1.0
-cnest==1.0.4
+cnest==1.0.8
 gym3==0.3.3
 procgen==0.10.4
