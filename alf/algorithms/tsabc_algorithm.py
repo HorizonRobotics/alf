@@ -48,6 +48,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                  explore_network_cls=ActorDistributionNetwork,
                  critic_module_cls=FuncParVIAlgorithm,
                  deterministic_actor=False,
+                 deterministic_explorer=True,
                  deterministic_critic=False,
                  per_basin_explorer=True,
                  reward_weights=None,
@@ -55,7 +56,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=True,
-                 use_basin_mean_for_target_critic=True,
+                 use_basin_mean_for_target_critic=False,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -84,6 +85,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             explore_network_cls
             critic_module_cls
             deterministic_actor
+            deterministic_explorer
             deterministic_critic
             per_basin_explorer,
             critic_training_weight (float|None): if not None, weight :math:`(s,a)`
@@ -108,6 +110,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             explore_network_cls=explore_network_cls,
             critic_module_cls=critic_module_cls,
             deterministic_actor=deterministic_actor,
+            deterministic_explorer=deterministic_explorer,
             deterministic_critic=deterministic_critic,
             reward_weights=reward_weights,
             critic_training_weight=critic_training_weight,
@@ -291,6 +294,7 @@ class TsabcAlgorithm(AbcAlgorithm):
                           state,
                           action,
                           log_pi=(),
+                          deterministic=False,
                           explore=False):
         if explore and self._per_basin_explorer:
 
@@ -320,7 +324,7 @@ class TsabcAlgorithm(AbcAlgorithm):
             critics, explore, critics_info)
         dqda = nest_utils.grad(action, q_value.sum())
 
-        if self._deterministic_actor or explore:
+        if deterministic:
             neg_entropy = ()
             entropy_loss = 0.
         else:

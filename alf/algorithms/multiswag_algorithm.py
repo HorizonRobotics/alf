@@ -183,23 +183,26 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
     def num_models(self):
         return self._num_particles
 
+    @property
+    def num_basins(self):
+        return self._num_particles
+
     def get_particles(self):
         if self._subspaces[0].rank > 0:
             return self._sample_subspace(1, use_subspace_mean=True)
         else:
             return self.particles
 
-    def _sample_subspace(self, 
-                         sample_size, 
-                         scale=0.5, 
+    def _sample_subspace(self,
+                         sample_size,
+                         scale=0.5,
                          diag_noise=True,
                          use_subspace_mean=None):
         samples = []
         for i in range(self.num_models):
             # append a tensor of [n_sample, n_params]
             samples.append(self._subspaces[i].sample(
-                               sample_size, 
-                               use_subspace_mean=use_subspace_mean))
+                sample_size, use_subspace_mean=use_subspace_mean))
 
         return torch.cat(samples, dim=0)  # [n_models * n_sample, n_params]
 
@@ -239,7 +242,7 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
                 sample_size)  # [n_model * n, n_params]
             self.param_net.set_parameters(params)
             # [bs, n_model * n, n_out] or [bs, n_model * n]
-            outputs, _ = self.param_net(inputs)  
+            outputs, _ = self.param_net(inputs)
 
             return AlgStep(output=outputs, state=(), info=())
 
@@ -255,7 +258,7 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             self._subspaces[i].update(cur_weights[i])
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope(self._name):
-                    safe_mean_hist_summary('subspace_var/' + str(i), 
+                    safe_mean_hist_summary('subspace_var/' + str(i),
                                            self._subspaces[i].variance)
 
     def update_with_gradient(self,
@@ -268,7 +271,8 @@ class MultiSwagAlgorithm(FuncParVIAlgorithm):
             valid_masks=valid_masks,
             weight=weight,
             batch_info=batch_info)
-        if alf.summary.get_global_counter() > self._subspace_after_update_steps:
+        if alf.summary.get_global_counter(
+        ) > self._subspace_after_update_steps:
             self._update_subspace()
 
         return loss_info, all_params

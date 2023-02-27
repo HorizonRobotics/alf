@@ -128,7 +128,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=True,
-                 use_basin_mean_for_target_critic=True,
+                 use_basin_mean_for_target_critic=False,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -164,6 +164,8 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            use_basin_mean_for_target_critic (bool): useless, should always be "actually"
+                False.
             epistemic_alpha_coeff (float|None): if not None, use epistemic_std 
                 to the power of epistemic_alpha_coeff as alpha weights.
             explore_optimizer

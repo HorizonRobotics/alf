@@ -51,7 +51,7 @@ class BayesTsoacAlgorithm(AbcAlgorithm):
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  use_q_mean_train_actor=False,
-                 use_basin_mean_for_target_critic=True,
+                 use_basin_mean_for_target_critic=False,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,

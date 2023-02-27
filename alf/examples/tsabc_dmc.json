@@ -2,7 +2,7 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "dmc_multibootstrap_10a9a_clip_blb_.1-aidi",
+    "version": "dmc_multiswag_8b487_clip_det-critic_blb_.1_np_5_nsp_4-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -12,9 +12,12 @@
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "humanoid-run"
+            "walker-run"
         ],
         "CriticDistributionParamNetwork.state_dependent_std": "[False]",
+        "MultiSwagAlgorithm.num_particles": "[5]",
+        "MultiSwagAlgorithm.num_samples_per_model": "[4]",
+        "MultiSwagAlgorithm.subspace_max_rank": "[20]",
         "MultiBootstrapEnsemble.num_basins": "[5]",
         "MultiBootstrapEnsemble.num_particles_per_basin": "[4]",
         "MultiBootstrapEnsemble.mask_sample_ratio": "[0.5]",

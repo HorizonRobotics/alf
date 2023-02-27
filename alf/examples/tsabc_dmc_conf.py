@@ -24,9 +24,9 @@ from alf.networks import ActorNetwork
 from alf.optimizers import AdamTF
 
 # experiment settings
-use_multibootstrap = True
+use_multibootstrap = False
 deterministic_actor = False
-deterministic_critic = False
+deterministic_critic = True
 
 # if env_name() == "Humanoid-v2":
 #     fixed_alpha = 0.05
@@ -45,7 +45,7 @@ explore_network_cls = partial(
 alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=dmc_conf.hidden_layers,
-    state_dependent_std=False)
+    state_dependent_std=True)
 
 if use_multibootstrap:
     critic_module_cls = MultiBootstrapEnsemble
@@ -70,6 +70,8 @@ else:
         debug_summaries=True)
     batch_size = 256
 
+alf.config('CovarianceSpace', use_subspace_mean=True)
+
 alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)
 
 alf.config(
@@ -81,7 +83,7 @@ alf.config(
     beta_lb=.5,
     deterministic_actor=deterministic_actor,
     deterministic_critic=deterministic_critic,
-    per_basin_explorer=True,
+    per_basin_explorer=False,
     critic_training_weight=None,
     common_td_target=True,  # grid search
     use_q_mean_train_actor=True,
