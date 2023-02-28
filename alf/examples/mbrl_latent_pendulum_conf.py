@@ -22,8 +22,10 @@ from alf.algorithms.mbrl_algorithm import LatentMbrlAlgorithm
 from alf.algorithms.planning_algorithm import CEMPlanAlgorithm, RandomShootingAlgorithm
 from alf.algorithms.predictive_representation_learner import PredictiveRepresentationLearner, SimpleDecoder
 from alf.networks.encoding_networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks.network import Network
 from alf.optimizers import Adam
 from alf.utils.math_ops import identity
+from alf.utils.tensor_utils import scale_gradient
 
 
 def define_config(name, default_value):
@@ -44,6 +46,27 @@ decoder_net_ctor = partial(
     output_tensor_spec=alf.TensorSpec(()),
 )
 
+
+class SimpleDynamicsNetwork(Network):
+    def __init__(self, action_spec):
+        state_spec = alf.TensorSpec(shape=(100, ), dtype=torch.float32)
+        super().__init__(
+            action_spec, state_spec=state_spec, name="SimpleDynamicsNetwork")
+        input_tensor_spec = (state_spec, action_spec)
+        self._net = EncodingNetwork(
+            input_tensor_spec,
+            input_preprocessors=(None, None),
+            preprocessing_combiner=alf.nest.utils.NestConcat(),
+            fc_layer_params=(256, 256),
+            last_layer_size=input_tensor_spec[0].numel,
+            last_activation=torch.relu_)
+
+    def forward(self, action, state):
+        latent, _ = self._net((action, state), ())
+        latent = scale_gradient(latent, 0.5)
+        return latent, latent
+
+
 alf.config(
     "PredictiveRepresentationLearner",
     num_unroll_steps=25,
@@ -56,9 +79,9 @@ alf.config(
             target_field="reward",
             summarize_each_dimension=True)
     ],
-    dynamics_net_ctor=partial(LSTMEncodingNetwork, hidden_size=(100, 100)))
+    dynamics_net_ctor=SimpleDynamicsNetwork)
 
-planner_type = define_config("planner_type", "random_shooting")
+planner_type = define_config("planner_type", "cem")
 
 assert planner_type in ["cem", "random_shooting"
                         ], (f"Unrecognized planner type '{planner_type}'.")
@@ -66,9 +89,9 @@ assert planner_type in ["cem", "random_shooting"
 if planner_type == "cem":
     planner_ctor = partial(
         CEMPlanAlgorithm,
-        population_size=400,
+        population_size=50,
         planning_horizon=25,
-        elite_size=40,
+        elite_size=5,
         max_iter_num=5,
         epsilon=0.01,
         tau=0.9,
@@ -89,6 +112,7 @@ alf.config(
 
 alf.config(
     "TrainerConfig",
+    wandb_project="alf.tdmpc_pendulum",
     algorithm_ctor=Agent,
     unroll_length=1,
     mini_batch_size=32,
