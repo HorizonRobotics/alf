@@ -558,7 +558,10 @@ alf.config(
     value_loss_weight=0.5,
     repr_prediction_loss_weight=20.0,
     reward_loss_weight=2.0,
-    initial_loss_weight=1)
+    initial_loss_weight=1,
+    use_pg_loss=True,
+    normalize_advantages=False,
+    ppo_clipping=0.2)
 
 alf.config(
     "SimpleMCTSModel",
