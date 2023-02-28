@@ -139,7 +139,9 @@ class VectorizedObservation(ObservationBase):
             'agents':
                 self._agent_perception.observation_spec,
             'agent_mask':
-                TensorSpec(shape=(self.agent_limit, ), dtype=torch.bool)
+                TensorSpec(shape=(self.agent_limit, ), dtype=torch.bool),
+            'ending':
+                TensorSpec(shape=(), dtype=torch.int64),
         }
 
     def observe(self, vehicle: BaseVehicle):
@@ -169,6 +171,19 @@ class VectorizedObservation(ObservationBase):
             1:, :]
         self._position_history.point[-1, :] = vehicle.position
 
+        # Ending: not ending -> 0, crash -> 1, success -> 2
+        ending = 0
+
+        # Out of road and crashing rule according to
+        # https://github.com/metadriverse/metadrive/blob/f23c471dc9fa09817dc23a7099e4c6197ab67157/metadrive/envs/metadrive_env.py#L211
+        if (vehicle.on_yellow_continuous_line
+                or vehicle.on_white_continuous_line or (not vehicle.on_lane)
+                or vehicle.crash_sidewalk or vehicle.crash_building
+                or vehicle.crash_object or vehicle.crash_vehicle):
+            ending = 1
+        elif vehicle.arrive_destination:
+            ending = 2
+
         return {
             'map':
                 map_feature,
@@ -181,6 +196,8 @@ class VectorizedObservation(ObservationBase):
                 agent_feature,
             'agent_mask':
                 agent_mask,
+            'ending':
+                ending,
         }
 
     def reset(self, env, vehicle=None):

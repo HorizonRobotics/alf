@@ -223,7 +223,14 @@ MCTSState = namedtuple(
     ["steps", "pred_state", "action_sampler_state", "next_predicted_reward"],
     default_value=())
 MCTSInfo = namedtuple(
-    "MCTSInfo", ["candidate_actions", "value", "candidate_action_policy"])
+    "MCTSInfo", [
+        "candidate_actions",
+        "value",
+        "candidate_action_policy",
+        "candidate_prior",
+        "candidate_advantage",
+    ],
+    default_value=())
 
 
 @alf.configurable
@@ -607,6 +614,18 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             self._build_tree2(trees, to_plays)
 
         action_probs, info = self._select_action(trees, steps)
+
+        # Note that the exp() is safe because all actions are sampled
+        # from this exactly same distribution.
+        candidate_prior = model_output.action_distribution.log_prob(
+            trees.action[trees.B, trees.root_indices].permute(1, 0,
+                                                              2)).permute(
+                                                                  1, 0).exp()
+
+        advantage = info.candidate_advantage - model_output.value[..., None]
+        info = info._replace(
+            candidate_advantage=advantage, candidate_prior=candidate_prior)
+
         pred_state = ()
         if self._keep_model_pred_state:
             pred_state = model_output.state.pred_state
@@ -1010,6 +1029,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         else:
             candidate_actions = ()
 
+        # Compute and store the advantage
+        children = trees.get_children(roots)
+        q = trees.reward[children] + self._discount * trees.calc_value(
+            children)
+        candidate_advantage = q
+
         if not self._learn_with_exploration_policy:
             parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
             policy = visit_counts / parent_visit_count
@@ -1022,6 +1047,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             candidate_actions=candidate_actions,
             value=trees.calc_value(roots),
             candidate_action_policy=policy,
+            candidate_advantage=candidate_advantage,
         )
 
         if self._debug_summaries and alf.summary.should_record_summaries():

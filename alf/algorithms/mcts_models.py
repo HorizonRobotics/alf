@@ -106,8 +106,53 @@ ModelTarget = namedtuple(
 
         # [B, unroll_steps + 1, ...]
         'observation',
+        'advantage',
+        'prior',
     ],
     default_value=())
+
+
+def dump_true_episode_end(
+        path,
+        model_output,
+        target,
+        beyond_true_episode_end,
+        # [B, R + 1]
+        raw_reward_loss,
+        # [B, R + 1]
+        reward_loss_scale):
+    # This is a rate limitter
+    if np.random.random() > 0.05:
+        return
+
+    import pickle
+    from pathlib import Path
+    from alf.trainers.policy_trainer import Trainer
+
+    iteration = Trainer.current_iterations().item()
+
+    path = Path(path)
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+    with open(Path(path, f"iter_{iteration}.pkl"), "wb") as f:
+        picked = beyond_true_episode_end.any(dim=-1)
+        pickle.dump({
+            "beyond_true_episode_end": beyond_true_episode_end[picked],
+            "reward": model_output.reward[picked],
+            "reward_dist": model_output.reward_pred[picked],
+            "reward_target": target.reward[picked],
+            "value": model_output.value[picked],
+            "value_dist": model_output.value_pred[picked],
+            "value_target": target.value[picked],
+            "game_over_target": target.game_over[picked],
+            "game_over": model_output.game_over,
+            "game_over_logit": model_output.game_over_logit,
+            "ending": target.ending[picked],
+            "raw_reward_loss": raw_reward_loss[picked],
+            "reward_loss_scale": reward_loss_scale[picked],
+            "iteration": iteration,
+            "progress": Trainer.progress(),
+        }, f)
 
 
 @alf.configurable
@@ -141,6 +186,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             reset_reward_sum_period: int = 0,
             apply_beyond_episode_end_mask: bool = False,
             apply_partial_trajectory_mask: bool = False,
+            emphasize_beyond_episode_end: float = 0.0,
+            use_pg_loss: bool = False,
+            normalize_advantages: bool = False,
+            ppo_clipping: float = 0.2,
             debug_summaries=False,
             name="MCTSModel"):
         """
@@ -220,6 +269,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._reset_reward_sum_period = reset_reward_sum_period
         self._apply_beyond_episode_end_mask = apply_beyond_episode_end_mask
         self._apply_partial_trajectory_mask = apply_partial_trajectory_mask
+        self._emphasize_beyond_episode_end = emphasize_beyond_episode_end
         if initial_alpha > 0:
             self.register_buffer("_log_alpha",
                                  torch.tensor(np.log(initial_alpha)))
@@ -240,6 +290,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         self._repr_loss = repr_loss
         self._initial_loss_weight = initial_loss_weight
         self._predict_initial_reward = predict_initial_reward
+        self._use_pg_loss = use_pg_loss
+        self._normalize_advantages = normalize_advantages
+        self._importance_ratio_clipping = ppo_clipping
 
         found1 = alf.layers.prepare_rnn_batch_norm(self._dynamics_net)
         found2 = alf.layers.prepare_rnn_batch_norm(self._prediction_net)
@@ -334,11 +387,13 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     def _predict(self, state: ModelState):
         model_output = self.prediction_model(state.state, state.pred_state)
         value_pred = model_output.value_pred
-        value = self._value_loss.calc_expectation(value_pred)
+        with torch.cuda.amp.autocast(False):
+            value = self._value_loss.calc_expectation(value_pred)
         reward_pred = model_output.reward_pred
         model_state = model_output.state._replace(step=state.step)
         if isinstance(reward_pred, torch.Tensor):
-            reward = self._reward_loss.calc_expectation(reward_pred)
+            with torch.cuda.amp.autocast(False):
+                reward = self._reward_loss.calc_expectation(reward_pred)
             if self._predict_reward_sum:
                 # reward is assumed to predict the sum of reward over time steps
                 prev_reward_sum = reward
@@ -357,6 +412,55 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         return model_output._replace(
             value=value, reward=reward, state=model_state)
 
+    def _calc_ppo_loss(self, model_output: ModelOutput,
+                       target: ModelTarget) -> torch.Tensor:
+        # Prepare (maybe normalized) advantages, shape: [B, R + 1, num_candidates]
+        advantages = target.advantage.detach()
+        if self._normalize_advantages:
+            advantages = (advantages - advantages.mean()) / (
+                torch.sqrt(advantages.var()) + 1e-8)
+
+        # Compute the action log prob (for importance ratio): [B, R + 1, num_candidates]
+        action = target.action.permute(2, 0, 1,
+                                       *list(range(3, target.action.ndim)))
+        action_log_probs = model_output.action_distribution.log_prob(action)
+        action_log_probs = action_log_probs.permute(1, 2, 0)
+        rollout_action_log_probs = (target.prior + 1e-10).log()
+
+        # Compute the importance ratio
+        importance_ratio = (action_log_probs - rollout_action_log_probs).exp()
+        importance_ratio_clipped = importance_ratio.clamp(
+            1.0 - self._importance_ratio_clipping,
+            1.0 + self._importance_ratio_clipping)
+
+        policy_loss = torch.max(-importance_ratio * advantages,
+                                -importance_ratio_clipped * advantages)
+
+        with alf.summary.scope("PPOLoss"):
+            summary_utils.add_mean_hist_summary("advantage", target.advantage)
+            clip_fraction = (torch.abs(importance_ratio - 1.0) >
+                             self._importance_ratio_clipping).to(
+                                 torch.float32).mean()
+            alf.summary.scalar('clip_fraction', clip_fraction)
+            alf.summary.histogram('importance_ratio', importance_ratio)
+            alf.summary.scalar('importance_ratio_mean',
+                               importance_ratio.mean())
+            alf.summary.histogram('importance_ratio_clipped',
+                                  importance_ratio_clipped)
+
+        return policy_loss
+
+    def _calc_discrete_pg_loss(self, model_output: ModelOutput,
+                               target: ModelTarget) -> torch.Tensor:
+        # Prepare (maybe normalized) advantages, shape: [B, R + 1, num_candidates]
+        advantages = target.advantage.detach()
+        if self._normalize_advantages:
+            advantages = (advantages - advantages.mean()) / (
+                torch.sqrt(advantages.var()) + 1e-8)
+
+        policy_loss = -model_output.action_distribution.probs * advantages
+        return policy_loss
+
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
         """Calculate the loss.
@@ -373,12 +477,21 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         if self._apply_partial_trajectory_mask:
             # [B, unroll_steps + 1]
-            partial_traj_mask = ~(target.beyond_episode_end &
-                                  target.is_partial_trajectory.unsqueeze(-1))
+            partial_traj_mask = ~(target.beyond_episode_end
+                                  & target.is_partial_trajectory.unsqueeze(-1))
             loss_scale = loss_scale * partial_traj_mask
 
-        value_loss = self._value_loss(model_output.value_pred, target.value)
-        value_loss = (loss_scale * value_loss).sum(dim=1)
+        loss_scale1 = loss_scale.unsqueeze(0) * torch.ones_like(
+            target.beyond_episode_end)
+        if self._emphasize_beyond_episode_end > 0.0:
+            loss_scale1[
+                target.
+                beyond_episode_end] *= self._emphasize_beyond_episode_end
+
+        raw_value_loss = self._value_loss(model_output.value_pred,
+                                          target.value)
+        raw_value_loss = loss_scale1 * raw_value_loss
+        value_loss = raw_value_loss.sum(dim=1)
         loss = self._value_loss_weight * value_loss
 
         reward_loss = ()
@@ -387,22 +500,29 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 reward = model_output.reward[:, 1:]
                 target_reward = target.reward[:, 1:]
                 reward_pred = model_output.reward_pred[:, 1:]
-                reward_loss_scale = loss_scale[..., 1:]
+                reward_loss_scale = loss_scale1[..., 1:]
             else:
                 reward = model_output.reward
                 target_reward = target.reward
                 reward_pred = model_output.reward_pred
-                reward_loss_scale = loss_scale
+                reward_loss_scale = loss_scale1
             if self._predict_reward_sum:
                 reward = reward.cumsum(dim=1)
                 target_reward = target_reward.cumsum(dim=1)
-            reward_loss = self._reward_loss(reward_pred, target_reward)
-            reward_loss = (reward_loss_scale * reward_loss).sum(dim=1)
+            raw_reward_loss = self._reward_loss(reward_pred, target_reward)
+            reward_loss = (reward_loss_scale * raw_reward_loss).sum(dim=1)
             loss = loss + self._reward_loss_weight * reward_loss
 
         policy_loss = ()
         if self._train_policy:
-            if target.action is ():
+            if self._use_pg_loss:
+                if target.action == ():
+                    policy_loss = self._calc_discrete_pg_loss(
+                        model_output, target).sum(dim=2)
+                else:
+                    policy_loss = self._calc_ppo_loss(model_output,
+                                                      target).sum(dim=2)
+            elif target.action == ():
                 # This condition is only possible for Categorical distribution
                 assert isinstance(model_output.action_distribution,
                                   td.Categorical)
@@ -437,17 +557,34 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         if self._train_policy:
             policy_loss = (loss_scale * policy_loss).sum(dim=1)
             loss = loss + self._policy_loss_weight * policy_loss
-        entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
-            model_output.action_distribution)
-        if self._log_alpha is not None:
-            alpha = self._log_alpha.exp().detach()
-            loss = loss - alpha * (loss_scale * entropy_for_gradient).sum(
-                dim=1)
-            if self._target_entropy is not None:
-                # For some unknown reason, there are memory leaks for not using
-                # detach()
-                self._log_alpha -= self._alpha_adjust_rate * (
-                    entropy.mean() - self._target_entropy()).sign().detach()
+
+            if isinstance(model_output.action_distribution,
+                          td.MixtureSameFamily):
+                m_dist = model_output.action_distribution.mixture_distribution
+                c_dist = model_output.action_distribution.component_distribution
+                entropy_m, entropy_m_for_gradient = dist_utils.entropy_with_fallback(
+                    m_dist)
+                entropy_c, entropy_c_for_gradient = dist_utils.entropy_with_fallback(
+                    c_dist)
+                if self._log_alpha is not None:
+                    alpha = self._log_alpha.exp().detach()
+                    loss -= (alpha * entropy_m_for_gradient * loss_scale).sum(
+                        dim=1)
+                    loss -= (alpha * entropy_c_for_gradient.mean(dim=2) *
+                             loss_scale).sum(dim=1)
+            else:
+                entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
+                    model_output.action_distribution)
+                if self._log_alpha is not None:
+                    alpha = self._log_alpha.exp().detach()
+                    loss = loss - alpha * (
+                        loss_scale * entropy_for_gradient).sum(dim=1)
+                    if self._target_entropy is not None:
+                        # For some unknown reason, there are memory leaks for not using
+                        # detach()
+                        self._log_alpha -= self._alpha_adjust_rate * (
+                            entropy.mean() -
+                            self._target_entropy()).sign().detach()
 
         repr_loss = ()
         if self._train_repr_prediction:
@@ -486,6 +623,82 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                         "predicted_reward", reward)
                     summary_utils.add_mean_hist_summary(
                         "target_reward", target_reward)
+
+                    # Debugging metrics to verify whether reaching destination
+                    # states get over-sampled.
+
+                    B = target_reward.shape[0]
+
+                    # [B, R + 1]
+                    is_terminal = {
+                        "success": target_reward > 150.0,
+                        "crash": target_reward < -30.0,
+                    }
+
+                    rv = {
+                        "value": model_output.value,
+                        "reward": reward,
+                    }
+
+                    rv_target = {
+                        "value": target.value,
+                        "reward": target_reward,
+                    }
+
+                    def _summarize_terminal_rv(scope: str, label: str):
+                        prediction = rv[scope]
+                        target = rv_target[scope]
+                        predicate = is_terminal[label]
+
+                        with alf.summary.scope(f"terminal/{scope}"):
+                            # 1. How often is success and crashing sampled as
+                            #    the initial step of the trajectory.
+                            summary_utils.add_mean_hist_summary(
+                                f"initial_{label}_presence",
+                                predicate[:, 0].float())
+
+                            # 2. What is the mean prediction for the success or
+                            #    crashing as the initial step, as well as the
+                            #    prediction RIGHT AFTER it.
+                            if predicate[:, 0].any():
+                                summary_utils.add_mean_hist_summary(
+                                    f"initial_{label}",
+                                    prediction[:, 0][predicate[:, 0]])
+                                summary_utils.add_mean_hist_summary(
+                                    f"initial_{label}_target",
+                                    target[:, 0][predicate[:, 0]])
+                                summary_utils.add_mean_hist_summary(
+                                    f"initial_{label}_subsequent",
+                                    prediction[:, 1][predicate[:, 0]])
+                                summary_utils.add_mean_hist_summary(
+                                    f"initial_{label}_subsequent_target",
+                                    target[:, 1][predicate[:, 0]])
+
+                            # 3. How often is success and crashing sampled as
+                            #    the recurrent step of the trajectory.
+                            summary_utils.add_mean_hist_summary(
+                                f"recurrent_{label}_presence",
+                                predicate[:, 1:].sum().float() / B)
+
+                            # 4. What is the mean prediction for the success or
+                            #    crashing that is not at the recurrent step.
+                            if predicate[:, 1:].any():
+                                summary_utils.add_mean_hist_summary(
+                                    f"recurrent_{label}",
+                                    prediction[:, 1:][predicate[:, 1:]])
+
+                            # 5. Waht is the prediction after the success or
+                            #    crashing?
+                            after = predicate.cumsum(dim=1).bool() ^ predicate
+                            if after.any():
+                                summary_utils.add_mean_hist_summary(
+                                    f"after_{label}", prediction[after])
+
+                    _summarize_terminal_rv("reward", "success")
+                    _summarize_terminal_rv("reward", "crash")
+                    _summarize_terminal_rv("value", "success")
+                    _summarize_terminal_rv("value", "crash")
+
                 if self._train_game_over_function:
 
                     def _entropy(events):
@@ -508,7 +721,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                         "explained_entropy_of_game_over1",
                         torch.where(
                             h1 == 0, h1,
-                            1. - unscaled_game_over_loss[:, 0].mean() /
+                            1. - unscaled_game_over_loss[:, 1:].mean() /
                             (h1 + 1e-30)))
                 summary_utils.add_mean_hist_summary("target_value",
                                                     target.value)
@@ -516,12 +729,33 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                                                     model_output.value)
                 summary_utils.add_mean_hist_summary(
                     "td_error", target.value - model_output.value)
-                summary_utils.add_mean_hist_summary("entropy0", entropy[:, 0])
-                summary_utils.add_mean_hist_summary("entropy1", entropy[:, 1:])
-                summary_utils.summarize_distribution(
-                    "action_dist", model_output.action_distribution)
-                if self._target_entropy is not None:
-                    alf.summary.scalar("alpha", alpha)
+
+                if self._train_policy:
+                    if isinstance(model_output.action_distribution,
+                                  td.MixtureSameFamily):
+                        summary_utils.add_mean_hist_summary(
+                            "entropy_m0", entropy_m[:, 0])
+                        summary_utils.add_mean_hist_summary(
+                            "entropy_m1", entropy_m[:, 1:])
+                        summary_utils.add_mean_hist_summary(
+                            "entropy_c0", entropy_c[:, 0])
+                        summary_utils.add_mean_hist_summary(
+                            "entropy_c1", entropy_c[:, 1:])
+                        summary_utils.summarize_distribution(
+                            "action_dist_m", model_output.action_distribution.
+                            mixture_distribution)
+                        summary_utils.summarize_distribution(
+                            "action_dist_c", model_output.action_distribution.
+                            component_distribution)
+                    else:
+                        summary_utils.add_mean_hist_summary(
+                            "entropy0", entropy[:, 0])
+                        summary_utils.add_mean_hist_summary(
+                            "entropy1", entropy[:, 1:])
+                        summary_utils.summarize_distribution(
+                            "action_dist", model_output.action_distribution)
+                    if self._target_entropy is not None:
+                        alf.summary.scalar("alpha", alpha)
 
         return LossInfo(
             loss=loss,
@@ -594,7 +828,10 @@ class SimplePredictionNet(alf.networks.Network):
                  num_quantiles=1,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=StableNormalProjectionNetwork,
-                 initial_game_over_bias=0.0):
+                 initial_game_over_bias=0.0,
+                 freeze_value: bool = False,
+                 freeze_world: bool = False,
+                 freeze_policy: bool = False):
         """
         Args:
             observation_spec (TensorSpec): describing the observation.
@@ -629,6 +866,9 @@ class SimplePredictionNet(alf.networks.Network):
             kernel_initializer=torch.nn.init.zeros_,
             bias_init_value=initial_game_over_bias)
 
+        self._freeze_world = freeze_world
+        self._freeze_policy = freeze_policy
+
     def forward(self, input, state=()):
         """Predict (value, reward, action_distribution, game_over_logit)
 
@@ -641,10 +881,18 @@ class SimplePredictionNet(alf.networks.Network):
         # TODO: transform reward/value and use softmax to estimate the value and
         # reward as in appendix F.
         x = self._trunk_net(input)[0]
+        if self._freeze_world:
+            x = x.detach()
         value = self._value_layer(x).squeeze(1)
         reward = self._reward_layer(x).squeeze(1)
         action_distribution = self._action_net(x)[0]
         game_over_logit = self._game_over_layer(x).squeeze(1)
+
+        if self._freeze_world:
+            reward = reward.detach()
+            game_over_logit = game_over_logit.detach()
+        if self._freeze_policy:
+            action_distribution = action_distribution.detach()
 
         return (value, reward, action_distribution, game_over_logit), ()
 
@@ -769,17 +1017,27 @@ class SimpleMCTSModel(MCTSModel):
          game_over_logit), pred_state = self._prediction_net(
              dyn_state, pred_state)
 
-        if self._sample_actions:
-            # [num_sampled_actions, B, ...]
-            actions = action_distribution.rsample(
-                (self._num_sampled_actions, ))
-            # [B, num_sampled_actions, ...]
-            actions = actions.transpose(0, 1)
-            # According to the following paper, we should use 1/K as action_probs
-            # for sampled actions.
-            # Hubert et. al. Learning and Planning in Complex Action Spaces, 2021
-            action_probs = torch.ones(
-                actions.shape[:2]) / self._num_sampled_actions
+        if action_distribution == ():
+            actions = ()
+            action_probs = ()
+        elif self._sample_actions:
+            # TODO(breakds): Workaround for mixture of policies.
+            if isinstance(action_distribution, td.MixtureSameFamily):
+                # Shape is [B, K, ...], where K is the number of components in
+                # the mixture policy.
+                actions = action_distribution.component_distribution.rsample()
+                action_probs = action_distribution.mixture_distribution.probs
+            else:
+                # [num_sampled_actions, B, ...]
+                actions = action_distribution.rsample(
+                    (self._num_sampled_actions, ))
+                # [B, num_sampled_actions, ...]
+                actions = actions.transpose(0, 1)
+                # According to the following paper, we should use 1/K as action_probs
+                # for sampled actions.
+                # Hubert et. al. Learning and Planning in Complex Action Spaces, 2021
+                action_probs = torch.ones(
+                    actions.shape[:2]) / self._num_sampled_actions
         else:
             action_probs = action_distribution.probs
             if self._num_sampled_actions is None:

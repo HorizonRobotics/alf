@@ -158,6 +158,7 @@ class AdamW(Optimizer):
                 amsgrad=amsgrad,
                 beta1=beta1,
                 beta2=beta2,
+                maximize=False,
                 lr=group['lr'],
                 weight_decay=group['weight_decay'],
                 eps=group['eps'])
