@@ -106,6 +106,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             reanalyze_td_steps_func=None,
             reanalyze_batch_size=None,
             full_reanalyze=False,
+            shadow_model_ctor=None,
             priority_func: Union[
                 Callable,
                 str] = "lambda loss_info: loss_info.extra['value'].sqrt().sum(dim=0)",
@@ -237,6 +238,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             name=name)
         self._enable_amp = enable_amp
         self._model = model
+        self._shadow_model = None if shadow_model_ctor is None else (
+            shadow_model_ctor(observation_spec, action_spec,
+                              num_unroll_steps=num_unroll_steps,
+                              debug_summaries=debug_summaries))
         self._num_unroll_steps = num_unroll_steps
         self._td_steps = td_steps
         self._discount = discount
@@ -322,17 +327,21 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
-        model_output = self._model.initial_inference(exp.observation)
-        if alf.summary.should_record_summaries():
+        learning_model = self._shadow_model or self._model
+
+        model_output = learning_model.initial_inference(exp.observation)
+        if alf.summary.should_record_summaries(
+        ) and model_output.state.state.requires_grad:
             model_output.state.state.register_hook(partial(_hook, name="s0"))
         model_output_spec = dist_utils.extract_spec(model_output)
         model_outputs = [dist_utils.distributions_to_params(model_output)]
         info = rollout_info
 
         for i in range(self._num_unroll_steps):
-            model_output = self._model.recurrent_inference(
+            model_output = learning_model.recurrent_inference(
                 model_output.state, info.action[:, i, ...])
-            if alf.summary.should_record_summaries():
+            if alf.summary.should_record_summaries(
+            ) and model_output.state.state.requires_grad:
                 model_output.state.state.register_hook(
                     partial(_hook, name="s" + str(i + 1)))
             model_output = model_output._replace(
@@ -354,14 +363,15 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                                          info.target.observation)
             with torch.no_grad():
                 with torch.cuda.amp.autocast(self._enable_amp):
-                    target_repr = self._model._representation_net(obs)[0]
+                    target_repr = learning_model._representation_net(obs)[0]
             # [B, R+1, ...]
             target_repr = target_repr.reshape(-1, self._num_unroll_steps + 1,
                                               *target_repr.shape[1:])
-            info_target = info.target._replace(observation=target_repr)
+            info_target = info.target._replace(observation=target_repr,
+                                               ending=info.target.observation["ending"])
         return AlgStep(
             info=info._replace(
-                loss=self._model.calc_loss(model_outputs, info_target)))
+                loss=learning_model.calc_loss(model_outputs, info_target)))
 
     @torch.no_grad()
     def preprocess_experience(self, root_inputs: TimeStep,
@@ -442,7 +452,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                         policy_state_field, T + R - 1)
                 else:
                     # [B, T + R, ...]
-                    candidate_actions, candidate_action_policy, values = self._reanalyze(
+                    candidate_actions, candidate_action_policy, values, candidate_advantage, candidate_prior = self._reanalyze(
                         replay_buffer, start_env_ids, start_positions,
                         policy_state_field, T + R - 1)
             # [B, T]
@@ -495,12 +505,18 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             def _unfold1_adapting_episode_ends(x):
                 return x[capped_unfold1_index]
 
+            # TEMP patch for no reanalyze situation
+            if self._reanalyze_ratio == 0:
+                candidate_advantage = ()
+                candidate_prior = ()
+
             # In the logic above, they are computed in folded form to save
             # unnecessary retrieval and computation. They are unfolded here so
             # that the shape goes from [B, T + R, ...] to [B, T, R + 1, ...].
-            candidate_actions, candidate_action_policy, values = alf.nest.map_structure(
+            candidate_actions, candidate_action_policy, values, candidate_advantage, candidate_prior = alf.nest.map_structure(
                 _unfold1_adapting_episode_ends,
-                (candidate_actions, candidate_action_policy, values))
+                (candidate_actions, candidate_action_policy, values,
+                 candidate_advantage, candidate_prior))
 
             game_overs = ()
             if self._train_game_over_function or self._train_reward_function:
@@ -615,7 +631,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 action_policy=candidate_action_policy,
                 value=values,
                 game_over=game_overs,
-                observation=observation))
+                observation=observation,
+                advantage=candidate_advantage,
+                prior=candidate_prior))
 
         if self._reward_transformer:
             root_inputs = root_inputs._replace(
@@ -854,12 +872,20 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
             candidate_action_policy = ()
             candidate_actions = ()
+            candidate_advantage = ()
+            candidate_prior = ()
             if self._train_policy:
                 candidate_actions = policy_step.info.candidate_actions
                 if candidate_actions != ():
                     candidate_actions = _reshape(candidate_actions)
                 candidate_action_policy = policy_step.info.candidate_action_policy
                 candidate_action_policy = _reshape(candidate_action_policy)
+                candidate_advantage = policy_step.info.candidate_advantage
+                if candidate_advantage != ():
+                    candidate_advantage = _reshape(candidate_advantage)
+                candidate_prior = policy_step.info.candidate_prior
+                if candidate_prior != ():
+                    candidate_prior = _reshape(candidate_prior)
             values = policy_step.info.value.reshape(batch_size, -1)
 
             # 2. Calulate the value of the next n2 steps so that n2-step return
@@ -884,7 +910,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 # last step to be the last reward.
                 values = torch.where(game_overs, convert_device(rewards),
                                      values)
-            return candidate_actions, candidate_action_policy, values
+            return candidate_actions, candidate_action_policy, values, candidate_advantage, candidate_prior
 
     def _next_n_positions(self, replay_buffer, env_ids, positions, n):
         """expand position to include its next n positions, capped at the end of the
