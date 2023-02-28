@@ -298,8 +298,60 @@ class Trainer(object):
         self._rank = ddp_rank
         self._pid = None
 
+    @alf.configurable(
+        whitelist=["enable", "path", "ignored_parameter_prefixes"])
+    def inherit_parameters(self,
+                           enable: bool = False,
+                           path: Path = Path(),
+                           ignored_parameter_prefixes=[]):
+        if not enable:
+            return
+
+        def _match_prefix(key: str):
+            for prefix in ignored_parameter_prefixes:
+                if key.startswith(prefix):
+                    return True
+            return False
+
+        assert path.exists(), (
+            f"Cannot inherit parameter from checkpoint {path}, "
+            "since it does not exist.")
+
+        map_location = None
+        if not torch.cuda.is_available():
+            map_location = torch.device('cpu')
+
+        # Remove parameters that are ignored from the checkpoint
+        checkpoint = torch.load(path, map_location=map_location)["algorithm"]
+        to_delete = []
+        for k in checkpoint.keys():
+            if _match_prefix(k):
+                to_delete.append(k)
+                break
+        for k in to_delete:
+            checkpoint.pop(k)
+
+        assert isinstance(self._algorithm, nn.Module)
+        missing_keys, redundant_keys = self._algorithm.load_state_dict(
+            checkpoint, strict=True)
+
+        if len(missing_keys) > 0:
+            logging.warn(
+                "When inheriting parameters, the following are missing")
+            for k in missing_keys:
+                if not _match_prefix(k):
+                    logging.warn(f"  {k}")
+
+        if len(redundant_keys) > 0:
+            logging.warn(
+                "When inheriting parameters, the following are redundant")
+            for k in redundant_keys:
+                if not _match_prefix(k):
+                    logging.warn(f"  {k}")
+
     def train(self):
         """Perform training."""
+        self.inherit_parameters()
         self._restore_checkpoint()
         alf.summary.enable_summary()
 
