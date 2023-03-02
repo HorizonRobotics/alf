@@ -143,11 +143,13 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
     a nest of scalar values.
 
     NOTE: normally this class and its sub-classes report metrics by summing values
-    over the whole episode. However, there is a special treatment: if
-    ``_extract_metric_values()`` returns a nested structure in which a dictionary or
-    namedtuple has a field with postfix "@step", the corresponding value will be
-    averaged instead of summed over the whole episode length, so that a per-step
-    average value is reported.
+    over the whole episode. However, there are two special treatments:
+    1. if ``_extract_metric_values()`` returns a nested structure in which a
+       dictionary or namedtuple has a field with postfix "@step", the corresponding
+       value will be averaged instead of summed over the whole episode length, so
+       that a per-step average value is reported.
+    2. If a field has a postfix "@max", then the aggregated value will be the
+       maximum (instead of sum) of step values across the episode.
 
     """
 
@@ -228,15 +230,21 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
 
         is_first = time_step.is_first()
 
-        def _update_accumulator_(acc, val):
+        def _update_accumulator_(path, acc, val):
             """In-place update of the accumulators."""
-            # Zero out batch indices where a new episode is starting.
-            # Update with new values; Ignores first step whose reward comes from
-            # the boundary transition of the last step from the previous episode.
-            acc[:] = torch.where(is_first, torch.zeros_like(acc),
-                                 acc + val.to(self._dtype))
+            if path.endswith("@max"):
+                acc[:] = torch.where(is_first,
+                                     torch.full_like(acc, -float('inf')),
+                                     torch.maximum(acc, val.to(self._dtype)))
+            else:
+                # Zero out batch indices where a new episode is starting.
+                # Update with new values; Ignores first step whose reward comes from
+                # the boundary transition of the last step from the previous episode.
+                acc[:] = torch.where(is_first, torch.zeros_like(acc),
+                                     acc + val.to(self._dtype))
 
-        alf.nest.map_structure(_update_accumulator_, self._accumulator, values)
+        alf.nest.py_map_structure_with_path(_update_accumulator_,
+                                            self._accumulator, values)
 
         def _episode_end_aggregate_(path, buf, acc):
             value = self._extract_and_process_acc_value(
