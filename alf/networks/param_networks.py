@@ -348,184 +348,6 @@ class ParamNetwork(Network):
 
 
 @alf.configurable
-class CriticDistributionParamNetwork(Network):
-    def __init__(self,
-                 input_tensor_spec,
-                 output_tensor_spec=TensorSpec(()),
-                 observation_conv_layer_params=None,
-                 observation_fc_layer_params=(32, ),
-                 action_fc_layer_params=(32, ),
-                 joint_fc_layer_params=(64, ),
-                 use_conv_bias=False,
-                 use_conv_ln=False,
-                 use_fc_bias=True,
-                 use_fc_ln=False,
-                 activation=torch.relu_,
-                 kernel_initializer=None,
-                 deterministic=False,
-                 state_dependent_std=False,
-                 name="CriticDistributionParamNetwork"):
-        """A network with Fc and conv2D layers that does not maintain its own
-        network parameters, but accepts them from users. If the given parameter
-        tensor has an extra batch dimension (first dimension), it performs
-        parallel operations.
-
-        Args:
-            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
-                representing the inputs.
-            output_tensor_spec (TensorSpec): spec for the output
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format
-                ``(filters, kernel_size, strides, padding, pooling_kernel)``,
-                where ``padding`` and ``pooling_kernel`` are optional.
-            fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where
-                ``use_bias`` is optional.
-            activation (torch.nn.functional): activation for all the layers
-            kernel_initializer (Callable): initializer for all the layers.
-            last_layer_size (int): an optional size of an additional layer
-                appended at the very end. Note that if ``last_activation`` is
-                specified, ``last_layer_size`` has to be specified explicitly.
-            last_activation (nn.functional): activation function of the
-                additional layer specified by ``last_layer_size``. Note that if
-                ``last_layer_size`` is not None, ``last_activation`` has to be
-                specified explicitly.
-            deterministic (bool): whether to make this network deterministic.
-            state_dependent_std (bool): If True, std will be generated depending
-                on the current state; otherwise a global std will be generated
-                regardless of the current state.
-            name (str):
-        """
-        super().__init__(input_tensor_spec=input_tensor_spec, name=name)
-
-        if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                gain=math.sqrt(1.0 / 3),
-                mode='fan_in',
-                distribution='uniform')
-
-        observation_spec, action_spec = input_tensor_spec
-
-        self._obs_encoder = ParamNetwork(
-            observation_spec,
-            conv_layer_params=observation_conv_layer_params,
-            fc_layer_params=observation_fc_layer_params,
-            use_conv_bias=use_conv_bias,
-            use_conv_ln=use_conv_ln,
-            use_fc_bias=use_fc_bias,
-            use_fc_ln=use_fc_ln,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            name=self.name + ".obs+encoder")
-
-        self._action_encoder = ParamNetwork(
-            action_spec,
-            fc_layer_params=action_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            name=self.name + ".action_encoder")
-
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.003, b=0.003)
-
-        if deterministic:
-            self._joint_encoder = ParamNetwork(
-                TensorSpec((self._obs_encoder.output_spec.shape[0] + \
-                            self._action_encoder.output_spec.shape[0], )),
-                fc_layer_params=joint_fc_layer_params,
-                activation=activation,
-                kernel_initializer=kernel_initializer,
-                last_layer_size=output_tensor_spec.numel,
-                last_activation=math_ops.identity,
-                name=self.name + ".joint_encoder")
-            self._projection_net = None
-        else:
-            self._joint_encoder = ParamNetwork(
-                TensorSpec((self._obs_encoder.output_spec.shape[0] + \
-                            self._action_encoder.output_spec.shape[0], )),
-                fc_layer_params=joint_fc_layer_params,
-                activation=activation,
-                kernel_initializer=kernel_initializer,
-                name=self.name + ".joint_encoder")
-
-            self._projection_net = NormalProjectionParamNetwork(
-                input_size=self._joint_encoder.output_spec.shape[0],
-                output_tensor_spec=output_tensor_spec,
-                state_dependent_std=state_dependent_std)
-
-        self._param_length = None
-        # self._output_spec = output_tensor_spec
-
-    @property
-    def param_length(self):
-        """Get total number of parameters for all modules. """
-        if self._param_length is None:
-            length = self._obs_encoder.param_length
-            length += self._action_encoder.param_length
-            length += self._joint_encoder.param_length
-            if self._projection_net is not None:
-                length += self._projection_net.param_length
-            self._param_length = length
-        return self._param_length
-
-    def set_parameters(self, theta, reinitialize=False):
-        """Distribute parameters to corresponding layers.
-
-        Args:
-            theta (torch.Tensor): with shape ``[D] (groups=1)``
-                                        or ``[n, D] (groups=n)``
-                where the meaning of the symbols are:
-                - ``n``: number of replica (groups)
-                - ``D``: length of parameters, should be self.param_length
-                When the shape of inputs is ``[D]``, it will be unsqueezed
-                to ``[1, D]``.
-            reinitialize (bool): whether to reinitialize parameters of
-                each layer.
-        """
-        if theta.ndim == 1:
-            theta = theta.unsqueeze(0)
-        assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
-            "Input theta has wrong shape %s. Expecting shape (, %d)" %
-            self.param_length)
-        split = self._obs_encoder.param_length
-        obs_theta = theta[:, :split]
-        self._obs_encoder.set_parameters(obs_theta, reinitialize=reinitialize)
-        action_theta = theta[:, split:split +
-                             self._action_encoder.param_length]
-        self._action_encoder.set_parameters(
-            action_theta, reinitialize=reinitialize)
-        split = split + self._action_encoder.param_length
-        joint_theta = theta[:, split:split + self._joint_encoder.param_length]
-        self._joint_encoder.set_parameters(
-            joint_theta, reinitialize=reinitialize)
-        if self._projection_net is not None:
-            split = split + self._joint_encoder.param_length
-            projection_theta = theta[:, split:]
-            self._projection_net.set_parameters(
-                projection_theta, reinitialize=reinitialize)
-
-    def forward(self, inputs, state=()):
-        """
-        Args:
-            inputs (Tensor):
-            state: not used, just keeps the interface same with other networks.
-        """
-        observations, actions = inputs
-
-        encoded_obs, _ = self._obs_encoder(observations)  # [B, n, D] or [B, D]
-        encoded_action, _ = self._action_encoder(
-            actions)  # [B, n, D] or [B, D]
-        joint = torch.cat([encoded_obs, encoded_action], -1)
-        encoded_joint, _ = self._joint_encoder(joint)  # [B, n, D] or [B, D]
-        if self._projection_net is None:
-            return encoded_joint, state
-        else:
-            critics_dist, _ = self._projection_net(encoded_joint)
-            return critics_dist, state
-
-
-@alf.configurable
 class NormalProjectionParamNetwork(Network):
     def __init__(self,
                  input_size,
@@ -694,3 +516,286 @@ class NormalProjectionParamNetwork(Network):
         # means = means.squeeze(-1)
         # stds = stds.squeeze(-1)
         return self._normal_dist(means, stds), state
+
+
+@alf.configurable
+class StableNormalProjectionParamNetwork(NormalProjectionParamNetwork):
+    def __init__(self,
+                 input_size,
+                 output_tensor_spec,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=1e-5,
+                 squash_mean=False,
+                 state_dependent_std=False,
+                 inverse_std_transform='softplus',
+                 scale_distribution=False,
+                 init_std=1.0,
+                 min_std=0.0,
+                 max_std=None,
+                 dist_squashing_transform=dist_utils.StableTanh(),
+                 name="StableNormalProjectionParamNetwork"):
+        """Creates an instance of StableNormalProjectionParamNetwork.
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
+
+        Args:
+            input_size (int): input vector dimension
+            output_tensor_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            activation (Callable): activation function to use in
+                dense layers.
+            projection_output_init_gain (float): Output gain for initializing
+                output means and std weights.
+            squash_mean (bool): If True, ``output_tensor_spec`` is ``action_spec``,
+                squash the output mean to fit the action spec. If 
+                ``scale_distribution`` is also True, this value will be ignored.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
+            inverse_std_transform (str): Currently supports
+                "exp" and "softplus". Transformation to obtain inverse std. The
+                transformed values are further transformed according to min_std
+                and max_std.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output tensor fits within the
+                `output_tensor_spec`, used when output space is the action space.
+                Note that this is different from `mean_transform` which merely 
+                squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. 
+                Default to ``dist_utils.StableTanh()``
+            name (str): name of this network.
+        """
+        self._min_std = min_std
+        self._max_std = max_std
+        assert init_std > min_std
+
+        c = 1 / (init_std - min_std)
+        if max_std is not None:
+            assert init_std < max_std
+            c -= 1 / (max_std - min_std)
+
+        if inverse_std_transform == 'exp':
+            std_transform = torch.exp
+            std_bias_initializer_value = math.log(c)
+        elif inverse_std_transform == 'softplus':
+            std_transform = nn.functional.softplus
+            std_bias_initializer_value = math.log(math.exp(c) - 1)
+        else:
+            raise ValueError(
+                "Unsupported inverse_std_transform %s" % inverse_std_transform)
+
+        super().__init__(
+            input_size=input_size,
+            output_tensor_spec=output_tensor_spec,
+            activation=activation,
+            projection_output_init_gain=projection_output_init_gain,
+            std_bias_initializer_value=std_bias_initializer_value,
+            squash_mean=squash_mean,
+            state_dependent_std=state_dependent_std,
+            std_transform=std_transform,
+            scale_distribution=scale_distribution,
+            dist_squashing_transform=dist_squashing_transform,
+            name=name)
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (Tensor):
+            state: not used, just keeps the interface same with other networks.
+        """
+        # [B, n, D] or [B, D] (n=1)
+        inv_stds = self._std_transform(self._std_projection_layer(inputs))
+        if self._max_std is not None:
+            inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
+        stds = 1. / inv_stds
+        if self._min_std > 0:
+            stds = stds + self._min_std
+
+        means = self._mean_transform(
+            self._means_projection_layer(inputs) * stds)
+        # means = means.squeeze(-1)
+        # stds = stds.squeeze(-1)
+        return self._normal_dist(means, stds), state
+
+
+@alf.configurable
+class CriticDistributionParamNetwork(Network):
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=TensorSpec(()),
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=(32, ),
+                 action_fc_layer_params=(32, ),
+                 joint_fc_layer_params=(64, ),
+                 use_conv_bias=False,
+                 use_conv_ln=False,
+                 use_fc_bias=True,
+                 use_fc_ln=False,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 deterministic=False,
+                 projection_net_ctor=StableNormalProjectionParamNetwork,
+                 state_dependent_std=False,
+                 name="CriticDistributionParamNetwork"):
+        """A network with Fc and conv2D layers that does not maintain its own
+        network parameters, but accepts them from users. If the given parameter
+        tensor has an extra batch dimension (first dimension), it performs
+        parallel operations.
+
+        Args:
+            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
+                representing the inputs.
+            output_tensor_spec (TensorSpec): spec for the output
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format
+                ``(filters, kernel_size, strides, padding, pooling_kernel)``,
+                where ``padding`` and ``pooling_kernel`` are optional.
+            fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
+                takes a format ``(FC layer sizes. use_bias)``, where
+                ``use_bias`` is optional.
+            activation (torch.nn.functional): activation for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
+            last_layer_size (int): an optional size of an additional layer
+                appended at the very end. Note that if ``last_activation`` is
+                specified, ``last_layer_size`` has to be specified explicitly.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by ``last_layer_size``. Note that if
+                ``last_layer_size`` is not None, ``last_activation`` has to be
+                specified explicitly.
+            deterministic (bool): whether to make this network deterministic.
+            projection_net_ctor (Callable): constructor that generates a 
+                projection network.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
+            name (str):
+        """
+        super().__init__(input_tensor_spec=input_tensor_spec, name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=math.sqrt(1.0 / 3),
+                mode='fan_in',
+                distribution='uniform')
+
+        observation_spec, action_spec = input_tensor_spec
+
+        self._obs_encoder = ParamNetwork(
+            observation_spec,
+            conv_layer_params=observation_conv_layer_params,
+            fc_layer_params=observation_fc_layer_params,
+            use_conv_bias=use_conv_bias,
+            use_conv_ln=use_conv_ln,
+            use_fc_bias=use_fc_bias,
+            use_fc_ln=use_fc_ln,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".obs+encoder")
+
+        self._action_encoder = ParamNetwork(
+            action_spec,
+            fc_layer_params=action_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".action_encoder")
+
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.003, b=0.003)
+
+        if deterministic:
+            self._joint_encoder = ParamNetwork(
+                TensorSpec((self._obs_encoder.output_spec.shape[0] + \
+                            self._action_encoder.output_spec.shape[0], )),
+                fc_layer_params=joint_fc_layer_params,
+                activation=activation,
+                kernel_initializer=kernel_initializer,
+                last_layer_size=output_tensor_spec.numel,
+                last_activation=math_ops.identity,
+                name=self.name + ".joint_encoder")
+            self._projection_net = None
+        else:
+            self._joint_encoder = ParamNetwork(
+                TensorSpec((self._obs_encoder.output_spec.shape[0] + \
+                            self._action_encoder.output_spec.shape[0], )),
+                fc_layer_params=joint_fc_layer_params,
+                activation=activation,
+                kernel_initializer=kernel_initializer,
+                name=self.name + ".joint_encoder")
+
+            self._projection_net = projection_net_ctor(
+                input_size=self._joint_encoder.output_spec.shape[0],
+                output_tensor_spec=output_tensor_spec,
+                state_dependent_std=state_dependent_std)
+
+        self._param_length = None
+        # self._output_spec = output_tensor_spec
+
+    @property
+    def param_length(self):
+        """Get total number of parameters for all modules. """
+        if self._param_length is None:
+            length = self._obs_encoder.param_length
+            length += self._action_encoder.param_length
+            length += self._joint_encoder.param_length
+            if self._projection_net is not None:
+                length += self._projection_net.param_length
+            self._param_length = length
+        return self._param_length
+
+    def set_parameters(self, theta, reinitialize=False):
+        """Distribute parameters to corresponding layers.
+
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)``
+                                        or ``[n, D] (groups=n)``
+                where the meaning of the symbols are:
+                - ``n``: number of replica (groups)
+                - ``D``: length of parameters, should be self.param_length
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of
+                each layer.
+        """
+        if theta.ndim == 1:
+            theta = theta.unsqueeze(0)
+        assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
+            "Input theta has wrong shape %s. Expecting shape (, %d)" %
+            self.param_length)
+        split = self._obs_encoder.param_length
+        obs_theta = theta[:, :split]
+        self._obs_encoder.set_parameters(obs_theta, reinitialize=reinitialize)
+        action_theta = theta[:, split:split +
+                             self._action_encoder.param_length]
+        self._action_encoder.set_parameters(
+            action_theta, reinitialize=reinitialize)
+        split = split + self._action_encoder.param_length
+        joint_theta = theta[:, split:split + self._joint_encoder.param_length]
+        self._joint_encoder.set_parameters(
+            joint_theta, reinitialize=reinitialize)
+        if self._projection_net is not None:
+            split = split + self._joint_encoder.param_length
+            projection_theta = theta[:, split:]
+            self._projection_net.set_parameters(
+                projection_theta, reinitialize=reinitialize)
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (Tensor):
+            state: not used, just keeps the interface same with other networks.
+        """
+        observations, actions = inputs
+
+        encoded_obs, _ = self._obs_encoder(observations)  # [B, n, D] or [B, D]
+        encoded_action, _ = self._action_encoder(
+            actions)  # [B, n, D] or [B, D]
+        joint = torch.cat([encoded_obs, encoded_action], -1)
+        encoded_joint, _ = self._joint_encoder(joint)  # [B, n, D] or [B, D]
+        if self._projection_net is None:
+            return encoded_joint, state
+        else:
+            critics_dist, _ = self._projection_net(encoded_joint)
+            return critics_dist, state

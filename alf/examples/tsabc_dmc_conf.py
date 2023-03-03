@@ -20,13 +20,13 @@ from alf.algorithms.tsabc_algorithm import TsabcAlgorithm
 from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.examples import dmc_conf
-from alf.networks import ActorNetwork
+from alf.networks import ActorNetwork, StableNormalProjectionParamNetwork
 from alf.optimizers import AdamTF
 
 # experiment settings
-use_multibootstrap = False
+use_multibootstrap = True
 deterministic_actor = False
-deterministic_critic = True
+deterministic_critic = False
 
 # if env_name() == "Humanoid-v2":
 #     fixed_alpha = 0.05
@@ -45,6 +45,7 @@ explore_network_cls = partial(
 alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=dmc_conf.hidden_layers,
+    projection_net_ctor=StableNormalProjectionParamNetwork,
     state_dependent_std=True)
 
 if use_multibootstrap:

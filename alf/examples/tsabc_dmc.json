@@ -2,7 +2,7 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "dmc_multiswag_8b487_clip_det-critic_blb_.1_np_5_nsp_4-aidi",
+    "version": "dmc_multibootstrap_8b487_stable_max_std_100_sds_T-aidi",
     "use_gpu": true,
     "gpus": [
         0,
@@ -14,7 +14,7 @@
         "create_environment.env_name": [
             "walker-run"
         ],
-        "CriticDistributionParamNetwork.state_dependent_std": "[False]",
+        "CriticDistributionParamNetwork.state_dependent_std": "[True]",
         "MultiSwagAlgorithm.num_particles": "[5]",
         "MultiSwagAlgorithm.num_samples_per_model": "[4]",
         "MultiSwagAlgorithm.subspace_max_rank": "[20]",
