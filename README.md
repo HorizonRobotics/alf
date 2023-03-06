@@ -52,10 +52,10 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 
 ## Installation
 
-Python3.7 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3.7-dev is installed:
+Python3.8 (and above) is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3-dev is installed:
 
 ```
-sudo apt install -y python3.7-dev
+sudo apt install -y python3-dev
 ```
 
 [Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After creating and activating a virtual env, you can run the following commands to install ALF:
@@ -73,6 +73,16 @@ $ nix develop
 ```
 
 in the root of your local repository.
+
+## Docker
+We also provide a docker image of ALF for convenience. In order to use this image, you need to have [docker](https://www.docker.com/) and [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) (for ALF gpu usage) installed first.
+
+```bash
+docker run --user $UID:$GID --gpus all -v "/etc/passwd:/etc/passwd:ro" -v $HOME:$HOME -it horizonrobotics/cuda:11.4-cudnn8-py3.8-ubuntu20.04 /bin/bash
+```
+This will give you a shell that have all ALF and dependencies pre-installed.
+
+The current docker image contains an ALF version `40eb60aaa780` dated on Feb 23, 2023. Regular version updates are expected in the future.
 
 ## Examples
 
