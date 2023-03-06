@@ -17,8 +17,8 @@ import os
 
 setup(
     name='alf',
-    version='0.0.6',
-    python_requires='>=3.7.0',
+    version='0.1.0',
+    python_requires='>=3.8.0',
     install_requires=[
         'atari_py==0.1.7',
         # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
@@ -31,13 +31,14 @@ setup(
         'gym3==0.3.3',
         'h5py==3.5.0',
         'matplotlib==3.4.1',
-        'numpy',
+        'numpy==1.21',
         'opencv-python',
         'pathos==0.2.4',
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
         # which breaks some pyglet based rendering in gym
         'pillow==7.2.0',
         'procgen==0.10.4',
+        'protobuf==3.20.1',
         'psutil',
         'pybullet==2.5.0',
         'pyglet==1.3.2',  # higher version breaks classic control rendering
@@ -48,9 +49,9 @@ setup(
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard==2.6.0',
-        'torch==1.8.1',
-        'torchvision==0.9.1',
-        'torchtext==0.9.1',
+        'torch==1.11.0',
+        'torchvision==0.12.0',
+        'torchtext==0.12.0',
         'cnest==1.1.0',
     ],  # And any other dependencies alf needs
     extras_require={

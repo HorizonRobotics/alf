@@ -52,6 +52,8 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 
 ## Installation
 
+The following installation was tested on Ubuntu20.04 with CUDA 11.4.
+
 Python3.8 (and above) is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3-dev is installed:
 
 ```
@@ -63,7 +65,7 @@ sudo apt install -y python3-dev
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
-pip install -e .
+pip install -e . --extra-index-url https://download.pytorch.org/whl/cu113
 ```
 
 **For Nix Users**: There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
