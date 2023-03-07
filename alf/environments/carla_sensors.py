@@ -721,8 +721,8 @@ class CameraSensor(SensorBase):
         for i in range(point_cam.shape[0]):
             pt = point_cam[i]
 
-            xi = int(np.asscalar(pt[0]))
-            yi = int(np.asscalar(pt[1]))
+            xi = int(pt[0].item())
+            yi = int(pt[1].item())
 
             if xi >= 0 and xi < rgb_img.shape[
                     1] and yi >= 0 and yi < rgb_img.shape[0]:
