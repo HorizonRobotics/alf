@@ -586,5 +586,42 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
             len(list(p_net_w_shared_preprocessor.parameters())))
 
 
+class TestCheckpointStructure(alf.test.TestCase):
+    def test_checkpoint_structure(self):
+        net = Net()
+        optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, net=net)
+
+            step_num = 0
+            net.apply(weights_init_zeros)
+            ckpt_mngr.save(step_num)
+
+            ckpt_mngr.load(global_step=0)
+
+            model_structure_file = os.path.join(ckpt_dir,
+                                                'ckpt-structure.json')
+
+            with open(model_structure_file, 'r') as f:
+                model_structure = json.load(f)
+
+            expected_model_structure = {
+                'global_step': -1,
+                'net': {
+                    'conv1.bias': -1,
+                    'conv1.weight': -1,
+                    'conv2.bias': -1,
+                    'conv2.weight': -1,
+                    'fc1.bias': -1,
+                    'fc1.weight': -1,
+                    'fc2.bias': -1,
+                    'fc2.weight': -1
+                }
+            }
+
+            self.assertEqual(model_structure, expected_model_structure)
+
+
 if __name__ == '__main__':
     alf.test.main()
