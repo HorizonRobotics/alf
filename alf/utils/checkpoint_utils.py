@@ -14,6 +14,7 @@
 
 from absl import logging
 import glob
+import json
 import os
 import torch
 from torch import nn
@@ -95,7 +96,10 @@ class Checkpointer(object):
     """A checkpoint manager for saving and loading checkpoints."""
 
     def __init__(self, ckpt_dir, **kwargs):
-        """A class for making checkpoints.
+        """A class for saving checkpoints. It also saves a json file containing
+        the structure of the model state checkpoint, which facilitates inspecting
+        the structure of the checkpoint without having to load it first. This is
+        useful for cases such as extracting a sub-dictionary from the whole.
 
         Example usage:
 
@@ -326,7 +330,6 @@ class Checkpointer(object):
                 the checkpoint as a suffix. This function will also save a copy
                 of the latest checkpoint in a file named 'latest'.
         """
-        self._global_step = global_step
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
         state = {
             k: v.module.state_dict()
@@ -347,6 +350,17 @@ class Checkpointer(object):
         torch.save(model_state, f_path)
         torch.save(optimizer_state, f_path + '-optimizer')
         torch.save(replay_buffer_state, f_path + '-replay_buffer')
+
+        if self._global_step == -1:
+            # save all the state dictionary to json files, only retaining the
+            # structures
+            with open("ckpt-structure.json", "w") as outfile:
+                json.dump(model_state, outfile, default=lambda k, v: -1)
+            with open("ckpt-structure-optimizer.json", "w") as outfile:
+                json.dump(optimizer_state, outfile, default=lambda k, v: -1)
+            with open("ckpt-structure-replay_buffer.json", "w") as outfile:
+                json.dump(optimizer_state, outfile, default=lambda k, v: -1)
+        self._global_step = global_step
 
         logging.info(
             "Checkpoint 'ckpt-{}' is saved successfully.".format(global_step))

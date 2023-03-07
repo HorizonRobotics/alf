@@ -586,5 +586,25 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
             len(list(p_net_w_shared_preprocessor.parameters())))
 
 
+class TestCheckpointStructure(alf.test.TestCase):
+    def test_checkpoint_structure(self):
+        net = Net()
+        optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            ckpt_mngr = ckpt_utils.Checkpointer(
+                ckpt_dir, net=net, optimizer=optimizer)
+
+            # training-step-0, all parameters are zeros
+            step_num = 0
+            net.apply(weights_init_zeros)
+            set_learning_rate(optimizer, 0.1)
+            ckpt_mngr.save(step_num)
+
+            ckpt_mngr.load(global_step=0)
+
+            print(os.listdir(ckpt_dir))
+
+
 if __name__ == '__main__':
     alf.test.main()
