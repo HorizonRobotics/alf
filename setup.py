@@ -31,7 +31,7 @@ setup(
         'gym3==0.3.3',
         'h5py==3.5.0',
         'matplotlib==3.4.1',
-        'numpy==1.21',
+        'numpy==1.23',
         'opencv-python',
         'pathos==0.2.4',
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
