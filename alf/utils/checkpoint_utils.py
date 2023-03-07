@@ -353,30 +353,30 @@ class Checkpointer(object):
         torch.save(replay_buffer_state, f_path + '-replay_buffer')
 
         if self._global_step == -1:
+            # we only need to save the checkpoint structure once.``global_step``
+            # is initialized as -1, therefore we can use it for this purpose.
 
-            def _dummy_value(v):
-                # use a place holder dummy value for saving structure
-                if not isinstance(v, dict):
-                    return -1
+            def _use_placeholder_value(nest):
+                # use a placeholder value of -1 for saving structure
+                return map_structure(lambda x: -1, nest)
 
             # save all the state dictionary to json files, only retaining the
-            # structures
+            # structures, replacing value with placeholders
             with open(
                     os.path.join(self._ckpt_dir, "ckpt-structure.json"),
                     "w") as outfile:
-                json.dump(map_structure(_dummy_value, model_state), outfile)
+                json.dump(_use_placeholder_value(model_state), outfile)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-optimizer.json"),
                     "w") as outfile:
-                json.dump(
-                    map_structure(_dummy_value, optimizer_state), outfile)
+                json.dump(_use_placeholder_value(optimizer_state), outfile)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-replay_buffer.json"),
                     "w") as outfile:
-                json.dump(
-                    map_structure(_dummy_value, replay_buffer_state), outfile)
+                json.dump(_use_placeholder_value(replay_buffer_state), outfile)
+
         self._global_step = global_step
 
         logging.info(
