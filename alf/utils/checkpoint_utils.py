@@ -21,6 +21,7 @@ from torch import nn
 import warnings
 
 import alf
+from alf.nest import map_structure
 
 
 def is_checkpoint_enabled(module):
@@ -352,14 +353,30 @@ class Checkpointer(object):
         torch.save(replay_buffer_state, f_path + '-replay_buffer')
 
         if self._global_step == -1:
+
+            def _dummy_value(v):
+                # use a place holder dummy value for saving structure
+                if not isinstance(v, dict):
+                    return -1
+
             # save all the state dictionary to json files, only retaining the
             # structures
-            with open("ckpt-structure.json", "w") as outfile:
-                json.dump(model_state, outfile, default=lambda k, v: -1)
-            with open("ckpt-structure-optimizer.json", "w") as outfile:
-                json.dump(optimizer_state, outfile, default=lambda k, v: -1)
-            with open("ckpt-structure-replay_buffer.json", "w") as outfile:
-                json.dump(optimizer_state, outfile, default=lambda k, v: -1)
+            with open(
+                    os.path.join(self._ckpt_dir, "ckpt-structure.json"),
+                    "w") as outfile:
+                json.dump(map_structure(_dummy_value, model_state), outfile)
+            with open(
+                    os.path.join(self._ckpt_dir,
+                                 "ckpt-structure-optimizer.json"),
+                    "w") as outfile:
+                json.dump(
+                    map_structure(_dummy_value, optimizer_state), outfile)
+            with open(
+                    os.path.join(self._ckpt_dir,
+                                 "ckpt-structure-replay_buffer.json"),
+                    "w") as outfile:
+                json.dump(
+                    map_structure(_dummy_value, replay_buffer_state), outfile)
         self._global_step = global_step
 
         logging.info(
