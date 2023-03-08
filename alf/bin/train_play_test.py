@@ -20,7 +20,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from tensorboard.backend.event_processing import event_file_loader
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 import unittest
 from unittest import SkipTest
 
@@ -78,15 +78,12 @@ def get_metrics_from_eval_tfevents(eval_dir):
     assert event_file is not None
 
     logging.info("Parse event file:%s", event_file)
-    episode_returns = []
-    episode_lengths = []
-    for event_str in event_file_loader.EventFileLoader(event_file).Load():
-        if event_str.summary.value:
-            for item in event_str.summary.value:
-                if item.tag == 'Metrics/AverageReturn':
-                    episode_returns.append(item.simple_value)
-                elif item.tag == 'Metrics/AverageEpisodeLength':
-                    episode_lengths.append(item.simple_value)
+    event_acc = EventAccumulator(event_file)
+    event_acc.Reload()
+    ret_events = event_acc.Scalars('Metrics/AverageReturn')
+    episode_returns = [e.value for e in ret_events]
+    len_events = event_acc.Scalars('Metrics/AverageEpisodeLength')
+    episode_lengths = [e.value for e in len_events]
 
     assert len(episode_returns) > 0
     logging.info("Episode returns, %s, episode lengths: %s", episode_returns,
