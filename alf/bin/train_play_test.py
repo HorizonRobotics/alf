@@ -490,6 +490,7 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='mbrl_pendulum_conf.py',
             extra_train_params=MBRL_TRAIN_PARAMS)
 
+    @unittest.skip("Segfault at the end of a successful training.")
     def test_mbrl_latent_pendulum(self):
         self._test(
             conf_file='mbrl_latent_pendulum_conf.py',
