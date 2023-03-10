@@ -52,7 +52,7 @@ setup(
         'torch==1.11.0',
         'torchvision==0.12.0',
         'torchtext==0.12.0',
-        'cnest==1.1.0',
+        'cnest',
     ],  # And any other dependencies alf needs
     extras_require={
         'metadrive': ['metadrive-simulator==0.2.5.1', ],

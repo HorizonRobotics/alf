@@ -14,7 +14,7 @@ pillow==7.2.0
 psutil
 rectangle-packer==2.0.0
 tensorboard==2.6.0
-cnest==1.1.0
+cnest
 gym3==0.3.3
 procgen==0.10.4
 protobuf==3.20.1
