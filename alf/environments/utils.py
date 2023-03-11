@@ -18,7 +18,7 @@ import random
 
 import alf
 from alf.environments import suite_gym
-from alf.environments import thread_environment, parallel_environment
+from alf.environments import thread_environment, parallel_environment, fast_parallel_environment
 from alf.environments import alf_wrappers
 
 
@@ -57,15 +57,17 @@ class UnwrappedEnvChecker(object):
 
 
 @alf.configurable
-def create_environment(env_name='CartPole-v0',
-                       env_load_fn=suite_gym.load,
-                       num_parallel_environments=30,
-                       nonparallel=False,
-                       flatten=True,
-                       start_serially=True,
-                       num_spare_envs=0,
-                       seed=None,
-                       batched_wrappers=()):
+def create_environment(
+        env_name='CartPole-v0',
+        env_load_fn=suite_gym.load,
+        num_parallel_environments=30,
+        nonparallel=False,
+        flatten=True,
+        start_serially=True,
+        num_spare_envs=0,
+        parallel_environment_ctor=parallel_environment.ParallelAlfEnvironment,
+        seed=None,
+        batched_wrappers=()):
     """Create a batched environment.
 
     Args:
@@ -86,6 +88,9 @@ def create_environment(env_name='CartPole-v0',
             communication to reduce overhead.
         num_spare_envs (int): number of spare parallel environments to speed
             up reset.  Useful when a reset is much slower than a regular step.
+        parallel_environment_ctor (Callable): used to contruct parallel environment.
+            Available constructors are: ``fast_parallel_environment.FastParallelEnvironment``
+            and ``parallel_environment.ParallelAlfEnvironment``.
         seed (None|int): random number seed for environment.  A random seed is
             used if None.
         batched_wrappers (Iterable): a list of wrappers which can wrap batched
@@ -125,7 +130,7 @@ def create_environment(env_name='CartPole-v0',
     else:
         # flatten=True will use flattened action and time_step in
         #   process environments to reduce communication overhead.
-        alf_env = parallel_environment.ParallelAlfEnvironment(
+        alf_env = parallel_environment_ctor(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
             flatten=flatten,

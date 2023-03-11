@@ -397,8 +397,8 @@ class BoundedTensorSpec(TensorSpec):
 
         if self.is_continuous:
             uniform = torch.rand(shape, dtype=self._dtype)
-            return ((1 - uniform) * torch.as_tensor(self._minimum) +
-                    torch.as_tensor(self._maximum) * uniform)
+            return ((1 - uniform) * torch.tensor(self._minimum) +
+                    torch.tensor(self._maximum) * uniform)
         else:
             # torch.randint cannot have multi-dim lows and highs; currently only
             # support a scalar minimum and maximum

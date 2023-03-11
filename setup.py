@@ -15,6 +15,9 @@
 from setuptools import setup, find_packages
 import os
 
+assert os.system(
+    "python3 alf/environments/make_penv.py") == 0, "Fail to build _penv"
+
 setup(
     name='alf',
     version='0.1.0',
