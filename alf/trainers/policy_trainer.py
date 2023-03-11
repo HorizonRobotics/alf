@@ -22,6 +22,7 @@ import pprint
 from pathlib import Path
 import re
 import signal
+import threading
 import sys
 import time
 import torch
@@ -296,16 +297,19 @@ class Trainer(object):
             self._pid = os.getpid()
 
         self._checkpoint_requested = False
-        signal.signal(signal.SIGUSR2, self._request_checkpoint)
-        # kill -12 PID
-        logging.info("Use `kill -%s %s` to request checkpoint during training."
-                     % (int(signal.SIGUSR2), self._pid))
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGUSR2, self._request_checkpoint)
+            # kill -12 PID
+            logging.info(
+                "Use `kill -%s %s` to request checkpoint during training." %
+                (int(signal.SIGUSR2), self._pid))
 
         self._debug_requested = False
-        # kill -10 PID
-        signal.signal(signal.SIGUSR1, self._request_debug)
-        logging.info("Use `kill -%s %s` to request debugging." % (int(
-            signal.SIGUSR1), self._pid))
+        if threading.current_thread() == threading.main_thread():
+            # kill -10 PID
+            signal.signal(signal.SIGUSR1, self._request_debug)
+            logging.info("Use `kill -%s %s` to request debugging." % (int(
+                signal.SIGUSR1), self._pid))
 
         checkpoint_saved = False
         try:
