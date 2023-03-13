@@ -60,8 +60,8 @@ class ActionQuantizer(object):
                 (() == action_spec.minimum.shape), \
                     "Only support scalar action maximum and minimum bound"
 
-        self._upper_bound = np.asscalar(action_spec.maximum)
-        self._lower_bound = np.asscalar(action_spec.minimum)
+        self._upper_bound = action_spec.maximum.item()
+        self._lower_bound = action_spec.minimum.item()
 
         # TODO: currently use the same quantization across action dims;
         # can make it different for different dims in the future

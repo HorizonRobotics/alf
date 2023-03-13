@@ -69,23 +69,16 @@ class SummaryTest(alf.test.TestCase):
                 if event_str.summary.value:
                     for item in event_str.summary.value:
                         self.assertTrue(item.tag in tag2val)
-                        if item.HasField('simple_value'):
-                            tag2val[item.tag] = item.simple_value
-                        elif item.HasField('histo'):
-                            tag2val[item.tag] = item.histo
-                        else:
-                            self.assertTrue('tensor')
-                            tag2val[item.tag] = tensor_util.make_ndarray(
-                                item.tensor)
+                        tag2val[item.tag] = tensor_util.make_ndarray(
+                            item.tensor)
 
             self.assertEqual(tag2val['root/scalar'], 2020)
             self.assertEqual(tag2val['root/a/text/text_summary'][0],
                              b'sample text')
-            self.assertEqual(tag2val['root/b/histogram'].min, 0)
-            self.assertEqual(tag2val['root/b/histogram'].max, 99)
-            self.assertEqual(len(tag2val['root/b/histogram'].bucket_limit), 31)
+            self.assertEqual(tag2val['root/b/histogram'].min(), 0)
+            self.assertEqual(tag2val['root/b/histogram'].max(), 99)
+            self.assertEqual(len(tag2val['root/b/histogram']), 31)
 
 
 if __name__ == "__main__":
-    SummaryTest().test_summary()
-    #alf.test.main()
+    alf.test.main()
