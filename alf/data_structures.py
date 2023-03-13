@@ -289,7 +289,8 @@ def _generate_time_step(batched,
         if env_id is None:
             env_id = md.arange(batch_size, dtype=md.int32)
         if reward is not None:
-            assert reward.shape[:1] == outer_dims
+            assert reward.shape[:1] == outer_dims, "%s, %s" % (reward.shape,
+                                                               outer_dims)
         if prev_action is not None:
             flat_action = nest.flatten(prev_action)
             assert flat_action[0].shape[:1] == outer_dims

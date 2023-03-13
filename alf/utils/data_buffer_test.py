@@ -29,7 +29,7 @@ from alf.utils.checkpoint_utils import Checkpointer
 DataItem = alf.data_structures.namedtuple(
     "DataItem", [
         "env_id", "x", "o", "reward", "step_type", "batch_info",
-        "replay_buffer", "rollout_info_field"
+        "replay_buffer", "rollout_info_field", "discount"
     ],
     default_value=())
 
@@ -40,12 +40,20 @@ def get_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
     x = torch.as_tensor(x, dtype=torch.float32, device="cpu")
     t = torch.as_tensor(t, dtype=torch.int32, device="cpu")
-    ox = (x * torch.arange(
-        batch_size, dtype=torch.float32, requires_grad=True,
-        device="cpu").unsqueeze(1) * torch.arange(
-            dim, dtype=torch.float32, requires_grad=True,
-            device="cpu").unsqueeze(0))
-    a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+
+    # We allow x and t inputs to be scalars, which will be expanded to be
+    # consistent with the batch_size.
+
+    def _need_to_expand(x):
+        return not (batch_size > 1 and x.ndim > 0 and batch_size == x.shape[0])
+
+    if _need_to_expand(x):
+        a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+    else:
+        a = x
+    if _need_to_expand(t):
+        t = t * torch.ones(batch_size, dtype=torch.int32, device="cpu")
+    ox = a.unsqueeze(1).clone().requires_grad_(True)
     g = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
     # reward function adapted from ReplayBuffer: default_reward_fn
     r = torch.where(
@@ -60,6 +68,10 @@ def get_batch(env_ids, dim, t, x):
             "a": a,
             "g": g
         }),
+        discount=torch.tensor(
+            t != alf.data_structures.StepType.LAST,
+            dtype=torch.float32,
+            device="cpu"),
         reward=r)
 
 
@@ -79,6 +91,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                 "g": alf.TensorSpec(shape=(), dtype=torch.float32)
             }),
+            discount=alf.TensorSpec(shape=(), dtype=torch.float32),
             reward=alf.TensorSpec(shape=(), dtype=torch.float32))
 
     @parameterized.named_parameters([

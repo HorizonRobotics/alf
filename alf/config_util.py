@@ -297,6 +297,8 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     config_node = _get_config_node(config_name)
 
     if raise_if_used and config_node.is_used():
+        # Log error because pre_config catches and silences the ValueError.
+        logging.error("Config '%s' used before configured." % config_name)
         raise ValueError(
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)

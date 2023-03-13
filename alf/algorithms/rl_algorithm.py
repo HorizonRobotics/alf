@@ -230,18 +230,22 @@ class RLAlgorithm(Algorithm):
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
 
+            total_replay_size = replay_buffer_length * self._env.batch_size
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 # For whole replay buffer training, we would like to be sure
                 # that the replay buffer have enough samples in it to perform
                 # the training, which will most likely happen in the 2nd
                 # iteration. The minimum_initial_collect_steps guarantees that.
-                minimum_initial_collect_steps = replay_buffer_length * self._env.batch_size
+                minimum_initial_collect_steps = total_replay_size
                 if config.initial_collect_steps < minimum_initial_collect_steps:
                     common.info(
                         'Set the initial_collect_steps to minimum required '
                         f'value {minimum_initial_collect_steps} because '
                         'whole_replay_buffer_training is on.')
                     config.initial_collect_steps = minimum_initial_collect_steps
+
+            assert config.initial_collect_steps <= total_replay_size, \
+                "Training will not happen - insufficient replay buffer size."
 
             self.set_replay_buffer(self._env.batch_size, replay_buffer_length,
                                    config.priority_replay)

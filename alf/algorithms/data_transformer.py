@@ -137,13 +137,18 @@ class SequentialDataTransformer(DataTransformer):
 
     @staticmethod
     def _validate_order(data_transformers):
+        # Hindsight should probably not be used together with FrameStacker,
+        # unless done really carefully.  Hindsight after FrameStacker is
+        # simply wrong, because Hindsight would read ``achieved_goal`` field
+        # of a future step directly from the replay buffer without stacking.
         def _tier_of(data_transformer):
             if isinstance(data_transformer, UntransformedTimeStep):
                 return 1
-            if isinstance(data_transformer,
-                          (HindsightExperienceTransformer, FrameStacker)):
+            if isinstance(data_transformer, HindsightExperienceTransformer):
                 return 2
-            return 3
+            if isinstance(data_transformer, FrameStacker):
+                return 3
+            return 4
 
         prev_tier = 0
         for i in range(len(data_transformers)):

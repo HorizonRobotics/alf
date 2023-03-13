@@ -46,3 +46,5 @@ gin.external_configurable(torch.nn.CrossEntropyLoss,
 
 gin.external_configurable(torch.nn.init.xavier_normal_,
                           'torch.nn.init.xavier_normal_')
+gin.external_configurable(torch.nn.Embedding, 'torch.nn.Embedding')
+gin.external_configurable(torch.nn.Sequential, 'torch.nn.Sequential')

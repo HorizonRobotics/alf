@@ -611,6 +611,7 @@ class EncodingNetwork(_Sequential):
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
+                 last_bias_init_value=0.0,
                  last_use_fc_bn=False,
                  name="EncodingNetwork"):
         """
@@ -746,7 +747,8 @@ class EncodingNetwork(_Sequential):
                     last_layer_size,
                     activation=last_activation,
                     use_bn=last_use_fc_bn,
-                    kernel_initializer=last_kernel_initializer))
+                    kernel_initializer=last_kernel_initializer,
+                    bias_init_value=last_bias_init_value))
             input_size = last_layer_size
 
         if output_tensor_spec is not None:

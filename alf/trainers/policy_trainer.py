@@ -513,6 +513,7 @@ class RLTrainer(Trainer):
         logging.info(
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
+        logging.info("reward_spec=%s" % pprint.pformat(env.reward_spec()))
 
         # for offline buffer construction
         untransformed_observation_spec = env.observation_spec()
