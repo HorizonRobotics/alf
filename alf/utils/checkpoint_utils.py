@@ -374,17 +374,22 @@ class Checkpointer(object):
             with open(
                     os.path.join(self._ckpt_dir, "ckpt-structure.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(model_state), outfile)
+                json.dump(
+                    _use_placeholder_value(model_state), outfile, indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-optimizer.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(optimizer_state), outfile)
+                json.dump(
+                    _use_placeholder_value(optimizer_state), outfile, indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-replay_buffer.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(replay_buffer_state), outfile)
+                json.dump(
+                    _use_placeholder_value(replay_buffer_state),
+                    outfile,
+                    indent=4)
 
         self._global_step = global_step
 
