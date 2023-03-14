@@ -328,10 +328,10 @@ class GridSearch(object):
 
             conf_file = common.get_conf_file()
             # This is the snapshot stored in grid-search root dir
-            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf"))
-            # We still need to generate a snapshot of ALF repo as ``<root_dir>/alf``
+            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf.tar.gz"))
+            # We still need to keep a snapshot of ALF repo at ``<root_dir>``
             # for playing individual searching job later
-            common.generate_alf_root_snapshot(alf_repo, root_dir)
+            os.system(f"mkdir -p {root_dir}; cp {alf_repo} {root_dir}/")
 
             device = device_queue.get()
             if self._conf.use_gpu:
@@ -401,10 +401,7 @@ def launch_snapshot_gridsearch():
     common.write_config(root_dir, common.read_conf_file(root_dir))
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
-    # ../<ALF_REPO>/alf/bin/grid_search.py
-    file_path = os.path.abspath(__file__)
-    alf_root = str(pathlib.Path(file_path).parent.parent.parent.absolute())
-    common.generate_alf_root_snapshot(alf_root, root_dir)
+    common.generate_alf_root_snapshot(common.alf_root(), root_dir)
 
     # point the grid search to the snapshot paths
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
