@@ -328,7 +328,8 @@ class GridSearch(object):
 
             conf_file = common.get_conf_file()
             # This is the snapshot stored in grid-search root dir
-            alf_repo = common.abs_path(os.path.join(FLAGS.root_dir, "alf.tar.gz"))
+            alf_repo = common.abs_path(
+                os.path.join(FLAGS.root_dir, "alf.tar.gz"))
             # We still need to keep a snapshot of ALF repo at ``<root_dir>``
             # for playing individual searching job later
             os.system(f"mkdir -p {root_dir}; cp {alf_repo} {root_dir}/")
