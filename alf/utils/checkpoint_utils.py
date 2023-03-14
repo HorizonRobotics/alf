@@ -357,25 +357,39 @@ class Checkpointer(object):
             # is initialized as -1, therefore we can use it for this purpose.
 
             def _use_placeholder_value(nest):
-                # use a placeholder value of -1 for saving structure
-                return map_structure(lambda x: -1, nest)
+                # use a placeholder value of -1 for saving structure.
+                # ``map_structure`` is not used here as some keys are ``int``
+                # type, which is not supported
+                new_nest = {}
+                for k, v in nest.items():
+                    if isinstance(v, dict):
+                        v = _use_placeholder_value(v)
+                        new_nest[str(k)] = v
+                    else:
+                        new_nest[str(k)] = -1
+                return new_nest
 
             # save all the state dictionary to json files, only retaining the
             # structures, replacing value with placeholders
             with open(
                     os.path.join(self._ckpt_dir, "ckpt-structure.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(model_state), outfile)
+                json.dump(
+                    _use_placeholder_value(model_state), outfile, indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-optimizer.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(optimizer_state), outfile)
+                json.dump(
+                    _use_placeholder_value(optimizer_state), outfile, indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-replay_buffer.json"),
                     "w") as outfile:
-                json.dump(_use_placeholder_value(replay_buffer_state), outfile)
+                json.dump(
+                    _use_placeholder_value(replay_buffer_state),
+                    outfile,
+                    indent=4)
 
         self._global_step = global_step
 
