@@ -14,7 +14,7 @@
 """Tests for the parallel_environment.
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
-
+from absl import logging
 import collections
 import functools
 import multiprocessing.dummy as dummy_multiprocessing
@@ -81,11 +81,13 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         self._set_default_specs()
         constructor = constructor or functools.partial(
             RandomAlfEnvironment, self.observation_spec, self.action_spec)
-        return self._parallel_environment_ctor(
+        env = self._parallel_environment_ctor(
             env_constructors=[constructor] * num_envs,
             blocking=blocking,
             flatten=flatten,
             start_serially=start_serially)
+        env.seed(list(range(1, num_envs + 1)))
+        return env
 
     def test_close_no_hang_after_init(self):
         env = self._make_parallel_environment()
@@ -323,6 +325,30 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
     def test_unstack_nested_actions(self):
         # FastParallelEnvironment does not have _unstack_actions
         pass
+
+    def _check_same_nest(self, nest1, nest2):
+        alf.nest.assert_same_structure(nest1, nest2)
+
+        def _same_tensor(path, t1, t2):
+            if not (t1 == t2).all():
+                logging.info(
+                    f"different value at path '{path}': {t1} vs. {t2}")
+
+        alf.nest.py_map_structure_with_path(_same_tensor, nest1, nest2)
+
+    def test_fast_parallel_environment(self):
+        self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
+        env1 = self._make_parallel_environment()
+        self._parallel_environment_ctor = FastParallelEnvironment
+        env2 = self._make_parallel_environment()
+        ts1 = env1.reset()
+        ts2 = env2.reset()
+        for _ in range(100):
+            ts1 = env1.step(ts1.prev_action)
+            ts2 = env2.step(ts2.prev_action)
+            self._check_same_nest(ts1, ts2)
+        env1.close()
+        env2.close()
 
 
 if __name__ == '__main__':

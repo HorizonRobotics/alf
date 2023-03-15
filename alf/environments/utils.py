@@ -57,17 +57,17 @@ class UnwrappedEnvChecker(object):
 
 
 @alf.configurable
-def create_environment(
-        env_name='CartPole-v0',
-        env_load_fn=suite_gym.load,
-        num_parallel_environments=30,
-        nonparallel=False,
-        flatten=True,
-        start_serially=True,
-        num_spare_envs=0,
-        parallel_environment_ctor=parallel_environment.ParallelAlfEnvironment,
-        seed=None,
-        batched_wrappers=()):
+def create_environment(env_name='CartPole-v0',
+                       env_load_fn=suite_gym.load,
+                       num_parallel_environments=30,
+                       nonparallel=False,
+                       flatten=True,
+                       start_serially=True,
+                       num_spare_envs=0,
+                       parallel_environment_ctor=fast_parallel_environment.
+                       FastParallelEnvironment,
+                       seed=None,
+                       batched_wrappers=()):
     """Create a batched environment.
 
     Args:

@@ -61,6 +61,11 @@ def _worker(conn,
         env_constructor (Callable): callable environment creator.
         flatten (bool): whether to assume flattened actions and time_steps
           during communication to avoid overhead.
+        fast (bool): whether created by ``FastParallelEnvironment`` or not.
+        num_envs (int): number of environments in the ``FastParallelEnvironment``.
+            Only used if ``fast`` is True.
+        name (str): name of the FastParallelEnvironment. Only used if ``fast``
+            is True.
 
     Raises:
         KeyError: When receiving a message of unknown type.
@@ -156,6 +161,11 @@ class ProcessEnvironment(object):
             env_id (torch.int32): ID of the the env
             flatten (bool): whether to assume flattened actions and time_steps
                 during communication to avoid overhead.
+            fast (bool): whether created by ``FastParallelEnvironment`` or not.
+            num_envs (int): number of environments in the ``FastParallelEnvironment``.
+                Only used if ``fast`` is True.
+            name (str): name of the FastParallelEnvironment. Only used if ``fast``
+                is True.
 
         Attributes:
             observation_spec: The cached observation spec of the environment.

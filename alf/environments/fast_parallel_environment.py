@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import torch
 
 from absl import logging
@@ -64,8 +65,9 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
     - call: access other methods of the environment. Sent from ``_penv.ProcessEnvironmentCaller``.
         This takes advantage of the pipe mechanism used by  the ``ParallelAlfEnvironment``.
         This is achieved by calling ``call_handler`` to do communication using
-        python pipe.
-
+        python pipe. The reason of using the original pipe mechanism for other
+        types of communication is that it is not easy to handle communication of
+        unknow size using shared memory.
 
     """
 
@@ -173,8 +175,10 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         return self._time_step_spec
 
     def _to_tensor(self, stacked):
+        # we need to do np.copy because the result from _penv.step() or
+        # _penv.reset() reuses the same internal buffer.
         stacked = nest.map_structure(
-            lambda x: torch.as_tensor(x, device='cpu'), stacked)
+            lambda x: torch.as_tensor(np.copy(x), device='cpu'), stacked)
         if alf.get_default_device() == "cuda":
             cpu = stacked
             stacked = nest.map_structure(lambda x: x.cuda(), cpu)

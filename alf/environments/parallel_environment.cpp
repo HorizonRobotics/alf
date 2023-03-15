@@ -44,31 +44,25 @@ namespace py = pybind11;
 
 const size_t addr_alignment = 16;
 
+// The size of job queue.
+// Since we always wait for job to finish before sending the next job,
+// we only need a shoft job queue.
+const size_t kJobQueueSize = 3;
+
 inline size_t align(size_t x) {
   return ((x + addr_alignment - 1) / addr_alignment) * addr_alignment;
 }
 
 // TODO(emailweixu): directly use cnest c++ function
-std::vector<py::object> Flatten(py::object nest) {
+py::list Flatten(py::object nest) {
   py::object flatten = py::module::import("cnest").attr("flatten");
-  auto list = py::list(flatten(nest));
-  std::vector<py::object> ret;
-  ret.reserve(list.size());
-  for (size_t i = 0; i < list.size(); ++i) {
-    ret.push_back(list[i]);
-  }
-  return ret;
+  return py::list(flatten(nest));
 }
 
 // TODO(emailweixu): directly use cnest c++ function
-py::object PackSequenceAs(py::object nest,
-                          const std::vector<py::object>& flat_seq) {
+py::object PackSequenceAs(py::object nest, const py::list& flat_seq) {
   py::object pack_sequence_as =
       py::module::import("cnest").attr("pack_sequence_as");
-  py::list list;
-  for (auto item : flat_seq) {
-    list.append(item);
-  }
   return pack_sequence_as(nest, flat_seq);
 }
 
@@ -84,8 +78,7 @@ class SharedDataBuffer {
   void Write(py::object nested_array);
 
   inline py::object ViewAsNestedArray(size_t slice_id, size_t num_slices);
-  std::vector<py::object> ViewAsFlattenedArray(size_t slice_id,
-                                               size_t num_slices);
+  py::list ViewAsFlattenedArray(size_t slice_id, size_t num_slices);
 
   void* GetBufByFieldName(const char* field) {
     auto array = py::buffer(ViewAsNestedArray(0, num_slices_).attr(field));
@@ -164,9 +157,9 @@ SharedDataBuffer::~SharedDataBuffer() {
   bip::shared_memory_object::remove(name_.c_str());
 }
 
-std::vector<py::object> SharedDataBuffer::ViewAsFlattenedArray(
-    size_t slice_id, size_t num_slices = 0) {
-  std::vector<py::object> flattened_array(buffer_infos_.size());
+py::list SharedDataBuffer::ViewAsFlattenedArray(size_t slice_id,
+                                                size_t num_slices = 0) {
+  py::list flattened_array;
   for (size_t i = 0; i < buffer_infos_.size(); ++i) {
     auto& inf = buffer_infos_[i];
     auto strides = inf.strides;
@@ -181,7 +174,7 @@ std::vector<py::object> SharedDataBuffer::ViewAsFlattenedArray(
     }
     py::buffer_info info(
         GetBuf(slice_id, i), inf.itemsize, inf.format, ndim, shape, strides);
-    flattened_array[i] = py::array(info, data_spec_);
+    flattened_array.append(py::array(info, data_spec_));
   }
   return flattened_array;
 }
@@ -272,7 +265,7 @@ ParallelEnvironment::ParallelEnvironment(int num_envs,
     job_queues_.emplace_back(std::make_unique<bip::message_queue>(
         bip::open_or_create,
         (name + ".job_queue." + std::to_string(i)).c_str(),
-        3,
+        kJobQueueSize,
         sizeof(Job)));
   }
 }
@@ -305,7 +298,7 @@ py::object ParallelEnvironment::Step(const py::object& action) {
     int env_id;
     ready_queue_.receive(&env_id, sizeof(env_id), recvd_size, priority);
     assert(recvd_size == sizeof(env_id));
-    if (step_type_buf_[env_id] == (int32_t)StepType::last) {
+    if (step_type_buf_[env_id] == static_cast<int32_t>(StepType::last)) {
       Job job{JobType::reset};
       job_queues_[original_env_ids_[env_id]]->send(&job, sizeof(job), 0);
       reseted_[env_id] = true;
@@ -377,7 +370,7 @@ ProcessEnvironment::ProcessEnvironment(py::object env,
       py_reset_(env.attr("reset")),
       job_queue_(bip::open_or_create,
                  (name + ".job_queue." + std::to_string(env_id)).c_str(),
-                 3,
+                 kJobQueueSize,
                  sizeof(Job)),
       ready_queue_(bip::open_or_create,
                    (name + ".ready_queue").c_str(),
@@ -405,7 +398,7 @@ class ProcessEnvironmentCaller {
         env_id_(env_id),
         job_queue_(bip::open_or_create,
                    (name + ".job_queue." + std::to_string(env_id)).c_str(),
-                   3,
+                   kJobQueueSize,
                    sizeof(Job)) {}
   ~ProcessEnvironmentCaller() {
     bip::message_queue::remove(
@@ -464,6 +457,8 @@ void ProcessEnvironment::Worker() {
       env_.attr("close")();
       break;
     } else if (job.type == JobType::call) {
+      // Use call_handler to handle other types of communication with unknown
+      // size.
       call_handler_();
     }
   }
