@@ -153,6 +153,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     def time_step_spec(self):
         return self._time_step_spec
 
+    def render(self, mode="rgb_array"):
+        return self._envs[0].render(mode)
+
     def _reset(self):
         """Reset all environments and combine the resulting observation.
 
