@@ -199,11 +199,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         return self._loss(info)
 
     def predict_step(self, inputs: TimeStep, state):
-        return ppg_network_forward(
-            self._network,
-            inputs,
-            state,
-            epsilon_greedy=self._predict_step_epsilon_greedy)
+        return ppg_network_forward(self._network, inputs, state,
+                                   self._predict_step_epsilon_greedy)
 
     def after_train_iter(self, experience, info: PPGTrainInfo):
         """Run auxiliary update if conditions are met
