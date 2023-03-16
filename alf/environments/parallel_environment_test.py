@@ -14,7 +14,7 @@
 """Tests for the parallel_environment.
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
-
+from absl import logging
 import collections
 import functools
 import multiprocessing.dummy as dummy_multiprocessing
@@ -25,6 +25,7 @@ import torch
 import alf
 import alf.data_structures as ds
 from alf.environments import parallel_environment
+from alf.environments.fast_parallel_environment import FastParallelEnvironment
 from alf.environments.random_alf_environment import RandomAlfEnvironment
 import alf.tensor_specs as ts
 
@@ -59,7 +60,7 @@ def slow_env_load(observation_spec,
 
 class ParallelAlfEnvironmentTest(alf.test.TestCase):
     def setUp(self):
-        parallel_environment.multiprocessing = dummy_multiprocessing
+        self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
 
     def _set_default_specs(self):
         self.observation_spec = ts.TensorSpec((3, 3), torch.float32)
@@ -80,11 +81,13 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         self._set_default_specs()
         constructor = constructor or functools.partial(
             RandomAlfEnvironment, self.observation_spec, self.action_spec)
-        return parallel_environment.ParallelAlfEnvironment(
+        env = self._parallel_environment_ctor(
             env_constructors=[constructor] * num_envs,
             blocking=blocking,
             flatten=flatten,
             start_serially=start_serially)
+        env.seed(list(range(1, num_envs + 1)))
+        return env
 
     def test_close_no_hang_after_init(self):
         env = self._make_parallel_environment()
@@ -135,6 +138,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
                 self.action_spec,
                 time_sleep=sleep_time,
                 reset_sleep=sleep_time),
+            parallel_environment_ctor=self._parallel_environment_ctor,
             num_parallel_environments=num_envs,
             start_serially=False,
             num_spare_envs=num_envs)
@@ -153,6 +157,9 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         time_step1 = env.step(action)
         self.assertEqual(time_step0.observation.shape,
                          time_step1.observation.shape)
+        # need to wait a little so that the spare env can have enough time
+        # to reset
+        time.sleep(sleep_time)
         step1_t = time.time()
         # This step internally calls reset, because episodes are of length 1.
         time_step2 = env.step(action)
@@ -173,10 +180,10 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         time_step4 = env.step(action)
         step4_t = time.time()
         step4_time = step4_t - step3_t
-        self.assertGreaterEqual(
+        self.assertLessEqual(
             step4_time,
-            sleep_time - 0.01,
-            msg=(f'Step without spare envs took {step4_time}, too short'))
+            sleep_time - 0.1,
+            msg=(f'Step with spare envs took {step4_time}, too long'))
         time_step = env.step(action)  # reset is called here
         time.sleep(sleep_time)
         step5_t = time.time()
@@ -197,6 +204,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
                 self.action_spec,
                 time_sleep=0,
                 reset_sleep=sleep_time),
+            parallel_environment_ctor=self._parallel_environment_ctor,
             num_parallel_environments=num_envs,
             start_serially=False,
             num_spare_envs=0)
@@ -304,6 +312,43 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
             np.random.RandomState(1).get_state()[1][-1],
             env._envs[1]._rng.get_state()[1][-1])
         env.close()
+
+
+class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
+    def setUp(self):
+        self._parallel_environment_ctor = FastParallelEnvironment
+
+    def test_unstack_actions(self):
+        # FastParallelEnvironment does not have _unstack_actions
+        pass
+
+    def test_unstack_nested_actions(self):
+        # FastParallelEnvironment does not have _unstack_actions
+        pass
+
+    def _check_same_nest(self, nest1, nest2):
+        alf.nest.assert_same_structure(nest1, nest2)
+
+        def _same_tensor(path, t1, t2):
+            if not (t1 == t2).all():
+                logging.info(
+                    f"different value at path '{path}': {t1} vs. {t2}")
+
+        alf.nest.py_map_structure_with_path(_same_tensor, nest1, nest2)
+
+    def test_fast_parallel_environment(self):
+        self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
+        env1 = self._make_parallel_environment()
+        self._parallel_environment_ctor = FastParallelEnvironment
+        env2 = self._make_parallel_environment()
+        ts1 = env1.reset()
+        ts2 = env2.reset()
+        for _ in range(100):
+            ts1 = env1.step(ts1.prev_action)
+            ts2 = env2.step(ts2.prev_action)
+            self._check_same_nest(ts1, ts2)
+        env1.close()
+        env2.close()
 
 
 if __name__ == '__main__':

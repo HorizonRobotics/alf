@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from setuptools import setup, find_packages
-import os
+from pybind11.setup_helpers import Pybind11Extension, build_ext
 
 setup(
     name='alf',
@@ -54,6 +54,15 @@ setup(
         'torchtext==0.12.0',
         'cnest',
     ],  # And any other dependencies alf needs
+    ext_modules=[
+        Pybind11Extension(
+            'environments._penv',
+            sources=['alf/environments/parallel_environment.cpp'],
+            extra_compile_args=[
+                '-O3', '-Wall', '-std=c++17', '-fPIC', '-fvisibility=hidden'
+            ])
+    ],
+    cmdclass={'build_ext': build_ext},
     extras_require={
         'metadrive': ['metadrive-simulator==0.2.5.1', ],
     },

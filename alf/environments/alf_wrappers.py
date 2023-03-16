@@ -898,7 +898,7 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
         # convert to an idx number with base ``actions_num``
         for i in range(self._N):
             idx.append(action // base)
-            action %= base
+            action = action % base
             base //= self._actions_num
         if _is_numpy_array(action):
             idx = np.stack(

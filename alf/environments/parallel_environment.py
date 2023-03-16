@@ -92,7 +92,6 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._task_names = self._envs[0].task_names
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
-        self._parallel_execution = True
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')

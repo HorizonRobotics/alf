@@ -123,7 +123,7 @@ class TimeLimitWrapperTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
-            reward_fn=lambda *_: torch.tensor(1.0, dtype=torch.float32),
+            reward_fn=lambda *_: np.array(1.0, dtype=np.float32),
             use_tensor_time_step=use_tensor_time_step)
 
         env = alf_wrappers.AlfEnvironmentBaseWrapper(env)
