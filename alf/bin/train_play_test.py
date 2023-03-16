@@ -103,7 +103,14 @@ def _to_conf_params(parameters):
         + ['--gin_param=%s' % e for e in parameters]
 
 
-COMMON_TRAIN_CONF = [
+BASE_TRAIN_CONF = [
+    # Do not get stuck there and asking for confirmation upon crash.
+    # Die and give feedback immediately for unit tests.
+    'confirm_checkpoint_upon_crash=False',
+]
+BASE_TRAIN_PARAMS = _to_conf_params(BASE_TRAIN_CONF)
+
+COMMON_TRAIN_CONF = BASE_TRAIN_CONF + [
     # create only one env
     'create_environment.num_parallel_environments=1',
     # disable summaries
@@ -117,9 +124,6 @@ COMMON_TRAIN_CONF = [
     'TrainerConfig.num_checkpoints=1',
     # disable evaluate
     'TrainerConfig.evaluate=False',
-    # Do not get stuck there and asking for confirmation upon crash.
-    # Die and give feedback immediately for unit tests.
-    'confirm_checkpoint_upon_crash=False',
 ]
 COMMON_TRAIN_PARAMS = _to_conf_params(COMMON_TRAIN_CONF)
 
@@ -285,7 +289,7 @@ class TrainPlayTest(alf.test.TestCase):
     def _test(self,
               conf_file,
               skip_checker=None,
-              extra_train_params=None,
+              extra_train_params=BASE_TRAIN_PARAMS,
               test_play=True,
               test_video_recording=False,
               extra_play_params=None,
