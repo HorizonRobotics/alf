@@ -183,7 +183,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         self.assertLessEqual(
             step4_time,
             sleep_time - 0.1,
-            msg=(f'Step witho spare envs took {step4_time}, too short'))
+            msg=(f'Step with spare envs took {step4_time}, too long'))
         time_step = env.step(action)  # reset is called here
         time.sleep(sleep_time)
         step5_t = time.time()
