@@ -59,7 +59,7 @@ setup(
             'environments._penv',
             sources=['alf/environments/parallel_environment.cpp'],
             extra_compile_args=[
-                '-O3 -Wall -std=c++17', '-fPIC', '-fvisibility=hidden'
+                '-O3', '-Wall', '-std=c++17', '-fPIC', '-fvisibility=hidden'
             ])
     ],
     cmdclass={'build_ext': build_ext},

@@ -565,7 +565,9 @@ class RLTrainer(Trainer):
             #       Its env members might be in the main process or might not.
             return isinstance(
                 e,
-                alf.environments.parallel_environment.ParallelAlfEnvironment)
+                (alf.environments.parallel_environment.ParallelAlfEnvironment,
+                 alf.environments.fast_parallel_environment.
+                 FastParallelEnvironment))
 
         # See ``alf/docs/notes/knowledge_base.rst```
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
