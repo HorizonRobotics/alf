@@ -555,11 +555,19 @@ class RLTrainer(Trainer):
         # ``TrainerConfig.no_thread_env_for_conf=False``.
         self._thread_env = None
 
+        def _env_in_subprocess(e):
+            if isinstance(
+                e, alf.environments.alf_wrappers.AlfEnvironmentBaseWrapper):
+                return _env_in_subprocess(e.wrapped_env())
+            # TODO: One special case is alf_wrappers.MultitaskWrapper which is
+            #       an alf wrapper but not a subclass of AlfEnvironmentBaseWrapper.
+            #       Its env members might be in the main process or might not.
+            return isinstance(
+                e, alf.environments.parallel_environment.ParallelAlfEnvironment)
+
         # See ``alf/docs/notes/knowledge_base.rst```
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
-        if not config.no_thread_env_for_conf and isinstance(
-                env,
-                alf.environments.parallel_environment.ParallelAlfEnvironment):
+        if not config.no_thread_env_for_conf and _env_in_subprocess(env):
             self._thread_env = create_environment(
                 nonparallel=True, seed=self._random_seed)
 
