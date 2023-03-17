@@ -20,26 +20,26 @@ setup(
     version='0.1.0',
     python_requires='>=3.8.0',
     install_requires=[
-        'atari_py==0.1.7',
+        'atari_py',
         # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'fasteners',
-        'gym==0.15.4',
-        'gym3==0.3.3',
-        'matplotlib==3.4.1',
+        'gym',
+        'gym3',
+        'matplotlib',
         'numpy',
-        'pathos==0.2.4',
+        'pathos',
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
         # which breaks some pyglet based rendering in gym
-        'pillow==7.2.0',
-        'procgen==0.10.4',
-        'protobuf==3.20.1',
+        'pillow',
+        'procgen',
+        'protobuf',
         'psutil',
-        'pybullet==2.5.0',
-        'pyglet==1.3.2',  # higher version breaks classic control rendering
-        'rectangle-packer==2.0.0',
-        'tensorboard==2.6.0',
-        'torch==1.8.1',
-        'torchvision==0.9.1',
+        'pybullet',
+        'pyglet',  # higher version breaks classic control rendering
+        'rectangle-packer',
+        'tensorboard',
+        'torch',
+        'torchvision',
     ],  # And any other dependencies alf needs
     ext_modules=[
         Pybind11Extension(
@@ -51,7 +51,7 @@ setup(
     ],
     cmdclass={'build_ext': build_ext},
     extras_require={
-        'metadrive': ['metadrive-simulator==0.2.5.1', ],
+        'metadrive': ['metadrive-simulator', ],
     },
     package_data={'': ['*.gin']},
     packages=find_packages(),
