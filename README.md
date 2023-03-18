@@ -52,6 +52,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 
 ## Installation
 
+#### OS softwares
 The following installation was tested on Ubuntu20.04 with CUDA 11.4.
 
 Python3.8 (and above) is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3-dev is installed:
@@ -60,6 +61,13 @@ Python3.8 (and above) is currently supported by ALF. Note that some pip packages
 sudo apt install -y python3-dev
 ```
 
+Boost is also required by ALF for fast parallel environments. 
+
+```
+sudo apt install libboost-all-dev
+```
+
+#### Python environment
 [Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After creating and activating a virtual env, you can run the following commands to install ALF:
 
 ```
@@ -68,7 +76,9 @@ cd alf
 pip install -e . --extra-index-url https://download.pytorch.org/whl/cu113
 ```
 
-**For Nix Users**: There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
+#### For Nix Users 
+
+There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
 
 ```bash
 $ nix develop
