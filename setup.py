@@ -26,6 +26,8 @@ setup(
         'cpplint',
         'clang-format==9.0',
         'fasteners',
+        'furo',
+        'jinja2==3.0',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
         'gym3==0.3.3',
