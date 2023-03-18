@@ -362,6 +362,7 @@ class TestWithCycle(alf.test.TestCase):
                                 'eps': 1e-08,
                                 'weight_decay': 0,
                                 'amsgrad': False,
+                                'maximize': False,
                                 'params': []
                             },
                             {
@@ -370,6 +371,7 @@ class TestWithCycle(alf.test.TestCase):
                                 'eps': 1e-08,
                                 'weight_decay': 0,
                                 'amsgrad': False,
+                                'maximize': False,
                                 'params': [0]  # order index instead of id
                             }
                         ]
@@ -386,6 +388,7 @@ class TestWithCycle(alf.test.TestCase):
                                 'eps': 1e-08,
                                 'weight_decay': 0,
                                 'amsgrad': False,
+                                'maximize': False,
                                 'params': []
                             },
                             {
@@ -394,6 +397,7 @@ class TestWithCycle(alf.test.TestCase):
                                 'eps': 1e-08,
                                 'weight_decay': 0,
                                 'amsgrad': False,
+                                'maximize': False,
                                 'params': [0, 1]  # order indices instead of id
                             }
                         ]
