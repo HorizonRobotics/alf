@@ -26,8 +26,6 @@ setup(
         'cpplint',
         'clang-format==9.0',
         'fasteners',
-        'furo',
-        'jinja2==3.0',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
         'gym3==0.3.3',
@@ -58,7 +56,7 @@ setup(
     ],  # And any other dependencies alf needs
     ext_modules=[
         Pybind11Extension(
-            'environments._penv',
+            'alf.environments._penv',
             sources=['alf/environments/parallel_environment.cpp'],
             extra_compile_args=[
                 '-O3', '-Wall', '-std=c++17', '-fPIC', '-fvisibility=hidden'
