@@ -16,6 +16,7 @@ from functools import partial
 from absl import logging
 from absl.testing import parameterized
 import torch
+import time
 
 import alf
 from alf.utils import losses
@@ -156,6 +157,8 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
         tr_target = target[:-val_n, ...]
         val_target = target[-val_n:, ...]
 
+        t0 = time.time()
+
         optimizer = torch.optim.Adam(list(model.parameters()), lr=1e-3)
         epochs = 10
         batch_size = 100
@@ -177,6 +180,8 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
                 optimizer.step()
                 l.append(loss)
             print("Training loss: ", sum(l) / len(l))
+
+        print("Training time: ", time.time() - t0)
 
         val_pred = model(val_inputs)
         val_pred = val_pred[:, 1:, :]

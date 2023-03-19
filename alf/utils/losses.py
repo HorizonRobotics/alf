@@ -773,5 +773,42 @@ class BipartiteMatchingLoss(object):
             losses.append(optimal_loss)
         return torch.stack(losses, dim=0)
 
+    def fast_forward(self,
+                     prediction: Tensor,
+                     target: Tensor,
+                     target_mask: Tensor = None):
+        assert prediction.shape[:2] == target.shape[:2]
+        B, N = prediction.shape[:2]
+        cost_mat = self._pair_loss_fn(prediction, target)  # [B,N,N]
+        assert cost_mat.shape == (B, N, N), (
+            "The pairwise loss function must enumerate all pairs and output "
+            "a scalar loss for each pair!")
+
+        # mask out any cost with mask values=0
+        if target_mask is not None:
+            target_mask = target_mask.unsqueeze(1)  # [B,1,N]
+            cost_mat = cost_mat * target_mask
+
+        with torch.no_grad():
+            # [B*N, B*N]
+            max_cost = cost_mat.max() + 1.
+            big_cost_mat = torch.block_diag(*list(cost_mat - max_cost))
+            # fill in all off-diag entries with a max cost
+            big_cost_mat = big_cost_mat + max_cost
+            np_big_cost_mat = big_cost_mat.cpu().numpy()
+            # col_ind: [B*N]
+            row_ind, col_ind = linear_sum_assignment(np_big_cost_mat)
+            col_ind = col_ind % N
+            col_ind = col_ind.reshape(B, N, 1)
+            col_ind = torch.tensor(col_ind).to(cost_mat.device)
+
+        # [B,N]
+        optimal_loss = cost_mat.gather(dim=-1, index=col_ind).squeeze(-1)
+        if self._reduction == 'mean':
+            optimal_loss = optimal_loss.mean(-1)
+        elif self._reduction == 'sum':
+            optimal_loss = optimal_loss.sum(-1)
+        return optimal_loss
+
     def __call__(self, *args, **kwargs):
-        return self.forward(*args, **kwargs)
+        return self.fast_forward(*args, **kwargs)
