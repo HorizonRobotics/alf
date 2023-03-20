@@ -1,6 +1,8 @@
 { lib
 , buildPythonPackage
 , pythonRelaxDepsHook
+, pybind11
+, boost
 , pytorchWithCuda11
 , torchvisionWithCuda11
 , torchWithoutCuda
@@ -39,6 +41,11 @@ buildPythonPackage rec {
 
   nativeBuildInputs = [
     pythonRelaxDepsHook
+  ];
+
+  buildInputs = [
+    pybind11
+    boost
   ];
 
   pythonRelaxDeps = [
