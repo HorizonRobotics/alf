@@ -56,7 +56,7 @@ setup(
     ],  # And any other dependencies alf needs
     ext_modules=[
         Pybind11Extension(
-            'environments._penv',
+            'alf.environments._penv',
             sources=['alf/environments/parallel_environment.cpp'],
             extra_compile_args=[
                 '-O3', '-Wall', '-std=c++17', '-fPIC', '-fvisibility=hidden'

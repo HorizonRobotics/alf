@@ -17,7 +17,8 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
+from scipy.optimize import linear_sum_assignment
 
 import alf
 from alf.utils.math_ops import InvertibleTransform, binary_neg_entropy
@@ -682,3 +683,101 @@ class MeanSquaredLoss(object):
         if ndim > self._batch_dims:
             loss = loss.mean(dim=list(range(self._batch_dims, ndim)))
         return loss
+
+
+class BipartiteMatchingLoss(object):
+    r"""Bipartite matching loss.
+
+    This order-invariant loss can be used to evaluate the matching between a predicted
+    set and a target set. The idea is that for every forward, an optimal one-to-one
+    mapping assignment from the predicted set to the target set is first found using
+    some efficient bipartite graph matching algorithm, and the optimal loss is
+    minimized.
+
+    Mathematically, suppose there are :math:`N` objects in either set,
+    :math:`L(x,y)` is the matching loss between any :math:`(x,y)` object pair,
+    and :math:`\mathcal{G}_N` is the permuation space. The forward loss to be
+    minimized is:
+
+    .. math::
+
+        \min_{g\in\mathcal{G}_N}\sum_n^N L(x_n(\theta),y_{g(n)})
+
+    where :math:`\theta` is the model parameters.
+
+    In practice, to find the optimal assignment, we simply use ``scipy.optimize.linear_sum_assignment``.
+
+    References::
+        `End-to-End Object Detection with Transformers <https://arxiv.org/pdf/2005.12872.pdf>`_, Carion et al.
+
+        `<https://github.com/facebookresearch/detr/blob/main/models/matcher.py>`_
+    """
+
+    def __init__(self,
+                 pair_loss_fn: Callable = torch.cdist,
+                 reduction: str = 'mean',
+                 name: str = "BipartiteMatchingLoss"):
+        """
+        Args:
+            pair_loss_fn: the pairwise matching loss function. It should take
+                two sets of length ``N`` and output a cost matrix of shape ``[N,N]``.
+            reduction: 'sum', 'mean' or 'none'. This is how to reduce the matching
+                loss. For the former two, the loss shape is ``[B]``, while for
+                the 'none', the loss shape is ``[B,N]``.
+        """
+        super().__init__()
+        self._pair_loss_fn = pair_loss_fn
+        self._reduction = reduction
+        assert reduction in ['mean', 'sum', 'none']
+        self._name = name
+
+    def forward(self,
+                prediction: Tensor,
+                target: Tensor,
+                target_mask: Tensor = None):
+        """
+        Args:
+            prediction: the predicted set with a shape of ``[B,N,...]``.
+            target: the target set with a shape of ``[B,N,...]``.
+            target_mask: the valid mask for the target set. We assume that the
+                target and prediction sets each always contains ``N`` objects, but
+                some objects in the target set are just paddings whose mask values
+                are 0. These paddings will always have a matching loss of 0. The
+                shape should be ``[B,N]``. If None, then all target objects are
+                valid.
+        """
+        assert prediction.shape[:2] == target.shape[:2]
+        B, N = prediction.shape[:2]
+        cost_mat = self._pair_loss_fn(prediction, target)  # [B,N,N]
+        assert cost_mat.shape == (B, N, N), (
+            "The pairwise loss function must enumerate all pairs and output "
+            "a scalar loss for each pair!")
+
+        # mask out any cost with mask values=0
+        if target_mask is not None:
+            target_mask = target_mask.unsqueeze(1)  # [B,1,N]
+            cost_mat = cost_mat * target_mask
+
+        with torch.no_grad():
+            # [B*N, B*N]
+            max_cost = cost_mat.max() + 1.
+            big_cost_mat = torch.block_diag(*list(cost_mat - max_cost))
+            # fill in all off-diag entries with a max cost
+            big_cost_mat = big_cost_mat + max_cost
+            np_big_cost_mat = big_cost_mat.cpu().numpy()
+            # col_ind: [B*N]
+            row_ind, col_ind = linear_sum_assignment(np_big_cost_mat)
+            col_ind = col_ind % N
+            col_ind = col_ind.reshape(B, N, 1)
+            col_ind = torch.tensor(col_ind).to(cost_mat.device)
+
+        # [B,N]
+        optimal_loss = cost_mat.gather(dim=-1, index=col_ind).squeeze(-1)
+        if self._reduction == 'mean':
+            optimal_loss = optimal_loss.mean(-1)
+        elif self._reduction == 'sum':
+            optimal_loss = optimal_loss.sum(-1)
+        return optimal_loss
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
