@@ -758,37 +758,6 @@ class BipartiteMatchingLoss(object):
             target_mask = target_mask.unsqueeze(1)  # [B,1,N]
             cost_mat = cost_mat * target_mask
 
-        losses = []
-        np_cost_mat = cost_mat.detach().cpu().numpy()
-        # For every sample in the batch, we compute the optimal assignment
-        for i in range(np_cost_mat.shape[0]):
-            # ``col_ind[i]`` means pred ``i`` is assigned to target ``col_ind[i]``
-            # ``row_ind`` will always be ``range(N)``
-            row_ind, col_ind = linear_sum_assignment(np_cost_mat[i])
-            optimal_loss = cost_mat[i][row_ind, col_ind]
-            if self._reduction == 'mean':
-                optimal_loss = optimal_loss.mean(-1)
-            elif self._reduction == 'sum':
-                optimal_loss = optimal_loss.sum(-1)
-            losses.append(optimal_loss)
-        return torch.stack(losses, dim=0)
-
-    def fast_forward(self,
-                     prediction: Tensor,
-                     target: Tensor,
-                     target_mask: Tensor = None):
-        assert prediction.shape[:2] == target.shape[:2]
-        B, N = prediction.shape[:2]
-        cost_mat = self._pair_loss_fn(prediction, target)  # [B,N,N]
-        assert cost_mat.shape == (B, N, N), (
-            "The pairwise loss function must enumerate all pairs and output "
-            "a scalar loss for each pair!")
-
-        # mask out any cost with mask values=0
-        if target_mask is not None:
-            target_mask = target_mask.unsqueeze(1)  # [B,1,N]
-            cost_mat = cost_mat * target_mask
-
         with torch.no_grad():
             # [B*N, B*N]
             max_cost = cost_mat.max() + 1.
@@ -811,4 +780,4 @@ class BipartiteMatchingLoss(object):
         return optimal_loss
 
     def __call__(self, *args, **kwargs):
-        return self.fast_forward(*args, **kwargs)
+        return self.forward(*args, **kwargs)
