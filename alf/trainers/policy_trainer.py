@@ -18,7 +18,6 @@ from absl import logging
 from typing import Dict
 import math
 import os
-import pprint
 from pathlib import Path
 import re
 import signal
@@ -43,6 +42,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils import math_ops
+from alf.utils.pprint import pformat_pycolor
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
@@ -511,8 +511,8 @@ class RLTrainer(Trainer):
 
         env = alf.get_env()
         logging.info(
-            "observation_spec=%s" % pprint.pformat(env.observation_spec()))
-        logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
+            "observation_spec=\n%s" % pformat_pycolor(env.observation_spec())),
+        logging.info("action_spec=\n%s" % pformat_pycolor(env.action_spec()))
 
         # for offline buffer construction
         untransformed_observation_spec = env.observation_spec()
@@ -527,7 +527,7 @@ class RLTrainer(Trainer):
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
         logging.info("transformed_observation_spec=%s" %
-                     pprint.pformat(observation_spec))
+                     pformat_pycolor(observation_spec))
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,
