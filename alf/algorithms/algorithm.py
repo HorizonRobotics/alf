@@ -239,6 +239,8 @@ class Algorithm(AlgorithmInterface):
 
             self.load_state_dict(stat_dict, strict=True)
             self._checkpoint_pre_loaded = True
+            logging.info(
+                'in-algorithm checkpoint loaded: {}'.format(prefix_and_path))
 
     @property
     def pre_loaded(self):
