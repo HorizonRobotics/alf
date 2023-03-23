@@ -197,10 +197,10 @@ def main(_):
     root_dir = common.abs_path(FLAGS.root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
-    if FLAGS.store_snapshot:
-        common.generate_alf_root_snapshot(common.alf_root(), root_dir)
-
     conf_file = common.get_conf_file()
+
+    if FLAGS.store_snapshot:
+        common.generate_alf_snapshot(common.alf_root(), conf_file, root_dir)
 
     # FLAGS.distributed is guaranteed to be one of the possible values.
     if FLAGS.distributed == 'none':
