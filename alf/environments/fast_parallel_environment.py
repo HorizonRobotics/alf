@@ -197,10 +197,17 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         if self._closed:
             return
         logging.info('Closing all processes.')
+        i = 0
         for env in self._envs:
             env.close()
+            i += 1
+            if i % 100 == 0:
+                logging.info(f"Closed {i} processes")
         for env in self._spare_envs:
             env.close()
+            i += 1
+            if i % 100 == 0:
+                logging.info(f"Closed {i} processes")
         self._closed = True
 
     def _seed(self, envs, seeds):

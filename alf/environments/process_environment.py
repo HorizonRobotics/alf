@@ -81,7 +81,10 @@ def _worker(conn,
                 env.time_step_spec()._replace(env_info=env.env_info_spec()),
                 name)
             conn.send(_MessageType.READY)  # Ready.
-            penv.worker()
+            try:
+                penv.worker()
+            except KeyboardInterrupt:
+                penv.quit()
         else:
             conn.send(_MessageType.READY)  # Ready.
             while True:
