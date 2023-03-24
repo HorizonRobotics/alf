@@ -1,0 +1,169 @@
+ARG CUDA_BASE=docker.hobot.cc/dlp/tf:runtime-py3.6-cudnn7.4-cuda10.0-ubuntu18.04
+
+########################## Build Vulkan #################################
+# Adapted from:
+# https://gitlab.com/nvidia/container-images/opengl/-/blob/ubuntu18.04/base/Dockerfile
+# https://gitlab.com/nvidia/container-images/opengl/-/blob/ubuntu18.04/glvnd/runtime/Dockerfile
+# https://gitlab.com/nvidia/container-images/vulkan/-/blob/master/docker/Dockerfile.ubuntu18.04
+
+FROM ubuntu:18.04 as vulkan-khronos
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    git \
+    libegl1-mesa-dev \
+    libwayland-dev \
+    libx11-xcb-dev \
+    libxkbcommon-dev \
+    libxrandr-dev \
+    python3 \
+    python3-distutils \
+    wget && \
+    rm -rf /var/lib/apt/lists/*
+
+ARG VULKAN_VERSION=sdk-1.1.121.0
+
+# Download and compile vulkan components
+RUN ln -s /usr/bin/python3 /usr/bin/python && \
+    git clone https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /opt/vulkan && \
+    cd /opt/vulkan && git checkout "${VULKAN_VERSION}" && \
+    mkdir build && cd build && ../scripts/update_deps.py && \
+    cmake -C helper.cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake --build . && make install && ldconfig && \
+    mkdir -p /usr/local/lib && cp -a Vulkan-Loader/build/install/lib/* /usr/local/lib && \
+    mkdir -p /usr/local/include/vulkan && cp -r Vulkan-Headers/build/install/include/vulkan/* /usr/local/include/vulkan && \
+    mkdir -p /usr/local/share/vulkan/registry && \
+    cp -r Vulkan-Headers/build/install/share/vulkan/registry/* /usr/local/share/vulkan/registry && \
+    rm -rf /opt/vulkan
+
+FROM ${CUDA_BASE}
+
+ENV NVIDIA_DRIVER_CAPABILITIES compute,graphics,utility
+RUN echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf \
+    && echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib/i386-linux-gnu:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+
+RUN dpkg --add-architecture i386 && apt-get update \
+    && apt-get install -y --no-install-recommends --allow-change-held-packages \
+    libxau6 libxau6:i386 \
+    libxdmcp6 libxdmcp6:i386 \
+    libxcb1 libxcb1:i386 \
+    libxext6 libxext6:i386 \
+    libx11-6 libx11-6:i386 \
+    libglvnd0 libglvnd0:i386 \
+    libgl1 libgl1:i386 \
+    libglx0 libglx0:i386 \
+    libegl1 libegl1:i386 \
+    libgles2 libgles2:i386 \
+    pkg-config \
+    libglvnd-dev libglvnd-dev:i386 \
+    libgl1-mesa-dev libgl1-mesa-dev:i386 \
+    libegl1-mesa-dev libegl1-mesa-dev:i386 \
+    libgles2-mesa-dev libgles2-mesa-dev:i386 \
+    libx11-xcb-dev \
+    libxkbcommon-dev \
+    libwayland-dev \
+    libxrandr-dev \
+    libegl1-mesa-dev
+
+COPY --from=vulkan-khronos /usr/local/bin /usr/local/bin
+COPY --from=vulkan-khronos /usr/local/lib /usr/local/lib
+COPY --from=vulkan-khronos /usr/local/include/vulkan /usr/local/include/vulkan
+COPY --from=vulkan-khronos /usr/local/share/vulkan /usr/local/share/vulkan
+COPY ./nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json
+COPY ./10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
+# install packages as written in nvidia/cudagl:10.0-base-ubuntu18.04
+RUN apt-get update && apt-get install -y --no-install-recommends --allow-change-held-packages \
+        pkg-config \
+        libglvnd-dev libglvnd-dev:i386 \
+        libgl1-mesa-dev libgl1-mesa-dev:i386 \
+        libegl1-mesa-dev libegl1-mesa-dev:i386 \
+        libgles2-mesa-dev libgles2-mesa-dev:i386 && \
+    rm -rf /var/lib/apt/lists/*
+
+# replace source list
+COPY ./sources.list /etc/apt/sources.list
+ARG CUDA=10.0
+ARG CUDNN=7.6.2.24-1
+
+# install packages based on https://github.com/StanfordVL/iGibson/blob/master/docker/base/Dockerfile
+RUN apt-get update  && apt-get install -y --no-install-recommends --allow-change-held-packages \
+	curl build-essential git cmake \
+	cuda-command-line-tools-10-0 \
+    cuda-cublas-10-0 \
+    cuda-cufft-10-0 \
+    cuda-curand-10-0 \
+    cuda-cusolver-10-0 \
+    cuda-cusparse-10-0 \
+    libcudnn7=${CUDNN}+cuda${CUDA} \
+    vim \
+    tmux \
+    libhdf5-dev \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    wget
+
+# basic apt software packages
+RUN apt update && apt install -y \
+    vim emacs tree wget unzip \
+    git cmake \
+    libxml2 libxml2-dev libxslt1-dev \
+    dirmngr gnupg2 lsb-release \
+    xvfb kmod swig patchelf \
+    libopenmpi-dev  libcups2-dev  libssl-dev  libosmesa6-dev \
+    python3-pip ffmpeg libegl-mesa0 libegl1  
+# libegl1-mesa-dev libnvidia-gl-440
+
+# Install anaconda3 to /anaconda3
+RUN curl -LO https://repo.anaconda.com/archive/Anaconda3-2021.05-Linux-x86_64.sh
+RUN bash Anaconda3-2021.05-Linux-x86_64.sh -p /anaconda3 -b
+RUN rm Anaconda3-2021.05-Linux-x86_64.sh
+ENV PATH=/anaconda3/bin:${PATH}
+RUN conda update -y conda
+RUN conda create -y -n igibson python=3.7
+
+# Python packages from conda
+ENV PATH /anaconda3/envs/igibson/bin:$PATH
+RUN pip install --upgrade pip
+RUN pip install pytest
+RUN pip install tensorflow-gpu==1.15.0
+
+# install alf requirements
+RUN git clone --branch pytorch https://github.com/HorizonRobotics/alf.git /home/alf 
+WORKDIR /home/alf
+RUN pip install -e .
+
+# install iGibson
+RUN git clone --branch master https://github.com/junyaoshi/iGibson.git /opt/igibson --recursive
+WORKDIR /opt/igibson
+RUN pip install -e .
+
+# install agents
+RUN git clone https://github.com/StanfordVL/agents/ /opt/agents
+WORKDIR /opt/agents
+RUN pip install -e .
+
+# update pybullet to more efficient version
+RUN pip uninstall -y pybullet 
+RUN pip install https://github.com/StanfordVL/bullet3/archive/master.zip
+
+# download iGibson data
+RUN python -m igibson.utils.assets_utils --download_assets
+RUN python -m igibson.utils.assets_utils --download_ig_dataset
+RUN python -m igibson.utils.assets_utils --download_demo_data
+
+# clean
+RUN  rm -rf /var/lib/apt/lists/* \
+     && rm -rf /tmp/package \
+     && rm -rf /install \
+     && rm -rf /home 
+
+RUN apt update && apt install -y rsync
+
+COPY ./set_env.sh /opt/set_env.sh
+
+WORKDIR /home
