@@ -230,7 +230,6 @@ def generalized_advantage_estimation(rewards,
     is that the accumulated_td is reset to 0 for is_last steps in this function.
 
     Define abbreviations:
-
     - B: batch size representing number of trajectories
     - T: number of steps per trajectory
 
@@ -278,3 +277,66 @@ def generalized_advantage_estimation(rewards,
         advs = advs.transpose(0, 1)
 
     return advs.detach()
+
+
+def first_step_future_discounted_returns(rewards,
+                                         values,
+                                         step_types,
+                                         discounts,
+                                         time_major=True):
+    """Computes future 1 to n step discounted returns for the first step.
+
+    Define abbreviations:
+
+    - B: batch size representing number of trajectories
+    - T: number of steps per trajectory
+
+    Args:
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T,B] (or [T]) representing values.
+        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+        time_major (bool): Whether input tensors are time major.
+            False means input tensors have shape [B, T].
+
+    Returns:
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns. Shape is [B, T-1] when time_major is false.
+    """
+    if not time_major:
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
+
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
+
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    is_lasts = common.expand_dims_as(is_lasts, values)
+    discounts = common.expand_dims_as(discounts, values)
+
+    accw = torch.ones_like(values)
+    accw[0] = (1 - is_lasts[0]) * discounts[1]
+    rets = torch.zeros_like(values)
+    rets[0] = rewards[1] * (1 - is_lasts[0]) + accw[0] * values[1]
+    # When ith is LAST, v[i+1] shouldn't be used in computing ret[i].  When disc[i] == 0, v[i] isn't used in computing ret[i-1].
+    # when 2nd is LAST, ret[0] = r[1] + disc[1] * v[1], ret[1] = r[1] + disc[1] * (r[2] + disc[2] * v[2]), ret[2] = r[1] + disc[1] * (r[2] + disc[2] * v[2])
+    # r[t] = (1 - is_last[t]) * reward[t + 1]
+    # acc_return_to[t] = acc_return_to[t - 1] + r[t]
+    # bootstrapped_return[t] = r[t] + (1 - is_last[t + 1]) * discounts[t + 1] * v[t + 1]
+    with torch.no_grad():
+        for t in range(rewards.shape[0] - 2):
+            accw[t + 1] = accw[t] * (1 - is_lasts[t + 1]) * discounts[t + 2]
+            rets[t + 1] = (
+                rets[t] + rewards[t + 2] * (1 - is_lasts[t + 1]) * accw[t] +
+                values[t + 2] * accw[t + 1] -
+                accw[t] * values[t + 1] * (1 - is_lasts[t + 1]))
+
+    rets = rets[:-1]
+
+    if not time_major:
+        rets = rets.transpose(0, 1)
+
+    return rets.detach()

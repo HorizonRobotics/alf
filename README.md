@@ -27,7 +27,8 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[QRSAC](alf/algorithms/qrsac_algorithm.py)|Off-policy RL|Dabney et al. "Distributional Reinforcement Learning with Quantile Regression" [arXiv:1710.10044](https://arxiv.org/abs/1710.10044)|
 |[SAC](alf/algorithms/sac_algorithm.py)|Off-policy RL|Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)|
 |[OAC](alf/algorithms/oac_algorithm.py)|Off-policy RL|Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)|
-|[HER](https://github.com/HorizonRobotics/alf/blob/911d9573866df41e9e3adf6cdd94ee03016bf5a8/alf/algorithms/data_transformer.py#L672)|Off-policy RL|Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495)|
+|[HER](alf/algorithms/data_transformer.py) (HindsightExperienceTransformer)|Off-policy RL|Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495)|
+|[lbVT](alf/algorithms/td_loss.py) (LowerBoundedTDLoss)|Off-policy RL|Ciosek et al. "Faster Reinforcement Learning with Value Target Lower Bounding" [link](https://openreview.net/forum?id=bgAS1ZvveZ)|
 |[TAAC](alf/algorithms/taac_algorithm.py)|Off-policy RL|Yu et al. "TAAC: Temporally Abstract Actor-Critic for Continuous Control" [arXiv:2104.06521](https://arxiv.org/abs/2104.06521)|
 |[DIAYN](alf/algorithms/diayn_algorithm.py)|Intrinsic motivation/Exploration|Eysenbach et al. "Diversity is All You Need: Learning Diverse Skills without a Reward Function" [arXiv:1802.06070](https://arxiv.org/abs/1802.06070)|
 |[ICM](alf/algorithms/icm_algorithm.py)|Intrinsic motivation/Exploration|Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)|
@@ -172,6 +173,15 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 * [DDQN on Atari](alf/examples/dqn_breakout_conf.py).  Game "Q*Bert" performance.
 
   <img src="alf/examples/dqn_breakout_conf_Qbert.png" width = "600" height ="200" alt="Q*Bert-DDQN-training-curve"/>
+
+### lbVT
+* [DDQN with lowerbounded value target on Atari](alf/examples/dqn_breakout_conf.py).  Game "Q*Bert" performance.
+
+  <img src="alf/examples/dqn_breakout_conf-lbtq-Qbert.png" width = "600" height ="200" alt="Q*Bert-DDQN-lbVT-training-curve"/>
+
+* [SAC with lowerbounded value target on Atari](alf/examples/sac_breakout_conf.py).  Game "Q*Bert" performance.
+
+  <img src="alf/examples/sac_breakout_conf-lbtq-Qbert.png" width = "600" height ="200" alt="Q*Bert-SAC-lbVT-training-curve"/>
 
 ### DDPG
 * [FetchSlide (sparse rewards)](alf/examples/ddpg_fetchslide_conf.py). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This example reproduces the performance of vanilla DDPG reported in the OpenAI's Robotics environment [paper](https://arxiv.org/pdf/1802.09464.pdf). Our implementation doesn't use MPI, but obtains (evaluation) performance on par with the original implementation. (*The original MPI implementation has 19 workers, each worker containing 2 environments for rollout and sampling a minibatch of size 256 from its replay buffer for computing gradients. All the workers' gradients will be summed together for a centralized optimizer step. Our implementation simply samples a minibatch of size 5000 from a common replay buffer per optimizer step.*) The training took about 1 hour with 38 (19*2) parallel environments on a single GPU.

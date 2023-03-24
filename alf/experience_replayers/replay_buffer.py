@@ -29,15 +29,71 @@ from alf.utils import checkpoint_utils
 
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
-BatchInfo = namedtuple(
-    "BatchInfo", [
-        "env_ids",
-        "positions",
-        "importance_weights",
-        "replay_buffer",
-        "discounted_return",
-    ],
-    default_value=())
+
+class BatchInfo(
+        namedtuple(
+            "BatchInfo", [
+                "env_ids",
+                "positions",
+                "importance_weights",
+                "replay_buffer",
+                "discounted_return",
+                "derived",
+            ],
+            default_value=())):
+    """BatchInfo stores information related to a sampled experience batch of size B.
+        - env_ids: shape [B]: environment id for each sequence.
+        - positions: shape [B]: starting position in the replay buffer for each sequence.
+        - importance_weights: shape [B]: priority divided by the average of all
+            non-zero priorities in the buffer.
+        - replay_buffer: the replay buffer object.  Data transformations like FrameStacker and
+            Hindsight relabeler may need access to other data not sampled by the replayer.
+        - discounted_return: shape [B]: the accumulated future discounted return of
+            the first step of each sequence.
+        - derived: A dictionary of fields derived from the experience, e.g.
+            hindsight relabeling may return the number of steps to the future achieved goal
+            used to relabel or whether the sequence has been relabeled.
+            NOTE: ``derived`` has to be accessed through the member functions
+            ``get_derived_field()`` and ``add_derived_field()``,
+            which check for field name conflicts.
+    """
+
+    # NOTE: her_algorithms.py has similar functions for handling AlgInfo namedtuple.
+
+    def __new__(cls, *args, **kwargs):
+        info = super(BatchInfo, cls).__new__(cls, *args, **kwargs)
+        # Set default value, later code will check for this
+        info = info._replace(derived={})
+        return info
+
+    def add_derived_field(self, field, new_value):
+        """Add ``new_value`` to ``batch_info.derived[field]``.
+        Args:
+            field (str): indicate the field to be updated
+            new_value (any): the new value for the field
+        Returns:
+            BatchInfo: a structure the same as the original batch_info except
+            that the field ``field`` in the ``derived`` is set to ``new_value``.
+        """
+        assert field not in self.derived, f"field {field} already exists"
+        self.derived[field] = new_value
+        return self
+
+    def get_derived(self):
+        """Return dict ``batch_info.derived``.
+        """
+        return self.derived
+
+    def set_derived(self, new_dict):
+        """Set the ``batch_info.derived`` field to ``new_dict``.
+        Args:
+            new_dict (dict): the new value for ``batch_info.derived``
+        Returns:
+            BatchInfo: a structure the same as the original batch_info except
+            that the field ``derived`` is set to ``new_dict``.
+        """
+        assert self.derived == {}
+        return self._replace(derived=new_dict)
 
 
 @alf.configurable

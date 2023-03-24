@@ -41,8 +41,14 @@ DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
     "DdpgInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "discounted_return"
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor_loss",
+        "critic",
+        "discounted_return",
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))

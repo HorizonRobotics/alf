@@ -787,14 +787,25 @@ class HindsightExperienceTransformer(DataTransformer):
         of the current timestep.
         The exact field names can be provided via arguments to the class ``__init__``.
 
+        NOTE: The HindsightExperienceTransformer has to happen before any transformer which changes
+        reward or achieved_goal fields, e.g. observation normalizer, reward clipper, etc..
+        See `documentation <../../docs/notes/knowledge_base.rst#datatransformers>`_ for details.
+
         To use this class, add it to any existing data transformers, e.g. use this config if
         ``ObservationNormalizer`` is an existing data transformer:
 
         .. code-block:: python
 
-            ReplayBuffer.keep_episodic_info=True
-            HindsightExperienceTransformer.her_proportion=0.8
-            TrainerConfig.data_transformer_ctor=[@HindsightExperienceTransformer, @ObservationNormalizer]
+            alf.config('ReplayBuffer', keep_episodic_info=True)
+            alf.config(
+                'HindsightExperienceTransformer',
+                her_proportion=0.8
+            )
+            alf.config(
+                'TrainerConfig',
+                data_transformer_ctor=[
+                    HindsightExperienceTransformer, ObservationNormalizer
+                ])
 
         See unit test for more details on behavior.
     """
@@ -870,9 +881,10 @@ class HindsightExperienceTransformer(DataTransformer):
             # relabel only these sampled indices
             her_cond = torch.rand(batch_size) < her_proportion
             (her_indices, ) = torch.where(her_cond)
+            has_her = torch.any(her_cond)
 
-            last_step_pos = start_pos[her_indices] + batch_length - 1
-            last_env_ids = env_ids[her_indices]
+            last_step_pos = start_pos + batch_length - 1
+            last_env_ids = env_ids
             # Get x, y indices of LAST steps
             dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
             if alf.summary.should_record_summaries():
@@ -881,22 +893,24 @@ class HindsightExperienceTransformer(DataTransformer):
                     torch.mean(dist.type(torch.float32)))
 
             # get random future state
-            future_idx = last_step_pos + (torch.rand(*dist.shape) *
-                                          (dist + 1)).to(torch.int64)
+            future_dist = (torch.rand(*dist.shape) * (dist + 1)).to(
+                torch.int64)
+            future_idx = last_step_pos + future_dist
             future_ag = buffer.get_field(self._achieved_goal_field,
                                          last_env_ids, future_idx).unsqueeze(1)
 
             # relabel desired goal
             result_desired_goal = alf.nest.get_field(result,
                                                      self._desired_goal_field)
-            relabed_goal = result_desired_goal.clone()
+            relabeled_goal = result_desired_goal.clone()
             her_batch_index_tuple = (her_indices.unsqueeze(1),
                                      torch.arange(batch_length).unsqueeze(0))
-            relabed_goal[her_batch_index_tuple] = future_ag
+            if has_her:
+                relabeled_goal[her_batch_index_tuple] = future_ag[her_indices]
 
             # recompute rewards
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-            relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
+            relabeled_rewards = self._reward_fn(result_ag, relabeled_goal)
 
             non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
                                                        StepType.FIRST)
@@ -926,21 +940,26 @@ class HindsightExperienceTransformer(DataTransformer):
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_before_relabel",
                 torch.mean(result.reward[her_indices][:-1]))
-            alf.summary.scalar(
-                "replayer/" + buffer._name + ".reward_mean_after_relabel",
-                torch.mean(relabeled_rewards[her_indices][:-1]))
+            if has_her:
+                alf.summary.scalar(
+                    "replayer/" + buffer._name + ".reward_mean_after_relabel",
+                    torch.mean(relabeled_rewards[her_indices][:-1]))
+            alf.summary.scalar("replayer/" + buffer._name + ".future_distance",
+                               torch.mean(future_dist.float()))
 
         result = alf.nest.transform_nest(
-            result, self._desired_goal_field, lambda _: relabed_goal)
-
+            result, self._desired_goal_field, lambda _: relabeled_goal)
         result = result.update_time_step_field('reward', relabeled_rewards)
-
+        derived = {"is_her": her_cond, "future_distance": future_dist}
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
                 result = alf.nest.transform_nest(
                     result, f, lambda t: convert_device(t))
-        result = alf.nest.transform_nest(
-            result, "batch_info.replay_buffer", lambda _: buffer)
+            info = convert_device(info)
+            derived = convert_device(derived)
+        info = info._replace(replay_buffer=buffer)
+        info = info.set_derived(derived)
+        result = alf.data_structures.add_batch_info(result, info)
         return result
 
 

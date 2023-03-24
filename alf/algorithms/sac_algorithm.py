@@ -55,8 +55,16 @@ SacActorInfo = namedtuple(
 
 SacInfo = namedtuple(
     "SacInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return"
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor",
+        "critic",
+        "alpha",
+        "log_pi",
+        "discounted_return",
     ],
     default_value=())
 
