@@ -714,26 +714,34 @@ class BipartiteMatchingLoss(object):
     """
 
     def __init__(self,
-                 pair_loss_fn: Callable = torch.cdist,
+                 pair_loss_fn: alf.nest.Nest = torch.cdist,
+                 loss_weights: alf.nest.Nest = 1.,
                  reduction: str = 'mean',
                  name: str = "BipartiteMatchingLoss"):
         """
         Args:
-            pair_loss_fn: the pairwise matching loss function. It should take
-                two sets of length ``N`` and output a cost matrix of shape ``[N,N]``.
+            pair_loss_fn: a nest of pairwise matching loss functions. Each element
+                should take two sets of length ``N`` and output a cost matrix of
+                shape ``[N,N]``. When doing forward, the predition and target must
+                have the same nest structure with this nest. If multiple loss functions
+                are provided, then a matching will be searched on the combined
+                loss.
+            loss_weights: should have the same nest structure with ``pair_loss_fn``.
+                Each weight decides the importance of the loss function.
             reduction: 'sum', 'mean' or 'none'. This is how to reduce the matching
                 loss. For the former two, the loss shape is ``[B]``, while for
                 the 'none', the loss shape is ``[B,N]``.
         """
         super().__init__()
         self._pair_loss_fn = pair_loss_fn
+        self._loss_weights = loss_weights
         self._reduction = reduction
         assert reduction in ['mean', 'sum', 'none']
         self._name = name
 
     def forward(self,
-                prediction: Tensor,
-                target: Tensor,
+                prediction: alf.nest.Nest,
+                target: alf.nest.Nest,
                 target_mask: Tensor = None):
         """
         Args:
@@ -746,17 +754,26 @@ class BipartiteMatchingLoss(object):
                 shape should be ``[B,N]``. If None, then all target objects are
                 valid.
         """
-        assert prediction.shape[:2] == target.shape[:2]
-        B, N = prediction.shape[:2]
-        cost_mat = self._pair_loss_fn(prediction, target)  # [B,N,N]
-        assert cost_mat.shape == (B, N, N), (
-            "The pairwise loss function must enumerate all pairs and output "
-            "a scalar loss for each pair!")
 
+        def _compute_cost_mat(pred, tgt, loss_fn, w):
+            # Compute a cost mat for each (pred,tgt) pair in the nest
+            assert pred.shape[:2] == tgt.shape[:2]
+            B, N = pred.shape[:2]
+            cost_mat = loss_fn(pred, tgt)  # [B,N,N]
+            assert cost_mat.shape == (B, N, N), (
+                "The pairwise loss function must enumerate all pairs and output "
+                "a scalar loss for each pair!")
+            return cost_mat * w
+
+        cost_mats = alf.nest.map_structure(_compute_cost_mat, prediction,
+                                           target, self._pair_loss_fn,
+                                           self._loss_weights)
+        cost_mat = sum(alf.nest.flatten(cost_mats))
         # mask out any cost with mask values=0
         if target_mask is not None:
             target_mask = target_mask.unsqueeze(1)  # [B,1,N]
             cost_mat = cost_mat * target_mask
+        B, N = cost_mat.shape[:2]
 
         with torch.no_grad():
             # [B*N, B*N]
@@ -777,7 +794,7 @@ class BipartiteMatchingLoss(object):
             optimal_loss = optimal_loss.mean(-1)
         elif self._reduction == 'sum':
             optimal_loss = optimal_loss.sum(-1)
-        return optimal_loss
+        return optimal_loss, col_ind.squeeze(-1)
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)

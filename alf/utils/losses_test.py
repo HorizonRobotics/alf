@@ -91,7 +91,7 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
         target = torch.rand([2, 5, 4])
 
         matcher = losses.BipartiteMatchingLoss(reduction=reduction)
-        loss = matcher(prediction, target)
+        loss, _ = matcher(prediction, target)
         if reduction == 'none':
             self.assertEqual(loss.shape, (2, 5))
         else:
@@ -106,7 +106,7 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
                                [[0.1, 0.1, 0.1], [0.5, 0.6, 0.5]]])
         matcher = losses.BipartiteMatchingLoss(
             pair_loss_fn=partial(torch.cdist, p=1), reduction='none')
-        loss = matcher(prediction, target)
+        loss, _ = matcher(prediction, target)
         self.assertTrue(loss.requires_grad)
         self.assertTensorClose(loss, torch.tensor([[0.1, 0.3], [0.3, 1.4]]))
 
@@ -175,7 +175,7 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
                 b_target = tr_target[i:i + batch_size]
                 b_pred = model(b_inputs)  # [b,N+1,1]
                 b_pred = b_pred[:, 1:, :]
-                loss = matcher(b_pred, b_target).mean()
+                loss = matcher(b_pred, b_target)[0].mean()
                 loss.backward()
                 optimizer.step()
                 l.append(loss)
@@ -185,7 +185,7 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
 
         val_pred = model(val_inputs)
         val_pred = val_pred[:, 1:, :]
-        val_loss = matcher(val_pred, val_target)
+        val_loss = matcher(val_pred, val_target)[0]
 
         print("Validation prediction - inputs")
         print(torch.round(val_pred[:3] - val_inputs[:3, :1, :], decimals=2))
