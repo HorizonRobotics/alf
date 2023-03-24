@@ -250,7 +250,8 @@ ParallelEnvironment::ParallelEnvironment(int num_envs,
       timestep_array_(timestep_buffer_.ViewAsNestedArray(0, num_envs)),
       ready_queue_(bip::open_or_create,
                    (name + ".ready_queue").c_str(),
-                   num_envs,
+                   3 * num_envs,  // we need it to be long enough to handle
+                                  // ProcessEnvironment.Quit
                    sizeof(int)) {
   for (int i = 0; i < num_envs; ++i) {
     original_env_ids_[i] = i;
@@ -297,6 +298,9 @@ py::object ParallelEnvironment::Step(const py::object& action) {
     unsigned int priority;
     int env_id;
     ready_queue_.receive(&env_id, sizeof(env_id), recvd_size, priority);
+    if (env_id == -1) {
+      throw std::runtime_error("ProcessEnvironment is interruptted");
+    }
     assert(recvd_size == sizeof(env_id));
     if (step_type_buf_[env_id] == static_cast<int32_t>(StepType::last)) {
       Job job{JobType::reset};
@@ -347,6 +351,7 @@ class ProcessEnvironment : public EnvironmentBase {
                      const std::string& name);
   ~ProcessEnvironment();
   void Worker();
+  void Quit();
 
  protected:
   void Step(int env_id);
@@ -374,7 +379,8 @@ ProcessEnvironment::ProcessEnvironment(py::object env,
                  sizeof(Job)),
       ready_queue_(bip::open_or_create,
                    (name + ".ready_queue").c_str(),
-                   num_envs,
+                   3 * num_envs,  // we need it to be long enough to handle
+                                  // ProcessEnvironment.Quit
                    sizeof(int)),
       just_reseted_(false) {
   env_id_buf_ =
@@ -387,6 +393,11 @@ ProcessEnvironment::~ProcessEnvironment() {
   bip::message_queue::remove((name_ + ".ready_queue").c_str());
 }
 
+void ProcessEnvironment::Quit() {
+  // Inform the main process to quit
+  int env_id = -1;
+  ready_queue_.send(&env_id, sizeof(env_id), 0);
+}
 class ProcessEnvironmentCaller {
   std::string name_;
   int env_id_;
@@ -484,7 +495,12 @@ PYBIND11_MODULE(_penv, m) {
                     py::object,
                     py::object,
                     const std::string&>())
-      .def("worker", &ProcessEnvironment::Worker);
+      .def("worker", &ProcessEnvironment::Worker)
+      .def("quit",
+           &ProcessEnvironment::Quit,
+           R"pbdoc(
+              Inform the main process to quit.
+           )pbdoc");
   py::class_<ProcessEnvironmentCaller>(m, "ProcessEnvironmentCaller")
       .def(py::init<int, const std::string&>())
       .def("close", &ProcessEnvironmentCaller::Close)
