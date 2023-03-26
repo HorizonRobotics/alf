@@ -80,6 +80,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
                  optimizer: torch.optim.Optimizer = None,
                  dual_actor_value_network=None,
                  aux_options: PPGAuxOptions = PPGAuxOptions(),
+                 debug_summaries=False,
                  name: str = 'PPGAuxAlgorithm'):
         """Construct a PPGAuxAlgorithm instances.
 
@@ -123,6 +124,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
             predict_state_spec=dual_actor_value_network.state_spec,
             train_state_spec=dual_actor_value_network.state_spec,
             optimizer=optimizer,
+            debug_summaries=debug_summaries,
             name=name)
 
         self._network = dual_actor_value_network

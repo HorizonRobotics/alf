@@ -402,3 +402,40 @@ def enter_summary_scope(method):
         return ret
 
     return wrapped
+
+
+class EnsureSummary(object):
+    """Ensure summaries are generated in an infrequent code block.
+
+    Sometime, a code block runs infrequently or with different frequencey compared
+    to the summary_interval. This can lead to the problem that the summaries in
+    this code block are not generated or generated rarely. This class is a helper
+    to solve this problem.
+
+    .. code-block:: python
+
+        # initialization. For example, in __init__
+        self.ensure_summary = EnsureSummary()
+
+        # Add the following line at somewhere where it can be reached at very global step
+        self.ensure_summary.tick()
+
+        # Run the infrequent code block in the ensure_summary context:
+        with self.ensure_summary:
+            # the infrequent code block
+
+    """
+
+    def __init__(self):
+        self._need_to_summarize = False
+
+    def tick(self):
+        if should_record_summaries():
+            self._need_to_summarize = True
+
+    def __enter__(self):
+        _record_if_stack.append(lambda: self._need_to_summarize)
+
+    def __exit__(self, type, value, traceback):
+        _record_if_stack.pop()
+        self._need_to_summarize = False

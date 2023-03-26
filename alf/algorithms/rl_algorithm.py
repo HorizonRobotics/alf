@@ -290,7 +290,7 @@ class RLAlgorithm(Algorithm):
         self.rollout_step = self._rollout_step
         self._overwrite_policy_output = overwrite_policy_output
         self._remaining_unroll_length_fraction = 0
-        self._need_to_summarize_rollout = False
+        self._ensure_rollout_summary = alf.summary.EnsureSummary()
         self._offline_replay_buffer = None
 
     def is_rl(self):
@@ -720,8 +720,7 @@ class RLAlgorithm(Algorithm):
             unroll_length)
         unroll_length = int(unroll_length)
 
-        if alf.summary.should_record_summaries():
-            self._need_to_summarize_rollout = True
+        self._ensure_rollout_summary.tick()
 
         unrolled = False
         if (alf.summary.get_global_counter() >=
@@ -740,13 +739,11 @@ class RLAlgorithm(Algorithm):
                     # still written out about every summary_interval steps, we
                     # need to remember whether summary has been written between
                     # two unrolls.
-                    with alf.summary.record_if(lambda: self.
-                                               _need_to_summarize_rollout):
+                    with self._ensure_rollout_summary:
                         experience = self.unroll(unroll_length)
                         if experience:
                             self.summarize_rollout(experience)
                             self.summarize_metrics()
-                    self._need_to_summarize_rollout = False
 
         # replay buffer may not have been created for two different reasons:
         # 1. in online RL training (``has_offline`` is False), unroll is not
