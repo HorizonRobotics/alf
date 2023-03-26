@@ -418,12 +418,13 @@ class BoundedTensorSpec(TensorSpec):
                 size=shape,
                 dtype=self._dtype)
 
-    def numpy_sample(self, outer_dims=None):
+    def numpy_sample(self, outer_dims=None, rng=np.random):
         """Sample numpy arrays uniformly given the min/max bounds.
 
         Args:
             outer_dims (list[int]): an optional list of integers specifying outer
                 dimensions to add to the spec shape before sampling.
+            rng (numpy.random.RandomState): random number generator
 
         Returns:
             np.ndarray: an array of ``self._dtype``
@@ -433,11 +434,10 @@ class BoundedTensorSpec(TensorSpec):
             shape = tuple(outer_dims) + shape
 
         if self.is_continuous:
-            uniform = np.random.rand(*shape).astype(
-                torch_dtype_to_str(self._dtype))
+            uniform = rng.rand(*shape).astype(torch_dtype_to_str(self._dtype))
             return (1 - uniform) * self._minimum + self._maximum * uniform
         else:
-            return np.random.randint(
+            return rng.randint(
                 low=self._minimum,
                 high=self._maximum + 1,
                 size=shape,

@@ -25,6 +25,7 @@ import math
 import numpy as np
 import random
 import six
+from typing import List
 
 import torch
 import torch.nn.functional as F
@@ -1049,3 +1050,89 @@ class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
                                                  self._affine_paras)
         time_step = self._env.step(scaled_action)
         return time_step._replace(prev_action=action)
+
+
+class BatchEnvironmentWrapper(AlfEnvironment):
+    """Wrapper to make a list of non-batched environment into a batched environment.
+
+    Args:
+        envs: a list of unbatched ``AlfEnvironment``.
+    """
+
+    def __init__(self, envs: List[AlfEnvironment]):
+        self._envs = envs
+        super().__init__()
+        self._action_spec = self._envs[0].action_spec()
+        self._observation_spec = self._envs[0].observation_spec()
+        self._reward_spec = self._envs[0].reward_spec()
+        self._time_step_spec = self._envs[0].time_step_spec()
+        self._env_info_spec = self._envs[0].env_info_spec()
+        self._num_tasks = self._envs[0].num_tasks
+        self._task_names = self._envs[0].task_names
+        if any(env.action_spec() != self._action_spec for env in self._envs):
+            raise ValueError(
+                'All environments must have the same action spec.')
+        if any(env.time_step_spec() != self._time_step_spec
+               for env in self._envs):
+            raise ValueError(
+                'All environments must have the same time_step_spec.')
+        if any(env.env_info_spec() != self._env_info_spec
+               for env in self._envs):
+            raise ValueError(
+                'All environments must have the same env_info_spec.')
+        if any(env.batched for env in self._envs):
+            raise ValueError('All environments must be non-batched.')
+
+    @property
+    def batched(self):
+        return True
+
+    @property
+    def batch_size(self):
+        return len(self._envs)
+
+    @property
+    def num_tasks(self):
+        return self._num_tasks
+
+    @property
+    def task_names(self):
+        return self._task_names
+
+    def env_info_spec(self):
+        return self._env_info_spec
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def action_spec(self):
+        return self._action_spec
+
+    def reward_spec(self):
+        return self._reward_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def close(self):
+        for env in self._envs:
+            env.close()
+
+    def render(self, mode):
+        return self._envs[0].render(mode)
+
+    def seed(self, seed):
+        for i, env in enumerate(self._envs):
+            env.seed(seed * len(self._envs) + i)
+
+    def _step(self, action):
+        time_steps = [env.step(a) for env, a in zip(self._envs, action)]
+        time_step = alf.nest.map_structure(lambda *arrays: np.stack(arrays),
+                                           *time_steps)
+        return time_step
+
+    def _reset(self):
+        time_steps = [env.reset() for env in self._envs]
+        time_step = alf.nest.map_structure(lambda *arrays: np.stack(arrays),
+                                           *time_steps)
+        return time_step
