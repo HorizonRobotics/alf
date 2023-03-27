@@ -739,6 +739,13 @@ class BipartiteMatchingLoss(object):
                 optimal matching is found. According to the DETR paper, this
                 cost matrix might be different from the one used for matching.
                 If None, then it will be the same matrix for matching.
+
+        Returns:
+            tuple:
+            - the optimal loss. If reduction is 'mean' or 'sum', its shape is
+              ``[B,N]``, otherwise its shape is ``[B,N,N]``.
+            - the optimal matching given the cost matrix. Its shape is ``[B,N]``,
+              where the value of n-th entry is its mapped index in the target set.
         """
         if cost_mat is None:
             cost_mat = matching_cost_mat
