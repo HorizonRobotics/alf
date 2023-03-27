@@ -714,71 +714,41 @@ class BipartiteMatchingLoss(object):
     """
 
     def __init__(self,
-                 pair_loss_fn: alf.nest.Nest = torch.cdist,
-                 loss_weights: alf.nest.Nest = 1.,
                  reduction: str = 'mean',
                  name: str = "BipartiteMatchingLoss"):
         """
         Args:
-            pair_loss_fn: a nest of pairwise matching loss functions. Each element
-                should take two sets of length ``N`` and output a cost matrix of
-                shape ``[N,N]``. When doing forward, the predition and target must
-                have the same nest structure with this nest. If multiple loss functions
-                are provided, then a matching will be searched on the combined
-                loss.
-            loss_weights: should have the same nest structure with ``pair_loss_fn``.
-                Each weight decides the importance of the loss function.
             reduction: 'sum', 'mean' or 'none'. This is how to reduce the matching
                 loss. For the former two, the loss shape is ``[B]``, while for
                 the 'none', the loss shape is ``[B,N]``.
         """
         super().__init__()
-        self._pair_loss_fn = pair_loss_fn
-        self._loss_weights = loss_weights
         self._reduction = reduction
         assert reduction in ['mean', 'sum', 'none']
         self._name = name
 
     def forward(self,
-                prediction: alf.nest.Nest,
-                target: alf.nest.Nest,
-                target_mask: Tensor = None):
-        """
+                matching_cost_mat: torch.Tensor,
+                cost_mat: torch.Tensor = None):
+        """Compute the optimal matching loss.
+
         Args:
-            prediction: the predicted set with a shape of ``[B,N,...]``.
-            target: the target set with a shape of ``[B,N,...]``.
-            target_mask: the valid mask for the target set. We assume that the
-                target and prediction sets each always contains ``N`` objects, but
-                some objects in the target set are just paddings whose mask values
-                are 0. These paddings will always have a matching loss of 0. The
-                shape should be ``[B,N]``. If None, then all target objects are
-                valid.
+            matching_cost_mat: the cost matrix used to determine the optimal
+                matching. It shape should be ``[B,N,N]``.
+            cost_mat: the cost matrix used to compute the optimal loss once the
+                optimal matching is found. According to the DETR paper, this
+                cost matrix might be different from the one used for matching.
+                If None, then it will be the same matrix for matching.
         """
-
-        def _compute_cost_mat(pred, tgt, loss_fn, w):
-            # Compute a cost mat for each (pred,tgt) pair in the nest
-            assert pred.shape[:2] == tgt.shape[:2]
-            B, N = pred.shape[:2]
-            cost_mat = loss_fn(pred, tgt)  # [B,N,N]
-            assert cost_mat.shape == (B, N, N), (
-                "The pairwise loss function must enumerate all pairs and output "
-                "a scalar loss for each pair!")
-            return cost_mat * w
-
-        cost_mats = alf.nest.map_structure(_compute_cost_mat, prediction,
-                                           target, self._pair_loss_fn,
-                                           self._loss_weights)
-        cost_mat = sum(alf.nest.flatten(cost_mats))
-        # mask out any cost with mask values=0
-        if target_mask is not None:
-            target_mask = target_mask.unsqueeze(1)  # [B,1,N]
-            cost_mat = cost_mat * target_mask
-        B, N = cost_mat.shape[:2]
+        if cost_mat is None:
+            cost_mat = matching_cost_mat
 
         with torch.no_grad():
+            B, N = matching_cost_mat.shape[:2]
             # [B*N, B*N]
-            max_cost = cost_mat.max() + 1.
-            big_cost_mat = torch.block_diag(*list(cost_mat - max_cost))
+            max_cost = matching_cost_mat.max() + 1.
+            big_cost_mat = torch.block_diag(
+                *list(matching_cost_mat - max_cost))
             # fill in all off-diag entries with a max cost
             big_cost_mat = big_cost_mat + max_cost
             np_big_cost_mat = big_cost_mat.cpu().numpy()
