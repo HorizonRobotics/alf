@@ -754,10 +754,10 @@ class BipartiteMatchingLoss(object):
             B, N = matching_cost_mat.shape[:2]
             max_cost = matching_cost_mat.max() + 1.
             # [B*N, B*N]
+            # Subtract all diag entries by a max cost so that no off-diag matchings
+            # will be optimal.
             big_cost_mat = torch.block_diag(
                 *list(matching_cost_mat - max_cost))
-            # fill in all off-diag entries with a max cost
-            big_cost_mat = big_cost_mat + max_cost
             np_big_cost_mat = big_cost_mat.cpu().numpy()
             # col_ind: [B*N]
             row_ind, col_ind = linear_sum_assignment(np_big_cost_mat)
