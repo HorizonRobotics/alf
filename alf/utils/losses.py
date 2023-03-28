@@ -752,8 +752,8 @@ class BipartiteMatchingLoss(object):
 
         with torch.no_grad():
             B, N = matching_cost_mat.shape[:2]
-            # [B*N, B*N]
             max_cost = matching_cost_mat.max() + 1.
+            # [B*N, B*N]
             big_cost_mat = torch.block_diag(
                 *list(matching_cost_mat - max_cost))
             # fill in all off-diag entries with a max cost
