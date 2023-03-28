@@ -393,8 +393,20 @@ class Trainer(object):
             alf.summary.text(
                 'unoptimized_parameters',
                 _markdownify(self._algorithm.get_unoptimized_parameter_info()))
-            alf.summary.text('revision', git_utils.get_revision())
-            alf.summary.text('diff', _markdownify(git_utils.get_diff()))
+
+            repo_roots = {
+                **common._extra_repo_roots_,
+                **{
+                    'alf': common.alf_root()
+                }
+            }
+            for name, root in repo_roots.items():
+                alf.summary.text(f'{name}/revision',
+                                 git_utils.get_revision(f'{root}/{name}'))
+                alf.summary.text(
+                    f'{name}/diff',
+                    _markdownify(git_utils.get_diff(f'{root}/{name}')))
+
             alf.summary.text('seed', str(self._random_seed))
 
             # Save a rendered directed graph of the algorithm to the root
