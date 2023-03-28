@@ -714,56 +714,50 @@ class BipartiteMatchingLoss(object):
     """
 
     def __init__(self,
-                 pair_loss_fn: Callable = torch.cdist,
                  reduction: str = 'mean',
                  name: str = "BipartiteMatchingLoss"):
         """
         Args:
-            pair_loss_fn: the pairwise matching loss function. It should take
-                two sets of length ``N`` and output a cost matrix of shape ``[N,N]``.
             reduction: 'sum', 'mean' or 'none'. This is how to reduce the matching
                 loss. For the former two, the loss shape is ``[B]``, while for
                 the 'none', the loss shape is ``[B,N]``.
         """
         super().__init__()
-        self._pair_loss_fn = pair_loss_fn
         self._reduction = reduction
         assert reduction in ['mean', 'sum', 'none']
         self._name = name
 
     def forward(self,
-                prediction: Tensor,
-                target: Tensor,
-                target_mask: Tensor = None):
-        """
-        Args:
-            prediction: the predicted set with a shape of ``[B,N,...]``.
-            target: the target set with a shape of ``[B,N,...]``.
-            target_mask: the valid mask for the target set. We assume that the
-                target and prediction sets each always contains ``N`` objects, but
-                some objects in the target set are just paddings whose mask values
-                are 0. These paddings will always have a matching loss of 0. The
-                shape should be ``[B,N]``. If None, then all target objects are
-                valid.
-        """
-        assert prediction.shape[:2] == target.shape[:2]
-        B, N = prediction.shape[:2]
-        cost_mat = self._pair_loss_fn(prediction, target)  # [B,N,N]
-        assert cost_mat.shape == (B, N, N), (
-            "The pairwise loss function must enumerate all pairs and output "
-            "a scalar loss for each pair!")
+                matching_cost_mat: torch.Tensor,
+                cost_mat: torch.Tensor = None):
+        """Compute the optimal matching loss.
 
-        # mask out any cost with mask values=0
-        if target_mask is not None:
-            target_mask = target_mask.unsqueeze(1)  # [B,1,N]
-            cost_mat = cost_mat * target_mask
+        Args:
+            matching_cost_mat: the cost matrix used to determine the optimal
+                matching. It shape should be ``[B,N,N]``.
+            cost_mat: the cost matrix used to compute the optimal loss once the
+                optimal matching is found. According to the DETR paper, this
+                cost matrix might be different from the one used for matching.
+                If None, then it will be the same matrix for matching.
+
+        Returns:
+            tuple:
+            - the optimal loss. If reduction is 'mean' or 'sum', its shape is
+              ``[B,N]``, otherwise its shape is ``[B,N,N]``.
+            - the optimal matching given the cost matrix. Its shape is ``[B,N]``,
+              where the value of n-th entry is its mapped index in the target set.
+        """
+        if cost_mat is None:
+            cost_mat = matching_cost_mat
 
         with torch.no_grad():
+            B, N = matching_cost_mat.shape[:2]
+            max_cost = matching_cost_mat.max() + 1.
             # [B*N, B*N]
-            max_cost = cost_mat.max() + 1.
-            big_cost_mat = torch.block_diag(*list(cost_mat - max_cost))
-            # fill in all off-diag entries with a max cost
-            big_cost_mat = big_cost_mat + max_cost
+            # Subtract all diag entries by a max cost so that no off-diag matchings
+            # will be optimal.
+            big_cost_mat = torch.block_diag(
+                *list(matching_cost_mat - max_cost))
             np_big_cost_mat = big_cost_mat.cpu().numpy()
             # col_ind: [B*N]
             row_ind, col_ind = linear_sum_assignment(np_big_cost_mat)
@@ -777,7 +771,7 @@ class BipartiteMatchingLoss(object):
             optimal_loss = optimal_loss.mean(-1)
         elif self._reduction == 'sum':
             optimal_loss = optimal_loss.sum(-1)
-        return optimal_loss
+        return optimal_loss, col_ind.squeeze(-1)
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)

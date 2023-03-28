@@ -42,7 +42,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils import math_ops
-from alf.utils.pprint import pformat_pycolor
+from alf.utils.pretty_print import pformat_pycolor
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
