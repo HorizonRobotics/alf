@@ -182,9 +182,6 @@ def launch_snapshot_play():
     """
     # assert the current path is not ALF_ROOT because sys.path will always prepend
     # the current path to the path list, which makes our snapshot ALF path shadowed
-    assert not common.is_alf_root(
-        os.getcwd()), ("Play with a snapshot is not allowed under ALF root!")
-
     root_dir = common.abs_path(FLAGS.root_dir)
 
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
