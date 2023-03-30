@@ -37,7 +37,7 @@ import torch.distributions as td
 import torch.nn as nn
 import traceback
 import types
-from typing import Callable, List
+from typing import Callable, List, Dict
 import runpy
 
 import alf
@@ -1413,19 +1413,33 @@ def get_all_parameters(obj):
     return all_parameters
 
 
-_extra_repo_roots_ = {}
+def snapshot_repo_roots() -> Dict[str, str]:
+    """Return a dict of repo root dirs for snapshot. The paths should be defined
+    by a special environment variable ``ALF_SNAPSHOT_REPO_ROOTS``, in the following
+    format:
 
+    .. code-block:: bash
 
-def add_snapshot_repo_root(root, module_name):
-    """Call this function to add any other repo root dir which needs to be included
-    in the alf snapshot.
+        export ALF_SNAPSHOT_REPO_ROOTS="<module_name1>=<repo_root1>:<module_name2>=<repo_root2>:..."
 
-    Args:
-        root: the parent path of the repo module.
-        module_name: the module name for importing in python, e.g., 'alf', 'hobot'.
+    where pairs of "<module_name>=<repo_root>" are separated by ":". Note that
+    ``<repo_root>`` should be the parent dir of the module package dir.
+
+    Returns:
+        dict[str]: a dict of ``{module_name: repo_root}``, excluding the alf repo
+            itself.
     """
-    global _extra_repo_roots_
-    _extra_repo_roots_[module_name] = root
+    repo_roots_envar = os.getenv('ALF_SNAPSHOT_REPO_ROOTS')
+    repo_roots = {}
+    if repo_roots_envar is not None:
+        pairs = repo_roots_envar.split(':')
+        for p in pairs:
+            assert '=' in p, (
+                "Each repo str must be in the format '<module>=<repo_root>'! "
+                f"Got {p}")
+            module, repo_root = p.split('=')
+            repo_roots[module] = str(pathlib.Path(repo_root).absolute())
+    return repo_roots
 
 
 def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
@@ -1455,19 +1469,8 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
-    if conf_file.endswith('.py'):
-        # Currently, snapshot generation is always before calling ``parse_conf_file``
-        # which will generate an environment in each subprocess.
-        # So we need to first (informally) run the conf file so that any extra repo
-        # can have a chance of calling ``add_snapshot_repo_root()`` in their
-        # ``__init__.py``.
-        # After this, we need to reset all configs.
-        # .gin config is not supported here.
-        runpy.run_path(conf_file)
-        alf.reset_configs()
-
     includes = ["*.py", "*.gin", "*.so", "*.json", "*.xml"]
-    repo_roots = {**_extra_repo_roots_, **{'alf': alf_root}}
+    repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
     for name, root in repo_roots.items():
         assert not _is_subdir(dest_path, root), (
             "Snapshot path '%s' is not allowed under any repo root '%s'! " %
@@ -1478,6 +1481,7 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         # compress the snapshot repo into a ".tar.gz" file
         os.system(
             f"cd {dest_path}; tar -czf {name}.tar.gz {name}; rm -rf {name}")
+        info(f"Generated a snapshot {name}@{root}")
 
 
 def unzip_alf_snapshot(root_dir: str):

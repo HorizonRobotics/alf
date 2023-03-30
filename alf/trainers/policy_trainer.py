@@ -395,7 +395,7 @@ class Trainer(object):
                 _markdownify(self._algorithm.get_unoptimized_parameter_info()))
 
             repo_roots = {
-                **common._extra_repo_roots_,
+                **common.snapshot_repo_roots(),
                 **{
                     'alf': common.alf_root()
                 }
