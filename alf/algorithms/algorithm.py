@@ -1579,7 +1579,8 @@ class Algorithm(AlgorithmInterface):
                 # negative or very large values that cause out of bound kernel
                 # error: https://github.com/pytorch/pytorch/issues/59756
                 indices = alf.nest.utils.convert_device(
-                    torch.randperm(batch_size, device='cpu'))
+                    torch.randperm(batch_size, device='cpu'),
+                    str(experience.step_type.device))
             for b in range(0, batch_size, mini_batch_size):
 
                 is_last_mini_batch = (u == num_updates - 1
