@@ -85,6 +85,10 @@ def _worker(conn,
                 penv.worker()
             except KeyboardInterrupt:
                 penv.quit()
+            except Exception as e:
+                print(e)
+                traceback.print_exc()
+                penv.quit()
         else:
             conn.send(_MessageType.READY)  # Ready.
             while True:
@@ -145,6 +149,7 @@ def process_call(conn, env, flatten, action_spec):
 
 
 class ProcessEnvironment(object):
+
     def __init__(self,
                  env_constructor,
                  env_id=None,

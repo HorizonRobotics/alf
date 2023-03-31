@@ -105,13 +105,22 @@ class SharedDataBuffer {
 void SharedDataBuffer::Write(py::object nested_array, size_t slice_id) {
   auto arrays = Flatten(nested_array);
   for (size_t j = 0; j < arrays.size(); ++j) {
-    auto buffer = py::buffer(arrays[j]);
-    const py::buffer_info& info = buffer.request();
-    if (info.ndim == 0) {
-      memcpy(GetBuf(slice_id, j), info.ptr, info.itemsize);
-    } else {
-      assert(info.strides[0] * info.shape[0] == (signed)sizes_[j]);
-      memcpy(GetBuf(slice_id, j), info.ptr, info.shape[0] * info.strides[0]);
+    try {
+      auto buffer = py::buffer(arrays[j]);
+      const py::buffer_info& info = buffer.request();
+      if (info.ndim == 0) {
+        memcpy(GetBuf(slice_id, j), info.ptr, info.itemsize);
+      } else {
+        assert(info.strides[0] * info.shape[0] == (signed)sizes_[j]);
+        memcpy(GetBuf(slice_id, j), info.ptr, info.shape[0] * info.strides[0]);
+      }
+    } catch (const py::type_error& e) {
+      throw std::runtime_error(
+          py::str("Caught a type error while writing an object. The "
+                  "offending type is '{}'. It is likely that one of the "
+                  "field is not converted to numpy array or numpy scalar "
+                  "as requried. The object itself is {}.")
+              .format(arrays[j].get_type(), nested_array));
     }
   }
 }
