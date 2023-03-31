@@ -148,7 +148,6 @@ def process_call(conn, env, flatten, action_spec):
 
 
 class ProcessEnvironment(object):
-
     def __init__(self,
                  env_constructor,
                  env_id=None,
