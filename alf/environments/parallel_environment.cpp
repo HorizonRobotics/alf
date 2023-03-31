@@ -117,11 +117,11 @@ void SharedDataBuffer::Write(py::object nested_array, size_t slice_id) {
     }
   } catch (const py::type_error& e) {
     throw std::runtime_error(
-        py::str("Caught a type error while writing an object. The "
-                "offending type is '{}'. It is likely that one of the "
+        py::str("Caught '{}' while writing an object. It is likely "
+                "that one of the "
                 "field is not converted to numpy array or numpy scalar "
                 "as requried. The object itself is {}.")
-            .format(arrays[j].get_type(), nested_array));
+            .format(e.what(), nested_array));
   }
 }
 
