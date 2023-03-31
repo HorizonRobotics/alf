@@ -139,7 +139,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
                 config=config,
                 optimizer=aux_optimizer,
                 dual_actor_value_network=dual_actor_value_network,
-                aux_options=aux_options)
+                aux_options=aux_options,
+                debug_summaries=debug_summaries)
         else:
             # A None ``_aux_algorithm`` means not performaning aux
             # phase update at all.
@@ -151,6 +152,7 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._predict_step_epsilon_greedy = epsilon_greedy
+        self._ensure_summary = alf.summary.EnsureSummary()
 
     def _trainable_attributes_to_ignore(self):
         return ['_aux_algorithm']
@@ -216,7 +218,11 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         if not self._aux_algorithm:
             return
 
+        self._ensure_summary.tick()
+
         if alf.summary.get_global_counter(
         ) % self._aux_algorithm.interval == 0:
-            self._aux_algorithm.train_from_replay_buffer(
-                update_global_counter=False)
+            with self._ensure_summary:
+                with alf.summary.scope(self._aux_algorithm.name):
+                    self._aux_algorithm.train_from_replay_buffer(
+                        update_global_counter=False)
