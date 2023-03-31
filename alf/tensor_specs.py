@@ -134,6 +134,14 @@ class TensorSpec(object):
         return self._dtype
 
     @property
+    def dtype_str(self):
+        """The str representation of dtype
+
+        It can be used to contruct a numpy array.
+        """
+        return torch_dtype_to_str(self._dtype)
+
+    @property
     def is_discrete(self):
         """Whether spec is discrete."""
         return not self.dtype.is_floating_point
@@ -203,7 +211,7 @@ class TensorSpec(object):
         shape = self._shape
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
-        return np.ones(shape, dtype=torch_dtype_to_str(self._dtype)) * value
+        return np.full(shape, value, dtype=self.dtype_str)
 
     def numpy_zeros(self, outer_dims=None):
         """Create a zero numpy.ndarray from the spec.
