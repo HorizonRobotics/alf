@@ -86,7 +86,6 @@ def _worker(conn,
             except KeyboardInterrupt:
                 penv.quit()
             except Exception as e:
-                print(e)
                 traceback.print_exc()
                 penv.quit()
         else:
