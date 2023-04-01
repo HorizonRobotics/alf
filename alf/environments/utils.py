@@ -58,7 +58,7 @@ class UnwrappedEnvChecker(object):
 
 def _env_constructor(env_load_fn, env_name, batch_size_per_env, env_id):
     if batch_size_per_env == 1:
-        return env_load_fn(env_name=env_name, env_id=env_id)
+        return env_load_fn(env_name, env_id)
     envs = [
         env_load_fn(env_name, env_id * batch_size_per_env + i)
         for i in range(batch_size_per_env)
