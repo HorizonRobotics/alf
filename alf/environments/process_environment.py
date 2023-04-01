@@ -85,6 +85,9 @@ def _worker(conn,
                 penv.worker()
             except KeyboardInterrupt:
                 penv.quit()
+            except Exception:
+                traceback.print_exc()
+                penv.quit()
         else:
             conn.send(_MessageType.READY)  # Ready.
             while True:
