@@ -106,8 +106,14 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         self._env_info_spec = self._envs[0].env_info_spec()
         self._num_tasks = self._envs[0].num_tasks
         self._task_names = self._envs[0].task_names
+        self._batch_size = self._envs[0].batch_size * num_envs
         time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
+        batch_size_per_env = self._envs[0].batch_size
+        if batch_size_per_env == 1:
+            assert not self._envs[
+                0].batched, "Does not support batched environment for if batch_size is 1"
+        batched = batch_size_per_env > 1
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')
@@ -115,10 +121,18 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
                for env in self._envs):
             raise ValueError(
                 'All environments must have the same time_step_spec.')
+        if any(env.env_info_spec() != self._env_info_spec
+               for env in self._envs):
+            raise ValueError(
+                'All environments must have the same env_info_spec.')
+        if any(env.batch_size != batch_size_per_env for env in self._envs):
+            raise ValueError('All environments must have the same batch_size.')
+        if any(env.batched != batched for env in self._envs):
+            raise ValueError('All environments must have the same batched.')
         self._closed = False
         self._penv = _penv.ParallelEnvironment(
-            num_envs, num_spare_envs_for_reload, self._action_spec,
-            time_step_with_env_info_spec, name)
+            num_envs, num_spare_envs_for_reload, batch_size_per_env,
+            self._action_spec, time_step_with_env_info_spec, name)
 
     @property
     def envs(self):
@@ -149,7 +163,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
 
     @property
     def batch_size(self):
-        return self._num_envs
+        return self._batch_size
 
     @property
     def num_tasks(self):

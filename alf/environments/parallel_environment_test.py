@@ -25,6 +25,7 @@ import torch
 import alf
 import alf.data_structures as ds
 from alf.environments import parallel_environment
+from alf.environments.alf_wrappers import BatchEnvironmentWrapper
 from alf.environments.fast_parallel_environment import FastParallelEnvironment
 from alf.environments.random_alf_environment import RandomAlfEnvironment
 import alf.tensor_specs as ts
@@ -58,6 +59,14 @@ def slow_env_load(observation_spec,
         use_tensor_time_step=False)
 
 
+def _batch_env_ctor(env_ctor, batch_size_per_env, env_id):
+    envs = [
+        env_ctor(env_id=env_id * batch_size_per_env + i)
+        for i in range(batch_size_per_env)
+    ]
+    return BatchEnvironmentWrapper(envs)
+
+
 class ParallelAlfEnvironmentTest(alf.test.TestCase):
     def setUp(self):
         self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
@@ -75,18 +84,23 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
     def _make_parallel_environment(self,
                                    constructor=None,
                                    num_envs=2,
+                                   batch_size_per_env=1,
                                    flatten=True,
                                    start_serially=True,
                                    blocking=True):
         self._set_default_specs()
         constructor = constructor or functools.partial(
             RandomAlfEnvironment, self.observation_spec, self.action_spec)
+        if batch_size_per_env > 1:
+            constructor = functools.partial(_batch_env_ctor, constructor,
+                                            batch_size_per_env)
+        num_envs //= batch_size_per_env
         env = self._parallel_environment_ctor(
             env_constructors=[constructor] * num_envs,
             blocking=blocking,
             flatten=flatten,
             start_serially=start_serially)
-        env.seed(list(range(1, num_envs + 1)))
+        env.seed(list(range(num_envs)))
         return env
 
     def test_close_no_hang_after_init(self):
@@ -330,9 +344,8 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
         alf.nest.assert_same_structure(nest1, nest2)
 
         def _same_tensor(path, t1, t2):
-            if not (t1 == t2).all():
-                logging.info(
-                    f"different value at path '{path}': {t1} vs. {t2}")
+            self.assertTrue((t1 == t2).all(),
+                            f"different value at path '{path}': {t1} vs. {t2}")
 
         alf.nest.py_map_structure_with_path(_same_tensor, nest1, nest2)
 
@@ -343,6 +356,23 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
         env2 = self._make_parallel_environment()
         ts1 = env1.reset()
         ts2 = env2.reset()
+        for _ in range(100):
+            ts1 = env1.step(ts1.prev_action)
+            ts2 = env2.step(ts2.prev_action)
+            self._check_same_nest(ts1, ts2)
+        env1.close()
+        env2.close()
+
+    def test_fast_parallel_environment2(self):
+        # test batch_size_per_env > 1
+        self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
+        env1 = self._make_parallel_environment(num_envs=6)
+        self._parallel_environment_ctor = FastParallelEnvironment
+        env2 = self._make_parallel_environment(
+            num_envs=6, batch_size_per_env=2)
+        ts1 = env1.reset()
+        ts2 = env2.reset()
+        self.assertEqual(env1.batch_size, env2.batch_size)
         for _ in range(100):
             ts1 = env1.step(ts1.prev_action)
             ts2 = env2.step(ts2.prev_action)

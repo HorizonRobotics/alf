@@ -110,7 +110,6 @@ class Evaluator(object):
         if self._async:
             job = EvalJob(type="stop")
             self._job_queue.put(job)
-            self._done_queue.get()
             self._worker.join()
         else:
             self._env.close()
@@ -248,6 +247,8 @@ def _worker(job_queue: mp.Queue,
 
         env.close()
         done_queue.put(None)
+    except KeyboardInterrupt:
+        alf.get_env().close()
     except Exception as e:
         logging.exception(f'{mp.current_process().name} - {e}')
 
