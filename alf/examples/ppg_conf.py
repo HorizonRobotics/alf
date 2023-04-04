@@ -15,26 +15,22 @@
 automatically enforced for PPO's policy.
 """
 
-from alf.algorithms.data_transformer import UntransformedTimeStep
 import alf
 from alf.algorithms.agent import Agent
 from alf.algorithms.ppg_algorithm import PPGAlgorithm
 from alf.algorithms.ppo_algorithm import PPOLoss
 
-alf.config(
-    'Agent', rl_algorithm_cls=PPGAlgorithm, enforce_entropy_target=False)
+alf.config('Agent',
+           rl_algorithm_cls=PPGAlgorithm,
+           enforce_entropy_target=False)
 
 alf.config('PPOLoss', entropy_regularization=None, normalize_advantages=True)
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    whole_replay_buffer_training=True,
-    clear_replay_buffer=True)
+alf.config('TrainerConfig',
+           algorithm_ctor=Agent,
+           whole_replay_buffer_training=True,
+           clear_replay_buffer=True)
 
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=[UntransformedTimeStep],
-    epsilon_greedy=0.1)
+alf.config('TrainerConfig', epsilon_greedy=0.1)
 
 alf.config('make_ddp_performer', find_unused_parameters=True)
