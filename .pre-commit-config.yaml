@@ -1,16 +1,16 @@
 repos:
 -   repo: https://github.com/Lucas-C/pre-commit-hooks.git
-    sha: v1.0.1
+    rev: v1.0.1
     hooks:
     -   id: remove-crlf
         files: (?!.*third_party)^.*$ | (?!.*book)^.*$
 -   repo: https://github.com/pre-commit/mirrors-yapf.git
-    sha: v0.25.0
+    rev: v0.25.0
     hooks:
     -   id: yapf
         files: (.*\.(py|bzl)|BUILD|.*\.BUILD|WORKSPACE)$
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    sha: 5bf6c09bfa1297d3692cadd621ef95f1284e33c0
+    rev: 5bf6c09bfa1297d3692cadd621ef95f1284e33c0
     hooks:
     -   id: check-added-large-files
         args: [--maxkb=10000]

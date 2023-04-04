@@ -743,7 +743,7 @@ class BipartiteMatchingLoss(object):
         Returns:
             tuple:
             - the optimal loss. If reduction is 'mean' or 'sum', its shape is
-              ``[B,N]``, otherwise its shape is ``[B,N,N]``.
+              ``[B]``, otherwise its shape is ``[B,N]``.
             - the optimal matching given the cost matrix. Its shape is ``[B,N]``,
               where the value of n-th entry is its mapped index in the target set.
         """
