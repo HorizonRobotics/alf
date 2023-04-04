@@ -21,13 +21,12 @@ def gen_penv():
     dir_path = os.path.dirname(current_path)
     os.chdir(dir_path)
 
+    # install pybind11 if it's not installed.
     try:
         import pybind11
-    except ImportError:
-        print("pybind11 not found. Installing ...")
+    except:
         assert os.system(
             "pip install pybind11") == 0, "Fail to pip install pybind11"
-
     python = sys.executable
     cmd = (f"g++ -O3 -Wall -shared -std=c++17 -fPIC -fvisibility=hidden "
            f"`{python} -m pybind11 --includes` parallel_environment.cpp "

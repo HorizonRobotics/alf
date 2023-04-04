@@ -13,6 +13,7 @@
 # limitations under the License.
 """Simple wrapper over unittest.TestCase to provide extra functionality."""
 
+import numpy as np
 import torch
 import unittest
 import alf
@@ -60,5 +61,30 @@ class TestCase(unittest.TestCase):
         self.assertIsInstance(t2, torch.Tensor,
                               'Second argument is not a Tensor')
         if torch.max(torch.abs(t1 - t2)) < epsilon:
+            standardMsg = '%s is actually close to %s' % (t1, t2)
+            self.fail(self._formatMessage(msg, standardMsg))
+
+    def assertArrayEqual(self, t1, t2, msg=None):
+        t1 = np.array(t1)
+        t2 = np.array(t2)
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
+        if not np.all(t1 == t2):
+            standardMsg = '%s != %s' % (t1, t2)
+            self.fail(self._formatMessage(msg, standardMsg))
+
+    def assertArrayClose(self, t1, t2, epsilon=1e-6, msg=None):
+        t1 = np.array(t1)
+        t2 = np.array(t2)
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
+        diff = np.max(np.abs(t1 - t2))
+        if not (diff <= epsilon):
+            standardMsg = '%s is not close to %s. diff=%s' % (t1, t2, diff)
+            self.fail(self._formatMessage(msg, standardMsg))
+
+    def assertArrayNotClose(self, t1, t2, epsilon=1e-6, msg=None):
+        t1 = np.array(t1)
+        t2 = np.array(t2)
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
+        if np.max(np.abs(t1 - t2)) < epsilon:
             standardMsg = '%s is actually close to %s' % (t1, t2)
             self.fail(self._formatMessage(msg, standardMsg))
