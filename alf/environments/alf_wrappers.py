@@ -1055,6 +1055,9 @@ class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
 class BatchEnvironmentWrapper(AlfEnvironment):
     """Wrapper to make a list of non-batched environment into a batched environment.
 
+    Note the individual environments in ``envs`` are executed sequentially doring
+    one ``step()`` of ``reset()``.
+
     Args:
         envs: a list of unbatched ``AlfEnvironment``.
     """
