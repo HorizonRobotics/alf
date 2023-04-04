@@ -51,21 +51,21 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     """
 
-    def __init__(self,
-                 observation_spec,
-                 action_spec,
-                 reward_spec=TensorSpec(()),
-                 env=None,
-                 config: Optional[TrainerConfig] = None,
-                 aux_options: PPGAuxOptions = PPGAuxOptions(),
-                 encoding_network_ctor: Callable[...,
-                                                 Network] = EncodingNetwork,
-                 policy_optimizer: Optional[torch.optim.Optimizer] = None,
-                 aux_optimizer: Optional[torch.optim.Optimizer] = None,
-                 epsilon_greedy=None,
-                 checkpoint: Optional[str] = None,
-                 debug_summaries: bool = False,
-                 name: str = "PPGAlgorithm"):
+    def __init__(
+            self,
+            observation_spec,
+            action_spec,
+            reward_spec=TensorSpec(()),
+            env=None,
+            config: Optional[TrainerConfig] = None,
+            aux_options: PPGAuxOptions = PPGAuxOptions(),
+            encoding_network_ctor: Callable[..., Network] = EncodingNetwork,
+            policy_optimizer: Optional[torch.optim.Optimizer] = None,
+            aux_optimizer: Optional[torch.optim.Optimizer] = None,
+            epsilon_greedy=None,
+            checkpoint: Optional[str] = None,
+            debug_summaries: bool = False,
+            name: str = "PPGAlgorithm"):
         """Args:
 
             observation_spec (nested TensorSpec): representing the observations.
@@ -170,17 +170,15 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
-        alg_step = ppg_network_forward(self._network,
-                                       inputs,
-                                       state,
-                                       require_aux=False)
+        alg_step = ppg_network_forward(
+            self._network, inputs, state, require_aux=False)
 
         train_info = PPGTrainInfo(
             action=plain_rollout_info.action,
             rollout_log_prob=plain_rollout_info.log_prob,
             rollout_value=plain_rollout_info.value,
-            rollout_action_distribution=plain_rollout_info.action_distribution
-        ).absorbed(alg_step.info)
+            rollout_action_distribution=plain_rollout_info.
+            action_distribution).absorbed(alg_step.info)
 
         return alg_step._replace(info=train_info)
 

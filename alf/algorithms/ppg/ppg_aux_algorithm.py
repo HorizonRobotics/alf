@@ -138,7 +138,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
 
     def observe_for_aux_replay(self, exp):
         """Save the experience in the replay buffer for auxiliary phase update.
-        
+
         Args:
 
             exp (nested Tensor): Experience to be saved. The shape is [B, ...]
@@ -174,16 +174,14 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
-        alg_step = ppg_network_forward(self._network,
-                                       inputs,
-                                       state,
-                                       require_aux=True)
+        alg_step = ppg_network_forward(
+            self._network, inputs, state, require_aux=True)
 
         train_info = PPGTrainInfo(
             action=plain_rollout_info.action,
             rollout_value=plain_rollout_info.value,
-            rollout_action_distribution=plain_rollout_info.action_distribution
-        ).absorbed(alg_step.info)
+            rollout_action_distribution=plain_rollout_info.
+            action_distribution).absorbed(alg_step.info)
 
         return alg_step._replace(info=train_info)
 
