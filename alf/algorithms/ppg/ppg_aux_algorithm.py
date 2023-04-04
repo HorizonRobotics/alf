@@ -16,15 +16,14 @@ from typing import Optional
 import copy
 import torch
 
-import alf
-from alf.algorithms.data_transformer import create_data_transformer
+from alf.algorithms.data_transformer import IdentityDataTransformer
 from alf.data_structures import namedtuple
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppg import PPGRolloutInfo, PPGTrainInfo, PPGAuxPhaseLoss, ppg_network_forward
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import TimeStep, AlgStep, LossInfo, make_experience
+from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.experience_replayers.replay_buffer import ReplayBuffer
-from alf.utils import common, dist_utils
+from alf.utils import dist_utils
 from alf.tensor_specs import TensorSpec
 
 # Data structure to store the options for PPG's auxiliary phase
@@ -112,13 +111,11 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
         updated_config.mini_batch_size = aux_options.mini_batch_size
         updated_config.num_updates_per_train_iter = aux_options.num_updates_per_train_iter
 
-        if config.data_transformer:
-            updated_config.data_transformer = copy.deepcopy(
-                config.data_transformer)
-        else:
-            updated_config.data_transformer = create_data_transformer(
-                config.data_transformer_ctor,
-                alf.get_env().observation_spec())
+        # Since we are going to store already-transformed experience in the
+        # replay buffer, the aux algorithm shall not inherit the data
+        # transformer from the parent algorithm (PPGAlgorithm).
+        updated_config.data_transformer = IdentityDataTransformer(
+            observation_spec=observation_spec)
 
         super().__init__(
             config=updated_config,
@@ -139,18 +136,15 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
     def interval(self):
         return self._interval
 
-    def observe_for_aux_replay(self, inputs: TimeStep, state,
-                               policy_step: AlgStep):
-        """Construct the experience and save it in the replay buffer for auxiliary
-        phase update.
+    def observe_for_aux_replay(self, exp):
+        """Save the experience in the replay buffer for auxiliary phase update.
+
         Args:
-            inputs (nested Tensor): inputs towards network prediction
-            state (nested Tensor): state for RNN-based network
-            policy_step (AlgStep): a data structure wrapping the information
-                fromm the rollout
+
+            exp (nested Tensor): Experience to be saved. The shape is [B, ...]
+                where B is the batch size of the batch environment.
+
         """
-        lite_time_step = inputs.untransformed
-        exp = make_experience(lite_time_step, policy_step, state)
         if not self._use_rollout_state:
             exp = exp._replace(state=())
         # Set the experience spec explicitly if it is not set, based on this
@@ -159,10 +153,10 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
             self._experience_spec = dist_utils.extract_spec(exp, from_dim=1)
         exp = dist_utils.distributions_to_params(exp)
 
+        # Construct the aux specific replay buffer if not present.
         if self._replay_buffer is None:
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
-            num_envs = exp.env_id.shape[0]
             # Note that this unroll_length is the updated one for auxiliary
             # phase update. It is equal to auxiliary phase interval * policy
             # phase unroll_length (see __init__()).

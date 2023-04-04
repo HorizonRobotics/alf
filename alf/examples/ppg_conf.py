@@ -15,7 +15,6 @@
 automatically enforced for PPO's policy.
 """
 
-from alf.algorithms.data_transformer import UntransformedTimeStep
 import alf
 from alf.algorithms.agent import Agent
 from alf.algorithms.ppg_algorithm import PPGAlgorithm
@@ -32,9 +31,6 @@ alf.config(
     whole_replay_buffer_training=True,
     clear_replay_buffer=True)
 
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=[UntransformedTimeStep],
-    epsilon_greedy=0.1)
+alf.config('TrainerConfig', epsilon_greedy=0.1)
 
 alf.config('make_ddp_performer', find_unused_parameters=True)

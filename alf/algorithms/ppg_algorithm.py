@@ -14,19 +14,17 @@
 """Phasic Policy Gradient Algorithm."""
 
 from __future__ import annotations
-from alf.algorithms.data_transformer import SequentialDataTransformer, UntransformedTimeStep
 import torch
 
-from typing import Optional, Tuple
-from contextlib import contextmanager
+from typing import Callable, Optional
 
 import alf
 from alf.algorithms.ppg import DisjointPolicyValueNetwork, PPGRolloutInfo, PPGTrainInfo, PPGAuxAlgorithm, PPGAuxOptions, ppg_network_forward
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.networks.encoding_networks import EncodingNetwork
-from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.networks import Network, EncodingNetwork
+from alf.data_structures import TimeStep, AlgStep, LossInfo, make_experience
 from alf.tensor_specs import TensorSpec
 
 
@@ -53,20 +51,21 @@ class PPGAlgorithm(OffPolicyAlgorithm):
 
     """
 
-    def __init__(self,
-                 observation_spec,
-                 action_spec,
-                 reward_spec=TensorSpec(()),
-                 env=None,
-                 config: Optional[TrainerConfig] = None,
-                 aux_options: PPGAuxOptions = PPGAuxOptions(),
-                 encoding_network_ctor: callable = EncodingNetwork,
-                 policy_optimizer: Optional[torch.optim.Optimizer] = None,
-                 aux_optimizer: Optional[torch.optim.Optimizer] = None,
-                 epsilon_greedy=None,
-                 checkpoint: Optional[str] = None,
-                 debug_summaries: bool = False,
-                 name: str = "PPGAlgorithm"):
+    def __init__(
+            self,
+            observation_spec,
+            action_spec,
+            reward_spec=TensorSpec(()),
+            env=None,
+            config: Optional[TrainerConfig] = None,
+            aux_options: PPGAuxOptions = PPGAuxOptions(),
+            encoding_network_ctor: Callable[..., Network] = EncodingNetwork,
+            policy_optimizer: Optional[torch.optim.Optimizer] = None,
+            aux_optimizer: Optional[torch.optim.Optimizer] = None,
+            epsilon_greedy=None,
+            checkpoint: Optional[str] = None,
+            debug_summaries: bool = False,
+            name: str = "PPGAlgorithm"):
         """Args:
 
             observation_spec (nested TensorSpec): representing the observations.
@@ -105,10 +104,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
 
         """
-        assert self._validate_data_transformer(config.data_transformer), (
-            'PPGAlgorithms requires UntransformedTimeStep as the first data '
-            'transformer')
-
         dual_actor_value_network = DisjointPolicyValueNetwork(
             observation_spec=observation_spec,
             action_spec=action_spec,
@@ -157,16 +152,6 @@ class PPGAlgorithm(OffPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ['_aux_algorithm']
 
-    @staticmethod
-    def _validate_data_transformer(data_transformer):
-        """Returns True if UntransformedTimeStep is present and is applied
-        before all other data transformers.
-
-        """
-        if type(data_transformer) is SequentialDataTransformer:
-            return type(data_transformer.members()[0]) is UntransformedTimeStep
-        return type(data_transformer) is UntransformedTimeStep
-
     def rollout_step(self, inputs: TimeStep, state) -> AlgStep:
         """Rollout step for PPG algorithm
 
@@ -178,8 +163,8 @@ class PPGAlgorithm(OffPolicyAlgorithm):
         policy_step = ppg_network_forward(self._network, inputs, state)
 
         if self._aux_algorithm:
-            self._aux_algorithm.observe_for_aux_replay(inputs, state,
-                                                       policy_step)
+            exp = make_experience(inputs.cpu(), policy_step, state)
+            self._aux_algorithm.observe_for_aux_replay(exp)
 
         return policy_step
 
