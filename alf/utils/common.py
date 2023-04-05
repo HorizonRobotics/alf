@@ -1471,7 +1471,10 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
-    includes = ["*.py", "*.gin", "*.so", "*.json", "*.xml"]
+    includes = [
+        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.hpp",
+        "*.h"
+    ]
     repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
     for name, root in repo_roots.items():
         assert not _is_subdir(dest_path, root), (
