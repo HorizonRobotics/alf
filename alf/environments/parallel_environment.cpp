@@ -95,11 +95,24 @@ class SharedDataBuffer {
   std::vector<size_t> offsets_;  // offset of the i-th array
   std::vector<size_t> sizes_;    // size of each slice of the i-th array
   std::vector<py::buffer_info> buffer_infos_;
+  std::vector<std::vector<ssize_t>> slice_strides_;
 
   inline char* GetBuf(int slice_id, int array_id) const {
     return buf_ + offsets_[array_id] + sizes_[array_id] * slice_id;
   }
 };
+
+void CheckStrides(const py::buffer_info& info,
+                  const std::vector<ssize_t>& strides) {
+  if (info.strides != strides) {
+    throw std::runtime_error(
+        py::str(
+            "strides mismatch. Expected: {}, "
+            "Got: {}, shape: {}. It might be caused by non-continguous array, "
+            "which can be fixed by copying the array.")
+            .format(strides, info.strides, info.shape));
+  }
+}
 
 void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
   auto arrays = Flatten(nested_array);
@@ -110,7 +123,7 @@ void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
       if (info.ndim == 0) {
         memcpy(GetBuf(slice_id, j), info.ptr, info.itemsize);
       } else {
-        assert(info.strides[0] * info.shape[0] == (signed)sizes_[j]);
+        CheckStrides(info, slice_strides_[j]);
         memcpy(GetBuf(slice_id, j), info.ptr, info.shape[0] * info.strides[0]);
       }
     }
@@ -130,8 +143,13 @@ void SharedDataBuffer::WriteBatch(py::object nested_array,
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
-    assert(info.strides == buffer_infos_[j].strides);
-    assert(begin_slice_id + info.shape[0] <= num_slices_);
+    CheckStrides(info, buffer_infos_[j].strides);
+    if (begin_slice_id + info.shape[0] > num_slices_) {
+      throw std::runtime_error(
+          py::str("batch size too big: begin_slice_id: {} batch_size: {} "
+                  "num_slices: {} shape: {}")
+              .format(begin_slice_id, info.shape[0], num_slices_, info.shape));
+    }
     memcpy(
         GetBuf(begin_slice_id, j), info.ptr, info.shape[0] * info.strides[0]);
   }
@@ -142,8 +160,12 @@ void SharedDataBuffer::WriteWhole(py::object nested_array) {
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
-    assert(info.strides == buffer_infos_[j].strides);
-    assert(info.shape[0] == (signed)num_slices_);
+    CheckStrides(info, buffer_infos_[j].strides);
+    if (info.shape[0] != (signed)num_slices_) {
+      throw std::runtime_error(
+          py::str("Incorrect batch size. Expected: {}, got {}, shape: {}.")
+              .format(num_slices_, info.shape[0], info.shape));
+    }
     memcpy(GetBuf(0, j), info.ptr, info.shape[0] * info.strides[0]);
   }
 }
@@ -162,6 +184,8 @@ SharedDataBuffer::SharedDataBuffer(py::object data_spec,
     py::buffer array = py::reinterpret_borrow<py::buffer>(
         spec.attr("numpy_zeros")(outer_dims));
     buffer_infos_.emplace_back(array.request());
+    auto& strides = buffer_infos_.back().strides;
+    slice_strides_.emplace_back(strides.begin() + 1, strides.end());
     size_t slice_size = buffer_infos_.back().strides[0];
     sizes_.push_back(slice_size);
     offset += align(num_slices * slice_size);
@@ -284,8 +308,11 @@ ParallelEnvironment::ParallelEnvironment(int num_envs,
                    3 * num_envs,  // we need it to be long enough to handle
                                   // ProcessEnvironment.Quit
                    sizeof(int)) {
-  if (batch_size_per_env > 1) {
-    assert(num_spare_envs == 0);
+  if (batch_size_per_env > 1 && num_spare_envs != 0) {
+    throw std::runtime_error(py::str("num_spare_envs != 0 is not supported "
+                                     "when batch_size_per_env > 0. "
+                                     "batch_size_per_env={}, num_spare_envs={}")
+                                 .format(batch_size_per_env, num_spare_envs));
   }
   for (int i = 0; i < num_envs; ++i) {
     original_env_ids_[i] = i;
@@ -334,7 +361,11 @@ py::object ParallelEnvironment::Step(const py::object& action) {
     if (env_id == -1) {
       throw std::runtime_error("ProcessEnvironment is interruptted");
     }
-    assert(recvd_size == sizeof(env_id));
+    if (recvd_size != sizeof(env_id)) {
+      throw std::runtime_error(py::str("Received unexpected size from "
+                                       "ready_queue. Expected: {}, got: {}.")
+                                   .format(sizeof(env_id), recvd_size));
+    }
     if (batch_size_per_env_ == 1 &&
         step_type_buf_[env_id] == static_cast<int32_t>(StepType::last)) {
       Job job{JobType::reset};
@@ -507,7 +538,11 @@ void ProcessEnvironment::Worker() {
     bip::message_queue::size_type recvd_size;
     unsigned int priority;
     job_queue_.receive(&job, sizeof(job), recvd_size, priority);
-    assert(recvd_size == sizeof(job));
+    if (recvd_size != sizeof(job)) {
+      throw std::runtime_error(py::str("Received unexpected size from "
+                                       "job_queue. Expected: {}, got: {}.")
+                                   .format(sizeof(job), recvd_size));
+    }
     if (job.type == JobType::step) {
       Step(job.env_id);
     } else if (job.type == JobType::reset) {
