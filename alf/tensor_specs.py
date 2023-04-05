@@ -434,14 +434,14 @@ class BoundedTensorSpec(TensorSpec):
             shape = tuple(outer_dims) + shape
 
         if self.is_continuous:
-            uniform = rng.rand(*shape).astype(torch_dtype_to_str(self._dtype))
+            uniform = rng.rand(*shape).astype(self.dtype_str)
             return (1 - uniform) * self._minimum + self._maximum * uniform
         else:
             return rng.randint(
                 low=self._minimum,
                 high=self._maximum + 1,
                 size=shape,
-                dtype=torch_dtype_to_str(self._dtype))
+                dtype=self.dtype_str)
 
 
 # yapf: disable
