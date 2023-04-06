@@ -1028,6 +1028,6 @@ def play(root_dir,
         policy_state = policy_step.state
         time_step = next_time_step
 
+    env.reset()
     if recorder:
         recorder.close()
-    env.reset()

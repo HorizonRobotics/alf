@@ -48,6 +48,7 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
         super().__init__()
         self._pool = mp_threads.Pool(1)
         self._env = self._pool.apply(env_constructor)
+        self._closed = False
 
     @property
     def batched(self):
@@ -77,9 +78,12 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
         return _array_to_tensor(self._apply('reset'))
 
     def close(self):
+        if self._closed:
+            return
         self._apply('close')
         self._pool.close()
         self._pool.join()
+        self._closed = True
 
     def render(self, mode='rgb_array'):
         return self._apply('render', (mode, ))
