@@ -56,7 +56,11 @@ class UnwrappedEnvChecker(object):
         self.update(wrap_with_process)
 
 
-def _env_constructor(env_load_fn, env_name, batch_size_per_env, env_id):
+def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
+    # We need to set random seed before env_load_fn because some environment
+    # perform use random numbers in its constructor, so we need to randomize
+    # the seed for it.
+    alf.utils.common.set_random_seed(seed)
     if batch_size_per_env == 1:
         return env_load_fn(env_name, env_id)
     envs = [
@@ -151,39 +155,27 @@ def create_environment(env_name='CartPole-v0',
         else:
             alf_env.seed(seed)
     else:
+        if seed is None:
+            seeds = list(
+                map(
+                    int,
+                    np.random.randint(0,
+                                      np.iinfo(np.int32).max,
+                                      num_envs + num_spare_envs)))
+        else:
+            seeds = [seed + i for i in range(num_envs + num_spare_envs)]
+        ctors = [
+            functools.partial(_env_constructor, env_load_fn, env_name,
+                              batch_size_per_env, seed) for seed in seeds
+        ]
         # flatten=True will use flattened action and time_step in
         #   process environments to reduce communication overhead.
         alf_env = parallel_environment_ctor(
-            [
-                functools.partial(_env_constructor, env_load_fn, env_name,
-                                  batch_size_per_env)
-            ] * num_envs,
+            ctors,
             flatten=flatten,
             start_serially=start_serially,
             num_spare_envs_for_reload=num_spare_envs)
-
-        if seed is None:
-            alf_env.seed([
-                np.random.randint(0,
-                                  np.iinfo(np.int32).max)
-                for i in range(num_envs)
-            ])
-            if num_spare_envs > 0:
-                alf_env.seed_spare([
-                    np.random.randint(0,
-                                      np.iinfo(np.int32).max)
-                    for i in range(num_spare_envs)
-                ])
-        else:
-            # We want deterministic behaviors for each environment, but different
-            # behaviors among different individual environments (to increase the
-            # diversity of environment data)!
-            alf_env.seed([seed + i for i in range(num_envs)])
-            if num_spare_envs > 0:
-                alf_env.seed_spare([
-                    seed + i + num_parallel_environments
-                    for i in range(num_spare_envs)
-                ])
+        alf_env.seed(seeds)
 
     for wrapper in batched_wrappers:
         alf_env = wrapper(alf_env)

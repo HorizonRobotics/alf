@@ -69,6 +69,17 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         types of communication is that it is not easy to handle communication of
         unknow size using shared memory.
 
+    Args:
+        env_constructors (list[Callable]): a list of callable environment creators.
+        start_serially (bool): whether to start environments serially or in parallel.
+        blocking (bool): not used. Kept for the same interface as ``ParallelAlfEnvironment``.
+        flatten (bool): not used. Kept for the same interface as ``ParallelAlfEnvironment``.
+        num_spare_envs_for_reload (int): if positive, these environments will be
+            maintained in a separate queue and be used to handle slow env resets.
+            The batch_size is ``len(env_constructors) - num_spare_envs_for_reload``
+
+    Raises:
+        ValueError: If the action or observation specs don't match.
     """
 
     def __init__(
@@ -79,22 +90,17 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             flatten=True,  # unused
             num_spare_envs_for_reload=0):
         super().__init__()
-        num_envs = len(env_constructors)
+        num_envs = len(env_constructors) - num_spare_envs_for_reload
         name = f"alf_penv_{os.getpid()}_{time.time()}"
         self._envs = []
+        self._spare_envs = []
         for env_id, ctor in enumerate(env_constructors):
             env = ProcessEnvironment(
                 ctor, env_id=env_id, fast=True, num_envs=num_envs, name=name)
-            self._envs.append(env)
-        self._spare_envs = []
-        for i in range(num_spare_envs_for_reload):
-            env = ProcessEnvironment(
-                env_constructors[i % num_envs],
-                env_id=i + num_envs,
-                fast=True,
-                num_envs=num_envs,
-                name=name)
-            self._spare_envs.append(env)
+            if env_id < num_envs:
+                self._envs.append(env)
+            else:
+                self._spare_envs.append(env)
         self._num_envs = len(env_constructors)
         self._num_spare_envs_for_reload = num_spare_envs_for_reload
         self._start_serially = start_serially
@@ -224,19 +230,12 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
                 logging.info(f"Closed {i} processes")
         self._closed = True
 
-    def _seed(self, envs, seeds):
+    def seed(self, seeds):
+        """Seeds the parallel environments."""
+        envs = self._envs + self._spare_envs
         if len(seeds) != len(envs):
             raise ValueError(
                 'Number of seeds should match the number of parallel_envs.')
-
         promises = [env.call('seed', seed) for seed, env in zip(seeds, envs)]
         # Block until all envs are seeded.
         return [promise() for promise in promises]
-
-    def seed(self, seeds):
-        """Seeds the parallel environments."""
-        return self._seed(self._envs, seeds)
-
-    def seed_spare(self, seeds):
-        """Seeds the spare parallel environments."""
-        return self._seed(self._spare_envs, seeds)
