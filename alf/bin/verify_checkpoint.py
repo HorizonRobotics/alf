@@ -193,7 +193,7 @@ def main(_):
             algorithm1.train_iter()
         ckpt_mngr1 = ckpt_utils.Checkpointer(ckpt_dir, alg=algorithm1)
         ckpt_mngr1.save(step_num)
-        common.write_config(root_dir, common.read_conf_file(root_dir))
+        common.write_config(root_dir)
 
         FLAGS.gin_file = None
         FLAGS.conf = None
