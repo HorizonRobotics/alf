@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import alf
-import alf.examples.sac_conf
+alf.import_config("sac_conf.py")
 from alf.networks import ActorDistributionNetwork, QNetwork
 from alf.utils.losses import element_wise_squared_loss
 from alf.algorithms.sac_algorithm import SacAlgorithm
