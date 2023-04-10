@@ -194,6 +194,13 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
     def time_step_spec(self):
         return self._time_step_spec
 
+    def render(self, mode="rgb_array"):
+        return self._envs[0].render(mode)
+
+    @property
+    def metadata(self):
+        return self._envs[0].metadata
+
     def _to_tensor(self, stacked):
         # we need to do np.copy because the result from _penv.step() or
         # _penv.reset() reuses the same internal buffer.
