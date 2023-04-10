@@ -15,14 +15,9 @@
 import os
 
 
-def _get_repo_root():
-    """Get ALF repo root path."""
-    return os.path.join(os.path.dirname(__file__), "..", "..")
-
-
-def _exec(command):
+def _exec(command, module_root):
     cwd = os.getcwd()
-    os.chdir(_get_repo_root())
+    os.chdir(module_root)
     stream = os.popen(command)
     ret = stream.read()
     stream.close()
@@ -30,16 +25,25 @@ def _exec(command):
     return ret
 
 
-def get_revision():
-    """Get the current revision of ALF at HEAD."""
-    return _exec("git rev-parse HEAD").strip()
+def get_revision(module_root: str):
+    """Get the current revision of a python module at HEAD.
+
+    Args:
+        module_root: the path to the module root
+    """
+    return _exec("git rev-parse HEAD", module_root).strip()
 
 
-def get_diff():
+def get_diff(module_root: str):
     """Get the diff of ALF at HEAD.
 
     If the repo is clean, the returned value is an empty string.
+
+    Args:
+        module_root: the path to the module root
+
     Returns:
         current diff.
     """
-    return _exec("git -c core.fileMode=false diff --diff-filter=M")
+    return _exec("git -c core.fileMode=false diff --diff-filter=M",
+                 module_root)

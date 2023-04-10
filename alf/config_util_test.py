@@ -13,109 +13,11 @@
 # limitations under the License.
 
 from absl import logging
+import os
 import pprint
+import tempfile
 import alf
-
-
-@alf.configurable
-def test(a, b=123):
-    return a, b
-
-
-@alf.configurable(blacklist=['b'])
-def test_func(a, b=100, c=200):
-    return a, b, c
-
-
-@alf.configurable(blacklist=['b'])
-def test_func2(a, b=100, c=200):
-    return a, b, c
-
-
-@alf.configurable(blacklist=['b'])
-def test_func3(a, b=100, c=200):
-    return a, b, c
-
-
-@alf.configurable("Test.FancyTest")
-def test_func4(arg=10):
-    return arg
-
-
-def test_func5(arg=10):
-    return arg
-
-
-def test_func6(arg=10):
-    return arg
-
-
-def test_func7(arg=10):
-    return arg
-
-
-def test_func8(a=1, b=2, c=3):
-    return a, b, c
-
-
-def test_func9(a=1, b=2, c=3):
-    return a, b, c
-
-
-def test_func10(a=1, b=2, c=3):
-    return a, b, c
-
-
-def test_func11(a=1, b=2, c=3):
-    return a, b, c
-
-
-@alf.configurable
-class Test(object):
-    def __init__(self, a, b, c=10):
-        self._a = a
-        self._b = b
-        self._c = c
-
-    @alf.configurable(whitelist=['c'])
-    def func(self, a, b=10, c=100):
-        return a, b, c
-
-    def __call__(self):
-        return self._a, self._b, self._c
-
-
-@alf.configurable
-class Test2(Test):
-    def __init__(self, a, b):
-        super().__init__(a, b, 5)
-
-    def func(self, a):
-        return a
-
-    def __call__(self):
-        return self._a + 1, self._b + 2, self._c + 3
-
-
-@alf.configurable
-class Test3(Test):
-    def func(self, a):
-        return a
-
-    def __call__(self):
-        return self._a - 1, self._b - 2, self._c - 3
-
-
-@alf.repr_wrapper
-class MyClass(object):
-    def __init__(self, a, b, c=100, d=200):
-        pass
-
-
-@alf.repr_wrapper
-class MySubClass(MyClass):
-    def __init__(self, x):
-        super().__init__(3, 5)
+from alf.test_configs.source_code import *
 
 
 class ConfigTest(alf.test.TestCase):
@@ -237,6 +139,39 @@ class ConfigTest(alf.test.TestCase):
         self.assertEqual(repr(a), "MyClass(3, 5, d=300)")
         b = MySubClass(6)
         self.assertEqual(repr(b), 'MySubClass(6)')
+
+    def test_load_config(self):
+        alf.reset_configs()
+        dir = os.path.dirname(__file__)
+        conf_file = os.path.join(dir, "test_configs/conf_dir/test_conf.py")
+        self.assertRaisesRegex(ValueError, "Cannot find conf file",
+                               alf.load_config, conf_file)
+
+        alf.reset_configs()
+        alf.pre_config({"test_func.a": 12345})
+        os.environ['ALF_CONFIG_PATH'] = os.path.join(dir, "test_configs")
+        alf.load_config(conf_file)
+        self.assertEqual(alf.get_config_value("test_func.a"), 12345)
+        self.assertEqual(alf.get_config_value("test_func2.a"), 21)
+        self.assertEqual(alf.get_config_value("test_func3.a"), 31)
+        self.assertEqual(alf.get_config_value("Test.FancyTest.arg"), 81)
+        self.assertEqual(alf.get_config_value("test_func.c"), 101)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            saved_conf_file = os.path.join(temp_dir, "alf_config.py")
+            alf.save_config(saved_conf_file)
+            alf.reset_configs()
+            alf.load_config(saved_conf_file)
+            self.assertEqual(alf.get_config_value("test_func.a"), 12345)
+            self.assertEqual(alf.get_config_value("test_func2.a"), 21)
+            self.assertEqual(alf.get_config_value("test_func3.a"), 31)
+            self.assertEqual(alf.get_config_value("Test.FancyTest.arg"), 81)
+            self.assertEqual(alf.get_config_value("test_func.c"), 101)
+            os.path.exists(os.path.join(temp_dir, "alf_config.py"))
+            os.path.exists(os.path.join(temp_dir, "configs", "test_conf.py"))
+            os.path.exists(os.path.join(temp_dir, "configs", "base_conf.py"))
+            os.path.exists(
+                os.path.join(temp_dir, "configs", "base", "base_conf.py"))
 
 
 if __name__ == '__main__':

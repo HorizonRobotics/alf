@@ -16,6 +16,7 @@
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/random_py_environment.py
 """
+from absl import logging
 import numpy as np
 import torch
 
@@ -125,7 +126,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
 
     @property
     def batch_size(self):
-        return self._batch_size
+        return self._batch_size if self.batched else 1
 
     @property
     def batched(self):
@@ -134,7 +135,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     def _get_observation(self):
         batch_size = (self._batch_size, ) if self._batch_size else ()
         return nest.map_structure(
-            lambda spec: self._sample_spec(spec, batch_size).cpu().numpy(),
+            lambda spec: self._sample_spec(spec, batch_size),
             self._observation_spec)
 
     def _reset(self):
@@ -154,7 +155,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         shape = spec.shape
         if not isinstance(spec, ts.BoundedTensorSpec):
             spec = ts.BoundedTensorSpec(shape, spec.dtype)
-        return spec.sample(outer_dims=outer_dims)
+        return spec.numpy_sample(outer_dims=outer_dims, rng=self._rng)
 
     def _check_reward_shape(self, reward):
         expected_shape = () if self._batch_size is None else (

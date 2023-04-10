@@ -54,29 +54,26 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                 communication to reduce overhead.
             num_spare_envs_for_reload (int): if positive, these environments will be
                 maintained in a separate queue and be used to handle slow env resets.
+                The batch_size is ``len(env_constructors) - num_spare_envs_for_reload``
 
         Raises:
             ValueError: If the action or observation specs don't match.
         """
         super(ParallelAlfEnvironment, self).__init__()
-        self._envs = []
-        self._env_ids = []
-        for env_id, ctor in enumerate(env_constructors):
-            env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
-            self._envs.append(env)
-            self._env_ids.append(env_id)
-        self._spare_queue = []
-        self._spare_promises = []
-        spare_env_id = len(self._envs)
-        self._num_spare_envs_for_reload = num_spare_envs_for_reload
         if num_spare_envs_for_reload > 0:
             assert not blocking, "Spare envs only allowed in non-blocking mode"
-            for i in range(num_spare_envs_for_reload):
-                spare_env = ProcessEnvironment(
-                    env_constructors[0], env_id=spare_env_id, flatten=flatten)
-                spare_env_id += 1
-                self._spare_queue.append(spare_env)
-        self._num_envs = len(env_constructors)
+        self._envs = []
+        self._env_ids = []
+        self._num_envs = len(env_constructors) - num_spare_envs_for_reload
+        self._spare_queue = []
+        self._spare_promises = []
+        for env_id, ctor in enumerate(env_constructors):
+            env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
+            if env_id < self._num_envs:
+                self._envs.append(env)
+                self._env_ids.append(env_id)
+            else:
+                self._spare_queue.append(env)
         self._blocking = blocking
         # When non blocking, we reset immediately whenever LAST step is encountered,
         # and the reset promises are stored in this array:
@@ -92,7 +89,6 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._task_names = self._envs[0].task_names
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
-        self._parallel_execution = True
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')
@@ -312,19 +308,12 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             ]
         return unstacked_actions
 
-    def _seed(self, envs, seeds):
+    def seed(self, seeds):
+        """Seeds the parallel environments."""
+        envs = self._envs + self._spare_queue
         if len(seeds) != len(envs):
             raise ValueError(
                 'Number of seeds should match the number of parallel_envs.')
-
         promises = [env.call('seed', seed) for seed, env in zip(seeds, envs)]
         # Block until all envs are seeded.
         return [promise() for promise in promises]
-
-    def seed(self, seeds):
-        """Seeds the parallel environments."""
-        return self._seed(self._envs, seeds)
-
-    def seed_spare(self, seeds):
-        """Seeds the spare parallel environments."""
-        return self._seed(self._spare_queue, seeds)

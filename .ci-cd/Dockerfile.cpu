@@ -82,7 +82,7 @@ RUN apt update && apt install -y ffmpeg
 RUN apt-get install -q -y gazebo9
 RUN apt-get install -q -y libgazebo9-dev
 
-RUN pip3 install torch==1.8.1+cpu torchvision==0.9.1+cpu torchtext==0.9.1 \
+RUN pip3 install torch==1.11.0+cpu torchvision==0.12.0+cpu torchtext==0.12.0 \
     -f https://download.pytorch.org/whl/torch_stable.html
 
 

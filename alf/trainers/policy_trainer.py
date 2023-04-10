@@ -18,7 +18,6 @@ from absl import logging
 from typing import Dict
 import math
 import os
-import pprint
 from pathlib import Path
 import re
 import signal
@@ -43,6 +42,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils import math_ops
+from alf.utils.pretty_print import pformat_pycolor
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
@@ -285,7 +285,6 @@ class Trainer(object):
         self._config = config
         self._random_seed = config.random_seed
         self._rank = ddp_rank
-        self._conf_file_content = common.read_conf_file(root_dir)
         self._pid = None
 
     def train(self):
@@ -378,7 +377,7 @@ class Trainer(object):
     def _summarize_training_setting(self):
         # We need to wait for one iteration to get the operative args
         # Right just give a fixed gin file name to store operative args
-        common.write_config(self._root_dir, self._conf_file_content)
+        common.write_config(self._root_dir)
         with alf.summary.record_if(lambda: True):
 
             def _markdownify(paragraph):
@@ -393,8 +392,20 @@ class Trainer(object):
             alf.summary.text(
                 'unoptimized_parameters',
                 _markdownify(self._algorithm.get_unoptimized_parameter_info()))
-            alf.summary.text('revision', git_utils.get_revision())
-            alf.summary.text('diff', _markdownify(git_utils.get_diff()))
+
+            repo_roots = {
+                **common.snapshot_repo_roots(),
+                **{
+                    'alf': common.alf_root()
+                }
+            }
+            for name, root in repo_roots.items():
+                alf.summary.text(f'{name}/revision',
+                                 git_utils.get_revision(f'{root}/{name}'))
+                alf.summary.text(
+                    f'{name}/diff',
+                    _markdownify(git_utils.get_diff(f'{root}/{name}')))
+
             alf.summary.text('seed', str(self._random_seed))
 
             # Save a rendered directed graph of the algorithm to the root
@@ -511,8 +522,8 @@ class RLTrainer(Trainer):
 
         env = alf.get_env()
         logging.info(
-            "observation_spec=%s" % pprint.pformat(env.observation_spec()))
-        logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
+            "observation_spec=\n%s" % pformat_pycolor(env.observation_spec())),
+        logging.info("action_spec=\n%s" % pformat_pycolor(env.action_spec()))
 
         # for offline buffer construction
         untransformed_observation_spec = env.observation_spec()
@@ -527,7 +538,7 @@ class RLTrainer(Trainer):
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
         logging.info("transformed_observation_spec=%s" %
-                     pprint.pformat(observation_spec))
+                     pformat_pycolor(observation_spec))
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,
@@ -555,11 +566,23 @@ class RLTrainer(Trainer):
         # ``TrainerConfig.no_thread_env_for_conf=False``.
         self._thread_env = None
 
+        def _env_in_subprocess(e):
+            if isinstance(
+                    e,
+                    alf.environments.alf_wrappers.AlfEnvironmentBaseWrapper):
+                return _env_in_subprocess(e.wrapped_env())
+            # TODO: One special case is alf_wrappers.MultitaskWrapper which is
+            #       an alf wrapper but not a subclass of AlfEnvironmentBaseWrapper.
+            #       Its env members might be in the main process or might not.
+            return isinstance(
+                e,
+                (alf.environments.parallel_environment.ParallelAlfEnvironment,
+                 alf.environments.fast_parallel_environment.
+                 FastParallelEnvironment))
+
         # See ``alf/docs/notes/knowledge_base.rst```
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
-        if not config.no_thread_env_for_conf and isinstance(
-                env,
-                alf.environments.parallel_environment.ParallelAlfEnvironment):
+        if not config.no_thread_env_for_conf and _env_in_subprocess(env):
             self._thread_env = create_environment(
                 nonparallel=True, seed=self._random_seed)
 
@@ -1004,6 +1027,6 @@ def play(root_dir,
         policy_state = policy_step.state
         time_step = next_time_step
 
+    env.reset()
     if recorder:
         recorder.close()
-    env.reset()

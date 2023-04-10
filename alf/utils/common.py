@@ -37,7 +37,8 @@ import torch.distributions as td
 import torch.nn as nn
 import traceback
 import types
-from typing import Callable, List
+from typing import Callable, List, Dict
+import runpy
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -673,39 +674,20 @@ def read_conf_file(root_dir: str) -> str:
     return content
 
 
-def write_config(root_dir: str, conf_file_content: str):
+def write_config(root_dir: str):
     """Write config to a file under directory ``root_dir``
 
     Configs from FLAGS.conf_param are also recorded.
 
     Args:
         root_dir: directory path
-        conf_file_content: the content of the conf file
     """
     conf_file = get_conf_file()
     if conf_file is None or conf_file.endswith('.gin'):
         return write_gin_configs(root_dir, 'configured.gin')
 
     root_dir = os.path.expanduser(root_dir)
-    alf_config_file = os.path.join(root_dir, ALF_CONFIG_FILE)
-    os.makedirs(root_dir, exist_ok=True)
-    pre_configs = alf.config_util.get_handled_pre_configs()
-    config = ''
-    if pre_configs:
-        config += "########### pre-configs ###########\n\n"
-        config += "import alf\n"
-        config += "alf.pre_config({\n"
-        for config_name, config_value in pre_configs:
-            if isinstance(config_value, str):
-                config += "    '%s': '%s',\n" % (config_name, config_value)
-            else:
-                config += "    '%s': %s,\n" % (config_name, config_value)
-        config += "})\n\n"
-        config += "########### end pre-configs ###########\n\n"
-    config += conf_file_content
-    f = open(alf_config_file, 'w')
-    f.write(config)
-    f.close()
+    alf.save_config(os.path.join(root_dir, ALF_CONFIG_FILE))
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):
@@ -1001,7 +983,9 @@ def set_random_seed(seed):
         # causes RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation
         torch.use_deterministic_algorithms(force_torch_deterministic)
     random.seed(seed)
-    np.random.seed(seed)
+    # sometime the seed passed in can be very big, but np.random.seed
+    # only accept seed smaller than 2**32
+    np.random.seed(seed % (2**32))
     torch.random.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
@@ -1412,7 +1396,36 @@ def get_all_parameters(obj):
     return all_parameters
 
 
-def generate_alf_root_snapshot(alf_root, dest_path):
+def snapshot_repo_roots() -> Dict[str, str]:
+    """Return a dict of repo root dirs for snapshot. The paths should be defined
+    by a special environment variable ``ALF_SNAPSHOT_REPO_ROOTS``, in the following
+    format:
+
+    .. code-block:: bash
+
+        export ALF_SNAPSHOT_REPO_ROOTS="<module_name1>=<repo_root1>:<module_name2>=<repo_root2>:..."
+
+    where pairs of "<module_name>=<repo_root>" are separated by ":". Note that
+    ``<repo_root>`` should be the parent dir of the module package dir.
+
+    Returns:
+        dict[str]: a dict of ``{module_name: repo_root}``, excluding the alf repo
+            itself.
+    """
+    repo_roots_envar = os.getenv('ALF_SNAPSHOT_REPO_ROOTS')
+    repo_roots = {}
+    if repo_roots_envar is not None:
+        pairs = repo_roots_envar.split(':')
+        for p in pairs:
+            assert '=' in p, (
+                "Each repo str must be in the format '<module>=<repo_root>'! "
+                f"Got {p}")
+            module, repo_root = p.split('=')
+            repo_roots[module] = str(pathlib.Path(repo_root).absolute())
+    return repo_roots
+
+
+def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
     """Given a destination path, copy the local ALF root dir to the path. To
     save disk space, only ``*.py`` files will be copied.
 
@@ -1421,8 +1434,9 @@ def generate_alf_root_snapshot(alf_root, dest_path):
     model or launching a grid-search job in the waiting queue.
 
     Args:
-        alf_root (str): the parent path of the 'alf' module
-        dest_path (str): the path to generate a snapshot of ALF repo
+        alf_root: the parent path of the 'alf' module
+        conf_file: the alf config file
+        dest_path: the path to generate a snapshot of ALF repo
     """
 
     def _is_subdir(path, directory):
@@ -1438,57 +1452,64 @@ def generate_alf_root_snapshot(alf_root, dest_path):
         subprocess.check_call(
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
-    assert not _is_subdir(dest_path, alf_root), (
-        "Snapshot path '%s' is not allowed under ALF root! Use a different one!"
-        % dest_path)
-
-    # these files are important for code status
-    includes = ["*.py", "*.gin", "*.so", "*.json"]
-    # Only copy the 'alf' module dir because the root dir might contain many
-    # other modules in the case where alf is pip installed in 'site-packages'.
-    rsync(alf_root + '/alf', dest_path, includes)
-
-    # compress the snapshot repo into a ".tar.gz" file
-    os.system("cd %s; tar -czf alf.tar.gz alf" % dest_path)
-    os.system("rm -rf %s/alf" % dest_path)
+    includes = [
+        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.hpp",
+        "*.h"
+    ]
+    repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
+    for name, root in repo_roots.items():
+        assert not _is_subdir(dest_path, root), (
+            "Snapshot path '%s' is not allowed under any repo root '%s'! " %
+            (dest_path, root) + "Use a different one!")
+        # Only copy the module dir because the root dir might contain many
+        # other modules in the case where repo is pip installed in 'site-packages'.
+        rsync(root + f'/{name}', dest_path, includes)
+        # compress the snapshot repo into a ".tar.gz" file
+        os.system(
+            f"cd {dest_path}; tar -czf {name}.tar.gz {name}; rm -rf {name}")
+        info(f"Generated a snapshot {name}@{root}")
 
 
 def unzip_alf_snapshot(root_dir: str):
     """Restore an ALF snapshot from a job directory by unzipping the snapshot
-    'tar' file.
+    'tar.gz' files.
 
     Args:
         root_dir: the tensorboard job directory
     """
-    alf_zipped_repo = os.path.join(root_dir, "alf.tar.gz")
-    alf_repo = os.path.join(root_dir, "alf")
-    if os.path.isfile(alf_zipped_repo):
-        info("=== Using an ALF snapshot at '%s' ===", alf_zipped_repo)
-        os.system("rm -rf %s/alf" % root_dir)
-        os.system("cd %s; tar -xzf alf.tar.gz" % root_dir)
-    elif os.path.isdir(alf_repo):
-        # To be backward compatible of snapshots as an unzipped dirs
-        info("=== Using an ALF snapshot at '%s' ===", alf_repo)
-    else:
-        info("=== Didn't find a snapshot; using update-to-date ALF ===")
+    module_names = []
+    for zipped_repo in glob.glob(f"{root_dir}/*.tar.gz"):
+        # assuming all '*.tar.gz' under root_dir are repo snapshots
+        name = os.path.basename(zipped_repo).split('.')[0]
+        info("=== Using an ALF snapshot at '%s' ===", zipped_repo)
+        os.system(f"rm -rf {root_dir}/{name}")
+        os.system(f"cd {root_dir}; tar -xzf {name}.tar.gz")
+        module_names.append(name)
+    return module_names
 
 
 def get_alf_snapshot_env_vars(root_dir):
     """Given a ``root_dir``, return modified env variable dict so that ``PYTHONPATH``
     points to the ALF snapshot under this directory.
     """
-    unzip_alf_snapshot(root_dir)
-    legacy_alf_repo = os.path.join(root_dir, "alf")
-    if os.path.isfile(os.path.join(legacy_alf_repo, "alf")):
-        # legacy alf repo path for backward compatibility
-        # legacy tb dirs: root_dir/alf/alf/__init__.py
-        alf_repo = legacy_alf_repo
-    else:
-        # new tb dirs: root_dir/alf/__init__.py
-        alf_repo = root_dir
-    alf_examples = os.path.join(alf_repo, "alf/examples")
+    module_names = unzip_alf_snapshot(root_dir)
     python_path = os.environ.get("PYTHONPATH", "")
-    python_path = ":".join([alf_repo, alf_examples, python_path])
+    for name in module_names:
+        assert not is_repo_root(os.getcwd(), name), (
+            "Using a snapshot is not allowed under a valid repo root: " +
+            "'%s' (contains '%s')!" % (os.getcwd(), name) +
+            " Try running the command in a different directory.")
+        root = root_dir
+        if name == "alf":
+            legacy_alf_root = os.path.join(root, "alf")
+            if os.path.isfile(os.path.join(legacy_alf_root, "alf")):
+                # legacy alf repo path for backward compatibility
+                # legacy tb dirs: root_dir/alf/alf/__init__.py
+                root = legacy_alf_root
+            alf_examples = os.path.join(root, "alf/examples")
+            python_path = ":".join([root, alf_examples, python_path])
+        else:
+            python_path = ":".join([root, python_path])
     env_vars = copy.copy(os.environ)
     env_vars.update({"PYTHONPATH": python_path})
     return env_vars
@@ -1512,11 +1533,11 @@ def alf_root():
     return _alf_root
 
 
-def is_alf_root(dir):
-    """Given a directory, check if it is a valid ALF root. Currently the way
+def is_repo_root(dir, module_name):
+    """Given a directory, check if it is a valid repo root. Currently the way
     of checking is to see if there is valid ``__init__.py`` under it.
     """
-    return os.path.isfile(os.path.join(dir, 'alf/__init__.py'))
+    return os.path.isfile(os.path.join(dir, f'{module_name}/__init__.py'))
 
 
 def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):

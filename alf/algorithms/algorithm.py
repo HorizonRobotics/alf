@@ -239,6 +239,8 @@ class Algorithm(AlgorithmInterface):
 
             self.load_state_dict(stat_dict, strict=True)
             self._checkpoint_pre_loaded = True
+            common.info(
+                'in-algorithm checkpoint loaded: {}'.format(prefix_and_path))
 
     @property
     def pre_loaded(self):
@@ -1262,9 +1264,10 @@ class Algorithm(AlgorithmInterface):
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
         unused_parameters = [p[0] for p in all_params if p[1].grad is None]
-        common.warning_once(
-            "Find parameters without gradients, please double check: %s",
-            unused_parameters)
+        if unused_parameters:
+            common.warning_once(
+                "Find parameters without gradients, please double check: %s",
+                unused_parameters)
         return all_params, simple_gns
 
     # Subclass may override calc_loss() to allow more sophisticated loss
@@ -1570,13 +1573,8 @@ class Algorithm(AlgorithmInterface):
         indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
-                # here we use the cpu version of torch.randperm(n) to generate
-                # the permuted indices, as the cuda version of torch.randperm(n)
-                # seems to have a bug when n is a large number, generating
-                # negative or very large values that cause out of bound kernel
-                # error: https://github.com/pytorch/pytorch/issues/59756
-                indices = alf.nest.utils.convert_device(
-                    torch.randperm(batch_size, device='cpu'))
+                indices = torch.randperm(
+                    batch_size, device=experience.step_type.device)
             for b in range(0, batch_size, mini_batch_size):
 
                 is_last_mini_batch = (u == num_updates - 1

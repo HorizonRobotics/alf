@@ -327,12 +327,11 @@ class GridSearch(object):
             time.sleep(random.uniform(0, 3))
 
             conf_file = common.get_conf_file()
-            # This is the snapshot stored in grid-search root dir
-            alf_repo = common.abs_path(
-                os.path.join(FLAGS.root_dir, "alf.tar.gz"))
+
             # We still need to keep a snapshot of ALF repo at ``<root_dir>``
             # for playing individual searching job later
-            os.system(f"mkdir -p {root_dir}; cp {alf_repo} {root_dir}/")
+            os.system(f"mkdir -p {root_dir}; "
+                      f"cp {FLAGS.root_dir}/*.tar.gz {root_dir}/")
 
             device = device_queue.get()
             if self._conf.use_gpu:
@@ -399,12 +398,13 @@ def launch_snapshot_gridsearch():
         # for gin, we need to parse it first. Otherwise, configured.gin will be
         # empty
         common.parse_conf_file(conf_file)
-    common.write_config(root_dir, common.read_conf_file(root_dir))
+    common.write_config(root_dir)
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
-    common.generate_alf_root_snapshot(common.alf_root(), root_dir)
+    common.generate_alf_snapshot(common.alf_root(), conf_file, root_dir)
 
-    # point the grid search to the snapshot paths
+    # point the grid search to the snapshot paths, in case the code has been
+    # changed when launching a job in the queue
     env_vars = common.get_alf_snapshot_env_vars(root_dir)
 
     # remove the conf file option since we will retrieve it from ``root_dir``

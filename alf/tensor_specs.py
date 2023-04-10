@@ -134,6 +134,14 @@ class TensorSpec(object):
         return self._dtype
 
     @property
+    def dtype_str(self):
+        """The str representation of dtype
+
+        It can be used to contruct a numpy array.
+        """
+        return torch_dtype_to_str(self._dtype)
+
+    @property
     def is_discrete(self):
         """Whether spec is discrete."""
         return not self.dtype.is_floating_point
@@ -203,7 +211,7 @@ class TensorSpec(object):
         shape = self._shape
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
-        return np.ones(shape, dtype=torch_dtype_to_str(self._dtype)) * value
+        return np.full(shape, value, dtype=self.dtype_str)
 
     def numpy_zeros(self, outer_dims=None):
         """Create a zero numpy.ndarray from the spec.
@@ -397,8 +405,8 @@ class BoundedTensorSpec(TensorSpec):
 
         if self.is_continuous:
             uniform = torch.rand(shape, dtype=self._dtype)
-            return ((1 - uniform) * torch.as_tensor(self._minimum) +
-                    torch.as_tensor(self._maximum) * uniform)
+            return ((1 - uniform) * torch.tensor(self._minimum) +
+                    torch.tensor(self._maximum) * uniform)
         else:
             # torch.randint cannot have multi-dim lows and highs; currently only
             # support a scalar minimum and maximum
@@ -410,12 +418,13 @@ class BoundedTensorSpec(TensorSpec):
                 size=shape,
                 dtype=self._dtype)
 
-    def numpy_sample(self, outer_dims=None):
+    def numpy_sample(self, outer_dims=None, rng=np.random):
         """Sample numpy arrays uniformly given the min/max bounds.
 
         Args:
             outer_dims (list[int]): an optional list of integers specifying outer
                 dimensions to add to the spec shape before sampling.
+            rng (numpy.random.RandomState): random number generator
 
         Returns:
             np.ndarray: an array of ``self._dtype``
@@ -425,15 +434,14 @@ class BoundedTensorSpec(TensorSpec):
             shape = tuple(outer_dims) + shape
 
         if self.is_continuous:
-            uniform = np.random.rand(*shape).astype(
-                torch_dtype_to_str(self._dtype))
+            uniform = rng.rand(*shape).astype(self.dtype_str)
             return (1 - uniform) * self._minimum + self._maximum * uniform
         else:
-            return np.random.randint(
+            return rng.randint(
                 low=self._minimum,
                 high=self._maximum + 1,
                 size=shape,
-                dtype=torch_dtype_to_str(self._dtype))
+                dtype=self.dtype_str)
 
 
 # yapf: disable

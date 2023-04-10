@@ -20,6 +20,7 @@ Adapted from TF-Agents Environment API as seen in:
 from absl import logging
 import atexit
 from enum import Enum
+from functools import partial
 import multiprocessing
 import numpy as np
 import sys
@@ -29,6 +30,7 @@ import traceback
 import alf
 from alf.data_structures import TimeStep
 import alf.nest as nest
+from . import _penv
 
 
 class _MessageType(Enum):
@@ -45,7 +47,13 @@ class _MessageType(Enum):
     CLOSE = 6
 
 
-def _worker(conn, env_constructor, env_id=None, flatten=False):
+def _worker(conn,
+            env_constructor,
+            env_id=None,
+            flatten=False,
+            fast=False,
+            num_envs=0,
+            name=''):
     """The process waits for actions and sends back environment results.
 
     Args:
@@ -53,6 +61,11 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
         env_constructor (Callable): callable environment creator.
         flatten (bool): whether to assume flattened actions and time_steps
           during communication to avoid overhead.
+        fast (bool): whether created by ``FastParallelEnvironment`` or not.
+        num_envs (int): number of environments in the ``FastParallelEnvironment``.
+            Only used if ``fast`` is True.
+        name (str): name of the FastParallelEnvironment. Only used if ``fast``
+            is True.
 
     Raises:
         KeyError: When receiving a message of unknown type.
@@ -61,38 +74,26 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
         alf.set_default_device("cpu")
         env = env_constructor(env_id=env_id)
         action_spec = env.action_spec()
-        conn.send(_MessageType.READY)  # Ready.
-        while True:
+        if fast:
+            penv = _penv.ProcessEnvironment(
+                env, partial(process_call, conn, env, flatten,
+                             action_spec), env_id, num_envs, env.batch_size,
+                env.action_spec(),
+                env.time_step_spec()._replace(env_info=env.env_info_spec()),
+                name)
+            conn.send(_MessageType.READY)  # Ready.
             try:
-                # Only block for short times to have keyboard exceptions be raised.
-                if not conn.poll(0.1):
-                    continue
-                message, payload = conn.recv()
-            except (EOFError, KeyboardInterrupt):
-                break
-            if message == _MessageType.ACCESS:
-                name = payload
-                result = getattr(env, name)
-                conn.send((_MessageType.RESULT, result))
-                continue
-            if message == _MessageType.CALL:
-                name, args, kwargs = payload
-                if flatten and name == 'step':
-                    args = [nest.pack_sequence_as(action_spec, args[0])]
-                result = getattr(env, name)(*args, **kwargs)
-                if flatten and name in ['step', 'reset']:
-                    result = nest.flatten(result)
-                    assert all([
-                        not isinstance(x, torch.Tensor) for x in result
-                    ]), ("Tensor result is not allowed: %s" % name)
-                conn.send((_MessageType.RESULT, result))
-                continue
-            if message == _MessageType.CLOSE:
-                assert payload is None
-                env.close()
-                break
-            raise KeyError(
-                'Received message of unknown type {}'.format(message))
+                penv.worker()
+            except KeyboardInterrupt:
+                penv.quit()
+            except Exception:
+                traceback.print_exc()
+                penv.quit()
+        else:
+            conn.send(_MessageType.READY)  # Ready.
+            while True:
+                if not process_call(conn, env, flatten, action_spec):
+                    break
     except KeyboardInterrupt:
         # When worker receives interruption from keyboard (i.e. Ctrl-C), notify
         # the parent process to shut down quietly by sending the CLOSE message.
@@ -110,8 +111,51 @@ def _worker(conn, env_constructor, env_id=None, flatten=False):
         conn.close()
 
 
+def process_call(conn, env, flatten, action_spec):
+    """
+    Returns:
+        True: continue to work
+        False: end the worker
+    """
+    try:
+        # Only block for short times to have keyboard exceptions be raised.
+        while True:
+            if conn.poll(0.1):
+                break
+        message, payload = conn.recv()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    if message == _MessageType.ACCESS:
+        name = payload
+        result = getattr(env, name)
+        conn.send((_MessageType.RESULT, result))
+    elif message == _MessageType.CALL:
+        name, args, kwargs = payload
+        if flatten and name == 'step':
+            args = [nest.pack_sequence_as(action_spec, args[0])]
+        result = getattr(env, name)(*args, **kwargs)
+        if flatten and name in ['step', 'reset']:
+            result = nest.flatten(result)
+            assert all([not isinstance(x, torch.Tensor) for x in result
+                        ]), ("Tensor result is not allowed: %s" % name)
+        conn.send((_MessageType.RESULT, result))
+    elif message == _MessageType.CLOSE:
+        assert payload is None
+        env.close()
+        return False
+    else:
+        raise KeyError('Received message of unknown type {}'.format(message))
+    return True
+
+
 class ProcessEnvironment(object):
-    def __init__(self, env_constructor, env_id=None, flatten=False):
+    def __init__(self,
+                 env_constructor,
+                 env_id=None,
+                 flatten=False,
+                 fast=False,
+                 num_envs=0,
+                 name=""):
         """Step environment in a separate process for lock free paralellism.
 
         The environment is created in an external process by calling the provided
@@ -124,6 +168,11 @@ class ProcessEnvironment(object):
             env_id (torch.int32): ID of the the env
             flatten (bool): whether to assume flattened actions and time_steps
                 during communication to avoid overhead.
+            fast (bool): whether created by ``FastParallelEnvironment`` or not.
+            num_envs (int): number of environments in the ``FastParallelEnvironment``.
+                Only used if ``fast`` is True.
+            name (str): name of the FastParallelEnvironment. Only used if ``fast``
+                is True.
 
         Attributes:
             observation_spec: The cached observation spec of the environment.
@@ -139,6 +188,11 @@ class ProcessEnvironment(object):
         self._time_step_spec = None
         self._env_info_spec = None
         self._conn = None
+        self._fast = fast
+        self._num_envs = num_envs
+        self._name = name
+        if fast:
+            self._penv = _penv.ProcessEnvironmentCaller(env_id, name)
 
     def start(self, wait_to_start=True):
         """Start the process.
@@ -160,7 +214,8 @@ class ProcessEnvironment(object):
         self._conn, conn = mp_ctx.Pipe()
         self._process = mp_ctx.Process(
             target=_worker,
-            args=(conn, self._env_constructor, self._env_id, self._flatten))
+            args=(conn, self._env_constructor, self._env_id, self._flatten,
+                  self._fast, self._num_envs, self._name))
         atexit.register(self.close)
         self._process.start()
         if wait_to_start:
@@ -214,6 +269,8 @@ class ProcessEnvironment(object):
             Value of the attribute.
         """
         assert self._conn, "Run ProcessEnvironment.start() first"
+        if self._fast:
+            self._penv.call()
         self._conn.send((_MessageType.ACCESS, name))
         return self._receive()
 
@@ -229,6 +286,8 @@ class ProcessEnvironment(object):
             Promise object that blocks and provides the return value when called.
         """
         assert self._conn, "Run ProcessEnvironment.start() first"
+        if self._fast:
+            self._penv.call()
         payload = name, args, kwargs
         self._conn.send((_MessageType.CALL, payload))
         return self._receive
@@ -236,12 +295,15 @@ class ProcessEnvironment(object):
     def close(self):
         """Send a close message to the external process and join it."""
         try:
-            self._conn.send((_MessageType.CLOSE, None))
+            if self._fast:
+                self._penv.close()
+            else:
+                self._conn.send((_MessageType.CLOSE, None))
             self._conn.close()
         except IOError:
             # The connection was already closed.
             pass
-        self._process.join(5)
+        self._process.join()
 
     def step(self, action, blocking=True):
         """Step the environment.
