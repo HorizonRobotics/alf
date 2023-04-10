@@ -201,6 +201,10 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
     def metadata(self):
         return self._envs[0].metadata
 
+    @property
+    def render_mode(self):
+        return self._envs[0].render_mode
+
     def _to_tensor(self, stacked):
         # we need to do np.copy because the result from _penv.step() or
         # _penv.reset() reuses the same internal buffer.

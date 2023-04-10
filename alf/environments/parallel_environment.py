@@ -160,6 +160,10 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     def metadata(self):
         return self._envs[0].metadata
 
+    @property
+    def render_mode(self):
+        return self._envs[0].render_mode
+
     def _reset(self):
         """Reset all environments and combine the resulting observation.
 
