@@ -49,6 +49,7 @@ class TrainerConfig(object):
                  num_eval_episodes=10,
                  num_eval_environments: int = 1,
                  async_eval: bool = True,
+                 ddp_paras_check_interval: int = 0,
                  num_summaries=None,
                  summary_interval=50,
                  summarize_first_interval=True,
@@ -193,6 +194,9 @@ class TrainerConfig(object):
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
                 process. Note that this may use more memory.
+            ddp_paras_check_interval: if >0, then every so many iterations the trainer
+                will perform a consistency check of the model parameters across
+                different worker processes, if multi-gpu training is used.
             num_summaries (int): how many summary calls are needed throughout the
                 training. If not None, an automatically calculated ``summary_interval``
                 will replace ``config.summary_interval``. Note that this number
@@ -327,6 +331,7 @@ class TrainerConfig(object):
         self.num_eval_episodes = num_eval_episodes
         self.num_eval_environments = num_eval_environments
         self.async_eval = async_eval
+        self.ddp_paras_check_interval = ddp_paras_check_interval
         self.num_summaries = num_summaries
         self.summary_interval = summary_interval
         self.summarize_first_interval = summarize_first_interval

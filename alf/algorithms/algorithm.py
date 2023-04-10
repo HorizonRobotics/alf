@@ -37,6 +37,7 @@ from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from alf.utils.distributed import data_distributed_when
+from alf.utils import tensor_utils
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
@@ -586,6 +587,26 @@ class Algorithm(AlgorithmInterface):
                     "algorithm tree caused by '%s'" % child.name)
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
+
+    def compute_paras_statistics(self) -> np.ndarray:
+        """Compute some simple statistics of the algorithm's parameters.
+
+        This function uses L1, L2, mean, std as the statistics.
+
+        Returns:
+            np.ndarray: a 1D numpy array containing simple parameter statistics,
+                which can be used as a proxy for checking the consistency between
+                two parameter set.
+        """
+        paras = [p.detach() for p in self.parameters()]
+        l2_norm = tensor_utils.global_norm(paras)
+        l1_norm = sum([p.abs().sum() for p in paras])
+        paras = torch.cat([p.reshape(-1) for p in paras])
+        mean = paras.mean()
+        std = torch.std(paras)
+        stat = torch.stack(
+            [l2_norm / paras.numel(), l1_norm / paras.numel(), mean, std])
+        return stat.cpu().numpy()
 
     def get_param_name(self, param):
         """Get the name of the parameter.

@@ -45,6 +45,7 @@ from alf.utils import math_ops
 from alf.utils.pretty_print import pformat_pycolor
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
+from alf.utils.per_process_context import PerProcessContext
 from alf.utils.summary_utils import record_time
 from .evaluator import Evaluator
 
@@ -559,6 +560,7 @@ class RLTrainer(Trainer):
             self._algorithm.activate_ddp(ddp_rank)
             # Make sure the BN statistics of different processes are synced
             # https://pytorch.org/docs/stable/generated/torch.nn.SyncBatchNorm.html#torch.nn.SyncBatchNorm
+            # This conversion needs to be performed before wrapping modules with DDP.
             self._algorithm = torch.nn.SyncBatchNorm.convert_sync_batchnorm(
                 self._algorithm)
 
@@ -657,6 +659,9 @@ class RLTrainer(Trainer):
                     self._eval()
                 break
 
+            self._check_dpp_paras_consistency(iter_num,
+                                              training_setting_summarized)
+
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
                     or (not self._num_iterations and self._num_env_steps
                         and total_time_steps >= time_to_checkpoint)):
@@ -671,6 +676,77 @@ class RLTrainer(Trainer):
                 self._debug_requested = False
                 import pdb
                 pdb.set_trace()
+
+    def _check_dpp_paras_consistency(self, iter_num: int,
+                                     training_started: bool):
+        """Periodically check the consistency of model parameters of different
+        DDP processes.
+
+        Note that DDP can only make sure that the parameters requiring gradients
+        are always consistent across processes, but cannot guarantee the
+        same thing for those without gradients. An example scenario is the target
+        model of SAC.
+
+        Here we check the parameters for both cases. If any inconsistency is found,
+        a warning message will be printed, without interrupting the training.
+
+        Even if all model parameters require gradients, this function can still
+        serve as a sanity checker for our DDP implementation.
+
+        Args:
+            iter_num: current training iteration
+            training_started: if training has started or not. ALF only wraps DDP
+                around algorithms after first training forward, when model parameters
+                are first synced. So only consistency checking after this is meaingful.
+                Note that for off-policy training before first gradient update,
+                different processes might use different models to unroll.
+        """
+        if not training_started:
+            return
+
+        proc_cxt = PerProcessContext()
+        if (proc_cxt.is_distributed
+                and self._config.ddp_paras_check_interval > 0
+                # Assume that DDP will make sure that this modulo check won't
+                # cause a dead lock, i.e., all workers have the same ``iter_num``
+                # at any moment.
+                and iter_num % self._config.ddp_paras_check_interval == 0):
+
+            with alf.summary.record_if(lambda: True):
+                with record_time("time/para_consistency"):
+
+                    paras_stat = self._algorithm.compute_paras_statistics()
+                    queue = proc_cxt.paras_queue
+                    if self._rank > 0:
+                        # Put para stat into the queue. Don't need to wait rank=0's
+                        # return, because DDP will sync processes at the next
+                        # gradient update.
+                        queue.put(paras_stat)
+                    else:
+                        consistent = True
+                        # rank=0 gets all other para stats
+                        for i in range(proc_cxt.num_processes - 1):
+                            their_paras_stat = queue.get()
+                            is_close = np.isclose(
+                                paras_stat, their_paras_stat, atol=1e-6)
+                            if not np.all(is_close):
+                                consistent = False
+                                common.warning(
+                                    "Found inconsistent parameter stats across "
+                                    "DDP processes: %s vs. %s => %s" %
+                                    (paras_stat, their_paras_stat, is_close))
+
+                        if not consistent:
+                            common.warning(
+                                "Your model parameters are not consistent across"
+                                " DDP processes. Please make sure to check if there"
+                                " is any computation that relies on local-batch "
+                                "statistics in the algorithm.")
+                        else:
+                            common.info("Model parameters are consistent")
+
+                        alf.summary.scalar("DDP/para_consistency",
+                                           torch.tensor(float(consistent)))
 
     def _close(self):
         """Closing operations after training. """

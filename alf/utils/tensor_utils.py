@@ -202,7 +202,7 @@ def global_norm(tensors):
     Returns:
         norm (Tensor): a scalar tensor
     """
-    assert alf.nest.is_nested(tensors), "tensors must be a nest!"
+    assert alf.nest.is_nested(tensors), "tensors must be a nest! %s" % tensors
     tensors = alf.nest.flatten(tensors)
     if not tensors:
         return torch.zeros((), dtype=torch.float32)
