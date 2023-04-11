@@ -273,7 +273,7 @@ class AlfGymWrapper(AlfEnvironment):
         return self._gym_env.close()
 
     def seed(self, seed):
-        return self._gym_env.seed(abs(seed))
+        return self._gym_env.seed(seed)
 
     def render(self, mode='rgb_array'):
         return self._gym_env.render(mode)

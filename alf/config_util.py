@@ -832,10 +832,11 @@ def _get_conf_file_full_path(conf_file):
         if os.path.exists(conf_file):
             return conf_file
     if len(_IMPORT_STACK) == 0:
-        candidate = os.path.join(os.getcwd(), conf_file)
-        if os.path.exists(candidate):
-            return candidate
-    dir = os.path.dirname(_IMPORT_STACK[-1])
+        # called from load_config()
+        dir = os.getcwd()
+    else:
+        # callded from import_config()
+        dir = os.path.dirname(_IMPORT_STACK[-1])
     candidate = os.path.join(dir, conf_file)
     if os.path.exists(candidate):
         return candidate
@@ -859,6 +860,29 @@ def _add_conf_file(conf_file):
 
 def import_config(conf_file):
     """Import the config from another file.
+
+    Different from ``load_config()``, ``import_config()`` should only be used in
+    config files. And it can be used multiple times inside your config files.
+
+    If ``conf_file`` is a relative path, ``load_config()`` will first try to find it
+    in the directory of the config file calling this function. If it cannot be found
+    there, directories in the environment varianble ``ALF_CONFIG_PATH`` will be
+    searched in order.
+
+    Examples:
+
+    1. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/code/my_conf2.py``. You can use ``import_config("my_conf2.py")``
+    to import ``my_config2.py``.
+
+    2. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/code/base/my_conf2.py``. You can use ``import_config("base/my_conf2.py")``
+    to import ``my_config2.py``.
+
+    3. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/packages/my_conf2.py``. You need to set the environment
+    variable as ``ALF_CONFIG_PATH=~/packages``. Then can use ``import_config("my_conf2.py")``
+    to import ``my_config2.py``.
 
     Args:
         conf_file
@@ -893,6 +917,14 @@ def _import_config(conf_file):
 
 def load_config(conf_file):
     """Load config from a file.
+
+    Different from ``import_config()``, ``load_config()`` should only be used by
+    your main code to load the config. And it should be only called once unless
+     ``reset_configs()`` is called to reset the configuration to default state.
+
+    If ``conf_file`` is a relative path, ``load_config()`` will first try to find it
+    in the current working directory. If it cannot be found there, directories in
+    the environment varianble ``ALF_CONFIG_PATH`` will be searched in order.
 
     Args:
         conf_file
