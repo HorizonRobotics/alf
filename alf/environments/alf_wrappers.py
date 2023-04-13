@@ -1129,7 +1129,10 @@ class BatchEnvironmentWrapper(AlfEnvironment):
             env.seed(seed * len(self._envs) + i)
 
     def _step(self, action):
-        time_steps = [env.step(a) for env, a in zip(self._envs, action)]
+        def _ith(i):
+            return alf.nest.map_structure(lambda x: x[i], action)
+
+        time_steps = [env.step(_ith(i)) for i, env in enumerate(self._envs)]
         time_step = alf.nest.map_structure(lambda *arrays: np.stack(arrays),
                                            *time_steps)
         return time_step
