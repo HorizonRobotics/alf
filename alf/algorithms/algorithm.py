@@ -23,6 +23,7 @@ import json
 import numpy as np
 import os
 import psutil
+from typing import Dict
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
@@ -588,25 +589,31 @@ class Algorithm(AlgorithmInterface):
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
 
-    def compute_paras_statistics(self) -> np.ndarray:
+    def compute_paras_statistics(self) -> Dict[str, np.ndarray]:
         """Compute some simple statistics of the algorithm's parameters.
 
         This function uses L1, L2, mean, std as the statistics.
 
         Returns:
-            np.ndarray: a 1D numpy array containing simple parameter statistics,
-                which can be used as a proxy for checking the consistency between
-                two parameter set.
+            Dict[np.ndarray]: a dict of 1D numpy arrays, each containing simple
+                parameter statistics, which can be used as a proxy for checking
+                the consistency between two parameter set. The keys are parameter
+                names of the module.
         """
-        paras = [p.detach() for p in self.parameters()]
-        l2_norm = tensor_utils.global_norm(paras)
-        l1_norm = sum([p.abs().sum() for p in paras])
-        paras = torch.cat([p.reshape(-1) for p in paras])
-        mean = paras.mean()
-        std = torch.std(paras)
-        stat = torch.stack(
-            [l2_norm / paras.numel(), l1_norm / paras.numel(), mean, std])
-        return stat.cpu().numpy()
+
+        def _stats_per_para(para):
+            l2_norm = tensor_utils.global_norm([para])
+            l1_norm = para.abs().sum()
+            mean = para.mean()
+            std = torch.std(para)
+            stat = torch.stack(
+                [l2_norm / para.numel(), l1_norm / para.numel(), mean, std])
+            return stat.cpu().numpy()
+
+        stats = {}
+        for name, para in self.named_parameters():
+            stats[name] = _stats_per_para(para.detach())
+        return stats
 
     def get_param_name(self, param):
         """Get the name of the parameter.

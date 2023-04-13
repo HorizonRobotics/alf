@@ -15,6 +15,7 @@
 
 import abc
 from absl import logging
+from functools import partial
 from typing import Dict
 import math
 import os
@@ -705,48 +706,50 @@ class RLTrainer(Trainer):
             return
 
         proc_cxt = PerProcessContext()
-        if (proc_cxt.is_distributed
+        if not (proc_cxt.is_distributed
                 and self._config.ddp_paras_check_interval > 0
                 # Assume that DDP will make sure that this modulo check won't
                 # cause a dead lock, i.e., all workers have the same ``iter_num``
                 # at any moment.
                 and iter_num % self._config.ddp_paras_check_interval == 0):
+            return
 
-            with alf.summary.record_if(lambda: True):
-                with record_time("time/para_consistency"):
-
-                    paras_stat = self._algorithm.compute_paras_statistics()
-                    queue = proc_cxt.paras_queue
-                    if self._rank > 0:
-                        # Put para stat into the queue. Don't need to wait rank=0's
-                        # return, because DDP will sync processes at the next
-                        # gradient update.
-                        queue.put(paras_stat)
-                    else:
-                        consistent = True
-                        # rank=0 gets all other para stats
-                        for i in range(proc_cxt.num_processes - 1):
-                            their_paras_stat = queue.get()
-                            is_close = np.isclose(
-                                paras_stat, their_paras_stat, atol=1e-6)
-                            if not np.all(is_close):
+        with alf.summary.record_if(lambda: True):
+            with record_time("time/para_consistency"):
+                paras_stat = self._algorithm.compute_paras_statistics()
+                queue = proc_cxt.paras_queue
+                if self._rank > 0:
+                    # Put para stat into the queue. Don't need to wait rank=0's
+                    # return, because DDP will sync processes at the next
+                    # gradient update.
+                    queue.put(paras_stat)
+                else:
+                    consistent = True
+                    # rank=0 gets all other para stats
+                    for i in range(proc_cxt.num_processes - 1):
+                        their_paras_stat = queue.get()
+                        is_close = map_structure(
+                            partial(np.isclose, atol=1e-6), paras_stat,
+                            their_paras_stat)
+                        for k, v in is_close.items():
+                            if not np.all(v):
                                 consistent = False
                                 common.warning(
-                                    "Found inconsistent parameter stats across "
-                                    "DDP processes: %s vs. %s => %s" %
-                                    (paras_stat, their_paras_stat, is_close))
+                                    "Found inconsistent parameter '%s' across "
+                                    "DDP processes: %s vs. %s" %
+                                    (k, paras_stat[k], their_paras_stat[k]))
 
-                        if not consistent:
-                            common.warning(
-                                "Your model parameters are not consistent across"
-                                " DDP processes. Please make sure to check if there"
-                                " is any computation that relies on local-batch "
-                                "statistics in the algorithm.")
-                        else:
-                            common.info("Model parameters are consistent")
+                    if not consistent:
+                        common.warning(
+                            "Your model parameters are not consistent across"
+                            " DDP processes. Please make sure to check if there"
+                            " is any computation that relies on local-batch "
+                            "statistics in the algorithm.")
+                    else:
+                        common.info("Model parameters are consistent")
 
-                        alf.summary.scalar("DDP/para_consistency",
-                                           torch.tensor(float(consistent)))
+                    alf.summary.scalar("DDP/para_consistency",
+                                       torch.tensor(float(consistent)))
 
     def _close(self):
         """Closing operations after training. """
