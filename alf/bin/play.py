@@ -111,10 +111,12 @@ def play():
     if FLAGS.parallel_play > 1:
         alf.config(
             'create_environment',
+            create_eval_env=True,
             num_parallel_environments=FLAGS.parallel_play,
             mutable=False)
     else:
-        alf.config('create_environment', nonparallel=True)
+        alf.config(
+            'create_environment', create_eval_env=True, nonparallel=True)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"
