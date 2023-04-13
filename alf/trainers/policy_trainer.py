@@ -1011,7 +1011,7 @@ def play(root_dir,
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST
         episode_length += started
-        episode_reward += started * time_step.reward
+        episode_reward += started * time_step.reward.sum()
 
         for i in range(batch_size):
             if time_step.step_type[i] == StepType.LAST:
