@@ -674,39 +674,20 @@ def read_conf_file(root_dir: str) -> str:
     return content
 
 
-def write_config(root_dir: str, conf_file_content: str):
+def write_config(root_dir: str):
     """Write config to a file under directory ``root_dir``
 
     Configs from FLAGS.conf_param are also recorded.
 
     Args:
         root_dir: directory path
-        conf_file_content: the content of the conf file
     """
     conf_file = get_conf_file()
     if conf_file is None or conf_file.endswith('.gin'):
         return write_gin_configs(root_dir, 'configured.gin')
 
     root_dir = os.path.expanduser(root_dir)
-    alf_config_file = os.path.join(root_dir, ALF_CONFIG_FILE)
-    os.makedirs(root_dir, exist_ok=True)
-    pre_configs = alf.config_util.get_handled_pre_configs()
-    config = ''
-    if pre_configs:
-        config += "########### pre-configs ###########\n\n"
-        config += "import alf\n"
-        config += "alf.pre_config({\n"
-        for config_name, config_value in pre_configs:
-            if isinstance(config_value, str):
-                config += "    '%s': '%s',\n" % (config_name, config_value)
-            else:
-                config += "    '%s': %s,\n" % (config_name, config_value)
-        config += "})\n\n"
-        config += "########### end pre-configs ###########\n\n"
-    config += conf_file_content
-    f = open(alf_config_file, 'w')
-    f.write(config)
-    f.close()
+    alf.save_config(os.path.join(root_dir, ALF_CONFIG_FILE))
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):
@@ -993,7 +974,7 @@ def set_random_seed(seed):
         The seed being used if ``seed`` is None.
     """
     if seed is None:
-        seed = int(np.uint32(hash(str(os.getpid()) + '|' + str(time.time()))))
+        seed = abs(hash(str(os.getpid()) + '|' + str(time.time())))
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False

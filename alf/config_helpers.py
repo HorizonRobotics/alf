@@ -19,11 +19,10 @@ only available after the environment is created. So we create an environment
 based TrainerConfig in this module.
 """
 
-import runpy
 import math
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
-from alf.config_util import config1, get_config_value, pre_config, validate_pre_configs
+from alf.config_util import config1, get_config_value, load_config, pre_config, validate_pre_configs
 from alf.environments.utils import create_environment
 from alf.utils.common import set_random_seed
 from alf.utils.per_process_context import PerProcessContext
@@ -218,7 +217,7 @@ def parse_config(conf_file, conf_params):
                 config_value = eval(config_value)
                 pre_config({config_name: config_value})
 
-        runpy.run_path(conf_file)
+        load_config(conf_file)
         validate_pre_configs()
     finally:
         _is_parsing = False

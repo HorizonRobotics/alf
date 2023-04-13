@@ -145,8 +145,8 @@ def _create_algorithm_and_env(root_dir, old_configs=None):
                 "Some config set by the original config file are not "
                 "set by root_dir/alf_config.py. It may be because these configs "
                 "are set through import. Currently verify_checkpoint.py does "
-                "not support this. A work-around for this is to copy the "
-                "imported configs directly to your config file.")
+                "not support this. You should replace import with alf.import_config()."
+            )
     config = policy_trainer.TrainerConfig(root_dir=root_dir)
 
     env = alf.get_env()
@@ -193,7 +193,7 @@ def main(_):
             algorithm1.train_iter()
         ckpt_mngr1 = ckpt_utils.Checkpointer(ckpt_dir, alg=algorithm1)
         ckpt_mngr1.save(step_num)
-        common.write_config(root_dir, common.read_conf_file(root_dir))
+        common.write_config(root_dir)
 
         FLAGS.gin_file = None
         FLAGS.conf = None
@@ -217,7 +217,7 @@ def main(_):
                                       time_steps)
 
         def _compare(path, x1, x2):
-            diff = (x1 - x2).abs().max().detach().numpy()
+            diff = (x1 - x2).abs().max().detach().cpu().numpy()
             if diff > FLAGS.tolerance:
                 logging.info('*** %s: diff=%s' % (path, diff))
                 return False

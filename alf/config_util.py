@@ -20,6 +20,8 @@ import inspect
 from inspect import Parameter
 import os
 import pprint
+import runpy
+import shutil
 
 __all__ = [
     'config',
@@ -31,10 +33,13 @@ __all__ = [
     'get_handled_pre_configs',
     'get_inoperative_configs',
     'get_operative_configs',
+    'import_config',
+    'load_config',
     'pre_config',
     'reset_configs',
     'validate_pre_configs',
     'repr_wrapper',
+    'save_config',
 ]
 
 
@@ -217,6 +222,10 @@ _CONF_TREE = {}
 _PRE_CONFIGS = []
 _HANDLED_PRE_CONFIGS = []
 _DEFINED_CONFIGS = []
+_CONF_FILES = {}  # key: file name, value: content
+_CONFIG_MODULES = {}
+_IMPORT_STACK = []
+_ROOT_CONF_FILE = None
 
 
 def reset_configs():
@@ -236,6 +245,10 @@ def reset_configs():
     _DEFINED_CONFIGS.clear()
     _PRE_CONFIGS.clear()
     _HANDLED_PRE_CONFIGS.clear()
+    _CONF_FILES.clear()
+    _CONFIG_MODULES.clear()
+    global _ROOT_CONF_FILE
+    _ROOT_CONF_FILE = None
 
 
 def _remove_config_node(config_name):
@@ -812,3 +825,163 @@ def define_config(name, default_value):
     node.set_default_value(default_value)
     _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
     _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
+
+
+def _get_conf_file_full_path(conf_file):
+    if os.path.isabs(conf_file):
+        if os.path.exists(conf_file):
+            return conf_file
+    if len(_IMPORT_STACK) == 0:
+        # called from load_config()
+        dir = os.getcwd()
+    else:
+        # callded from import_config()
+        dir = os.path.dirname(_IMPORT_STACK[-1])
+    candidate = os.path.join(dir, conf_file)
+    if os.path.exists(candidate):
+        return candidate
+    conf_path = os.environ.get("ALF_CONFIG_PATH", None)
+    conf_dirs = []
+    if conf_path is not None:
+        conf_dirs = conf_path.split(':')
+    for dir in conf_dirs:
+        candidate = os.path.join(dir, conf_file)
+        if os.path.exists(candidate):
+            return candidate
+    raise ValueError(f"Cannot find conf file {conf_file}")
+
+
+def _add_conf_file(conf_file):
+    if conf_file in _CONF_FILES:
+        return
+    with open(conf_file, "r") as f:
+        _CONF_FILES[conf_file] = f.read()
+
+
+def import_config(conf_file):
+    """Import the config from another file.
+
+    Different from ``load_config()``, ``import_config()`` should only be used in
+    config files. And it can be used multiple times inside your config files.
+
+    If ``conf_file`` is a relative path, ``load_config()`` will first try to find it
+    in the directory of the config file calling this function. If it cannot be found
+    there, directories in the environment varianble ``ALF_CONFIG_PATH`` will be
+    searched in order.
+
+    Examples:
+
+    1. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/code/my_conf2.py``. You can use ``import_config("my_conf2.py")``
+    to import ``my_config2.py``.
+
+    2. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/code/base/my_conf2.py``. You can use ``import_config("base/my_conf2.py")``
+    to import ``my_config2.py``.
+
+    3. Suppose you have a config file ``~/code/my_conf.py``. You want to import
+    another config file ``~/packages/my_conf2.py``. You need to set the environment
+    variable as ``ALF_CONFIG_PATH=~/packages``. Then can use ``import_config("my_conf2.py")``
+    to import ``my_config2.py``.
+
+    Args:
+        conf_file
+    Returns:
+        the config module object, which can be used in a similar way as python
+        imported module.
+    """
+    if len(_IMPORT_STACK) == 0:
+        raise ValueError("alf.import_config() can only be called inside a "
+                         "config file.")
+    conf_file = _get_conf_file_full_path(conf_file)
+    return _import_config(conf_file)
+
+
+class ConfigModule:
+    pass
+
+
+def _import_config(conf_file):
+    if conf_file in _CONFIG_MODULES:
+        return _CONFIG_MODULES[conf_file]
+    _add_conf_file(conf_file)
+    _IMPORT_STACK.append(conf_file)
+    kv = runpy.run_path(conf_file)
+    _IMPORT_STACK.pop()
+    module = ConfigModule()
+    for k, v in kv.items():
+        setattr(module, k, v)
+    _CONFIG_MODULES[conf_file] = module
+    return module
+
+
+def load_config(conf_file):
+    """Load config from a file.
+
+    Different from ``import_config()``, ``load_config()`` should only be used by
+    your main code to load the config. And it should be only called once unless
+     ``reset_configs()`` is called to reset the configuration to default state.
+
+    If ``conf_file`` is a relative path, ``load_config()`` will first try to find it
+    in the current working directory. If it cannot be found there, directories in
+    the environment varianble ``ALF_CONFIG_PATH`` will be searched in order.
+
+    Args:
+        conf_file
+    Returns:
+        the config module object, which can be used in a similar way as python
+        imported module.
+    """
+    global _ROOT_CONF_FILE
+    if _ROOT_CONF_FILE is not None:
+        raise ValueError(
+            "One process can only call alf.load_config() once. "
+            "If you want to call it multiple times, you need to call "
+            "alf.reset_configs() between the calls.")
+    conf_file = _get_conf_file_full_path(conf_file)
+    _ROOT_CONF_FILE = conf_file
+    return _import_config(conf_file)
+
+
+def save_config(alf_config_file):
+    """Save config files.
+
+    This will save config set using ``pre_config()``, the file loaded using
+    ``load_config()`` and the files imported using ``import_config()`` if they
+    are in the config root directory or its sub-directory, where the config root
+    directory is the directory of the conf file loaded by ``load_config()``.
+
+    """
+    if _ROOT_CONF_FILE is None:
+        raise ValueError("alf.save_config() cannot be called before "
+                         "alf.load_config()")
+    config_dirname = "config_files"
+    dir = os.path.join(os.path.dirname(alf_config_file), config_dirname)
+    os.makedirs(dir, exist_ok=True)
+    conf_file_name = os.path.basename(_ROOT_CONF_FILE)
+    conf_root_dir = os.path.dirname(_ROOT_CONF_FILE)
+
+    pre_configs = get_handled_pre_configs()
+    config = ''
+    config += "import alf\n"
+    if pre_configs:
+        config += "alf.pre_config({\n"
+        for config_name, config_value in pre_configs:
+            if isinstance(config_value, str):
+                config += "    '%s': '%s',\n" % (config_name, config_value)
+            else:
+                config += "    '%s': %s,\n" % (config_name, config_value)
+        config += "})\n\n"
+    config += f"alf.import_config('{config_dirname}/{conf_file_name}')\n"
+    f = open(alf_config_file, 'w')
+    f.write(config)
+    f.close()
+
+    for conf_file, content in _CONF_FILES.items():
+        if conf_file.startswith(conf_root_dir):
+            conf_rel_path = conf_file[len(conf_root_dir) + 1:]
+            conf_rel_dir = os.path.dirname(conf_rel_path)
+            if conf_rel_dir:
+                os.makedirs(os.path.join(dir, conf_rel_dir), exist_ok=True)
+            with open(os.path.join(dir, conf_rel_path), "w") as f:
+                f.write(content)

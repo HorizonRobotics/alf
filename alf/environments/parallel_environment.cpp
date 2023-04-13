@@ -100,6 +100,7 @@ class SharedDataBuffer {
   inline char* GetBuf(int slice_id, int array_id) const {
     return buf_ + offsets_[array_id] + sizes_[array_id] * slice_id;
   }
+  inline void CheckSize(const py::list& arrays, const py::object& nested_array);
 };
 
 void CheckStrides(const py::buffer_info& info,
@@ -114,8 +115,19 @@ void CheckStrides(const py::buffer_info& info,
   }
 }
 
+void SharedDataBuffer::CheckSize(const py::list& arrays,
+                                 const py::object& nested_array) {
+  if (arrays.size() != sizes_.size()) {
+    throw std::runtime_error(
+        py::str("array structure mismatch. Expected: {} arrays {}, Got: {} "
+                "arrays {}.")
+            .format(sizes_.size(), data_spec_, arrays.size(), nested_array));
+  }
+}
+
 void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
   auto arrays = Flatten(nested_array);
+  CheckSize(arrays, nested_array);
   try {
     for (size_t j = 0; j < arrays.size(); ++j) {
       auto buffer = py::buffer(arrays[j]);
@@ -140,6 +152,7 @@ void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
 void SharedDataBuffer::WriteBatch(py::object nested_array,
                                   size_t begin_slice_id) {
   auto arrays = Flatten(nested_array);
+  CheckSize(arrays, nested_array);
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
@@ -157,6 +170,7 @@ void SharedDataBuffer::WriteBatch(py::object nested_array,
 
 void SharedDataBuffer::WriteWhole(py::object nested_array) {
   auto arrays = Flatten(nested_array);
+  CheckSize(arrays, nested_array);
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
