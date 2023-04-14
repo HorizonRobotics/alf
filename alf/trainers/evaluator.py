@@ -69,7 +69,7 @@ class Evaluator(object):
             self._worker = ctx.Process(
                 target=_worker,
                 args=(self._job_queue, self._done_queue, conf_file,
-                      pre_configs, num_envs, config.root_dir, seed, True))
+                      pre_configs, num_envs, config.root_dir, seed))
             self._worker.start()
         else:
             self._env = create_environment(
@@ -172,8 +172,7 @@ def _worker(job_queue: mp.Queue,
             pre_configs: Dict,
             num_parallel_envs: int,
             root_dir: str,
-            seed: Optional[int] = None,
-            create_eval_env: Optional[bool] = False):
+            seed: Optional[int] = None):
     try:
         _define_flags()
         FLAGS(sys.argv, known_only=True)
@@ -194,14 +193,12 @@ def _worker(job_queue: mp.Queue,
         if num_parallel_envs > 1:
             alf.config(
                 'create_environment',
-                create_eval_env=create_eval_env,
+                create_eval_env=True,
                 num_parallel_environments=num_parallel_envs,
                 mutable=False)
         else:
             alf.config(
-                'create_environment',
-                create_eval_env=create_eval_env,
-                nonparallel=True)
+                'create_environment', create_eval_env=True, nonparallel=True)
         try:
             alf.pre_config(pre_configs)
             common.parse_conf_file(conf_file)
