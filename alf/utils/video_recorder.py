@@ -42,6 +42,7 @@ class VideoRecorder(GymVideoRecorder):
                  env,
                  frame_max_width=2560,
                  frames_per_sec=None,
+                 last_step_repeats=0,
                  append_blank_frames=0,
                  **kwargs):
         """
@@ -50,7 +51,9 @@ class VideoRecorder(GymVideoRecorder):
             frame_max_width (int): the max width of a video frame. Scale if the
                 original width is bigger than this.
             frames_per_sec (fps): if None, use fps from the env
-            append_blank_frames (int): If >0, wil append such number of blank
+            last_step_repeats (int): repeat such number of times for the
+                last frame of each episode.
+            append_blank_frames (int): If >0, will append such number of blank
                 frames at the end of the episode in the rendered video file.
                 A negative value has the same effects as 0 and no blank frames
                 will be appended.
@@ -60,6 +63,7 @@ class VideoRecorder(GymVideoRecorder):
         if frames_per_sec is not None:
             self.frames_per_sec = frames_per_sec  # overwrite the base class
 
+        self._last_step_repeats = last_step_repeats
         self._append_blank_frames = append_blank_frames
         self._blank_frame = None
         self._pred_info_img_shapes = None
@@ -104,11 +108,15 @@ class VideoRecorder(GymVideoRecorder):
             frame = self._plot_pred_info(frame, pred_info)
             self._encode_frame(frame)
 
-            if self._append_blank_frames > 0 and is_last_step:
-                if self._blank_frame is None:
-                    self._blank_frame = np.zeros_like(frame)
-                for _ in range(self._append_blank_frames):
-                    self._encode_frame(self._blank_frame)
+            if is_last_step:
+                if self._last_step_repeats > 0:
+                    for _ in range(self._last_step_repeats):
+                        self._encode_frame(frame)
+                if self._append_blank_frames > 0:
+                    if self._blank_frame is None:
+                        self._blank_frame = np.zeros_like(frame)
+                    for _ in range(self._append_blank_frames):
+                        self._encode_frame(self._blank_frame)
 
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")

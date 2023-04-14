@@ -61,6 +61,10 @@ def _define_flags():
         'deterministic implementation.')
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
+        'last_step_repeats', 0,
+        "If >0, wil repeat such number of times for the last "
+        "frame of each episode in the rendered video file.")
+    flags.DEFINE_integer(
         'append_blank_frames', 0,
         "If >0, wil append such number of blank frames at the "
         "end of each episode in the rendered video file.")
@@ -159,6 +163,7 @@ def play():
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
             append_blank_frames=FLAGS.append_blank_frames,
+            last_step_repeats=FLAGS.last_step_repeats,
             render=FLAGS.render,
             selective_mode=FLAGS.selective_mode,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
