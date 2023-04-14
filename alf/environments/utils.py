@@ -74,7 +74,7 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        eval_env_load_fn=None,
-                       create_eval_env=False,
+                       for_evaluation=False,
                        num_parallel_environments=30,
                        batch_size_per_env=1,
                        nonparallel=False,
@@ -100,7 +100,7 @@ def create_environment(env_name='CartPole-v0',
             evaluation. If None, use ``env_load_fn``. This argument is useful
             for cases when the evaluation environment is different from the
             training environment.
-        create_eval_env (bool): whether to create an environment for evaluation
+        for_evaluation (bool): whether to create an environment for evaluation
             (if True) or for training (if False). If True, ``eval_env_load_fn``
             will be used for creating the environment if provided. Otherwise,
             ``env_load_fn`` will be used.
@@ -129,7 +129,7 @@ def create_environment(env_name='CartPole-v0',
         AlfEnvironment:
     """
 
-    if create_eval_env:
+    if for_evaluation:
         # for creating an evaluation environment, use ``eval_env_load_fn`` if
         # provided and fall back to ``env_load_fn`` otherwise
         env_load_fn = eval_env_load_fn if eval_env_load_fn else env_load_fn
