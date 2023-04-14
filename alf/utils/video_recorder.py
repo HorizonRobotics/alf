@@ -29,7 +29,10 @@ except ImportError:
     render = None
 
 
-@alf.configurable(whitelist=['frame_max_width', 'frames_per_sec'])
+@alf.configurable(whitelist=[
+    'frame_max_width', 'frames_per_sec', 'last_step_repeats',
+    'append_blank_frames'
+])
 class VideoRecorder(GymVideoRecorder):
     """A video recorder that renders frames and encodes them into a video file.
     Besides rendering frames, it also supports plotting prediction info. Each
