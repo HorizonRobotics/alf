@@ -73,7 +73,9 @@ class Evaluator(object):
             self._worker.start()
         else:
             self._env = create_environment(
-                num_parallel_environments=num_envs, seed=seed)
+                for_evaluation=True,
+                num_parallel_environments=num_envs,
+                seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
@@ -191,10 +193,12 @@ def _worker(job_queue: mp.Queue,
         if num_parallel_envs > 1:
             alf.config(
                 'create_environment',
+                for_evaluation=True,
                 num_parallel_environments=num_parallel_envs,
                 mutable=False)
         else:
-            alf.config('create_environment', nonparallel=True)
+            alf.config(
+                'create_environment', for_evaluation=True, nonparallel=True)
         try:
             alf.pre_config(pre_configs)
             common.parse_conf_file(conf_file)
