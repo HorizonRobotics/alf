@@ -23,6 +23,7 @@ import json
 import numpy as np
 import os
 import psutil
+from typing import Dict
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
@@ -37,6 +38,7 @@ from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from alf.utils.distributed import data_distributed_when
+from alf.utils import tensor_utils
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
 from .data_transformer import IdentityDataTransformer
@@ -586,6 +588,32 @@ class Algorithm(AlgorithmInterface):
                     "algorithm tree caused by '%s'" % child.name)
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
+
+    def compute_paras_statistics(self) -> Dict[str, np.ndarray]:
+        """Compute some simple statistics of the algorithm's parameters.
+
+        This function uses L1, L2, mean, std as the statistics.
+
+        Returns:
+            Dict[np.ndarray]: a dict of 1D numpy arrays, each containing simple
+                parameter statistics, which can be used as a proxy for checking
+                the consistency between two parameter set. The keys are parameter
+                names of the module.
+        """
+
+        def _stats_per_para(para):
+            l2_norm = tensor_utils.global_norm([para])
+            l1_norm = para.abs().sum()
+            mean = para.mean()
+            std = torch.std(para)
+            stat = torch.stack(
+                [l2_norm / para.numel(), l1_norm / para.numel(), mean, std])
+            return stat.cpu().numpy()
+
+        stats = {}
+        for name, para in self.named_parameters():
+            stats[name] = _stats_per_para(para.detach())
+        return stats
 
     def get_param_name(self, param):
         """Get the name of the parameter.

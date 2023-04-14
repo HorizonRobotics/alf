@@ -145,7 +145,11 @@ def _train(root_dir, rank=0, world_size=1):
     trainer.train()
 
 
-def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
+def training_worker(rank: int,
+                    world_size: int,
+                    conf_file: str,
+                    root_dir: str,
+                    paras_queue: mp.Queue = None):
     """An executable instance that trains and evaluate the algorithm
 
     Args:
@@ -154,6 +158,8 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             interpreted as "non distributed mode".
         conf_file (str): Path to the training configuration.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
+        paras_queue: a shared Queue for checking the consistency of model parameters
+            in different worker processes, if multi-gpu training is used.
     """
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
@@ -168,6 +174,9 @@ def training_worker(rank: int, world_size: int, conf_file: str, root_dir: str):
             # Set the rank and total number of processes for distributed training.
             PerProcessContext().set_distributed(
                 rank=rank, num_processes=world_size)
+            assert paras_queue is not None
+            PerProcessContext().set_paras_queue(paras_queue)
+
         # Make PerProcessContext read-only.
         PerProcessContext().finalize()
 
@@ -222,9 +231,13 @@ def main(_):
         os.environ['MASTER_PORT'] = '12355'
 
         try:
+            # Create a shared queue for checking the consistency of the parameters
+            # in different work processes.
+            manager = mp.Manager()
+            paras_queue = manager.Queue()
             processes = mp.spawn(
                 training_worker,
-                args=(world_size, conf_file, root_dir),
+                args=(world_size, conf_file, root_dir, paras_queue),
                 join=True,
                 nprocs=world_size,
                 start_method='spawn')

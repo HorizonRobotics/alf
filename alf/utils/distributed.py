@@ -38,13 +38,13 @@ class _MethodPerformer(torch.nn.Module):
         """Constructs a _MethodPerformer.
 
         Args:
-        
+
             module: an instance of the module whose method is going to be
                 delegated to. The _MethodPerformer instance needs to access and
                 inherit the parameters from the module, so that DDP knows what
                 parameters to cover.
 
-            perform: the target method of the module. 
+            perform: the target method of the module.
 
         """
         super().__init__()
@@ -100,7 +100,7 @@ def make_ddp_performer(module: torch.nn.Module,
 
     This function is an alf.configurable and used in the @data_distributed
     series of decorators below. Override this in your configuration with
-    
+
         alf.config('make_ddp_performer', find_unused_parameters=True)
 
     to enable ``find_unused_parameters``. This asks DDP to ignore parameters

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch.multiprocessing as mp
+
 
 class PerProcessContext(object):
     """A singletone that maintains the per process runtime properties.
@@ -42,7 +44,7 @@ class PerProcessContext(object):
 
     def set_distributed(self, rank: int, num_processes: int) -> None:
         """Set the distributed properties.
-        
+
         Args:
             rank (int): the ID of the process
             num_processes (int): the total number of processes
@@ -52,6 +54,21 @@ class PerProcessContext(object):
                 'Cannot mutate PerProcessContext after it is finalized')
         self._ddp_rank = rank
         self._num_processes = num_processes
+
+    def set_paras_queue(self, paras_queue: mp.Queue):
+        """Set the parameter queue.
+
+        The queue is used for checking the consistency of model parameters across
+        different worker processes, if multi-gpu training is used.
+        """
+        if self._read_only:
+            raise AttributeError(
+                'Cannot mutate PerProcessContext after it is finalized')
+        self._paras_queue = paras_queue
+
+    @property
+    def paras_queue(self) -> mp.Queue:
+        return self._paras_queue
 
     @property
     def is_distributed(self):
