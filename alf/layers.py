@@ -2708,13 +2708,14 @@ class TransformerBlock(nn.Module):
 
         l = 2 * memory_size - 1 if positional_encoding == 'rel' else memory_size
         self._positional_encoding = None
+        self._qp_bias = None
         if positional_encoding != 'none':
             self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
+            # bias over query vectors when calculating score with positional encodings.
+            # Introduced in [3].
+            self._qp_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
         # bias over query vectors when calculating score with keys. Introduced in [3].
         self._qk_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
-        # bias over query vectors when calculating score with positional encodings.
-        # Introduced in [3].
-        self._qp_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -2724,9 +2725,9 @@ class TransformerBlock(nn.Module):
         nn.init.xavier_uniform_(self._v_proj)
         nn.init.xavier_uniform_(self._o_proj)
         nn.init.zeros_(self._qk_bias)
-        nn.init.zeros_(self._qp_bias)
         if self._positional_encoding is not None:
             nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
+            nn.init.zeros_(self._qp_bias)
         for l in self._mlp:
             if hasattr(l, 'reset_parameters'):
                 l.reset_parameters()
