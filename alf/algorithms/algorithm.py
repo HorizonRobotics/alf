@@ -605,7 +605,10 @@ class Algorithm(AlgorithmInterface):
             l2_norm = tensor_utils.global_norm([para])
             l1_norm = para.abs().sum()
             mean = para.mean()
-            std = torch.std(para)
+            if para.numel() == 1:
+                std = torch.zeros(()).to(para)
+            else:
+                std = torch.std(para)
             stat = torch.stack(
                 [l2_norm / para.numel(), l1_norm / para.numel(), mean, std])
             return stat.cpu().numpy()
