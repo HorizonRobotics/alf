@@ -23,7 +23,7 @@ import json
 import numpy as np
 import os
 import psutil
-from typing import Dict
+from typing import Any, Dict, Mapping
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
@@ -236,10 +236,10 @@ class Algorithm(AlgorithmInterface):
 
             assert 'alg' in checkpoint_prefix, "wrong prefix"
 
-            stat_dict = extract_sub_state_dict_from_checkpoint(
+            state_dict = extract_sub_state_dict_from_checkpoint(
                 checkpoint_prefix, checkpoint_path)
 
-            self.load_state_dict(stat_dict, strict=True)
+            self.load_state_dict(state_dict, strict=True)
             self._checkpoint_pre_loaded = True
             common.info(
                 'in-algorithm checkpoint loaded: {}'.format(prefix_and_path))
@@ -552,6 +552,22 @@ class Algorithm(AlgorithmInterface):
             list[str]: a list of attribute names to ignore.
         """
         return []
+
+    def on_load_checkpoint(self,
+                           state_dict: Mapping[str, Any]) -> Mapping[str, Any]:
+        """This hook can be overridden to transform the checkpoint on the fly
+        right before it is loaded.
+
+        For example, the algorithm author can choose to override this hook to
+        remove or add items to the checkpoint.
+        
+        Args:
+            state_dict: the original checkpoint.
+        
+        Returns:
+            An updated checkpoint.
+        """
+        return state_dict    
 
     def _get_children(self, include_ignored_attributes=False):
         children = []
@@ -946,7 +962,7 @@ class Algorithm(AlgorithmInterface):
 
         # copy state_dict so _load_from_state_dict can modify it
         metadata = getattr(state_dict, '_metadata', None)
-        state_dict = state_dict.copy()
+        state_dict = self.on_load_checkpoint(state_dict.copy())        
         if metadata is not None:
             state_dict._metadata = metadata
 
