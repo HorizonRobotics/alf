@@ -953,6 +953,7 @@ def play(root_dir,
          sleep_time_per_step=0.01,
          record_file=None,
          last_step_repeats=0,
+         per_frame_repeats=0,
          append_blank_frames=0,
          render=True,
          selective_mode=False,
@@ -980,6 +981,8 @@ def play(root_dir,
             instead of shown on the screen.
         last_step_repeats (int): repeat such number of times for the
             last frame of each episode.
+        per_frame_repeats (int): repeat such number of times for each
+            frame of each episode.
         append_blank_frames (int): If >0, wil append such number of blank frames
             at the end of the episode in the rendered video file. A negative
             value has the same effects as 0 and no blank frames will be appended.
@@ -1031,6 +1034,7 @@ def play(root_dir,
         recorder = VideoRecorder(
             env,
             last_step_repeats=last_step_repeats,
+            per_frame_repeats=per_frame_repeats,
             append_blank_frames=append_blank_frames,
             path=record_file)
     elif render:

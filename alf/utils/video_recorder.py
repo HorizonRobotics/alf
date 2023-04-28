@@ -46,6 +46,7 @@ class VideoRecorder(GymVideoRecorder):
                  frame_max_width=2560,
                  frames_per_sec=None,
                  last_step_repeats=0,
+                 per_frame_repeats=0,
                  append_blank_frames=0,
                  **kwargs):
         """
@@ -56,6 +57,8 @@ class VideoRecorder(GymVideoRecorder):
             frames_per_sec (fps): if None, use fps from the env
             last_step_repeats (int): repeat such number of times for the
                 last frame of each episode.
+            per_frame_repeats (int): repeat such number of times for each
+                frame in each episode.
             append_blank_frames (int): If >0, will append such number of blank
                 frames at the end of the episode in the rendered video file.
                 A negative value has the same effects as 0 and no blank frames
@@ -67,6 +70,7 @@ class VideoRecorder(GymVideoRecorder):
             self.frames_per_sec = frames_per_sec  # overwrite the base class
 
         self._last_step_repeats = last_step_repeats
+        self._per_frame_repeats = per_frame_repeats
         self._append_blank_frames = append_blank_frames
         self._blank_frame = None
         self._pred_info_img_shapes = None
@@ -110,6 +114,10 @@ class VideoRecorder(GymVideoRecorder):
         else:
             frame = self._plot_pred_info(frame, pred_info)
             self._encode_frame(frame)
+
+            if self._per_frame_repeats > 0:
+                for _ in range(self._per_frame_repeats):
+                    self._encode_frame(frame)
 
             if is_last_step:
                 if self._last_step_repeats > 0:

@@ -65,6 +65,10 @@ def _define_flags():
         "If >0, wil repeat such number of times for the last "
         "frame of each episode in the rendered video file.")
     flags.DEFINE_integer(
+        'per_frame_repeats', 0,
+        "If >0, will repeat such number of times for each frame "
+        "of each episode in the rendered video file.")
+    flags.DEFINE_integer(
         'append_blank_frames', 0,
         "If >0, wil append such number of blank frames at the "
         "end of each episode in the rendered video file.")
@@ -165,6 +169,7 @@ def play():
             record_file=FLAGS.record_file,
             append_blank_frames=FLAGS.append_blank_frames,
             last_step_repeats=FLAGS.last_step_repeats,
+            per_frame_repeats=FLAGS.per_frame_repeats,
             render=FLAGS.render,
             selective_mode=FLAGS.selective_mode,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
