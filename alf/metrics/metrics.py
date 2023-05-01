@@ -152,6 +152,10 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
     2. If a field has a postfix "@max", then the aggregated value will be the
        maximum (instead of sum) of step values across the episode.
 
+    This class supports partial aggregation, where if at any step the extracted
+    metric value is not finite (inf or nan), then that step's value will be skipped
+    for aggregation. If a field is skipped for an entire episode, its accumulated
+    value won't be pushed into the metric buffer.
     """
 
     def __init__(self,
@@ -205,12 +209,17 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             return torch.zeros(
                 self._batch_size, dtype=torch.bool, device='cpu')
 
+        def _init_step(val):
+            return torch.zeros(
+                self._batch_size, dtype=self._dtype, device='cpu')
+
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
         self._accumulator = alf.nest.map_structure(_init_acc,
                                                    example_metric_value)
         # which samples of a batch in ``self._accumulator`` are valid for being
         # put into ``self._buffer`` when step_type==LAST
         self._mask = alf.nest.map_structure(_init_mask, example_metric_value)
+        self._steps = alf.nest.map_structure(_init_step, example_metric_value)
 
     def call(self, time_step):
         """Accumulate values from the time step. The values are defined by
@@ -238,12 +247,15 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
 
         is_first = time_step.is_first()
 
-        def _update_accumulator_(path, mask, acc, val):
+        def _update_accumulator_(path, mask, step, acc, val):
             """In-place update of the accumulators and mask."""
             val_valid = torch.isfinite(val)
             # If at any step the value is valid, then the acc value becomes valid
             mask[:] = torch.where(is_first, torch.zeros_like(mask),
-                                  mask + val_valid)
+                                  mask | val_valid)
+            # Only step+1 if the value is valid
+            step[:] = torch.where(is_first, torch.zeros_like(step),
+                                  step + val_valid.to(self._dtype))
 
             if path.endswith("@max"):
                 # Don't max invalid values
@@ -262,16 +274,17 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                                      acc + val.to(self._dtype))
 
         alf.nest.py_map_structure_with_path(_update_accumulator_, self._mask,
-                                            self._accumulator, values)
+                                            self._steps, self._accumulator,
+                                            values)
 
-        def _episode_end_aggregate_(path, mask, buf, acc):
+        def _episode_end_aggregate_(path, mask, step, buf, acc):
             value = self._extract_and_process_acc_value(
                 acc, last_episode_indices)
             # If the metric's name ends with '@step', the value will
             # be further averaged over episode length so that the
             # result is per-step value.
             if path.endswith('@step'):
-                value = value / self._current_step[last_episode_indices]
+                value = value / step[last_episode_indices]
             mask = mask[last_episode_indices]
             value = value[mask]
             if value.numel() > 0:
@@ -283,9 +296,9 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
         last_episode_indices = torch.where(time_step.is_last())[0]
 
         if len(last_episode_indices) > 0:
-            alf.nest.py_map_structure_with_path(_episode_end_aggregate_,
-                                                self._mask, self._buffer,
-                                                self._accumulator)
+            alf.nest.py_map_structure_with_path(
+                _episode_end_aggregate_, self._mask, self._steps, self._buffer,
+                self._accumulator)
 
         return time_step
 

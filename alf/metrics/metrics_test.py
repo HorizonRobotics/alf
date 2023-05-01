@@ -233,7 +233,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'velocity@max': to_tensor([-10, neg_inf]),
-                    'success': to_tensor([0.0, 0.0])
+                    'success': to_tensor([0.0, 0.0]),
+                    'value@step': to_tensor([0.0, 0.0]),
                 }))
         traj.append(
             timestep_mid(
@@ -241,7 +242,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'velocity@max': to_tensor([neg_inf, -1.]),
-                    'success': to_tensor([1.0, -neg_inf])
+                    'success': to_tensor([1.0, -neg_inf]),
+                    'value@step': to_tensor([1.0, 2.0]),
                 }))
         traj.append(
             timestep_last(
@@ -249,7 +251,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'velocity@max': to_tensor([neg_inf, -2.]),
-                    'success': to_tensor([0.0, 0.0])
+                    'success': to_tensor([0.0, 0.0]),
+                    'value@step': to_tensor([3.0, neg_inf]),
                 }))
         ####
         traj.append(
@@ -259,7 +262,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'velocity@max': to_tensor([-1., neg_inf]),
-                    'success': to_tensor([neg_inf, 1.0])
+                    'success': to_tensor([neg_inf, 1.0]),
+                    'value@step': to_tensor([0.0, 0.0]),
                 }))
         traj.append(
             timestep_last(
@@ -267,7 +271,8 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
                 env_id=[1, 2],
                 env_info={
                     'velocity@max': to_tensor([0., neg_inf]),
-                    'success': to_tensor([neg_inf, 1.0])
+                    'success': to_tensor([neg_inf, 1.0]),
+                    'value@step': to_tensor([neg_inf, 5.0]),
                 }))
 
         metric = AverageEnvInfoMetric(example_time_step=traj[0])
@@ -279,7 +284,9 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
             {  # Only two episodes are valid for velocity: -1 and 0
                 'velocity@max': torch.as_tensor(-0.5),
                 # One episode is 1, one is 0, and the third one is 1
-                'success': torch.as_tensor(2. / 3)
+                'success': torch.as_tensor(2. / 3),
+                # Two episodes are 2 and the third one is 5
+                'value@step': torch.as_tensor(3.)
             },
             metric.result())
 
