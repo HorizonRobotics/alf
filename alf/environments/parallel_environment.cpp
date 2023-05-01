@@ -96,6 +96,7 @@ class SharedDataBuffer {
   std::vector<size_t> sizes_;    // size of each slice of the i-th array
   std::vector<py::buffer_info> buffer_infos_;
   std::vector<std::vector<ssize_t>> slice_strides_;
+  std::vector<py::dtype> dtypes_;
 
   inline char* GetBuf(int slice_id, int array_id) const {
     return buf_ + offsets_[array_id] + sizes_[array_id] * slice_id;
@@ -104,14 +105,23 @@ class SharedDataBuffer {
 };
 
 void CheckStrides(const py::buffer_info& info,
-                  const std::vector<ssize_t>& strides) {
+                  const py::dtype& dtype,
+                  const std::vector<ssize_t>& strides,
+                  const py::buffer& buffer) {
   if (info.strides != strides) {
-    throw std::runtime_error(
-        py::str(
-            "strides mismatch. Expected: {}, "
-            "Got: {}, shape: {}. It might be caused by non-continguous array, "
-            "which can be fixed by copying the array.")
-            .format(strides, info.strides, info.shape));
+    // Sometimes the stride mismatch is actually caused by dtype mismatch.
+    if (!py::dtype(info).is(dtype)) {
+      throw std::runtime_error(py::str("dtype mismatch. Expected: {}, Got {}."
+                                       "The offending buffer is {}")
+                                   .format(dtype, py::dtype(info), buffer));
+    } else {
+      throw std::runtime_error(
+          py::str("Strides mismatch. Expected: {}, "
+                  "Got: {}, shape: {}. It might be caused by non-continguous "
+                  "array, which can be fixed by copying the array. "
+                  "The offending buffer is {}")
+              .format(strides, info.strides, info.shape, buffer));
+    }
   }
 }
 
@@ -135,7 +145,7 @@ void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
       if (info.ndim == 0) {
         memcpy(GetBuf(slice_id, j), info.ptr, info.itemsize);
       } else {
-        CheckStrides(info, slice_strides_[j]);
+        CheckStrides(info, dtypes_[j], slice_strides_[j], buffer);
         memcpy(GetBuf(slice_id, j), info.ptr, info.shape[0] * info.strides[0]);
       }
     }
@@ -156,7 +166,7 @@ void SharedDataBuffer::WriteBatch(py::object nested_array,
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
-    CheckStrides(info, buffer_infos_[j].strides);
+    CheckStrides(info, dtypes_[j], buffer_infos_[j].strides, buffer);
     if (begin_slice_id + info.shape[0] > num_slices_) {
       throw std::runtime_error(
           py::str("batch size too big: begin_slice_id: {} batch_size: {} "
@@ -174,7 +184,7 @@ void SharedDataBuffer::WriteWhole(py::object nested_array) {
   for (size_t j = 0; j < arrays.size(); ++j) {
     auto buffer = py::buffer(arrays[j]);
     const py::buffer_info& info = buffer.request();
-    CheckStrides(info, buffer_infos_[j].strides);
+    CheckStrides(info, dtypes_[j], buffer_infos_[j].strides, buffer);
     if (info.shape[0] != (signed)num_slices_) {
       throw std::runtime_error(
           py::str("Incorrect batch size. Expected: {}, got {}, shape: {}.")
@@ -200,6 +210,7 @@ SharedDataBuffer::SharedDataBuffer(py::object data_spec,
     buffer_infos_.emplace_back(array.request());
     auto& strides = buffer_infos_.back().strides;
     slice_strides_.emplace_back(strides.begin() + 1, strides.end());
+    dtypes_.emplace_back(py::dtype(buffer_infos_.back()));
     size_t slice_size = buffer_infos_.back().strides[0];
     sizes_.push_back(slice_size);
     offset += align(num_slices * slice_size);
