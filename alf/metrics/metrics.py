@@ -17,6 +17,7 @@ Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
 from typing import List
+import numpy as np
 
 import torch
 
@@ -200,9 +201,16 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                 self._batch_size, dtype=self._dtype, device='cpu')
             return accumulator
 
+        def _init_mask(val):
+            return torch.zeros(
+                self._batch_size, dtype=torch.bool, device='cpu')
+
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
         self._accumulator = alf.nest.map_structure(_init_acc,
                                                    example_metric_value)
+        # which samples of a batch in ``self._accumulator`` are valid for being
+        # put into ``self._buffer`` when step_type==LAST
+        self._mask = alf.nest.map_structure(_init_mask, example_metric_value)
 
     def call(self, time_step):
         """Accumulate values from the time step. The values are defined by
@@ -230,23 +238,33 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
 
         is_first = time_step.is_first()
 
-        def _update_accumulator_(path, acc, val):
-            """In-place update of the accumulators."""
+        def _update_accumulator_(path, mask, acc, val):
+            """In-place update of the accumulators and mask."""
+            val_valid = torch.isfinite(val)
+            # If at any step the value is valid, then the acc value becomes valid
+            mask[:] = torch.where(is_first, torch.zeros_like(mask),
+                                  mask + val_valid)
+
             if path.endswith("@max"):
+                # Don't max invalid values
+                val = torch.where(val_valid, val, torch.full_like(
+                    val, -np.inf))
                 acc[:] = torch.where(is_first,
                                      torch.full_like(acc, -float('inf')),
                                      torch.maximum(acc, val.to(self._dtype)))
             else:
+                # Don't sum invalid values
+                val = torch.where(val_valid, val, torch.zeros_like(val))
                 # Zero out batch indices where a new episode is starting.
                 # Update with new values; Ignores first step whose reward comes from
                 # the boundary transition of the last step from the previous episode.
                 acc[:] = torch.where(is_first, torch.zeros_like(acc),
                                      acc + val.to(self._dtype))
 
-        alf.nest.py_map_structure_with_path(_update_accumulator_,
+        alf.nest.py_map_structure_with_path(_update_accumulator_, self._mask,
                                             self._accumulator, values)
 
-        def _episode_end_aggregate_(path, buf, acc):
+        def _episode_end_aggregate_(path, mask, buf, acc):
             value = self._extract_and_process_acc_value(
                 acc, last_episode_indices)
             # If the metric's name ends with '@step', the value will
@@ -254,7 +272,10 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             # result is per-step value.
             if path.endswith('@step'):
                 value = value / self._current_step[last_episode_indices]
-            buf.append(value)
+            mask = mask[last_episode_indices]
+            value = value[mask]
+            if value.numel() > 0:
+                buf.append(value)
 
         # Extract the final accumulated value and do customizable processing
         # via ``_extract_and_process_acc_value``, and add the processed
@@ -262,8 +283,9 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
         last_episode_indices = torch.where(time_step.is_last())[0]
 
         if len(last_episode_indices) > 0:
-            alf.nest.py_map_structure_with_path(
-                _episode_end_aggregate_, self._buffer, self._accumulator)
+            alf.nest.py_map_structure_with_path(_episode_end_aggregate_,
+                                                self._mask, self._buffer,
+                                                self._accumulator)
 
         return time_step
 
