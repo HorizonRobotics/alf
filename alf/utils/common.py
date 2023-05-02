@@ -574,7 +574,7 @@ def get_gin_file():
 ALF_CONFIG_FILE = 'alf_config.py'
 
 
-def get_conf_file():
+def get_conf_file(root_dir=None):
     """Get the configuration file.
 
     If ``FLAGS.conf`` is not set, find alf_config.py or configured.gin under
@@ -595,7 +595,8 @@ def get_conf_file():
     if conf_file is not None:
         return conf_file
 
-    root_dir = os.path.expanduser(flags.FLAGS.root_dir)
+    if root_dir is None:
+        root_dir = os.path.expanduser(flags.FLAGS.root_dir)
     conf_file = os.path.join(root_dir, ALF_CONFIG_FILE)
     if os.path.exists(conf_file):
         return conf_file
