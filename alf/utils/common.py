@@ -581,6 +581,9 @@ def get_conf_file(root_dir=None):
     ``FLAGS.root_dir`` and returns it. If there is no 'conf' flag defined,
     return None.
 
+    Args:
+        root_dir (str): when None, FLAGS.root_dir is used to find the conf file.
+
     Returns:
         str: the name of the conf file. None if there is no conf file
     """
