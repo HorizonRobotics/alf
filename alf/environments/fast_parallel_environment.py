@@ -203,7 +203,10 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
 
     @property
     def render_mode(self):
-        return self._envs[0].render_mode
+        if hasattr(self._envs[0], "render_mode"):
+            return self._envs[0].render_mode
+        else:
+            return None
 
     def _to_tensor(self, stacked):
         # we need to do np.copy because the result from _penv.step() or

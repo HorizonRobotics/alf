@@ -162,7 +162,10 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
     @property
     def render_mode(self):
-        return self._envs[0].render_mode
+        if hasattr(self._envs[0], "render_mode"):
+            return self._envs[0].render_mode
+        else:
+            return None
 
     def _reset(self):
         """Reset all environments and combine the resulting observation.
