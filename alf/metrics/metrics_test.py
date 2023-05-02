@@ -223,6 +223,73 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
             },
             metric.result())
 
+    def test_accumulator_mask(self):
+        traj = []
+        neg_inf = -float('inf')
+        traj.append(
+            # First step values will be ignored
+            timestep_first(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'velocity@max': to_tensor([-10, neg_inf]),
+                    'success': to_tensor([0.0, 0.0]),
+                    'value@step': to_tensor([0.0, 0.0]),
+                }))
+        traj.append(
+            timestep_mid(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'velocity@max': to_tensor([neg_inf, -1.]),
+                    'success': to_tensor([1.0, -neg_inf]),
+                    'value@step': to_tensor([1.0, 2.0]),
+                }))
+        traj.append(
+            timestep_last(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'velocity@max': to_tensor([neg_inf, -2.]),
+                    'success': to_tensor([0.0, 0.0]),
+                    'value@step': to_tensor([3.0, neg_inf]),
+                }))
+        ####
+        traj.append(
+            # First step values will be ignored
+            timestep_first(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'velocity@max': to_tensor([-1., neg_inf]),
+                    'success': to_tensor([neg_inf, 1.0]),
+                    'value@step': to_tensor([0.0, 0.0]),
+                }))
+        traj.append(
+            timestep_last(
+                0.0,
+                env_id=[1, 2],
+                env_info={
+                    'velocity@max': to_tensor([0., neg_inf]),
+                    'success': to_tensor([neg_inf, 1.0]),
+                    'value@step': to_tensor([neg_inf, 5.0]),
+                }))
+
+        metric = AverageEnvInfoMetric(example_time_step=traj[0])
+
+        for step in traj:
+            metric(step)
+
+        self.assertEqual(
+            {  # Only two episodes are valid for velocity: -1 and 0
+                'velocity@max': torch.as_tensor(-0.5),
+                # One episode is 1, one is 0, and the third one is 1
+                'success': torch.as_tensor(2. / 3),
+                # Two episodes are 2 and the third one is 5
+                'value@step': torch.as_tensor(3.)
+            },
+            metric.result())
+
 
 if __name__ == "__main__":
     unittest.main()
