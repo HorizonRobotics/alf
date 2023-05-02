@@ -159,12 +159,12 @@ def add_nested_summaries(prefix, data):
         prefix (str): the prefix of the names of the summaries
         data (dict or namedtuple): data to be summarized
     """
-    for field, elem in alf.nest.extract_fields_from_nest(data):
-        name = prefix + '/' + field
-        if isinstance(elem, dict) or is_namedtuple(elem):
-            add_nested_summaries(name, elem)
-        elif isinstance(elem, torch.Tensor):
-            alf.summary.scalar(name, elem)
+
+    def _summarize(path, x):
+        if isinstance(x, torch.Tensor):
+            alf.summary.scalar(prefix + '/' + path, x)
+
+    py_map_structure_with_path(_summarize, data)
 
 
 @_summary_wrapper
