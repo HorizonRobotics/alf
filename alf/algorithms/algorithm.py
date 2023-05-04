@@ -1647,7 +1647,8 @@ class Algorithm(AlgorithmInterface):
             experience, experience_spec)
         experience = alf.data_structures.add_batch_info(
             experience, batch_info, replay_buffer)
-        experience = self.transform_experience(experience)
+        with alf.device(experience.step_type.device.type):
+            experience = self.transform_experience(experience)
 
         # TODO(breakds): Create a cleaner and more readable function to prepare
         # experience that better handles the similar and distinct part of
