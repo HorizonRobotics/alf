@@ -146,15 +146,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         def _deployment_hook(state_dict, prefix: str, unused_loacl_metadata,
                              unused_strict, unused_missing_keys,
                              unused_unexpected_keys, unused_error_msgs):
-            """Preprocess the state_dict to delete incompatible keys.
-
-            In pure privileged mode (i.e. not standard encoder) or pure
-            adaptation mode (i.e. no privileged encoder), this hook will exclude
-            the corresponding keys from the state dict when loading the
-            checkpoint, explicitly avoid crashing caused by such
-            incompatibility.
-
-            """
             to_delete = []
             for key in state_dict:
                 if not key.startswith(prefix):
