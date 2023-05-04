@@ -160,12 +160,19 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     def metadata(self):
         return self._envs[0].metadata
 
-    @property
-    def render_mode(self):
-        if hasattr(self._envs[0], "render_mode"):
-            return self._envs[0].render_mode
-        else:
-            return None
+    # Adding this function causes errors in bipedal_walker etc. envs
+    # when training starts:
+    # AttributeError: 'BipedalWalker' object has no attribute 'render_mode'
+    # and
+    # File "/home/lezhao/alf/alf/environments/fast_parallel_environment.py", line 224, in _step
+    #     return self._to_tensor(self._penv.step(action))
+    # RuntimeError: ProcessEnvironment is interruptted
+    # @property
+    # def render_mode(self):
+    #     if hasattr(self._envs[0], "render_mode"):
+    #         return self._envs[0].render_mode
+    #     else:
+    #         return None
 
     def _reset(self):
         """Reset all environments and combine the resulting observation.
