@@ -82,12 +82,14 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
                 ``action_spec`` as its arguments and return an actor network.
                 The constructed network will be called with ``forward(observation, state)``.
-            value_network_ctor (Callable): Function to construct the value network.
-                ``value_network_ctor`` needs to accept ``input_tensor_spec`` as
-                its arguments and return a value netwrok. The contructed network
-                will be called with ``forward(observation, state)`` and returns
-                value tensor for each observation given observation and network
-                state.
+            value_network_ctor (None | Callable): Function to construct the value network.
+                ``value_network_ctor`` needs to accept ``input_tensor_spec`` as its
+                arguments and return a value netwrok. The contructed network will be
+                called with ``forward(observation, state)`` and returns value tensor for
+                each observation given observation and network state. Note that if the
+                algorithm is constructed for evaluation or deployment only, the
+                value_network_ctor can be set to None and the value network will not be
+                constructed at all.
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
             loss_class (type): the class of the loss. The signature of its
@@ -99,13 +101,17 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 file saved by ALF. Refer to ``Algorithm`` for more details.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
+
         """
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
-        value_network = value_network_ctor(input_tensor_spec=observation_spec)
+        value_network = None
+        if value_network_ctor is not None:
+            value_network = value_network_ctor(
+                input_tensor_spec=observation_spec)
 
         if reward_spec.numel > 1:
             value_network = value_network.make_parallel(
@@ -120,7 +126,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 actor=actor_network.state_spec),
             train_state_spec=ActorCriticState(
                 actor=actor_network.state_spec,
-                value=value_network.state_spec),
+                value=value_network.state_spec if value_network else ()),
             env=env,
             config=config,
             optimizer=optimizer,
@@ -133,6 +139,24 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
+
+        # The following checkpoint loading hook handles the case when value
+        # network is not constructed. In this case the value network paramters
+        # present in the checkpoint should be ignored.
+        def _deployment_hook(state_dict, prefix: str, unused_loacl_metadata,
+                             unused_strict, unused_missing_keys,
+                             unused_unexpected_keys, unused_error_msgs):
+            to_delete = []
+            for key in state_dict:
+                if not key.startswith(prefix):
+                    continue
+                if self._value_network is None:
+                    if key[len(prefix):].startswith("_value_network"):
+                        to_delete.append(key)
+            for key in to_delete:
+                state_dict.pop(key)
+
+        self._register_load_state_dict_pre_hook(_deployment_hook)
 
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
