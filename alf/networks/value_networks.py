@@ -175,7 +175,7 @@ class ParallelValueNetwork(Network):
 
         super().__init__(
             input_tensor_spec=value_network.input_tensor_spec, name=name)
-        self._encoding_net = value_network._encoding_net.make_parallel(n)
+        self._encoding_net = value_network._encoding_net.make_parallel(n, True)
         self._output_spec = TensorSpec((n, ) + value_network.output_spec.shape)
 
     def forward(self, observation, state=()):
