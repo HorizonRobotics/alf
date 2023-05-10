@@ -830,7 +830,7 @@ def define_config(name, default_value):
 def _get_conf_file_full_path(conf_file):
     if os.path.isabs(conf_file):
         if os.path.exists(conf_file):
-            return conf_file
+            return os.path.realpath(conf_file)
     if len(_IMPORT_STACK) == 0:
         # called from load_config()
         dir = os.getcwd()
@@ -839,7 +839,7 @@ def _get_conf_file_full_path(conf_file):
         dir = os.path.dirname(_IMPORT_STACK[-1])
     candidate = os.path.join(dir, conf_file)
     if os.path.exists(candidate):
-        return candidate
+        return os.path.realpath(candidate)
     conf_path = os.environ.get("ALF_CONFIG_PATH", None)
     conf_dirs = []
     if conf_path is not None:
@@ -847,7 +847,7 @@ def _get_conf_file_full_path(conf_file):
     for dir in conf_dirs:
         candidate = os.path.join(dir, conf_file)
         if os.path.exists(candidate):
-            return candidate
+            return os.path.realpath(candidate)
     raise ValueError(f"Cannot find conf file {conf_file}")
 
 
