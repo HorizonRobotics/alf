@@ -1087,6 +1087,10 @@ class BatchEnvironmentWrapper(AlfEnvironment):
             raise ValueError('All environments must be non-batched.')
 
     @property
+    def metadata(self):
+        return self._envs[0].metadata
+
+    @property
     def batched(self):
         return True
 
