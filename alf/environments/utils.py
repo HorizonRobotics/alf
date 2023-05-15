@@ -61,6 +61,15 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
     # perform use random numbers in its constructor, so we need to randomize
     # the seed for it.
     alf.utils.common.set_random_seed(seed)
+
+    # In this case, the environment loader is already batched. Just use it to
+    # create an environment with the specified batch size.
+    #
+    # NOTE: here it ASSUMES that the created batched environment will take the
+    # following env IDs: env_id, env_id + 1, ... ,env_id + batch_size - 1
+    if hasattr(env_load_fn, "batched") and env_load_fn.batched:
+        return env_load_fn(
+            env_name, env_id=env_id, batch_size=batch_size_per_env)
     if batch_size_per_env == 1:
         return env_load_fn(env_name, env_id)
     envs = [
@@ -145,7 +154,8 @@ def create_environment(env_name='CartPole-v0',
         env_load_fn = functools.partial(alf_wrappers.MultitaskWrapper.load,
                                         env_load_fn)
 
-    if hasattr(env_load_fn, 'batched') and env_load_fn.batched:
+    if hasattr(env_load_fn,
+               'batched') and env_load_fn.batched and batch_size_per_env == 1:
         if nonparallel:
             alf_env = env_load_fn(env_name, batch_size=1)
         else:
