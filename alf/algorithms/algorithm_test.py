@@ -394,9 +394,9 @@ class AlgorithmTest(alf.test.TestCase):
             self.assertTrue(alg_composed_new.state_dict()
                             ['_sub_alg1._param_list.0'] == torch.Tensor([1]))
 
-    def test_mis_match_checkpoint(self):
-        # test can detect the case when there is mis-match between
-        # checkpoint and model
+    def test_mismatch_checkpoint(self):
+        # test can detect the case when there is mismatch between
+        # keys of the checkpoint and model
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # 1) construct a composed algorithm
             param_1 = nn.Parameter(torch.Tensor([1]))
@@ -436,6 +436,18 @@ class AlgorithmTest(alf.test.TestCase):
                     checkpoint="alg._sub_alg3@" + ckpt_path)
 
             ckpt_check_msg = "(keys in model but not in checkpoint): ['_param_list.0']"
+            self.assertTrue(ckpt_check_msg in str(context.exception))
+
+            # 4) test can detect the case when there is dimension mismatch between
+            # the parameter of checkpoint and that of the model
+            with self.assertRaises(Exception) as context:
+                new_alg_2 = MyAlg(
+                    params=[nn.Parameter(torch.Tensor([1, 1]))],
+                    checkpoint="alg._sub_alg1@" + ckpt_path)
+            ckpt_check_msg = (
+                "size mismatch for _param_list.0: copying a param "
+                "with shape torch.Size([1]) from checkpoint, the shape in current "
+                "model is torch.Size([2])")
             self.assertTrue(ckpt_check_msg in str(context.exception))
 
 

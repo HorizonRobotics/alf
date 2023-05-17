@@ -241,7 +241,7 @@ class Algorithm(AlgorithmInterface):
 
             status = self.load_state_dict(stat_dict, strict=True)
             assert not status.missing_keys and not status.unexpected_keys, (
-                "\033[1;31m Checkpoint mis-matches with the model: \033[1;0m \n"
+                "\033[1;31m Checkpoint mismatches with the model: \033[1;0m \n"
                 +
                 "\033[1;31m Missing-keys \033[1;0m (keys in model but not in checkpoint): {}\n"
                 .format(status.missing_keys) +
