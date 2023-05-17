@@ -189,7 +189,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 to sample continuous actions. All of its output specs must be
                 continuous. Note that we don't need a discrete actor network
                 because a discrete action can simply be sampled from the Q values.
-            critic_network_cls (Callable): is used to construct critic network.
+            critic_network_cls (None or Callable): is used to construct critic network.
                 for estimating ``Q(s,a)`` given that the action is continuous.
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
@@ -291,7 +291,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         action_state_spec = SacActionState(
             actor_network=(() if self._act_type == ActionType.Discrete else
                            actor_network.state_spec),
-            critic=(() if self._act_type == ActionType.Continuous else
+            critic=(() if self._act_type == ActionType.Continuous
+                    or critic_network_cls is None else
                     critic_networks.state_spec))
         super().__init__(
             observation_spec=observation_spec,
@@ -299,11 +300,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=SacState(
                 action=action_state_spec,
-                actor=(() if self._act_type != ActionType.Continuous else
+                actor=(() if self._act_type != ActionType.Continuous
+                       or critic_network_cls is None else
                        critic_networks.state_spec),
                 critic=SacCriticState(
-                    critics=critic_networks.state_spec,
-                    target_critics=critic_networks.state_spec)),
+                    critics=critic_networks.state_spec
+                    if critic_network_cls else (),
+                    target_critics=critic_networks.state_spec
+                    if critic_network_cls else ())),
             predict_state_spec=SacState(action=action_state_spec),
             reward_weights=reward_weights,
             env=env,
@@ -314,7 +318,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if actor_optimizer is not None and actor_network is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
-        if critic_optimizer is not None:
+        if critic_optimizer is not None and critic_networks is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])
         if alpha_optimizer is not None:
             self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
@@ -331,8 +335,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._actor_network = actor_network
         self._critic_networks = critic_networks
-        self._target_critic_networks = self._critic_networks.copy(
-            name='target_critic_networks')
+        self._target_critic_networks = None
+        if critic_network_cls:
+            self._target_critic_networks = self._critic_networks.copy(
+                name='target_critic_networks')
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -378,10 +384,31 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._entropy_normalizer = ScalarAdaptiveNormalizer(unit_std=True)
 
         self._update_target = common.TargetUpdater(
-            models=[self._critic_networks],
-            target_models=[self._target_critic_networks],
+            models=[self._critic_networks] if critic_network_cls else [],
+            target_models=[self._target_critic_networks]
+            if critic_network_cls else [],
             tau=target_update_tau,
             period=target_update_period)
+
+        # The following checkpoint loading hook handles the case when critic
+        # network is not constructed. In this case the critic network paramters
+        # present in the checkpoint should be ignored.
+        def _deployment_hook(state_dict, prefix: str, unused_loacl_metadata,
+                             unused_strict, unused_missing_keys,
+                             unused_unexpected_keys, unused_error_msgs):
+            to_delete = []
+            for key in state_dict:
+                if not key.startswith(prefix):
+                    continue
+                if self._critic_networks is None:
+                    if key[len(prefix):].startswith("_critic_networks") or key[
+                            len(prefix):].startswith(
+                                "_target_critic_networks"):
+                        to_delete.append(key)
+            for key in to_delete:
+                state_dict.pop(key)
+
+        self._register_load_state_dict_pre_hook(_deployment_hook)
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
@@ -418,6 +445,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             continuous_action_spec = action_spec
 
         actor_network = None
+        critic_networks = None
         if continuous_action_spec:
             assert continuous_actor_network_cls is not None, (
                 "If there are continuous actions, then a ActorDistributionNetwork "
@@ -427,13 +455,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_spec=continuous_action_spec)
             if not discrete_action_spec:
                 act_type = ActionType.Continuous
-                assert critic_network_cls is not None, (
-                    "If only continuous actions exist, then a CriticNetwork must"
-                    " be provided!")
-                critic_network = critic_network_cls(
-                    input_tensor_spec=(observation_spec,
-                                       continuous_action_spec))
-                critic_networks = _make_parallel(critic_network)
+                critic_network = None
+                if critic_network_cls is not None:
+                    critic_network = critic_network_cls(
+                        input_tensor_spec=(observation_spec,
+                                           continuous_action_spec))
+                    critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
             act_type = ActionType.Discrete
