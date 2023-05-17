@@ -239,7 +239,14 @@ class Algorithm(AlgorithmInterface):
             stat_dict = extract_sub_state_dict_from_checkpoint(
                 checkpoint_prefix, checkpoint_path)
 
-            self.load_state_dict(stat_dict, strict=True)
+            status = self.load_state_dict(stat_dict, strict=True)
+            assert not status.missing_keys and not status.unexpected_keys, (
+                "\033[1;31m Checkpoint mis-matches with the model: \033[1;0m \n"
+                +
+                "\033[1;31m Missing-keys \033[1;0m (keys in model but not in checkpoint): {}\n"
+                .format(status.missing_keys) +
+                "\033[1;31m Unexpected-keys \033[1;0m (keys in checkpoint but not in model): {}"
+                .format(status.unexpected_keys))
             self._checkpoint_pre_loaded = True
             common.info(
                 'in-algorithm checkpoint loaded: {}'.format(prefix_and_path))
@@ -1084,9 +1091,9 @@ class Algorithm(AlgorithmInterface):
             else:
                 continue
             key = prefix + name
+
             if key in state_dict:
                 input_param = state_dict[key]
-
                 # Backward compatibility: loading 1-dim tensor from 0.3.* to version 0.4+
                 if len(param.shape) == 0 and len(input_param.shape) == 1:
                     input_param = input_param[0]

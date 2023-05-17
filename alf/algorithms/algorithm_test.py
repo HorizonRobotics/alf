@@ -394,6 +394,50 @@ class AlgorithmTest(alf.test.TestCase):
             self.assertTrue(alg_composed_new.state_dict()
                             ['_sub_alg1._param_list.0'] == torch.Tensor([1]))
 
+    def test_mis_match_checkpoint(self):
+        # test can detect the case when there is mis-match between
+        # checkpoint and model
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            # 1) construct a composed algorithm
+            param_1 = nn.Parameter(torch.Tensor([1]))
+            alg_1 = MyAlg(params=[param_1], name="alg_1")
+
+            param_2 = nn.Parameter(torch.Tensor([2]))
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
+            alg_2 = MyAlg(
+                params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
+            param_root = nn.Parameter(torch.Tensor([0]))
+
+            alg_composed = ComposedAlg(
+                params=[param_root],
+                optimizer=optimizer_root,
+                sub_alg1=alg_1,
+                sub_alg2=alg_2,
+                name="root")
+
+            # 2）save a checkpoint for the composed algorithm
+            ckpt_dir_composed = ckpt_dir + '/alg_composed/'
+            os.mkdir(ckpt_dir_composed)
+
+            ckpt_mngr_composed = ckpt_utils.Checkpointer(
+                ckpt_dir_composed, alg=alg_composed)
+            ckpt_mngr_composed.save(0)
+
+            ckpt_path = ckpt_dir_composed + '/ckpt-0'
+
+            # 3）Checkpoint loading with a missing key case by specifying
+            # a wrong prefix (``alg._sub_alg3``). Test Exception will be raised
+            # and missing key message will be generated.
+            with self.assertRaises(Exception) as context:
+                new_alg_1 = MyAlg(
+                    params=[nn.Parameter(torch.Tensor([-200]))],
+                    checkpoint="alg._sub_alg3@" + ckpt_path)
+
+            ckpt_check_msg = "(keys in model but not in checkpoint): ['_param_list.0']"
+            self.assertTrue(ckpt_check_msg in str(context.exception))
+
 
 if __name__ == '__main__':
     logging.use_absl_handler()
