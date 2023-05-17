@@ -190,7 +190,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous. Note that we don't need a discrete actor network
                 because a discrete action can simply be sampled from the Q values.
             critic_network_cls (None or Callable): is used to construct critic network.
-                for estimating ``Q(s,a)`` given that the action is continuous.
+                for estimating ``Q(s,a)`` given that the action is continuous.  Note that
+                if the algorithm is constructed for evaluation or deployment only, the
+                critic_network_cls can be set to None and the network will not be
+                constructed at all.
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
@@ -336,7 +339,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._critic_networks = critic_networks
         self._target_critic_networks = None
-        if critic_network_cls:
+        # Note, q_network (discrete actions) is still needed for evaluating the algorithm.
+        if critic_networks:
             self._target_critic_networks = self._critic_networks.copy(
                 name='target_critic_networks')
 
@@ -384,9 +388,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._entropy_normalizer = ScalarAdaptiveNormalizer(unit_std=True)
 
         self._update_target = common.TargetUpdater(
-            models=[self._critic_networks] if critic_network_cls else [],
+            models=[self._critic_networks] if critic_networks else [],
             target_models=[self._target_critic_networks]
-            if critic_network_cls else [],
+            if critic_networks else [],
             tau=target_update_tau,
             period=target_update_period)
 
@@ -400,7 +404,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             for key in state_dict:
                 if not key.startswith(prefix):
                     continue
-                if self._critic_networks is None:
+                if critic_networks is None:
                     if key[len(prefix):].startswith("_critic_networks") or key[
                             len(prefix):].startswith(
                                 "_target_critic_networks"):
@@ -455,7 +459,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_spec=continuous_action_spec)
             if not discrete_action_spec:
                 act_type = ActionType.Continuous
-                critic_network = None
                 if critic_network_cls is not None:
                     critic_network = critic_network_cls(
                         input_tensor_spec=(observation_spec,
