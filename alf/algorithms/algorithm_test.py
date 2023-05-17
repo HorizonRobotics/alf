@@ -430,7 +430,7 @@ class AlgorithmTest(alf.test.TestCase):
             # 3）Checkpoint loading with a missing key case by specifying
             # a wrong prefix (``alg._sub_alg3``). Test Exception will be raised
             # and missing key message will be generated.
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(AssertionError) as context:
                 new_alg_1 = MyAlg(
                     params=[nn.Parameter(torch.Tensor([-200]))],
                     checkpoint="alg._sub_alg3@" + ckpt_path)
@@ -440,7 +440,7 @@ class AlgorithmTest(alf.test.TestCase):
 
             # 4) test can detect the case when there is dimension mismatch between
             # the parameter of checkpoint and that of the model
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(RuntimeError) as context:
                 new_alg_2 = MyAlg(
                     params=[nn.Parameter(torch.Tensor([1, 1]))],
                     checkpoint="alg._sub_alg1@" + ckpt_path)
