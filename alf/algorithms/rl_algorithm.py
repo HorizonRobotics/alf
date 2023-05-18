@@ -141,8 +141,9 @@ class RLAlgorithm(Algorithm):
                  env=None,
                  config: TrainerConfig = None,
                  optimizer=None,
-                 overwrite_policy_output=False,
                  checkpoint=None,
+                 is_eval: bool = False,
+                 overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """
@@ -177,6 +178,10 @@ class RLAlgorithm(Algorithm):
                 where the "prefix" is the multi-step path to the contents in the
                 checkpoint to be loaded. "path" is the full path to the checkpoint
                 file saved by ALF. Refer to ``Algorithm`` for more details.
+            is_eval (bool): True if this algorithm is used for evaluation only,
+                during deployment.  In this case, the algorithm do not need to
+                create certain components such as value_network for ActorCriticAlgorithm,
+                critic_networks for SacAlgorithm.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -193,6 +198,7 @@ class RLAlgorithm(Algorithm):
             checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
+        self._is_eval = is_eval
 
         self._env = env
         self._observation_spec = observation_spec
