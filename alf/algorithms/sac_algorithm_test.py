@@ -68,13 +68,21 @@ class SACAlgorithmTestInit(alf.test.TestCase):
         self.assertEqual(sac.train_state_spec.action.actor_network, ())
 
         # critic_network instead of q_network is needed
+        self.assertRaises(
+            AssertionError,
+            SacAlgorithm,
+            observation_spec=observation_spec,
+            action_spec=continuous_action_spec,
+            critic_network_cls=None)
+
         # None critic_network_cls could also mean predict_step only.
-        # self.assertRaises(
-        #     AssertionError,
-        #     SacAlgorithm,
-        #     observation_spec=observation_spec,
-        #     action_spec=continuous_action_spec,
-        #     critic_network_cls=None)
+        sac = SacAlgorithm(
+            observation_spec=observation_spec,
+            action_spec=continuous_action_spec,
+            critic_network_cls=None,
+            is_eval=True)
+        self.assertTrue(sac._is_eval)
+        self.assertEqual(sac._critic_networks, None)
 
         sac = SacAlgorithm(
             observation_spec=observation_spec,

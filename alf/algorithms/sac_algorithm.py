@@ -150,6 +150,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
+                 is_eval: bool = False,
                  reward_weights=None,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
@@ -197,6 +198,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
+            is_eval (bool): True if this algorithm is used for evaluation only,
+                during deployment.  In this case, the algorithm does not need to
+                create certain components such as critic_networks.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
@@ -269,6 +273,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
+        self._is_eval = is_eval
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -459,7 +464,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_spec=continuous_action_spec)
             if not discrete_action_spec:
                 act_type = ActionType.Continuous
-                if critic_network_cls is not None:
+                if not self._is_eval:
+                    assert critic_network_cls is not None, (
+                        "If only continuous actions exist, then a"
+                        " CriticNetwork must be provided!")
                     critic_network = critic_network_cls(
                         input_tensor_spec=(observation_spec,
                                            continuous_action_spec))
@@ -587,6 +595,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         buffer, then this function also call ``_critic_networks`` and
         ``_target_critic_networks`` to maintain their states.
         """
+        assert not self._is_eval
         action_dist, action, _, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
@@ -786,6 +795,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: SacInfo):
+        assert not self._is_eval
         self._training_started = True
 
         (action_distribution, action, critics,
@@ -837,6 +847,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 self._log_alpha)
 
     def calc_loss(self, info: SacInfo):
+        assert not self._is_eval
         critic_loss = self._calc_critic_loss(info)
         alpha_loss = info.alpha
         actor_loss = info.actor
