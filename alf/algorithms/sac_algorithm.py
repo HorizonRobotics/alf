@@ -150,7 +150,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
-                 is_eval: bool = False,
                  reward_weights=None,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
@@ -198,9 +197,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
-            is_eval (bool): True if this algorithm is used for evaluation only,
-                during deployment.  In this case, the algorithm does not need to
-                create certain components such as critic_networks.
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
@@ -273,7 +269,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
-        self._is_eval = is_eval
 
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
@@ -323,6 +318,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             checkpoint=checkpoint,
             debug_summaries=debug_summaries,
             name=name)
+
+        if not self._is_eval and self._act_type != ActionType.Discrete:
+            assert critic_networks is not None, (
+                "critic_networks must be provided for training continuous SAC")
 
         if actor_optimizer is not None and actor_network is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
@@ -464,10 +463,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_spec=continuous_action_spec)
             if not discrete_action_spec:
                 act_type = ActionType.Continuous
-                if not self._is_eval:
-                    assert critic_network_cls is not None, (
-                        "If only continuous actions exist, then a"
-                        " CriticNetwork must be provided!")
+                if critic_network_cls is not None:
                     critic_network = critic_network_cls(
                         input_tensor_spec=(observation_spec,
                                            continuous_action_spec))

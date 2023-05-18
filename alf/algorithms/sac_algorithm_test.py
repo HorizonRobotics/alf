@@ -75,15 +75,6 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             action_spec=continuous_action_spec,
             critic_network_cls=None)
 
-        # None critic_network_cls could also mean predict_step only.
-        sac = SacAlgorithm(
-            observation_spec=observation_spec,
-            action_spec=continuous_action_spec,
-            critic_network_cls=None,
-            is_eval=True)
-        self.assertTrue(sac._is_eval)
-        self.assertEqual(sac._critic_networks, None)
-
         sac = SacAlgorithm(
             observation_spec=observation_spec,
             action_spec=continuous_action_spec,
@@ -105,6 +96,21 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             q_network_cls=universal_q_network)
         self.assertEqual(sac._act_type, SacActionType.Mixed)
         self.assertEqual(sac.train_state_spec.actor, ())
+
+    def test_sac_algorithm_init_for_eval(self):
+        observation_spec = BoundedTensorSpec((10, ))
+        continuous_action_spec = [
+            BoundedTensorSpec((3, )),
+            BoundedTensorSpec((10, ))
+        ]
+        # None critic_network_cls could also mean predict_step only.
+        alf.config("RLAlgorithm", is_eval=True)
+        sac = SacAlgorithm(
+            observation_spec=observation_spec,
+            action_spec=continuous_action_spec,
+            critic_network_cls=None)
+        self.assertTrue(sac._is_eval)
+        self.assertEqual(sac._critic_networks, None)
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
