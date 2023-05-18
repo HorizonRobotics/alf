@@ -223,22 +223,23 @@ def main(_):
                 rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
             return
 
-        # The other process will communicate with the authoritative
-        # process via network protocol on localhost:12355.
         os.environ['MASTER_ADDR'] = 'localhost'
-        os.environ['MASTER_PORT'] = '12355'
 
         try:
             # Create a shared queue for checking the consistency of the parameters
             # in different work processes.
             manager = mp.Manager()
             paras_queue = manager.Queue()
-            processes = mp.spawn(
-                training_worker,
-                args=(world_size, conf_file, root_dir, paras_queue),
-                join=True,
-                nprocs=world_size,
-                start_method='spawn')
+            with common.get_unused_port(12355) as port:
+                # The other process will communicate with the authoritative
+                # process via network protocol on localhost:port.
+                os.environ['MASTER_PORT'] = str(port)
+                processes = mp.spawn(
+                    training_worker,
+                    args=(world_size, conf_file, root_dir, paras_queue),
+                    join=True,
+                    nprocs=world_size,
+                    start_method='spawn')
         except KeyboardInterrupt:
             pass
         except Exception as e:

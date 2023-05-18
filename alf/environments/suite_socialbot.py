@@ -19,13 +19,11 @@ try:
 except ImportError:
     social_bot = None
 
-import contextlib
-from fasteners.process_lock import InterProcessLock
 import functools
 import gym
-import socket
 
 import alf
+from alf.utils.common import get_unused_port
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
@@ -93,7 +91,7 @@ def load(environment_name,
             alf_env_wrappers=alf_env_wrappers)
 
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
-    with _get_unused_port(*port_range) as port:
+    with get_unused_port(*port_range) as port:
         if wrap_with_process:
             process_env = process_environment.ProcessEnvironment(
                 functools.partial(env_ctor, port))
@@ -102,49 +100,3 @@ def load(environment_name,
         else:
             torch_env = env_ctor(port=port, env_id=env_id)
     return torch_env
-
-
-@contextlib.contextmanager
-def _get_unused_port(start, end=65536, n=1):
-    """Get an unused port in the range [start, end) .
-
-    Args:
-        start (int) : port range start
-        end (int): port range end
-        n (int): get ``n`` consecutive unused ports
-    Raises:
-        socket.error: if no unused port is available
-    """
-    process_locks = []
-    unused_ports = []
-    try:
-        for port in range(start, end):
-            process_locks.append(
-                InterProcessLock(path='/tmp/socialbot/{}.lock'.format(port)))
-            if not process_locks[-1].acquire(blocking=False):
-                process_locks[-1].lockfile.close()
-                process_locks.pop()
-                for process_lock in process_locks:
-                    process_lock.release()
-                process_locks = []
-                continue
-            try:
-                with contextlib.closing(socket.socket()) as sock:
-                    sock.bind(('', port))
-                    unused_ports.append(port)
-                    if len(unused_ports) == 2:
-                        break
-            except socket.error:
-                for process_lock in process_locks:
-                    process_lock.release()
-                process_locks = []
-        if len(unused_ports) < n:
-            raise socket.error("No unused port in [{}, {})".format(start, end))
-        if n == 1:
-            yield unused_ports[0]
-        else:
-            yield unused_ports
-    finally:
-        if process_locks:
-            for process_lock in process_locks:
-                process_lock.release()
