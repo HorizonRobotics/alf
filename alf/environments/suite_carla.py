@@ -60,7 +60,6 @@ except ImportError:
 import alf
 import alf.data_structures as ds
 from alf.utils import common
-from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
 from .carla_sensors import (
     BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
@@ -1352,7 +1351,7 @@ class CarlaEnvironment(AlfEnvironment):
         """
         super().__init__()
 
-        with _get_unused_port(2000, n=2) as (rpc_port, streaming_port):
+        with common.get_unused_port(2000, n=2) as (rpc_port, streaming_port):
             self._server = CarlaServer(rpc_port, streaming_port)
 
         self._batch_size = batch_size
@@ -1388,7 +1387,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._traffic_manager = None
         if self._num_other_vehicles + self._num_walkers > 0:
-            with _get_unused_port(8000, n=1) as tm_port:
+            with common.get_unused_port(8000, n=1) as tm_port:
                 self._traffic_manager = self._client.get_trafficmanager(
                     tm_port)
                 # Need to set traffic manager (TM) to synchronous mode, since
