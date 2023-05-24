@@ -481,7 +481,10 @@ class Algorithm(AlgorithmInterface):
         Returns:
             Experience: transformed experience
         """
-        return self._data_transformer.transform_experience(experience)
+        if self._config.skip_transform_experience:
+            return experience
+        else:
+            return self._data_transformer.transform_experience(experience)
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.

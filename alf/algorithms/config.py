@@ -81,6 +81,7 @@ class TrainerConfig(object):
                  rl_train_every_update_steps=1,
                  empty_cache: bool = False,
                  normalize_importance_weights_by_max: bool = False,
+                 skip_transform_experience=False,
                  clear_replay_buffer=True):
         """
         Args:
@@ -365,3 +366,4 @@ class TrainerConfig(object):
         self.rl_train_every_update_steps = rl_train_every_update_steps
         self.empty_cache = empty_cache
         self.normalize_importance_weights_by_max = normalize_importance_weights_by_max
+        self.skip_transform_experience = skip_transform_experience
