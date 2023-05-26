@@ -14,6 +14,7 @@
 
 from absl.testing import parameterized
 import torch
+import numpy as np
 
 import alf
 from alf.data_structures import Experience, namedtuple, StepType
@@ -115,7 +116,10 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
             observation=dict(
                 scalar=alf.TensorSpec(()),
                 vector=alf.TensorSpec((7, )),
-                matrix=alf.TensorSpec((5, 6)),
+                matrix=alf.BoundedTensorSpec(
+                    (5, 6),
+                    minimum=-np.arange(30).reshape(5, 6).astype(np.float32),
+                    maximum=100.0),
                 tensor=alf.TensorSpec((2, 3, 4))))
         exp_spec = Experience(time_step=time_step_spec)
         replay_buffer = ReplayBuffer(
@@ -134,9 +138,23 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(new_spec['vector'].shape, (21, ))
         if stack_axis == -1:
             self.assertEqual(new_spec['matrix'].shape, (5, 18))
+            np.testing.assert_allclose(
+                new_spec['matrix'].minimum,
+                np.concatenate([
+                    -np.arange(30).reshape(5, 6).astype(np.float32),
+                    -np.arange(30).reshape(5, 6).astype(np.float32),
+                    -np.arange(30).reshape(5, 6).astype(np.float32)
+                ], axis=-1))
             self.assertEqual(new_spec['tensor'].shape, (2, 3, 12))
         elif stack_axis == 0:
             self.assertEqual(new_spec['matrix'].shape, (15, 6))
+            np.testing.assert_allclose(
+                new_spec['matrix'].minimum,
+                np.concatenate([
+                    -np.arange(30).reshape(5, 6).astype(np.float32),
+                    -np.arange(30).reshape(5, 6).astype(np.float32),
+                    -np.arange(30).reshape(5, 6).astype(np.float32)
+                ], axis=0))
             self.assertEqual(new_spec['tensor'].shape, (6, 3, 4))
 
         def _step_type(t, period):
