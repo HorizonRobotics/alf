@@ -144,7 +144,8 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
                     -np.arange(30).reshape(5, 6).astype(np.float32),
                     -np.arange(30).reshape(5, 6).astype(np.float32),
                     -np.arange(30).reshape(5, 6).astype(np.float32)
-                ], axis=-1))
+                ],
+                               axis=-1))
             self.assertEqual(new_spec['tensor'].shape, (2, 3, 12))
         elif stack_axis == 0:
             self.assertEqual(new_spec['matrix'].shape, (15, 6))
@@ -154,7 +155,8 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
                     -np.arange(30).reshape(5, 6).astype(np.float32),
                     -np.arange(30).reshape(5, 6).astype(np.float32),
                     -np.arange(30).reshape(5, 6).astype(np.float32)
-                ], axis=0))
+                ],
+                               axis=0))
             self.assertEqual(new_spec['tensor'].shape, (6, 3, 4))
 
         def _step_type(t, period):
