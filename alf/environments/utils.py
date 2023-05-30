@@ -114,11 +114,18 @@ def create_environment(env_name='CartPole-v0',
             will be used for creating the environment if provided. Otherwise,
             ``env_load_fn`` will be used.
         num_parallel_environments (int): num of parallel environments
-        batch_size_per_env (int): if >1, will create ``num_parallel_environments/batch_size_per_env``
+        batch_size_per_env (int): if >1, will create
+            ``num_parallel_environments/batch_size_per_env``
             ``ProcessEnvironment``. Each of these ``ProcessEnvironment`` holds
-            ``batch_size_per_env`` environments. The potential benefit of using
+            ``batch_size_per_env`` environments. If each underlying environment
+            of ``ProcessEnvironment`` is itself batched, ``batch_size_per_env``
+            will be used as the batch size for them. Otherwise
+            ``BatchEnvironmentWrapper`` will be sused to instruct each process
+            to run the underlying environments sequentially on operations such
+            as ``step()``. The potential benefit of using
             ``batch_size_per_env>1`` is to reduce the number of processes being
-            used.
+            used, or to take advantages of the batched nature of the underlying
+            environment.
         num_spare_envs (int): num of spare parallel envs for speed up reset.
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
@@ -136,6 +143,7 @@ def create_environment(env_name='CartPole-v0',
             AlfEnvironment.
     Returns:
         AlfEnvironment:
+
     """
 
     if for_evaluation:
