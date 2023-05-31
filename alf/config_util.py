@@ -314,18 +314,19 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
     if config_node.is_configured():
-        if config_node.is_mutable():
-            logging.warning(
-                "The value of config '%s' has been configured to %s. It is "
-                "replaced by the new value %s" %
-                (config_name, config_node.get_value(), value))
-            config_node.set_value(value)
-            config_node.set_mutable(mutable)
-        else:
-            logging.warning(
-                "The config '%s' has been configured to an immutable value "
-                "of %s. The new value %s will be ignored" %
-                (config_name, config_node.get_value(), value))
+        if config_node.get_value() != value:
+            if config_node.is_mutable():
+                logging.warning(
+                    "The value of config '%s' has been configured to %s. It is "
+                    "replaced by the new value %s" %
+                    (config_name, config_node.get_value(), value))
+                config_node.set_value(value)
+                config_node.set_mutable(mutable)
+            else:
+                logging.warning(
+                    "The config '%s' has been configured to an immutable value "
+                    "of %s. The new value %s will be ignored" %
+                    (config_name, config_node.get_value(), value))
     else:
         config_node.set_value(value)
         config_node.set_mutable(mutable)
