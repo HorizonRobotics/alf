@@ -238,18 +238,16 @@ class FrameStacker(DataTransformer):
         else:
             if spec.minimum.shape != ():
                 assert spec.minimum.shape == spec.shape
-                minimum = np.repeat(
-                    spec.minimum,
-                    repeats=self._stack_size,
-                    axis=self._stack_axis)
+                rep = [1] * spec.minimum.ndim
+                rep[self._stack_axis] = self._stack_size
+                minimum = np.tile(spec.minimum, rep)
             else:
                 minimum = spec.minimum
             if spec.maximum.shape != ():
                 assert spec.maximum.shape == spec.shape
-                maximum = np.repeat(
-                    spec.maximum,
-                    repeats=self._stack_size,
-                    axis=self._stack_axis)
+                rep = [1] * spec.maximum.ndim
+                rep[self._stack_axis] = self._stack_size
+                maximum = np.tile(spec.maximum, rep)
             else:
                 maximum = spec.maximum
             return alf.BoundedTensorSpec(
