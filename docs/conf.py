@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.abspath('../'))
 # -- Project information -----------------------------------------------------
 
 project = 'Agent Learning Framework (ALF)'
-copyright = '2022, HorizonRobotics'
+copyright = '2023, HorizonRobotics'
 author = 'HorizonRobotics'
 
 # -- General configuration ---------------------------------------------------
@@ -108,3 +108,8 @@ def run_apidoc(_):
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)
+
+
+# HACK: build penv before building html docs
+cur_dir = os.path.realpath(os.path.abspath('../'))
+os.system(f"cd {cur_dir}/alf/environments; python3 make_penv.py")

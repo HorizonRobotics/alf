@@ -20,7 +20,7 @@ sphinxcontrib-napoleon==0.7
 tensorboard==2.1.0
 torch==1.8.1+cpu
 torchvision==0.9.1+cpu
-cnest==1.0.8
+cnest==1.1.1
 gym3==0.3.3
 procgen==0.10.4
 protobuf==3.20.*
