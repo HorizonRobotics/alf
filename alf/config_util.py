@@ -973,7 +973,7 @@ def save_config(alf_config_file):
             else:
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
-    config += f"alf.import_config('{config_dirname}/{conf_file_name}')\n"
+    config += f"config = alf.import_config('{config_dirname}/{conf_file_name}')\n"
     f = open(alf_config_file, 'w')
     f.write(config)
     f.close()
