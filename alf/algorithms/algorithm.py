@@ -240,11 +240,15 @@ class Algorithm(AlgorithmInterface):
                 checkpoint_prefix, checkpoint_path)
 
             status = self.load_state_dict(stat_dict, strict=True)
-            assert not status.missing_keys and not status.unexpected_keys, (
+            # Currently, optimizers are not handled by this function
+            missing_keys = list(
+                filter(lambda k: k.find('_optimizers.') < 0,
+                       status.missing_keys))
+            assert not missing_keys and not status.unexpected_keys, (
                 "\033[1;31m Checkpoint mismatches with the model: \033[1;0m \n"
                 +
                 "\033[1;31m Missing-keys \033[1;0m (keys in model but not in checkpoint): {}\n"
-                .format(status.missing_keys) +
+                .format(missing_keys) +
                 "\033[1;31m Unexpected-keys \033[1;0m (keys in checkpoint but not in model): {}"
                 .format(status.unexpected_keys))
             self._checkpoint_pre_loaded = True
