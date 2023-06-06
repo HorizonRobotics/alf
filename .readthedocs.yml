@@ -17,6 +17,7 @@ build:
   image: latest
   apt_packages:
     - cmake
+    - libboost-all-dev
 
 # Optionally set the version of Python and requirements required to build your docs
 python:
