@@ -44,7 +44,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                  start_serially=True,
                  blocking=False,
                  flatten=True,
-                 num_spare_envs_for_reload=0):
+                 num_spare_envs_for_reload=0,
+                 torch_num_threads_per_env=1):
         """
         Args:
             env_constructors (list[Callable]): a list of callable environment creators.
@@ -55,6 +56,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             num_spare_envs_for_reload (int): if positive, these environments will be
                 maintained in a separate queue and be used to handle slow env resets.
                 The batch_size is ``len(env_constructors) - num_spare_envs_for_reload``
+            torch_num_threads_per_env (int): how many threads torch will use for each
+                env proc. Note that if you have lots of parallel envs, it's best
+                to set this number as 1. Leave this as 'None' to skip the change.
 
         Raises:
             ValueError: If the action or observation specs don't match.
@@ -68,7 +72,11 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._spare_queue = []
         self._spare_promises = []
         for env_id, ctor in enumerate(env_constructors):
-            env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
+            env = ProcessEnvironment(
+                ctor,
+                env_id=env_id,
+                flatten=flatten,
+                torch_num_threads_per_env=torch_num_threads_per_env)
             if env_id < self._num_envs:
                 self._envs.append(env)
                 self._env_ids.append(env_id)

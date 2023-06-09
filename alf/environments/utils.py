@@ -90,6 +90,7 @@ def create_environment(env_name='CartPole-v0',
                        flatten=True,
                        start_serially=True,
                        num_spare_envs=0,
+                       torch_num_threads_per_env=1,
                        parallel_environment_ctor=fast_parallel_environment.
                        FastParallelEnvironment,
                        seed=None,
@@ -134,6 +135,10 @@ def create_environment(env_name='CartPole-v0',
             communication to reduce overhead.
         num_spare_envs (int): number of spare parallel environments to speed
             up reset.  Useful when a reset is much slower than a regular step.
+        torch_num_threads_per_env (int): how many threads torch will use for each
+            env proc. Note that if you have lots of parallel envs, it's best
+            to set this number as 1. Leave this as 'None' to skip the change.
+            Only used if the env is not batched and ``nonparallel==False``.
         parallel_environment_ctor (Callable): used to contruct parallel environment.
             Available constructors are: ``fast_parallel_environment.FastParallelEnvironment``
             and ``parallel_environment.ParallelAlfEnvironment``.
@@ -208,7 +213,8 @@ def create_environment(env_name='CartPole-v0',
             ctors,
             flatten=flatten,
             start_serially=start_serially,
-            num_spare_envs_for_reload=num_spare_envs)
+            num_spare_envs_for_reload=num_spare_envs,
+            torch_num_threads_per_env=torch_num_threads_per_env)
         alf_env.seed(seeds)
 
     for wrapper in batched_wrappers:
