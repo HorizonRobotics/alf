@@ -77,6 +77,9 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         num_spare_envs_for_reload (int): if positive, these environments will be
             maintained in a separate queue and be used to handle slow env resets.
             The batch_size is ``len(env_constructors) - num_spare_envs_for_reload``
+        torch_num_threads_per_env (int): how many threads torch will use for each
+            env proc. Note that if you have lots of parallel envs, it's best
+            to set this number as 1. Leave this as 'None' to skip the change.
 
     Raises:
         ValueError: If the action or observation specs don't match.
@@ -88,7 +91,8 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             start_serially=True,
             blocking=False,  # unused
             flatten=True,  # unused
-            num_spare_envs_for_reload=0):
+            num_spare_envs_for_reload=0,
+            torch_num_threads_per_env=1):
         super().__init__()
         num_envs = len(env_constructors) - num_spare_envs_for_reload
         name = f"alf_penv_{os.getpid()}_{time.time()}"
@@ -96,7 +100,12 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         self._spare_envs = []
         for env_id, ctor in enumerate(env_constructors):
             env = ProcessEnvironment(
-                ctor, env_id=env_id, fast=True, num_envs=num_envs, name=name)
+                ctor,
+                env_id=env_id,
+                fast=True,
+                num_envs=num_envs,
+                torch_num_threads_per_env=torch_num_threads_per_env,
+                name=name)
             if env_id < num_envs:
                 self._envs.append(env)
             else:

@@ -26,6 +26,7 @@ import numpy as np
 import sys
 import torch
 import traceback
+from typing import Callable
 
 import alf
 from alf.data_structures import TimeStep
@@ -47,31 +48,37 @@ class _MessageType(Enum):
     CLOSE = 6
 
 
-def _worker(conn,
-            env_constructor,
-            env_id=None,
-            flatten=False,
-            fast=False,
-            num_envs=0,
-            name=''):
+def _worker(conn: multiprocessing.connection,
+            env_constructor: Callable,
+            env_id: int = None,
+            flatten: bool = False,
+            fast: bool = False,
+            num_envs: int = 0,
+            torch_num_threads_per_env: int = 1,
+            name: str = ''):
     """The process waits for actions and sends back environment results.
 
     Args:
-        conn (multiprocessing.connection): Connection for communication to the main process.
-        env_constructor (Callable): callable environment creator.
-        flatten (bool): whether to assume flattened actions and time_steps
+        conn: Connection for communication to the main process.
+        env_constructor: callable environment creator.
+        env_id: the id of the env
+        flatten: whether to assume flattened actions and time_steps
           during communication to avoid overhead.
-        fast (bool): whether created by ``FastParallelEnvironment`` or not.
-        num_envs (int): number of environments in the ``FastParallelEnvironment``.
+        fast: whether created by ``FastParallelEnvironment`` or not.
+        num_envs: number of environments in the ``FastParallelEnvironment``.
             Only used if ``fast`` is True.
-        name (str): name of the FastParallelEnvironment. Only used if ``fast``
-            is True.
+        torch_num_threads_per_env: how many threads torch will use for each
+            env proc. Note that if you have lots of parallel envs, it's best to
+            set this number as 1. Leave this as 'None' to skip the change.
+        name: name of the FastParallelEnvironment. Only used if ``fast`` is True.
 
     Raises:
         KeyError: When receiving a message of unknown type.
     """
     try:
         alf.set_default_device("cpu")
+        if torch_num_threads_per_env is not None:
+            torch.set_num_threads(torch_num_threads_per_env)
         env = env_constructor(env_id=env_id)
         action_spec = env.action_spec()
         if fast:
@@ -150,12 +157,13 @@ def process_call(conn, env, flatten, action_spec):
 
 class ProcessEnvironment(object):
     def __init__(self,
-                 env_constructor,
-                 env_id=None,
-                 flatten=False,
-                 fast=False,
-                 num_envs=0,
-                 name=""):
+                 env_constructor: Callable,
+                 env_id: int = None,
+                 flatten: bool = False,
+                 fast: bool = False,
+                 num_envs: int = 0,
+                 torch_num_threads_per_env: int = 1,
+                 name: str = ""):
         """Step environment in a separate process for lock free paralellism.
 
         The environment is created in an external process by calling the provided
@@ -164,14 +172,17 @@ class ProcessEnvironment(object):
         not access global variables.
 
         Args:
-            env_constructor (Callable): callable environment creator.
-            env_id (torch.int32): ID of the the env
-            flatten (bool): whether to assume flattened actions and time_steps
+            env_constructor: callable environment creator.
+            env_id: ID of the the env
+            flatten: whether to assume flattened actions and time_steps
                 during communication to avoid overhead.
-            fast (bool): whether created by ``FastParallelEnvironment`` or not.
-            num_envs (int): number of environments in the ``FastParallelEnvironment``.
+            fast: whether created by ``FastParallelEnvironment`` or not.
+            num_envs: number of environments in the ``FastParallelEnvironment``.
                 Only used if ``fast`` is True.
-            name (str): name of the FastParallelEnvironment. Only used if ``fast``
+            torch_num_threads_per_env: how many threads torch will use for each
+                env proc. Note that if you have lots of parallel envs, it's best
+                to set this number as 1. Leave this as 'None' to skip the change.
+            name: name of the FastParallelEnvironment. Only used if ``fast``
                 is True.
 
         Attributes:
@@ -190,6 +201,7 @@ class ProcessEnvironment(object):
         self._conn = None
         self._fast = fast
         self._num_envs = num_envs
+        self._torch_num_threads = torch_num_threads_per_env
         self._name = name
         if fast:
             self._penv = _penv.ProcessEnvironmentCaller(env_id, name)
@@ -215,7 +227,8 @@ class ProcessEnvironment(object):
         self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._env_id, self._flatten,
-                  self._fast, self._num_envs, self._name))
+                  self._fast, self._num_envs, self._torch_num_threads,
+                  self._name))
         atexit.register(self.close)
         self._process.start()
         if wait_to_start:
