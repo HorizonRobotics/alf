@@ -471,3 +471,41 @@ def binary_neg_entropy(p: torch.Tensor):
     """
     q = 1 - p
     return p.xlogy(p) + q.xlogy(q)
+
+
+def Rademacher(shape, dtype=torch.float32):
+    """Sample from Rademacher distribution. """
+    rand = (torch.rand(shape) < 0.5) * 2  - 1
+    return rand.to(dtype)
+
+
+def jacobian_trace(fx, x, n=1, sampler='Rademacher'):
+    r"""Hutchinson's trace estimator for square input-output Jacobian.
+
+    Args:
+        fx (Tensor): [B, d] outputs of the function to compute Jacobian.
+        x (Tensor): [B, d] inputs of the function to compute Jacobian.
+        n (int): number of samples for Hutchinson estimator.
+        sampler (string): type of Hutchinson estimator, options are 
+            ``Rademacher`` and ``Gaussian``.
+
+    Returns:
+        [B] trace of the [B, d, d] Jacobian
+    """
+    assert fx.shape[-1] == x.shape[-1], (
+        "Jacobian is not square, no trace defined.")
+    if sampler == 'Rademacher':
+        eps_sampler = Rademacher
+    elif sampler == 'Gaussian':
+        eps_sampler = torch.randn
+    else:
+        raise ValueError("Only support Rademacher and Gaussian sampler.")
+
+    eps_shape = fx.shape
+    tr_jvp = torch.zeros(fx.shape[0])
+    for i in range(n):
+        eps = eps_sampler(eps_shape)
+        jvp = torch.autograd.grad(
+            fx, x, grad_outputs=eps, create_graph=True)[0]
+        tr_jvp += torch.einsum('bi,bi->b', jvp, eps)
+    return tr_jvp / n
