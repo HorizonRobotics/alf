@@ -372,6 +372,134 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
 
 
 @alf.configurable
+class DeterministicDynamicsDeltaAlgorithm(DeterministicDynamicsAlgorithm):
+    """Deterministic Dynamics Delta Learning Module
+
+    This module trys to predict the change of state from current state and action
+    with a determinstic model.
+    """
+
+    def predict_step(self, observation, action, state: DynamicsState):
+        """Predict the next observation given the current time_step.
+                The next step is predicted using the ``prev_action`` from
+                time_step and the ``feature`` from state.
+        Args:
+            observation (Tensor): should of shape [B, ...], or [B, n, ...] 
+                when n > 1, where n denotes the number of dynamics network 
+                replicas. When the input tensor has the shape of [B, ...] 
+                and n > 1, it will be first expanded to [B, n, ...] to match 
+                the number of dynamics network replicas.
+            action (Tensor): should of shape [B, ...], or [B, n, ...] 
+                when n > 1, where n denotes the number of dynamics network 
+                replicas. When the input tensor has the shape of [B, ...] 
+                and n > 1, it will be first expanded to [B, n, ...] to match 
+                the number of dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...], or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1,
+                    it will be first expanded to [B, n, ...] to match the
+                    number of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
+        Returns:
+            AlgStep:
+                outputs (Tensor): predicted feature of the next step, of the
+                    shape [B, ...], or [B, n, ...] when n > 1.
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, n, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing
+                        the predicted feature of the next step
+                    - network: the updated state of the dynamics network
+                info: empty tuple ()
+        """
+        action = self._encode_action(action)
+
+        # perform preprocessing
+        observations = self._expand_to_replica(observation, 
+                                               self._feature_spec)
+        actions = self._expand_to_replica(action, self._action_spec)
+
+        forward_deltas, network_state = self._dynamics_network(
+            (observations, actions), state=state.network)
+
+        state = state._replace(feature=forward_deltas, network=network_state)
+        return AlgStep(output=forward_deltas, state=state, info=())
+
+
+    def train_step(self, time_step: TimeStep, state: DynamicsState,
+                   rollout_info=None):
+        """
+        Args:
+            time_step (TimeStep): time step structure. The ``prev_action`` from
+                time_step will be used for predicting feature of the next step.
+                It should be a Tensor of the shape [B, ...] or [B, n, ...] when
+                n > 1, where n denotes the number of dynamics network replicas.
+                When the input tensor has the shape of [B, ...] and n > 1, it
+                will be first expanded to [B, n, ...] to match the number of
+                dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...] or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1, it
+                    will be first expanded to [B, n, ...] to match the number
+                    of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
+        Returns:
+            AlgStep:
+                outputs: empty tuple ()
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing the predicted feature of
+                        the next step
+                    - network: the updated state of the dynamics network
+                info (DynamicsInfo): with the following fields being updated:
+                    - loss (LossInfo):
+        """
+        feature = self._expand_to_replica(rollout_info, self._feature_spec)
+        dynamics_step = self.predict_step(
+            feature, time_step.prev_action, state)
+        forward_delta = dynamics_step.output
+        forward_pred = forward_delta + time_step.observation
+        forward_loss = (time_step.observation - forward_pred)**2
+
+        if forward_loss.ndim > 2:
+            # [B, n, ...] -> [B, ...]
+            forward_loss = forward_loss.sum(1)
+        if forward_loss.ndim > 1:
+            forward_loss = 0.5 * forward_loss.mean(
+                list(range(1, forward_loss.ndim)))
+
+        # we mask out FIRST as its state is invalid
+        valid_masks = (time_step.step_type != StepType.FIRST).to(torch.float32)
+        forward_loss = forward_loss * valid_masks
+
+        info = DynamicsInfo(
+            loss=LossInfo(
+                loss=forward_loss, extra=dict(forward_loss=forward_loss)))
+
+        # state = state._replace(feature=feature)
+
+        return AlgStep(output=(), state=state, info=info)
+
+    def calc_loss(self, info: DynamicsInfo):
+        # Here we take mean over the loss to avoid undesired additional
+        # masking from base algorithm's ``update_with_gradient``.
+        loss = info.loss.loss
+        mask = torch.ones_like(loss)
+        mask[0, ...] = 0.
+        ratio = loss.shape[0] / (loss.shape[0] - 1)
+        scalar_loss = torch.mean(info.loss.loss * mask) * ratio
+
+        return LossInfo(scalar_loss=scalar_loss, extra=scalar_loss)
+
+
+@alf.configurable
 class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
     """Stochastic Dynamics Learning Module
 
