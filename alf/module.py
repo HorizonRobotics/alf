@@ -13,12 +13,25 @@
 # limitations under the License.
 """Patch torch.nn.Module for better performance.
 
-``torch.nn.Module.__getattr__`` is freqently used by all class derived from
-``nn.Module``. It can inrtroduce too much unnecessary overhead. So we patch
+``torch.nn.Module.__getattr__`` is frequently used by all class derived from
+``nn.Module``. It can introduce too much unnecessary overhead. So we patch
 ``nn.Module`` class to remove it.
 """
 
 import torch
+
+# NOTE: Run ``import torch.fx`` before deleting ``Module.__getattr__`` is a
+# workaround to tame ``torch.fx``. When ``torch.fx`` is first imported and
+# evaluated, ``Module.__getattr__`` is accessed. This access will raise an error
+# if it is already deleted.
+#
+# Newer version of torchvision relies on ``torch.fx``, and there can be more use
+# of ``torch.fx`` in the future.
+try:
+    import torch.fx
+except ModuleNotFoundError:
+    pass
+
 from torch.nn import Module, Parameter
 
 del Module.__getattr__
