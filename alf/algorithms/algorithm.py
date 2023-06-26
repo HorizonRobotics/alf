@@ -961,9 +961,7 @@ class Algorithm(AlgorithmInterface):
         if metadata is not None:
             state_dict._metadata = metadata
 
-        def _load(module, prefix='', visited=None):
-            if visited is None:
-                visited = {self}
+        def _load(module, visited, prefix=''):
             if not is_checkpoint_enabled(module):
                 return
             if isinstance(module, Algorithm):
@@ -977,11 +975,6 @@ class Algorithm(AlgorithmInterface):
                         del state_dict[opt_key]
                     elif strict:
                         missing_keys.append(opt_key)
-
-            for name, child in module._modules.items():
-                if child is not None and child not in visited:
-                    visited.add(child)
-                    _load(child, prefix + name + '.', visited=visited)
 
             local_metadata = {} if metadata is None else metadata.get(
                 prefix[:-1], {})
@@ -1002,7 +995,12 @@ class Algorithm(AlgorithmInterface):
                     state_dict, prefix, local_metadata, True, missing_keys,
                     unexpected_keys, error_msgs)
 
-        _load(self)
+            for name, child in module._modules.items():
+                if child is not None and child not in visited:
+                    visited.add(child)
+                    _load(child, visited, prefix + name + '.')
+
+        _load(self, visited={self})
 
         if len(error_msgs) > 0:
             raise RuntimeError(
