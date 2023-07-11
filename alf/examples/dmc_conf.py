@@ -41,6 +41,12 @@ alf.config(
 hidden_layers = (256, 256)
 
 alf.config(
+    "NormalProjectionNetwork",
+    state_dependent_std=True,
+    scale_distribution=True,
+    std_transform=partial(clipped_exp, clip_value_min=-20, clip_value_max=2))
+
+alf.config(
     "NormalProjectionParamNetwork",
     std_transform=partial(clipped_exp, clip_value_min=-4, clip_value_max=2))
 
