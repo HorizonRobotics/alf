@@ -26,6 +26,7 @@ from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, dist_utils
 import alf.utils.math_ops as math_ops
+from alf.utils.summary_utils import safe_mean_hist_summary, summarize_tensor_gradients
 
 
 @alf.configurable
@@ -513,8 +514,22 @@ class NormalProjectionParamNetwork(Network):
         # [B, n, D] or [B, D] (n=1)
         means = self._mean_transform(self._means_projection_layer(inputs))
         stds = self._std_transform(self._std_projection_layer(inputs))
+        safe_mean_hist_summary("CriticProjNet/batch_means", means.mean(1))
+        safe_mean_hist_summary("CriticProjNet/batch_stds", stds.mean(1))
+
         # means = means.squeeze(-1)
         # stds = stds.squeeze(-1)
+        def _summarize_grad(x, name):
+            if not x.requires_grad:
+                return x
+            if alf.summary.should_record_summaries():
+                return summarize_tensor_gradients(
+                    "CriticProjNet/" + name, x, clone=True)
+            else:
+                return x
+
+        means = _summarize_grad(means, name='means_grad')
+        stds = _summarize_grad(stds, name='stds_grad')
         return self._normal_dist(means, stds), state
 
 
@@ -617,6 +632,20 @@ class StableNormalProjectionParamNetwork(NormalProjectionParamNetwork):
             self._means_projection_layer(inputs) * stds)
         # means = means.squeeze(-1)
         # stds = stds.squeeze(-1)
+        safe_mean_hist_summary("CriticProjNet/batch_means", means.mean(1))
+        safe_mean_hist_summary("CriticProjNet/batch_stds", stds.mean(1))
+
+        def _summarize_grad(x, name):
+            if not x.requires_grad:
+                return x
+            if alf.summary.should_record_summaries():
+                return summarize_tensor_gradients(
+                    "CriticProjNet/" + name, x, clone=True)
+            else:
+                return x
+
+        means = _summarize_grad(means, name='means_grad')
+        stds = _summarize_grad(stds, name='stds_grad')
         return self._normal_dist(means, stds), state
 
 

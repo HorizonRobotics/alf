@@ -21,7 +21,9 @@ from alf.algorithms.multi_bootstrap_ensemble import MultiBootstrapEnsemble
 from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.examples import dmc_conf
 from alf.networks import ActorNetwork, StableNormalProjectionParamNetwork
+from alf.networks import NormalProjectionParamNetwork
 from alf.optimizers import AdamTF
+from alf.utils.summary_utils import summarize_tensor_gradients
 
 # experiment settings
 use_multibootstrap = True
@@ -42,10 +44,29 @@ else:
 explore_network_cls = partial(
     ActorNetwork, fc_layer_params=dmc_conf.hidden_layers)
 
+# def _projection_net_ctor(input_size, output_tensor_spec,
+#                          state_dependent_std=False):
+#     def _summarize_grad(x, name):
+#         if not x.requires_grad:
+#             return x
+#         if alf.summary.should_record_summaries():
+#             return summarize_tensor_gradients(
+#                 "CriticDistributionParamNetwork/" + name, x, clone=True)
+#         else:
+#             return x
+
+#     return alf.layers.Sequential(
+#         partial(_summarize_grad, name='proj_net_grad'),
+#         StableNormalProjectionParamNetwork(
+#             input_size=input_size,
+#             output_tensor_spec=output_tensor_spec,
+#             state_dependent_std=state_dependent_std))
+
 alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=dmc_conf.hidden_layers,
-    projection_net_ctor=StableNormalProjectionParamNetwork,
+    # projection_net_ctor=StableNormalProjectionParamNetwork,
+    projection_net_ctor=NormalProjectionParamNetwork,
     state_dependent_std=True)
 
 if use_multibootstrap:
@@ -71,6 +92,7 @@ else:
         debug_summaries=True)
     batch_size = 256
 
+# for multiswag only
 alf.config('CovarianceSpace', use_subspace_mean=True)
 
 alf.config('Agent', rl_algorithm_cls=TsabcAlgorithm)

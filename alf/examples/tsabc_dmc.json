@@ -2,19 +2,18 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "dmc_multibootstrap_8b487_stable_max_std_100_sds_T-aidi",
+    "version": "dmc_multibootstrap_cdf26_sds_F-cloud_0710",
     "use_gpu": true,
     "gpus": [
-        0,
-        1
+        0
     ],
-    "max_worker_num": 4,
+    "max_worker_num": 2,
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "walker-run"
+            "hopper-hop"
         ],
-        "CriticDistributionParamNetwork.state_dependent_std": "[True]",
+        "CriticDistributionParamNetwork.state_dependent_std": "[False]",
         "MultiSwagAlgorithm.num_particles": "[5]",
         "MultiSwagAlgorithm.num_samples_per_model": "[4]",
         "MultiSwagAlgorithm.subspace_max_rank": "[20]",
@@ -33,6 +32,6 @@
         "TsabcAlgorithm.use_q_mean_train_actor": "[True]",
         "TsabcAlgorithm.use_basin_mean_for_target_critic": "[True]",
         "TsabcAlgorithm.target_update_tau": "[0.005]",
-        "TrainerConfig.random_seed": "list(range(4))"
+        "TrainerConfig.random_seed": "list(range(2))"
     }
 }
