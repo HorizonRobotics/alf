@@ -146,6 +146,16 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     def task_names(self):
         return self._task_names
 
+    def set_commands(self, commands):
+        """Set commands for each environment.
+
+        Args:
+            commands (dict): a dict of locomotion commands for each environment.
+                For example, {"position": [0.1, 0.2, 0.3], "orientation": [0.1, 0.2, 0.3]}
+        """
+        [env.set_commands(commands) for env in self._envs]
+        return 0
+
     def env_info_spec(self):
         return self._env_info_spec
 

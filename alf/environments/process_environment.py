@@ -377,6 +377,15 @@ class ProcessEnvironment(object):
         raise KeyError(
             'Received message of unexpected type {}'.format(message))
 
+    def set_commands(self, commands):
+        """Set commands for each environment.
+
+        Args:
+            commands (dict): a dict of locomotion commands for each environment.
+                For example, {"position": [0.1, 0.2, 0.3], "orientation": [0.1, 0.2, 0.3]}
+        """
+        return self.call('set_commands', commands)()
+
     def render(self, mode='human'):
         """Render the environment.
 
