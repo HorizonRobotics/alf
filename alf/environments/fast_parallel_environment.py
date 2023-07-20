@@ -188,15 +188,18 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
     def task_names(self):
         return self._task_names
 
-    def set_commands(self, commands):
-        """Set commands for each environment.
+    def call_envs_with_same_args(self, name, *args, **kwargs):
+        """Call each environment's named function with the same args.
 
         Args:
-            commands (dict): a dict of locomotion commands for each environment.
-                For example, {"position": [0.1, 0.2, 0.3], "orientation": [0.1, 0.2, 0.3]}
+            name (str): name of the function to call
+            *args: args to pass to the function
+            **kwargs: kwargs to pass to the function
+        
+        return:
+            list: list of results from each environment
         """
-        [env.set_commands(commands) for env in self._envs]
-        return 0
+        return [env.call(name, *args, **kwargs)() for env in self._envs]
 
     def env_info_spec(self):
         return self._env_info_spec
