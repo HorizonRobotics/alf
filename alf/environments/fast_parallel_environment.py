@@ -188,6 +188,19 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
     def task_names(self):
         return self._task_names
 
+    def call_envs_with_same_args(self, func_name, *args, **kwargs):
+        """Call each environment's named function with the same args.
+
+        Args:
+            func_name (str): name of the function to call
+            *args: args to pass to the function
+            **kwargs: kwargs to pass to the function
+        
+        return:
+            list: list of results from each environment
+        """
+        return [env.call(func_name, *args, **kwargs)() for env in self._envs]
+
     def env_info_spec(self):
         return self._env_info_spec
 
