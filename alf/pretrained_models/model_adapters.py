@@ -204,9 +204,12 @@ class EmbeddingAdapter(LoRA):
 
     def forward(self, input):
         m = self._m[0]
-        return F.embedding(input, self._adapter_weight(), m.padding_idx,
-                           m.max_norm, m.norm_type, m.scale_grad_by_freq,
-                           m.sparse)
+        embedding_table = self._wB or self._wA
+        input = F.embedding(input, embedding_table, m.padding_idx, m.max_norm,
+                            m.norm_type, m.scale_grad_by_freq, m.sparse)
+        if self._wB is not None:
+            input = input @ self._wA
+        return input
 
 
 @alf.configurable
@@ -223,7 +226,10 @@ class LinearAdapter(LoRA):
         return m.out_features, m.in_features
 
     def forward(self, input):
-        return F.linear(input, self._adapter_weight())
+        input = input @ self._wA.t()
+        if self._wB is not None:
+            input = input @ self._wB.t()
+        return input
 
 
 @alf.configurable
