@@ -190,6 +190,26 @@ class LoRA(nn.Module):
 
 
 @alf.configurable
+class EmbeddingAdapter(LoRA):
+    """Adapter for embedding layers.
+    """
+
+    @classmethod
+    def can_adapt(cls, m: nn.Module) -> bool:
+        return isinstance(m, nn.Embedding)
+
+    @classmethod
+    def _decompose_weight_dims(cls, m: nn.Module):
+        return m.num_embeddings, m.embedding_dim
+
+    def forward(self, input):
+        m = self._m[0]
+        return F.embedding(input, self._adapter_weight(), m.padding_idx,
+                           m.max_norm, m.norm_type, m.scale_grad_by_freq,
+                           m.sparse)
+
+
+@alf.configurable
 class LinearAdapter(LoRA):
     """Adapter for linear layers.
     """

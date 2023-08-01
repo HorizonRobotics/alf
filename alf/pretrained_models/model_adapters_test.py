@@ -21,7 +21,8 @@ import alf
 from alf.optimizers import AdamTF
 
 from alf.pretrained_models.pretrained_model import PretraindModel
-from alf.pretrained_models.model_adapters import LinearAdapter, Conv2dAdapter
+from alf.pretrained_models.model_adapters import (LinearAdapter, Conv2dAdapter,
+                                                  EmbeddingAdapter)
 
 
 class ModelAdaptersTest(unittest.TestCase):
@@ -49,6 +50,7 @@ class ModelAdaptersTest(unittest.TestCase):
             self.assertTrue(torch.all(ap != ap1))
 
     def test_linear_adapter(self):
+        alf.reset_configs()
         x = torch.tensor([0.1, 0.2])
 
         fc = torch.nn.Sequential(
@@ -80,6 +82,7 @@ class ModelAdaptersTest(unittest.TestCase):
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
     def test_conv_adapter(self):
+        alf.reset_configs()
         x = torch.rand([1, 10, 10])
         conv = torch.nn.Sequential(
             torch.nn.Conv2d(1, 3, kernel_size=3, padding=1), torch.nn.Tanh(),
@@ -111,7 +114,36 @@ class ModelAdaptersTest(unittest.TestCase):
         y3 = pretrained(x)
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
+    def test_embedding_adapter(self):
+        alf.reset_configs()
+        x = torch.tensor([0, 1, 2, 3]).to(torch.int64)
+        embedding = torch.nn.Embedding(4, 10)
+
+        pretrained = PretraindModel(embedding)
+
+        y0 = pretrained(x)
+        pretrained.add_adapter(EmbeddingAdapter)
+        y1 = pretrained(x)
+        # The initial adapter weights are all zeros
+        self.assertTrue(torch.all(y1 == y0))
+
+        self._test(x, embedding, pretrained)
+
+        y2 = pretrained(x)
+        # after training
+        self.assertTrue(torch.all(y2 != y0))
+
+        pretrained.merge_adapter()
+        y2_ = pretrained(x)
+        self.assertTrue(torch.allclose(y2_, y2, atol=1e-7))
+
+        # Check if removing adapter works or not
+        pretrained.remove_adapter()
+        y3 = pretrained(x)
+        self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
+
     def test_double_adaptation(self):
+        alf.reset_configs()
         x = torch.rand([1, 1, 10, 10])
         model = torch.nn.Sequential(
             torch.nn.Conv2d(1, 3, kernel_size=3, padding=1), torch.nn.Tanh(),
