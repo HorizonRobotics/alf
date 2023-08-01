@@ -90,3 +90,8 @@ class PretraindModel(nn.Module):
         put the large base model into our checkpoints.
         """
         return self._adapters.state_dict(*args, **kwargs)
+
+    def load_state_dict(self, *args, **kwargs):
+        """Only load the state dict for the adapter.
+        """
+        return self._adapters.load_state_dict(*args, **kwargs)

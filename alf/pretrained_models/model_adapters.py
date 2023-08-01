@@ -99,8 +99,8 @@ class LoRA(nn.Module):
         w = w.reshape(self._m[0].weight.shape)
         scaling = self._alpha
         if self._wB is not None:
-            # If wB is used, wB @ wA will introduce a scale of self._r, so we
-            # need to scale the weight back.
+            # If wB is used, wB @ wA will increase the output magnitude. LoRA
+            # compenstates this by dividing the result by ``self._r``.
             scaling /= self._r
         return scaling * w
 
