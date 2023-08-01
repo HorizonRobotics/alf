@@ -111,6 +111,31 @@ class ModelAdaptersTest(unittest.TestCase):
         y3 = pretrained(x)
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
+    def test_double_adaptation(self):
+        x = torch.rand([1, 1, 10, 10])
+        model = torch.nn.Sequential(
+            torch.nn.Conv2d(1, 3, kernel_size=3, padding=1), torch.nn.Tanh(),
+            torch.nn.Conv2d(3, 2, kernel_size=1), alf.layers.Reshape(-1),
+            torch.nn.Linear(2 * 10 * 10, 10))
+        pretrained = PretraindModel(model)
+
+        y0 = pretrained(x)
+
+        pretrained.add_adapter(LinearAdapter)
+        pretrained.add_adapter(Conv2dAdapter)
+
+        self.assertEqual(len(pretrained._adapters), 3)  # 2 conv + 1 linear
+
+        y1 = pretrained(x)
+        # The initial adapter weights are all zeros
+        self.assertTrue(torch.all(y1 == y0))
+
+        self._test(x, model, pretrained)
+
+        y2 = pretrained(x)
+        # after training
+        self.assertTrue(torch.all(y2 != y0))
+
 
 if __name__ == "__main__":
     unittest.main()

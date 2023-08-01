@@ -45,7 +45,6 @@ class PretraindModel(nn.Module):
         instance of the same class will be created for each of all qualified layers.
         The adapter weights will be stored in the adapter instance.
         """
-        self._adapters = nn.ModuleList()
         for m in self._model.modules():
             if adapter_cls.can_adapt(m):
                 self._adapters.append(adapter_cls(m))
