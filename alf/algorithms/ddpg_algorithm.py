@@ -247,11 +247,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             elif epsilon_greedy >= 1.0:
                 return a + noise
             else:
-                choose_noisy_action = torch.where(
-                    torch.rand(a.shape[:1]) < epsilon_greedy)[0]
-                noisy_a = a + noise
-                a[choose_noisy_action[0], :] = noisy_a[
-                    choose_noisy_action[0], :]
+                choose_noisy_action = torch.rand(a.shape[0]) < epsilon_greedy
+                a[choose_noisy_action] += noise[choose_noisy_action]
                 return a
 
         noise, noise_state = self._noise_process(state.noise)
