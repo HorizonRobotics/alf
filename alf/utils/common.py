@@ -1458,7 +1458,7 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
 
     includes = [
         "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.hpp",
-        "*.h", "*.stl"
+        "*.h", "*.stl", "*.png"
     ]
     repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
     for name, root in repo_roots.items():
