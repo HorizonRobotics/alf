@@ -163,13 +163,15 @@ class Algorithm(AlgorithmInterface):
         # See the ``force_params_visible_to_parent`` property below for details.
         self._force_params_visible_to_parent = False
         self._grad_scaler = None
+        self._temporally_independent_train_step = None
         if config:
+            self._temporally_independent_train_step = config.temporally_independent_train_step
             self.use_rollout_state = config.use_rollout_state
-            if config.temporally_independent_train_step is None:
-                config.temporally_independent_train_step = (len(
-                    alf.nest.flatten(self.train_state_spec)) == 0)
             if config.enable_amp and torch.cuda.is_available():
                 self._grad_scaler = torch.cuda.amp.GradScaler()
+        if self._temporally_independent_train_step is None:
+            self._temporally_independent_train_step = (len(
+                alf.nest.flatten(self.train_state_spec)) == 0)
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
@@ -1829,7 +1831,7 @@ class Algorithm(AlgorithmInterface):
 
         """
         length = alf.nest.get_nest_size(experience, dim=0)
-        if self._config.temporally_independent_train_step or length == 1:
+        if self._temporally_independent_train_step or length == 1:
             train_info = self._collect_train_info_parallelly(experience)
         else:
             train_info = self._collect_train_info_sequentially(experience)
