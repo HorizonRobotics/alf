@@ -97,12 +97,16 @@ class LoRA(nn.Module):
         if self._wB is not None:
             w = self._wB @ w
         w = w.reshape(self._m[0].weight.shape)
+        return w * self.scaling
+
+    @property
+    def scaling(self) -> float:
         scaling = self._alpha
         if self._wB is not None:
             # If wB is used, wB @ wA will increase the output magnitude. LoRA
             # compenstates this by dividing the result by ``self._r``.
             scaling /= self._r
-        return scaling * w
+        return scaling
 
     def _adapt(self, m: nn.Module):
         """Adapt a module *in place*.
@@ -204,12 +208,15 @@ class EmbeddingAdapter(LoRA):
 
     def forward(self, input):
         m = self._m[0]
-        embedding_table = self._wB or self._wA
+        if self._wB is not None:
+            embedding_table = self._wB
+        else:
+            embedding_table = self._wA
         input = F.embedding(input, embedding_table, m.padding_idx, m.max_norm,
                             m.norm_type, m.scale_grad_by_freq, m.sparse)
         if self._wB is not None:
             input = input @ self._wA
-        return input
+        return input * self.scaling
 
 
 @alf.configurable
@@ -229,7 +236,7 @@ class LinearAdapter(LoRA):
         input = input @ self._wA.t()
         if self._wB is not None:
             input = input @ self._wB.t()
-        return input
+        return input * self.scaling
 
 
 @alf.configurable
@@ -261,18 +268,51 @@ class Conv2dAdapter(LoRA):
     @classmethod
     def _decompose_weight_dims(cls, m: nn.Module):
         kernel_size = m.kernel_size
-        if not isinstance(kernel_size, tuple):
-            kernel_size = (kernel_size, ) * 2
-        nrows = m.out_channels // m.groups * kernel_size[0]
-        ncols = m.in_channels * kernel_size[1]
+        # conv2d weight has a shape: ``(out_channels, in_channels // groups, *kernel_size)``
+        nrows = m.out_channels * kernel_size[0]
+        ncols = m.in_channels // m.groups * kernel_size[1]
         return nrows, ncols
 
     def forward(self, input):
         m = self._m[0]
-        return F.conv2d(
-            input,
-            self._adapter_weight(),
-            stride=m.stride,
-            padding=m.padding,
-            dilation=m.dilation,
-            groups=m.groups)
+        if isinstance(m.padding, str) or m.groups > 1 or self._wB is None:
+            # Three senarios when two-stage convolution is difficult:
+            # 1. m.groups > 1: r has to be divisible by m.groups in order to
+            #    preserve the correct input-output mapping
+            # 2. m.padding is a string: torch will compute paddings on the fly,
+            #    so we won't know its values in advance.
+            # 3. low-rank decomposition is not available
+            return F.conv2d(
+                input,
+                self._adapter_weight(),
+                stride=m.stride,
+                padding=m.padding,
+                dilation=m.dilation,
+                groups=m.groups)
+        else:
+            input = F.conv2d(
+                input,
+                self._wA.reshape(self._r, m.in_channels, 1, m.kernel_size[1]),
+                stride=(1, m.stride[1]),
+                padding=(0, m.padding[1]),
+                dilation=(1, m.dilation[1]))
+            output = F.conv2d(
+                input,
+                self._wB.reshape(m.out_channels, self._r, m.kernel_size[0], 1),
+                stride=(m.stride[0], 1),
+                padding=(m.padding[0], 0),
+                dilation=(m.dilation[0], 1))
+            return output * self.scaling
+
+    def _adapter_weight(self):
+        m = self._m[0]
+        if self._wB is None:
+            w = self._wA.reshape(m.weight.shape)
+        else:
+            # This weight tensor has to be consistent with the two-stage conv in
+            # ``self.forward()``
+            wa = self._wA.reshape(self._r, m.in_channels // m.groups,
+                                  m.kernel_size[1])
+            wb = self._wB.reshape(m.out_channels, self._r, m.kernel_size[0])
+            w = torch.einsum('rik,org->oigk', wa, wb)
+        return w * self.scaling

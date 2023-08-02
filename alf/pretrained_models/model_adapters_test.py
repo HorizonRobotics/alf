@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import unittest
-
+from absl.testing import parameterized
 import torch
 import copy
 
@@ -25,7 +25,7 @@ from alf.pretrained_models.model_adapters import (LinearAdapter, Conv2dAdapter,
                                                   EmbeddingAdapter)
 
 
-class ModelAdaptersTest(unittest.TestCase):
+class ModelAdaptersTest(alf.test.TestCase, parameterized.TestCase):
     def _test(self, x, model, pretrained):
         opt = AdamTF(lr=0.1)
         opt.add_param_group({'params': pretrained.parameters()})
@@ -49,17 +49,18 @@ class ModelAdaptersTest(unittest.TestCase):
         for ap, ap1 in zip(adapter_paras, adapter_paras1):
             self.assertTrue(torch.all(ap != ap1))
 
-    def test_linear_adapter(self):
+    @parameterized.parameters((2, ), (16, ))
+    def test_linear_adapter(self, rank):
         alf.reset_configs()
-        x = torch.tensor([0.1, 0.2])
+        x = torch.tensor([0.1, 0.2, 0.3, 0.4])
 
         fc = torch.nn.Sequential(
-            torch.nn.Linear(2, 3), torch.nn.Tanh(), torch.nn.Linear(3, 4))
+            torch.nn.Linear(4, 8), torch.nn.Tanh(), torch.nn.Linear(8, 4))
         pretrained = PretraindModel(fc)
 
         y0 = pretrained(x)
 
-        alf.config('LinearAdapter', rank=1)
+        alf.config('LinearAdapter', rank=rank)
         pretrained.add_adapter(LinearAdapter)
 
         y1 = pretrained(x)
@@ -81,18 +82,25 @@ class ModelAdaptersTest(unittest.TestCase):
         y3 = pretrained(x)
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
-    def test_conv_adapter(self):
+    @parameterized.parameters((2, ), (16, ))
+    def test_conv_adapter(self, rank):
         alf.reset_configs()
-        x = torch.rand([1, 10, 10])
+        x = torch.rand([8, 10, 10])
         conv = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 3, kernel_size=3, padding=1), torch.nn.Tanh(),
-            torch.nn.Conv2d(3, 2, kernel_size=1))
+            torch.nn.Conv2d(
+                8,
+                8,
+                kernel_size=(3, 5),
+                padding=(1, 2),
+                dilation=2,
+                stride=(2, 4)), torch.nn.Tanh(),
+            torch.nn.Conv2d(8, 16, kernel_size=1, groups=2))
 
         pretrained = PretraindModel(conv)
 
         y0 = pretrained(x)
 
-        alf.config('Conv2dAdapter', rank=4)
+        alf.config('Conv2dAdapter', rank=rank)
         pretrained.add_adapter(Conv2dAdapter)
 
         y1 = pretrained(x)
@@ -114,7 +122,8 @@ class ModelAdaptersTest(unittest.TestCase):
         y3 = pretrained(x)
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
-    def test_embedding_adapter(self):
+    @parameterized.parameters((2, ), (16, ))
+    def test_embedding_adapter(self, rank):
         alf.reset_configs()
         x = torch.tensor([0, 1, 2, 3]).to(torch.int64)
         embedding = torch.nn.Embedding(4, 10)
@@ -122,6 +131,7 @@ class ModelAdaptersTest(unittest.TestCase):
         pretrained = PretraindModel(embedding)
 
         y0 = pretrained(x)
+        alf.config('EmbeddingAdapter', rank=rank)
         pretrained.add_adapter(EmbeddingAdapter)
         y1 = pretrained(x)
         # The initial adapter weights are all zeros
@@ -142,17 +152,19 @@ class ModelAdaptersTest(unittest.TestCase):
         y3 = pretrained(x)
         self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
 
-    def test_double_adaptation(self):
+    def test_multiple_adaptation(self):
         alf.reset_configs()
-        x = torch.rand([1, 1, 10, 10])
+        x = torch.rand([1, 4, 10, 10])
         model = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 3, kernel_size=3, padding=1), torch.nn.Tanh(),
-            torch.nn.Conv2d(3, 2, kernel_size=1), alf.layers.Reshape(-1),
-            torch.nn.Linear(2 * 10 * 10, 10))
+            torch.nn.Conv2d(4, 8, kernel_size=3, padding=1), torch.nn.Tanh(),
+            torch.nn.Conv2d(8, 4, kernel_size=1), alf.layers.Reshape(-1),
+            torch.nn.Linear(4 * 10 * 10, 10))
         pretrained = PretraindModel(model)
 
         y0 = pretrained(x)
 
+        alf.config("LinearAdapter", rank=2)
+        alf.config("Conv2dAdapter", rank=2)
         pretrained.add_adapter(LinearAdapter)
         pretrained.add_adapter(Conv2dAdapter)
 
@@ -170,4 +182,4 @@ class ModelAdaptersTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    alf.test.main()
