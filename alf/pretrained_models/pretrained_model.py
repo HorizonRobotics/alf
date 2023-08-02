@@ -15,9 +15,9 @@
 import torch
 import torch.nn as nn
 
-from typing import Callable
+from typing import Callable, List
 
-from .model_adapters import LoRA
+from .model_adapters.lora import LoRA
 
 
 class PretraindModel(nn.Module):
@@ -29,30 +29,36 @@ class PretraindModel(nn.Module):
     `<https://docs.adapterhub.ml/methods.html>`_.
     """
 
-    def __init__(self, model, name: str = 'PretrainedModel'):
+    def __init__(self,
+                 model: nn.Module,
+                 adapter_cls: List[Callable] = [],
+                 name: str = 'PretrainedModel'):
+        """
+        Args:
+            model: the base pretrained model whose weights will be used as frozen
+            adapter_cls: an optional list of adapter classes applied to the base
+                model layers. An adapter instance of each class will be created
+                for each of all qualified layers. The adapter weights will be
+                stored in the adapter instance.
+            name: name of the pretrained model
+        """
         super().__init__()
         # Freeze all parameters
         for para in model.parameters():
             para.requires_grad = False
         self._model = model
         self._adapters = nn.ModuleList()
-        self._name = name
-
-    def add_adapter(self, adapter_cls: Callable = LoRA):
-        """Add an adapter class.
-
-        This function should be called before any training iter starts. An adapter
-        instance of the same class will be created for each of all qualified layers.
-        The adapter weights will be stored in the adapter instance.
-        """
         for m in self._model.modules():
-            if adapter_cls.can_adapt(m):
-                self._adapters.append(adapter_cls(m))
+            for acls in adapter_cls:
+                if acls.can_adapt(m):
+                    self._adapters.append(acls(m))
+        self._name = name
 
     def remove_adapter(self) -> nn.ModuleList:
         """Remove the adapter (if existed).
 
-        After the removal, ``forward()`` will only use the frozen weights.
+        After the removal, ``forward()`` will only use the frozen weights. This
+        operation is irreversible as the adapter can no longer be added back.
 
         Returns:
             nn.ModueList: a list of the adapters, in case their weights are needed.

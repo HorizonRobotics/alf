@@ -21,12 +21,34 @@ import alf
 from alf.optimizers import AdamTF
 
 from alf.pretrained_models.pretrained_model import PretraindModel
-from alf.pretrained_models.model_adapters import (LinearAdapter, Conv2dAdapter,
-                                                  EmbeddingAdapter)
+from alf.pretrained_models.model_adapters.lora import (
+    LinearAdapter, Conv2dAdapter, EmbeddingAdapter)
 
 
-class ModelAdaptersTest(alf.test.TestCase, parameterized.TestCase):
-    def _test(self, x, model, pretrained):
+class LoRATest(alf.test.TestCase, parameterized.TestCase):
+    def _test(self, x, pretrained):
+        y0 = pretrained._model(x)
+        y1 = pretrained(x)
+        # The initial adapter weights are all zeros
+        self.assertTrue(torch.all(y1 == y0))
+
+        self._test_train(x, pretrained)
+
+        y2 = pretrained(x)
+        # after training
+        self.assertTrue(torch.all(y2 != y0))
+
+        pretrained.merge_adapter()
+        y2_ = pretrained(x)
+        self.assertTrue(torch.allclose(y2_, y2, atol=1e-7))
+
+        # Check if removing adapter works or not
+        pretrained.remove_adapter()
+        y3 = pretrained(x)
+        self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
+
+    def _test_train(self, x, pretrained):
+        model = pretrained._model
         opt = AdamTF(lr=0.1)
         opt.add_param_group({'params': pretrained.parameters()})
 
@@ -52,39 +74,21 @@ class ModelAdaptersTest(alf.test.TestCase, parameterized.TestCase):
     @parameterized.parameters((2, ), (16, ))
     def test_linear_adapter(self, rank):
         alf.reset_configs()
+        alf.config('LinearAdapter', rank=rank)
+
         x = torch.tensor([0.1, 0.2, 0.3, 0.4])
 
         fc = torch.nn.Sequential(
             torch.nn.Linear(4, 8), torch.nn.Tanh(), torch.nn.Linear(8, 4))
-        pretrained = PretraindModel(fc)
+        pretrained = PretraindModel(fc, [LinearAdapter])
 
-        y0 = pretrained(x)
-
-        alf.config('LinearAdapter', rank=rank)
-        pretrained.add_adapter(LinearAdapter)
-
-        y1 = pretrained(x)
-        # The initial adapter weights are all zeros
-        self.assertTrue(torch.all(y1 == y0))
-
-        self._test(x, fc, pretrained)
-
-        y2 = pretrained(x)
-        # after training
-        self.assertTrue(torch.all(y2 != y0))
-
-        pretrained.merge_adapter()
-        y2_ = pretrained(x)
-        self.assertTrue(torch.allclose(y2_, y2, atol=1e-7))
-
-        # Check if removing adapter works or not
-        pretrained.remove_adapter()
-        y3 = pretrained(x)
-        self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
+        self._test(x, pretrained)
 
     @parameterized.parameters((2, ), (16, ))
     def test_conv_adapter(self, rank):
         alf.reset_configs()
+        alf.config('Conv2dAdapter', rank=rank)
+
         x = torch.rand([8, 10, 10])
         conv = torch.nn.Sequential(
             torch.nn.Conv2d(
@@ -96,89 +100,37 @@ class ModelAdaptersTest(alf.test.TestCase, parameterized.TestCase):
                 stride=(2, 4)), torch.nn.Tanh(),
             torch.nn.Conv2d(8, 16, kernel_size=1, groups=2))
 
-        pretrained = PretraindModel(conv)
+        pretrained = PretraindModel(conv, [Conv2dAdapter])
 
-        y0 = pretrained(x)
-
-        alf.config('Conv2dAdapter', rank=rank)
-        pretrained.add_adapter(Conv2dAdapter)
-
-        y1 = pretrained(x)
-        # The initial adapter weights are all zeros
-        self.assertTrue(torch.all(y1 == y0))
-
-        self._test(x, conv, pretrained)
-
-        y2 = pretrained(x)
-        # after training
-        self.assertTrue(torch.all(y2 != y0))
-
-        pretrained.merge_adapter()
-        y2_ = pretrained(x)
-        self.assertTrue(torch.allclose(y2_, y2, atol=1e-7))
-
-        # Check if removing adapter works or not
-        pretrained.remove_adapter()
-        y3 = pretrained(x)
-        self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
+        self._test(x, pretrained)
 
     @parameterized.parameters((2, ), (16, ))
     def test_embedding_adapter(self, rank):
         alf.reset_configs()
+        alf.config('EmbeddingAdapter', rank=rank)
+
         x = torch.tensor([0, 1, 2, 3]).to(torch.int64)
         embedding = torch.nn.Embedding(4, 10)
 
-        pretrained = PretraindModel(embedding)
+        pretrained = PretraindModel(embedding, [EmbeddingAdapter])
 
-        y0 = pretrained(x)
-        alf.config('EmbeddingAdapter', rank=rank)
-        pretrained.add_adapter(EmbeddingAdapter)
-        y1 = pretrained(x)
-        # The initial adapter weights are all zeros
-        self.assertTrue(torch.all(y1 == y0))
+        self._test(x, pretrained)
 
-        self._test(x, embedding, pretrained)
-
-        y2 = pretrained(x)
-        # after training
-        self.assertTrue(torch.all(y2 != y0))
-
-        pretrained.merge_adapter()
-        y2_ = pretrained(x)
-        self.assertTrue(torch.allclose(y2_, y2, atol=1e-7))
-
-        # Check if removing adapter works or not
-        pretrained.remove_adapter()
-        y3 = pretrained(x)
-        self.assertTrue(torch.allclose(y3, y0, atol=1e-7))
-
-    def test_multiple_adaptation(self):
+    @parameterized.parameters((2, ), (16, ))
+    def test_multiple_adaptation(self, rank):
         alf.reset_configs()
+        alf.config("LinearAdapter", rank=rank)
+        alf.config("Conv2dAdapter", rank=rank)
+
         x = torch.rand([1, 4, 10, 10])
         model = torch.nn.Sequential(
             torch.nn.Conv2d(4, 8, kernel_size=3, padding=1), torch.nn.Tanh(),
             torch.nn.Conv2d(8, 4, kernel_size=1), alf.layers.Reshape(-1),
             torch.nn.Linear(4 * 10 * 10, 10))
-        pretrained = PretraindModel(model)
-
-        y0 = pretrained(x)
-
-        alf.config("LinearAdapter", rank=2)
-        alf.config("Conv2dAdapter", rank=2)
-        pretrained.add_adapter(LinearAdapter)
-        pretrained.add_adapter(Conv2dAdapter)
-
+        pretrained = PretraindModel(model, [LinearAdapter, Conv2dAdapter])
         self.assertEqual(len(pretrained._adapters), 3)  # 2 conv + 1 linear
 
-        y1 = pretrained(x)
-        # The initial adapter weights are all zeros
-        self.assertTrue(torch.all(y1 == y0))
-
-        self._test(x, model, pretrained)
-
-        y2 = pretrained(x)
-        # after training
-        self.assertTrue(torch.all(y2 != y0))
+        self._test(x, pretrained)
 
 
 if __name__ == "__main__":
