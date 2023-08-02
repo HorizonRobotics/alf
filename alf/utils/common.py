@@ -1006,34 +1006,6 @@ def log_metrics(metrics, prefix=''):
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
 
 
-def create_ou_process(action_spec, ou_stddev, ou_damping):
-    """Create nested zero-mean Ornstein-Uhlenbeck processes.
-
-    The temporal update equation is:
-
-    .. code-block:: python
-
-        x_next = (1 - damping) * x + N(0, std_dev)
-
-    Note: if ``action_spec`` is nested, the returned nested OUProcess will not bec
-    checkpointed.
-
-    Args:
-        action_spec (nested BountedTensorSpec): action spec
-        ou_damping (float): Damping rate in the above equation. We must have
-            :math:`0 <= damping <= 1`.
-        ou_stddev (float): Standard deviation of the Gaussian component.
-    Returns:
-        nested ``OUProcess`` with the same structure as ``action_spec``.
-    """
-
-    def _create_ou_process(action_spec):
-        return dist_utils.OUProcess(action_spec.zeros(), ou_damping, ou_stddev)
-
-    ou_process = alf.nest.map_structure(_create_ou_process, action_spec)
-    return ou_process
-
-
 def detach(nests: alf.nest.Nest):
     """Detach nested Tensors or Distributions
 

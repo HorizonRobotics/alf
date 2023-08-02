@@ -34,11 +34,15 @@ from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, spec_utils
 
-DdpgCriticState = namedtuple("DdpgCriticState",
-                             ['critics', 'target_actor', 'target_critics'])
-DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
-DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
-DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
+DdpgCriticState = namedtuple(
+    "DdpgCriticState", ['critics', 'target_actor', 'target_critics'],
+    default_value=())
+DdpgCriticInfo = namedtuple(
+    "DdpgCriticInfo", ["q_values", "target_q_values"], default_value=())
+DdpgActorState = namedtuple(
+    "DdpgActorState", ['actor', 'critics'], default_value=())
+DdpgState = namedtuple(
+    "DdpgState", ['actor', 'critics', 'noise'], default_value=())
 DdpgInfo = namedtuple(
     "DdpgInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
@@ -159,7 +163,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._action_l2 = action_l2
 
+        noise_process = alf.networks.OUProcess(
+            state_spec=action_spec, damping=ou_damping, stddev=ou_stddev)
+        noise_state = noise_process.state_spec
+
+        predict_state_spec = DdpgState(
+            noise=noise_state,
+            actor=DdpgActorState(
+                actor=actor_network.state_spec,
+                critics=critic_networks.state_spec),
+            critics=DdpgCriticState())
+
         train_state_spec = DdpgState(
+            noise=noise_state,
             actor=DdpgActorState(
                 actor=actor_network.state_spec,
                 critics=critic_networks.state_spec),
@@ -167,11 +183,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 critics=critic_networks.state_spec,
                 target_actor=actor_network.state_spec,
                 target_critics=critic_networks.state_spec))
-
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
+            predict_state_spec=predict_state_spec,
             train_state_spec=train_state_spec,
             reward_weights=reward_weights,
             env=env,
@@ -205,8 +221,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
 
-        self._ou_process = common.create_ou_process(action_spec, ou_stddev,
-                                                    ou_damping)
+        self._noise_process = noise_process
 
         self._update_target = common.TargetUpdater(
             models=[self._actor_network, self._critic_networks],
@@ -222,33 +237,37 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return self._predict_step(inputs, state, self._epsilon_greedy)
 
     def _predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
-        action, state = self._actor_network(
+        action, actor_state = self._actor_network(
             time_step.observation, state=state.actor.actor)
-        empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
+        empty_state = nest.map_structure(lambda x: (), self.rollout_state_spec)
 
-        def _sample(a, ou):
+        def _sample(a, noise):
             if epsilon_greedy == 0:
                 return a
             elif epsilon_greedy >= 1.0:
-                return a + ou()
+                return a + noise
             else:
-                ind_explore = torch.where(
-                    torch.rand(a.shape[:1]) < epsilon_greedy)
-                noisy_a = a + ou()
-                a[ind_explore[0], :] = noisy_a[ind_explore[0], :]
+                choose_noisy_action = torch.where(
+                    torch.rand(a.shape[:1]) < epsilon_greedy)[0]
+                noisy_a = a + noise
+                a[choose_noisy_action[0], :] = noisy_a[
+                    choose_noisy_action[0], :]
                 return a
 
-        noisy_action = nest.map_structure(_sample, action, self._ou_process)
+        noise, noise_state = self._noise_process(state.noise)
+        noisy_action = nest.map_structure(_sample, action, noise)
         noisy_action = nest.map_structure(spec_utils.clip_to_spec,
                                           noisy_action, self._action_spec)
         state = empty_state._replace(
-            actor=DdpgActorState(actor=state, critics=()))
+            noise=noise_state,
+            actor=DdpgActorState(actor=actor_state, critics=()))
+
         return AlgStep(
             output=noisy_action,
             state=state,
             info=DdpgInfo(action=noisy_action, action_distribution=action))
 
-    def rollout_step(self, time_step: TimeStep, state=None):
+    def rollout_step(self, time_step: TimeStep, state: DdpgState = None):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by DdpgAlgorithm")
@@ -331,7 +350,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             inputs=inputs, state=state.critics, rollout_info=rollout_info)
         policy_step = self._actor_train_step(inputs=inputs, state=state.actor)
         return policy_step._replace(
-            state=DdpgState(actor=policy_step.state, critics=critic_states),
+            state=state._replace(
+                actor=policy_step.state, critics=critic_states),
             info=DdpgInfo(
                 reward=inputs.reward,
                 step_type=inputs.step_type,
