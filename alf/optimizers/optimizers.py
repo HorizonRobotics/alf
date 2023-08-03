@@ -330,4 +330,5 @@ NeroPlus = alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus))
 
 DAdaptSGD = alf.configurable('DAdaptSGD')(wrap_optimizer(dadapt_sgd.DAdaptSGD))
 
-DAdaptAdam = alf.configurable('DAdaptAdam')(wrap_optimizer(dadapt_adam.DAdaptAdam))
+DAdaptAdam = alf.configurable('DAdaptAdam')(wrap_optimizer(
+    dadapt_adam.DAdaptAdam))
