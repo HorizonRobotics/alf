@@ -116,6 +116,7 @@ function test() {
         alf.networks.q_networks_test \
         alf.networks.relu_mlp_test \
         alf.networks.value_networks_test \
+        alf.optimizers.dadapt_optimizers_test \
         alf.optimizers.nero_plus_test \
         alf.optimizers.optimizers_test \
         alf.optimizers.trusted_updater_test \
