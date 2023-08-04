@@ -15,26 +15,13 @@
 
 ``torch.nn.Module.__getattr__`` is frequently used by all class derived from
 ``nn.Module``. It can introduce too much unnecessary overhead. So we patch
-``nn.Module`` class to remove it.
+``nn.Module`` class to explicitly store Parameter/Module as attribute so
+that `__getattr__` won't be triggered. This patch can speed up the access
+of ``Module`` or ``Parameter`` attributes by more than 10x times.
 """
 
 import torch
-
-# NOTE: Run ``import torch.fx`` before deleting ``Module.__getattr__`` is a
-# workaround to tame ``torch.fx``. When ``torch.fx`` is first imported and
-# evaluated, ``Module.__getattr__`` is accessed. This access will raise an error
-# if it is already deleted.
-#
-# Newer version of torchvision relies on ``torch.fx``, and there can be more use
-# of ``torch.fx`` in the future.
-try:
-    import torch.fx
-except ModuleNotFoundError:
-    pass
-
-from torch.nn import Module, Parameter
-
-del Module.__getattr__
+from torch.nn import Module
 
 _old_Module__setattr__ = torch.nn.Module.__setattr__
 
@@ -65,3 +52,13 @@ def _new_register_buffer(self, name, param):
 
 
 Module.register_buffer = _new_register_buffer
+
+old_add_module = torch.nn.Module.add_module
+
+
+def _new_add_module(self, name, module):
+    old_add_module(self, name, module)
+    object.__setattr__(self, name, module)
+
+
+Module.add_module = _new_add_module
