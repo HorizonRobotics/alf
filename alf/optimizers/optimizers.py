@@ -174,7 +174,7 @@ def wrap_optimizer(cls):
             self._repulsive_weight = repulsive_weight
         self.name = name
         if name is None:
-            self.name = NewClsName + str(NewCls.counter)
+            self.name = NewClsName + "_" + str(NewCls.counter)
             NewCls.counter += 1
 
     @common.add_method(NewCls)
