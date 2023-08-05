@@ -20,7 +20,7 @@ from typing import Callable
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from . import adam_tf, adamw, nero_plus
+from . import adam_tf, adamw, nero_plus, dadapt_sgd, dadapt_adam
 from .utils import get_opt_arg
 
 
@@ -327,3 +327,8 @@ SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
 AdamTF = alf.configurable('AdamTF')(wrap_optimizer(adam_tf.AdamTF))
 
 NeroPlus = alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus))
+
+DAdaptSGD = alf.configurable('DAdaptSGD')(wrap_optimizer(dadapt_sgd.DAdaptSGD))
+
+DAdaptAdam = alf.configurable('DAdaptAdam')(wrap_optimizer(
+    dadapt_adam.DAdaptAdam))
