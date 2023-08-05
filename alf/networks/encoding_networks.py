@@ -602,6 +602,7 @@ class EncodingNetwork(_Sequential):
                  input_tensor_spec,
                  output_tensor_spec=None,
                  input_preprocessors=None,
+                 input_preprocessors_ctor=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -635,6 +636,9 @@ class EncodingNetwork(_Sequential):
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
+            input_preprocessors_ctor (Callable): if ``input_preprocessors`` is None
+                and ``input_preprocessors_ctor`` is provided, then ``input_preprocessors``
+                will be constructed by calling ``input_preprocessors_ctor(input_tensor_spec)``.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 ``input_tensor_spec`` as the input to compute the processed
@@ -678,6 +682,8 @@ class EncodingNetwork(_Sequential):
         spec = input_tensor_spec
         nets = []
 
+        if not input_preprocessors and input_preprocessors_ctor:
+            input_preprocessors = input_preprocessors_ctor(input_tensor_spec)
         if input_preprocessors:
             input_preprocessors = alf.nest.map_structure(
                 lambda p: alf.layers.Identity() if p is None else p,

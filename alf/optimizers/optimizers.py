@@ -92,7 +92,7 @@ def wrap_optimizer(cls):
 
     This wrapper also clips gradients first before calling ``step()``.
     """
-    NewClsName = cls.__name__ + "_"
+    NewClsName = cls.__name__
     NewCls = type(NewClsName, (cls, ), {})
     NewCls.counter = 0
 
@@ -316,14 +316,19 @@ def wrap_optimizer(cls):
     return NewCls
 
 
-Adam = alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam))
+Adam = alf.repr_wrapper(
+    alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam)))
 
 # TODO: uncomment this after removing `adamw.py`
 #AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
-AdamW = alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW))
+AdamW = alf.repr_wrapper(
+    alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW)))
 
-SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
+SGD = alf.repr_wrapper(
+    alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD)))
 
-AdamTF = alf.configurable('AdamTF')(wrap_optimizer(adam_tf.AdamTF))
+AdamTF = alf.repr_wrapper(
+    alf.configurable('AdamTF')(wrap_optimizer(adam_tf.AdamTF)))
 
-NeroPlus = alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus))
+NeroPlus = alf.repr_wrapper(
+    alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus)))
