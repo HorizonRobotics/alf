@@ -309,7 +309,8 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     """
     config_node = _get_config_node(config_name)
 
-    if raise_if_used and config_node.is_used():
+    if (raise_if_used and config_node.is_used()
+            and config_node.get_effective_value() != value):
         raise ValueError(
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
