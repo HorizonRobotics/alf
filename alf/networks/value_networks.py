@@ -102,6 +102,7 @@ class ValueNetwork(ValueNetworkBase):
                  input_tensor_spec,
                  output_tensor_spec=TensorSpec(()),
                  input_preprocessors=None,
+                 input_preprocessors_ctor=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -123,6 +124,9 @@ class ValueNetwork(ValueNetworkBase):
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
                 it to another continuous vector.
+            input_preprocessors_ctor (Callable): if ``input_preprocessors`` is None
+                and ``input_preprocessors_ctor`` is provided, then ``input_preprocessors``
+                will be constructed by calling ``input_preprocessors_ctor(input_tensor_spec)``.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -149,6 +153,7 @@ class ValueNetwork(ValueNetworkBase):
             encoding_network_ctor=EncodingNetwork,
             name=name,
             input_preprocessors=input_preprocessors,
+            input_preprocessors_ctor=input_preprocessors_ctor,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
