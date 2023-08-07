@@ -50,7 +50,10 @@ alf.config(
     "NormalProjectionParamNetwork",
     std_transform=partial(clipped_exp, clip_value_min=-4, clip_value_max=2))
 
-alf.config("StableNormalProjectionParamNetwork", max_std=100)
+alf.config(
+    "StableNormalProjectionParamNetwork",
+    inverse_std_transform='exp',
+    max_std=10)
 
 actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork, fc_layer_params=hidden_layers)

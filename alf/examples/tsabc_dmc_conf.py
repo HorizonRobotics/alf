@@ -22,6 +22,7 @@ from alf.algorithms.multiswag_algorithm import MultiSwagAlgorithm
 from alf.examples import dmc_conf
 from alf.networks import ActorNetwork, StableNormalProjectionParamNetwork
 from alf.networks import NormalProjectionParamNetwork
+from alf.networks import CauchyProjectionParamNetwork
 from alf.optimizers import AdamTF
 from alf.utils.summary_utils import summarize_tensor_gradients
 
@@ -66,7 +67,8 @@ alf.config(
     'CriticDistributionParamNetwork',
     joint_fc_layer_params=dmc_conf.hidden_layers,
     # projection_net_ctor=StableNormalProjectionParamNetwork,
-    projection_net_ctor=NormalProjectionParamNetwork,
+    # projection_net_ctor=NormalProjectionParamNetwork,
+    projection_net_ctor=CauchyProjectionParamNetwork,
     state_dependent_std=True)
 
 if use_multibootstrap:

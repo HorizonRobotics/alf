@@ -650,6 +650,97 @@ class StableNormalProjectionParamNetwork(NormalProjectionParamNetwork):
 
 
 @alf.configurable
+class CauchyProjectionParamNetwork(NormalProjectionParamNetwork):
+    def __init__(self,
+                 input_size,
+                 output_tensor_spec,
+                 squash_median=False,
+                 scale_bias_initializer_value=0.0,
+                 state_dependent_std=False,
+                 scale_transform=nn.functional.softplus,
+                 scale_distribution=False,
+                 dist_squashing_transform=dist_utils.StableTanh(),
+                 name='CauchyProjectionParamNetwork'):
+        """Similar to ``NormalProjectionParamNetwork`` except that the output
+        distribution is a ``DiagMultivariateCauchy``. Also since Cauchy doesn't
+        have mean or std, we provide parameters for its median and scale instead.
+        But the median and scale will just reuse the code for handling mean and std
+        in ``NormalProjectionNetwork``.
+
+        Args:
+            input_size (int): input vector dimension
+            output_tensor_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            squash_median (bool): If True, squash the output median to fit the
+                action spec. If ``scale_distribution`` is also True, this value
+                will be ignored.
+            scale_bias_initializer_value (float): Initial value for the bias of the
+                scale projection layer.
+            state_dependent_std (bool): If True, scale will be generated depending
+                on the current state; otherwise a global scale will be generated
+                regardless of the current state.
+            scale_transform (Callable): Transform to apply to the scale, on top of
+                `activation`.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                `action_spec`. Note that this is different from `mean_transform`
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+            name (str): name of this network.
+        """
+        super().__init__(
+            input_size=input_size,
+            output_tensor_spec=output_tensor_spec,
+            squash_mean=squash_median,
+            std_bias_initializer_value=scale_bias_initializer_value,
+            state_dependent_std=state_dependent_std,
+            std_transform=scale_transform,
+            scale_distribution=scale_distribution,
+            dist_squashing_transform=dist_squashing_transform,
+            name=name)
+
+    def forward(self, inputs, state=()):
+        median = self._mean_transform(self._means_projection_layer(inputs))
+        scale = self._std_transform(self._std_projection_layer(inputs))
+        safe_mean_hist_summary("CriticProjNet/batch_median", median.mean(1))
+        safe_mean_hist_summary("CriticProjNet/batch_scale", scale.mean(1))
+
+        def _summarize_grad(x, name):
+            if not x.requires_grad:
+                return x
+            if alf.summary.should_record_summaries():
+                return summarize_tensor_gradients(
+                    "CriticProjNet/" + name, x, clone=True)
+            else:
+                return x
+
+        median = _summarize_grad(median, name='median_grad')
+        scale = _summarize_grad(scale, name='scale_grad')
+        return self._cauchy_dist(median, scale), state
+
+    def _cauchy_dist(self, median, scale):
+        cauchy_dist = dist_utils.DiagMultivariateCauchy(
+            loc=median, scale=scale)
+        if self._scale_distribution:
+            # The transformed distribution can also do reparameterized sampling
+            # i.e., `.has_rsample=True`
+            # Note that in some cases kl_divergence might no longer work for this
+            # distribution! Assuming the same `transforms`, below will work:
+            # ````
+            # kl_divergence(Independent, Independent)
+            #
+            # kl_divergence(TransformedDistribution(Independent, transforms),
+            #               TransformedDistribution(Independent, transforms))
+            # ````
+            squashed_dist = td.TransformedDistribution(
+                base_distribution=cauchy_dist, transforms=self._transforms)
+            return squashed_dist
+        else:
+            return cauchy_dist
+
+
+@alf.configurable
 class CriticDistributionParamNetwork(Network):
     def __init__(self,
                  input_tensor_spec,

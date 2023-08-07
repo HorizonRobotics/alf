@@ -2,7 +2,7 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "dmc_multibootstrap_cdf26_sds_F-cloud_0710",
+    "version": "dmc_multibootstrap_cauchy_sds_T-cloud_0715",
     "use_gpu": true,
     "gpus": [
         0
@@ -13,7 +13,7 @@
         "create_environment.env_name": [
             "hopper-hop"
         ],
-        "CriticDistributionParamNetwork.state_dependent_std": "[False]",
+        "CriticDistributionParamNetwork.state_dependent_std": "[True]",
         "MultiSwagAlgorithm.num_particles": "[5]",
         "MultiSwagAlgorithm.num_samples_per_model": "[4]",
         "MultiSwagAlgorithm.subspace_max_rank": "[20]",
