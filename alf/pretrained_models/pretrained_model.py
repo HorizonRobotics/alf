@@ -20,7 +20,7 @@ from typing import Callable, List
 from .model_adapters.lora import LoRA
 
 
-class PretraindModel(nn.Module):
+class PretrainedModel(nn.Module):
     """A wrapper class for managing pretrained models.
 
     A pretrained model is generally large and its weights will always be frozen.

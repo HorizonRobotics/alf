@@ -68,6 +68,7 @@ class LoRA(nn.Module):
         self._alpha = weight
         # place ``m`` in a list to avoid pytorch recursive tracking
         self._m = [m]
+        dtype = next(m.parameters()).dtype
         self._merged = False
 
         # LoRA weight mats
@@ -78,10 +79,10 @@ class LoRA(nn.Module):
         # adapter size: (nrows + ncols) * r
         # need low-rank adaptation: (nrows + ncols) * r < nrows * ncols
         if rank > ncols * nrows / (nrows + ncols):
-            self._wA = nn.Parameter(torch.Tensor(nrows, ncols))
+            self._wA = nn.Parameter(torch.zeros(nrows, ncols, dtype=dtype))
         else:
-            self._wA = nn.Parameter(torch.Tensor(rank, ncols))
-            self._wB = nn.Parameter(torch.Tensor(nrows, rank))
+            self._wA = nn.Parameter(torch.zeros(rank, ncols, dtype=dtype))
+            self._wB = nn.Parameter(torch.zeros(nrows, rank, dtype=dtype))
         self.reset_parameters()
         self._adapt(m)
 
