@@ -121,6 +121,7 @@ def play():
     else:
         alf.config('create_environment', for_evaluation=True, nonparallel=True)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
+    common.info('Playing with random seed: {}'.format(seed))
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"
     try:
