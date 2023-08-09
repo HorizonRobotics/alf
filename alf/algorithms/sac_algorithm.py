@@ -153,6 +153,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  reward_weights=None,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
+                 munchausen_reward_weight=0,
                  normalize_entropy_reward=False,
                  calculate_priority=False,
                  num_critic_replicas=2,
@@ -208,6 +209,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             use_entropy_reward (bool): whether to include entropy as reward
+            munchausen_reward_weight (float): the weight of augmenting the task
+                reward with munchausen reward, as introduced in ``Munchausen
+                Reinforcement Learning``, which is essentially the log_pi of
+                the given action. A non-positive value means the munchausen
+                reward is not used.
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
                 ``use_entropy_reward==True``.
@@ -275,6 +281,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_network_cls, q_network_cls)
 
         self._use_entropy_reward = use_entropy_reward
+        self._munchausen_reward_weight = max(0, munchausen_reward_weight)
+        if munchausen_reward_weight > 0:
+            assert not normalize_entropy_reward, (
+                "should not normalize entropy "
+                "reward when using munchausen reward")
 
         if reward_spec.numel > 1:
             assert self._act_type != ActionType.Mixed, (
@@ -894,9 +905,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         (There is an issue in their implementation: their "terminals" can't
         differentiate between discount=0 (NormalEnd) and discount=1 (TimeOut).
         In the latter case, masking should not be performed.)
-
-        When the reward is multi-dim, the entropy reward will be added to *all*
-        dims.
         """
         if self._use_entropy_reward:
             with torch.no_grad():
@@ -908,9 +916,45 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     log_pi)
                 entropy_reward = sum(nest.flatten(entropy_reward))
                 discount = self._critic_losses[0].gamma * info.discount
+                # When the reward is multi-dim, the entropy reward will be
+                # added to *all* dims.
                 info = info._replace(
                     reward=(info.reward + common.expand_dims_as(
                         entropy_reward * discount, info.reward)))
+
+        if self._munchausen_reward_weight > 0:
+            with torch.no_grad():
+                # calculate the log probability of the rollout action
+                log_pi_rollout_a = nest.map_structure(
+                    lambda dist, a: dist.log_prob(a), info.action_distribution,
+                    info.action)
+
+                if self._act_type == ActionType.Mixed:
+                    # For mixed type, add log_pi separately
+                    log_pi_rollout_a = type(self._action_spec)(
+                        (sum(nest.flatten(log_pi_rollout_a[0])),
+                         sum(nest.flatten(log_pi_rollout_a[1]))))
+                else:
+                    log_pi_rollout_a = sum(nest.flatten(log_pi_rollout_a))
+
+                munchausen_reward = nest.map_structure(
+                    lambda la, lp: torch.exp(la) * lp, self._log_alpha,
+                    log_pi_rollout_a)
+                # [T, B]
+                munchausen_reward = sum(nest.flatten(munchausen_reward))
+                # forward shift the munchausen reward one-step temporally,
+                # with zero-padding for the first step. This dummy reward
+                # for the first step does not impact training as it is not
+                # used in TD-learning.
+                munchausen_reward = torch.cat((torch.zeros_like(
+                    munchausen_reward[0:1]), munchausen_reward[:-1]),
+                                              dim=0)
+                # When the reward is multi-dim, the munchausen reward will be
+                # added to *all* dims.
+                info = info._replace(
+                    reward=(
+                        info.reward + self._munchausen_reward_weight *
+                        common.expand_dims_as(munchausen_reward, info.reward)))
 
         critic_info = info.critic
         critic_losses = []
