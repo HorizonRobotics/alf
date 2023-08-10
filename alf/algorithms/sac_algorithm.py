@@ -35,7 +35,7 @@ import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils, math_ops
+from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.schedulers import Scheduler
 
@@ -53,12 +53,14 @@ SacState = namedtuple(
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
 SacActorInfo = namedtuple(
-    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
+    "SacActorInfo", ["actor_loss", "neg_entropy", "adv_loss"],
+    default_value=())
 
 SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return", "repr"
+        "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
+        "alpha_loss"
     ],
     default_value=())
 
@@ -164,6 +166,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
+                 alpha_uncertainty_ratio: float = 0,
                  prior_actor_ctor=None,
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
@@ -248,6 +251,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous action will have separate alphas and target entropies,
                 so this argument can be a 2-element list/tuple, where the first
                 is for discrete action and the second for continuous action.
+            alpha_uncertainty_ratio: if > 0, alpha will be calculated based on
+                the uncertainty of the critic value. target_entropy will not be
+                enforced when this is True. This is only supported for continuous
+                policy.
             prior_actor_ctor (Callable): If provided, it will be called using
                 ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
                 to constructor a prior actor. The output of the prior actor is
@@ -310,6 +317,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critic_networks, actor_network, self._act_type = self._make_networks(
             observation_spec, action_spec, reward_spec, actor_network_cls,
             critic_network_cls, q_network_cls)
+
+        self._alpha_uncertainty_ratio = alpha_uncertainty_ratio
+        if alpha_uncertainty_ratio > 0:
+            assert num_critic_replicas > 1 and self._act_type == ActionType.Continuous
 
         self._use_entropy_reward = use_entropy_reward
 
@@ -734,7 +745,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                          action,
                          critics_state,
                          replica_min=True,
-                         apply_reward_weights=True):
+                         apply_reward_weights=True,
+                         add_value=False):
         if self._act_type == ActionType.Continuous:
             observation = (observation, action)
         elif self._act_type == ActionType.Mixed:
@@ -742,7 +754,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
         # discrete/mixed: critics shape [B, replicas, num_actions]
         # continuous: critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
-
+        if isinstance(critics, tuple):
+            if add_value:
+                critics = critics[0] + critics[1]
+            else:
+                critics = critics[1]
         # For multi-dim reward, do
         # continuous: [B, replicas * reward_dim] -> [B, replicas, reward_dim]
         # discrete: [B, replicas * reward_dim, num_actions]
@@ -790,11 +806,24 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # Pure discrete case doesn't need to learn an actor network
             return (), LossInfo(extra=SacActorInfo(neg_entropy=neg_entropy))
 
+        adv_loss = ()
+        alphas = ()
         if self._act_type == ActionType.Continuous:
-            q_value, critics_state = self._compute_critics(
-                self._critic_networks, observation, action, state)
+            critics, critics_state = self._compute_critics(
+                self._critic_networks,
+                observation,
+                action,
+                state,
+                replica_min=False)
+            q_value = critics.min(dim=1)[0]
             continuous_log_pi = log_pi
-            cont_alpha = torch.exp(self._log_alpha).detach()
+            if self._alpha_uncertainty_ratio > 0:
+                alphas = self._alpha_uncertainty_ratio * critics.std(
+                    dim=1).detach()
+                cont_alpha = alphas
+                adv_loss = (critics**2).mean(dim=1)
+            else:
+                cont_alpha = torch.exp(self._log_alpha).detach()
         else:
             # use the critics computed during action prediction for Mixed type
             # ``critics``` is already after min over replicas
@@ -805,7 +834,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
         # This sum() will reduce all dims so q_value can be any rank
-        dqda = nest_utils.grad(action, q_value.sum())
+        dqda = nest_utils.grad(
+            action,
+            q_value.sum(),
+            retain_graph=self._alpha_uncertainty_ratio > 0)
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -817,10 +849,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
+        loss = actor_loss + cont_alpha * continuous_log_pi
+        if adv_loss != ():
+            loss = loss + adv_loss
         actor_info = LossInfo(
-            loss=actor_loss + cont_alpha * continuous_log_pi,
-            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
-        return critics_state, actor_info
+            loss=loss,
+            extra=SacActorInfo(
+                actor_loss=actor_loss,
+                neg_entropy=neg_entropy,
+                adv_loss=adv_loss))
+        return critics_state, actor_info, alphas
 
     def _select_q_value(self, action, q_values):
         """Use ``action`` to index and select Q values.
@@ -850,7 +888,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             rollout_info.action,
             state.critics,
             replica_min=False,
-            apply_reward_weights=False)
+            apply_reward_weights=False,
+            add_value=True)
 
         with torch.no_grad():
             target_critics, target_critics_state = self._compute_critics(
@@ -858,7 +897,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 target_observation,
                 action,
                 state.target_critics,
-                apply_reward_weights=False)
+                apply_reward_weights=False,
+                add_value=True)
 
         if self._act_type == ActionType.Discrete:
             critics = self._select_q_value(rollout_info.action, critics)
@@ -931,15 +971,17 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 prior_step.output, action)
             log_pi = log_pi - log_prior
 
-        actor_state, actor_loss = self._actor_train_step(
+        actor_state, actor_loss, alphas = self._actor_train_step(
             observation, state.actor, action, critics, log_pi,
             action_distribution)
         critic_state, critic_info = self._critic_train_step(
             observation, target_observation, state.critic, rollout_info,
             action, action_distribution)
-        alpha_loss = self._alpha_train_step(log_pi)
-
-        new_state = new_state._replace(
+        if self._alpha_uncertainty_ratio == 0:
+            alpha_loss = self._alpha_train_step(log_pi)
+        else:
+            alpha_loss = ()
+        state = new_state._replace(
             action=action_state, actor=actor_state, critic=critic_state)
         info = info._replace(
             reward=inputs.reward,
@@ -949,7 +991,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,
-            alpha=alpha_loss,
+            alpha_loss=alpha_loss,
+            alpha=alphas,
             log_pi=log_pi,
             discounted_return=rollout_info.discounted_return)
         return AlgStep(action, new_state, info)
@@ -969,11 +1012,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def calc_loss(self, info: SacInfo):
         assert not self._is_eval
         critic_loss = self._calc_critic_loss(info)
-        alpha_loss = info.alpha
+        alpha_loss = info.alpha_loss
         actor_loss = info.actor
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
+                if self._alpha_uncertainty_ratio > 0:
+                    summary_utils.add_mean_hist_summary("alpha", info.alpha)
                 if self._act_type == ActionType.Mixed:
                     alf.summary.scalar("alpha/discrete",
                                        self._log_alpha[0].exp())

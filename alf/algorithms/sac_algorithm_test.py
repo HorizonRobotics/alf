@@ -28,7 +28,7 @@ from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.data_structures import StepType, TimeStep
 from alf.environments.suite_unittest import (PolicyUnittestEnv, ActionType,
                                              MixedPolicyUnittestEnv)
-from alf.networks import ActorDistributionNetwork, CriticNetwork, QNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork, QNetwork, CriticDuelingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.nest.utils import NestConcat
 from alf.algorithms.ppo_algorithm_test import unroll
@@ -114,8 +114,9 @@ class SACAlgorithmTestInit(alf.test.TestCase):
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, 1), (False, 3))
-    def test_sac_algorithm(self, use_naive_parallel_network, reward_dim):
+    @parameterized.parameters((True, 1, 0), (False, 3, 0), (False, 1, 1))
+    def test_sac_algorithm(self, use_naive_parallel_network, reward_dim,
+                           alpha_uncertainty_ratio):
         num_env = 4
         config = TrainerConfig(
             root_dir="dummy",
@@ -156,10 +157,17 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             fc_layer_params=fc_layer_params,
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
-        critic_network = partial(
-            CriticNetwork,
-            joint_fc_layer_params=fc_layer_params,
-            use_naive_parallel_network=use_naive_parallel_network)
+        if alpha_uncertainty_ratio == 0:
+            critic_network = partial(
+                CriticNetwork,
+                joint_fc_layer_params=fc_layer_params,
+                use_naive_parallel_network=use_naive_parallel_network)
+        else:
+            critic_network = partial(
+                CriticDuelingNetwork,
+                adv_fc_layer_params=fc_layer_params,
+                value_fc_layer_params=fc_layer_params,
+                use_naive_parallel_network=use_naive_parallel_network)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
@@ -169,6 +177,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             critic_network_cls=critic_network,
             use_entropy_reward=reward_dim == 1,
             epsilon_greedy=0.1,
+            alpha_uncertainty_ratio=alpha_uncertainty_ratio,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
