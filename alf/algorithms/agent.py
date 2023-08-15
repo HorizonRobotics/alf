@@ -509,7 +509,8 @@ class Agent(RLAlgorithm):
         then also call its customized version.
         """
         super(Agent, self).summarize_rollout(experience)
-        if (super(Agent, self).summarize_rollout.__func__ !=
+        if (hasattr(self._rl_algorithm, "summarize_rollout")
+                and super(Agent, self).summarize_rollout.__func__ !=
                 self._rl_algorithm.summarize_rollout.__func__):
             self._rl_algorithm.summarize_rollout(
                 experience._replace(rollout_info=experience.rollout_info.rl))

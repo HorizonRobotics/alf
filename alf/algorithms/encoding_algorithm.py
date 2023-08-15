@@ -101,7 +101,7 @@ class EncodingAlgorithm(Algorithm):
             loss_specs = get_nested_field(output_spec, loss_fields)
             assert all(
                 flatten(
-                    map_structure(lambda spec: spec.shape is (), loss_specs))
+                    map_structure(lambda spec: spec.shape == (), loss_specs))
             ), ("The losses should be scalars. Got: %s" % str(loss_specs))
         if loss_weights is not None:
             alf.nest.assert_same_structure(loss_weights, loss_fields)

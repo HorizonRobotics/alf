@@ -81,7 +81,8 @@ class TrainerConfig(object):
                  rl_train_every_update_steps=1,
                  empty_cache: bool = False,
                  normalize_importance_weights_by_max: bool = False,
-                 clear_replay_buffer=True):
+                 clear_replay_buffer=True,
+                 visualize_alf_tree=False):
         """
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -292,6 +293,8 @@ class TrainerConfig(object):
             normalize_importance_weights_by_max: if True, normalize the importance
                 weights by its max to prevent instability caused by large importance
                 weight.
+            visualize_alf_tree: if True, will call graphviz to draw a model
+                structure of the algorithm.
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
@@ -365,3 +368,4 @@ class TrainerConfig(object):
         self.rl_train_every_update_steps = rl_train_every_update_steps
         self.empty_cache = empty_cache
         self.normalize_importance_weights_by_max = normalize_importance_weights_by_max
+        self.visualize_alf_tree = visualize_alf_tree

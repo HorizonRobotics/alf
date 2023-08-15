@@ -46,13 +46,20 @@ class PretrainedModel(nn.Module):
         # Freeze all parameters
         for para in model.parameters():
             para.requires_grad = False
-        self._model = model
+        # Use a list trick to let pytorch ignore this module for checkpointing
+        self._model = [model]
+        # This is the ONLY module that affects checkpointing
         self._adapters = nn.ModuleList()
-        for m in self._model.modules():
+        for m in self.model.modules():
             for acls in adapter_cls:
                 if acls.can_adapt(m):
                     self._adapters.append(acls(m))
         self._name = name
+
+    @property
+    def model(self) -> nn.Module:
+        """Return the base model."""
+        return self._model[0]
 
     def remove_adapter(self) -> nn.ModuleList:
         """Remove the adapter (if existed).
@@ -77,6 +84,10 @@ class PretrainedModel(nn.Module):
 
     def merge_adapter(self):
         """Merge adapter weights into the model for efficient inference.
+
+        Note that even after merging, when we save a checkpoint for this pretrained
+        model, we still only save the adapter weights only. In other words, whether
+        the adapters are merged or not is transparent to pytorch's checkpointing.
         """
         for a in self._adapters:
             a.merge()
@@ -88,15 +99,4 @@ class PretrainedModel(nn.Module):
             a.reset_parameters()
 
     def forward(self, input):
-        return self._model(input)
-
-    def state_dict(self, *args, **kwargs):
-        """Only return the adapter's state dict because we don't want to
-        put the large base model into our checkpoints.
-        """
-        return self._adapters.state_dict(*args, **kwargs)
-
-    def load_state_dict(self, *args, **kwargs):
-        """Only load the state dict for the adapter.
-        """
-        return self._adapters.load_state_dict(*args, **kwargs)
+        return self.model(input)
