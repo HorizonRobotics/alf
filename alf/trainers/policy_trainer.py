@@ -412,23 +412,29 @@ class Trainer(object):
 
             # Save a rendered directed graph of the algorithm to the root
             # directory.
-            algorithm_structure_graph = _visualize_alf_tree(self._algorithm)
-            if algorithm_structure_graph is not None:
-                import graphviz
-                try:
-                    algorithm_structure_graph.render(
-                        Path(self._root_dir, 'algorithm_sturcture'),
-                        format='png',
-                        quiet=True)
-                except graphviz.backend.CalledProcessError as e:
-                    # graphviz will treat any warning in the rendering as error
-                    # and panic. We should just warn instead.
-                    logging.warn(f'Graphviz rendering: {str(e)}')
-                image_path = Path(self._root_dir, 'algorithm_sturcture.png')
-                if image_path.exists():
-                    img = np.array(Image.open(image_path))
-                    alf.summary.images(
-                        'algorithm_structure', img, dataformat='HWC', step=0)
+            if self._config.visualize_alf_tree:
+                algorithm_structure_graph = _visualize_alf_tree(
+                    self._algorithm)
+                if algorithm_structure_graph is not None:
+                    import graphviz
+                    try:
+                        algorithm_structure_graph.render(
+                            Path(self._root_dir, 'algorithm_sturcture'),
+                            format='png',
+                            quiet=True)
+                    except graphviz.backend.CalledProcessError as e:
+                        # graphviz will treat any warning in the rendering as error
+                        # and panic. We should just warn instead.
+                        logging.warn(f'Graphviz rendering: {str(e)}')
+                    image_path = Path(self._root_dir,
+                                      'algorithm_sturcture.png')
+                    if image_path.exists():
+                        img = np.array(Image.open(image_path))
+                        alf.summary.images(
+                            'algorithm_structure',
+                            img,
+                            dataformat='HWC',
+                            step=0)
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
@@ -628,7 +634,7 @@ class RLTrainer(Trainer):
                  self._pid, common.get_conf_file(),
                  os.path.basename(self._root_dir.strip('/')), iter_num, t,
                  int(train_steps) / t),
-                n_seconds=1)
+                n_seconds=3)
 
             just_evaluated = False
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
