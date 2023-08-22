@@ -1,0 +1,20 @@
+{
+    "desc": [
+        "DM Control tasks with 2 seeds on each environment"
+    ],
+    "version": "dmc_aac_beta_sds_T-cloud_0815",
+    "use_gpu": true,
+    "gpus": [
+        0
+    ],
+    "max_worker_num": 2,
+    "repeats": 1,
+    "parameters": {
+        "create_environment.env_name": [
+            "walker-run"
+        ],
+        "AacAlgorithm.initial_log_alpha": "[-3.2]",
+        "AacAlgorithm.num_mc_samples": "[10]",
+        "TrainerConfig.random_seed": "list(range(2))"
+    }
+}
