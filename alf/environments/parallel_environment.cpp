@@ -391,12 +391,17 @@ py::object ParallelEnvironment::Step(const py::object& action) {
                                        "ready_queue. Expected: {}, got: {}.")
                                    .format(sizeof(env_id), recvd_size));
     }
-    if (batch_size_per_env_ == 1 &&
-        step_type_buf_[env_id] == static_cast<int32_t>(StepType::last)) {
-      Job job{JobType::reset};
-      job_queues_[original_env_ids_[env_id]]->send(&job, sizeof(job), 0);
-      reseted_[env_id] = true;
-      reset_queue_.push_back(original_env_ids_[env_id]);
+  }
+  // It is important to send the reset job after the step job, so that the
+  // order of reset_queue is deterministic.
+  if (batch_size_per_env_ == 1) {
+    for (int env_id = 0; env_id < num_envs_; ++env_id) {
+      if (step_type_buf_[env_id] == static_cast<int32_t>(StepType::last)) {
+        Job job{JobType::reset};
+        job_queues_[original_env_ids_[env_id]]->send(&job, sizeof(job), 0);
+        reseted_[env_id] = true;
+        reset_queue_.push_back(original_env_ids_[env_id]);
+      }
     }
   }
   return timestep_array_;
