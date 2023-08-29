@@ -945,6 +945,15 @@ def load_config(conf_file):
     return _import_config(conf_file)
 
 
+def is_root_conf_file(conf_file):
+    """Check if a conf file is the root conf file.
+    """
+    global _ROOT_CONF_FILE
+    assert _ROOT_CONF_FILE is not None, "You should first call alf.load_config()"
+    conf_file = _get_conf_file_full_path(conf_file)
+    return _ROOT_CONF_FILE == conf_file
+
+
 def save_config(alf_config_file):
     """Save config files.
 
