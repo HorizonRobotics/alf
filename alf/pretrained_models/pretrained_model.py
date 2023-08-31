@@ -71,13 +71,13 @@ class PretrainedModel(nn.Module):
                     if re.search(b, name):
                         skip = True
                         break
-            include = (module_whitelist is None)
-            if module_whitelist is not None:
+            elif module_whitelist is not None:
+                skip = True
                 for w in module_whitelist:
                     if re.search(w, name):
-                        include = True
+                        skip = False
                         break
-            if skip or not include:
+            if skip:
                 continue
 
             for acls in adapter_cls:
