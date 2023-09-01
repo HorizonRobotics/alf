@@ -36,6 +36,7 @@ from alf.networks.encoding_networks import ParallelEncodingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
+import unittest
 
 
 class Net(nn.Module):
@@ -625,6 +626,36 @@ class TestCheckpointStructure(alf.test.TestCase):
             }
 
             self.assertEqual(model_structure, expected_model_structure)
+
+
+class TestCheckpointMapLocation(alf.test.TestCase):
+    @unittest.skipIf(not torch.cuda.is_available(), "gpu is unavailable")
+    def test_map_location(self):
+        # test that that loading checkpoint file using cpu as the map_location
+        # works in the subsequent ``load_state_dict`` both for cpu and gpu models
+        model_on_cpu = Net()
+        model_on_gpu = Net().cuda()
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            ckpt_path = ckpt_dir + '/test.ckpt'
+            torch.save(model_on_cpu.state_dict(), ckpt_path)
+
+            # load checkpoint file on cpu
+            device = torch.device('cpu')
+            state_dict = torch.load(ckpt_path, map_location=device)
+
+            # test load state-dict for cpu model
+            model_on_cpu.load_state_dict(state_dict)
+
+            # test load state-dict for cpu model
+            model_on_gpu.load_state_dict(state_dict)
+
+            for p1, p2 in zip(model_on_cpu.parameters(),
+                              model_on_gpu.parameters()):
+                self.assertTrue('cpu' == str(p1.device))
+                self.assertTrue(p2.is_cuda)
+
+                self.assertTensorClose(p1, p2.cpu())
 
 
 if __name__ == '__main__':
