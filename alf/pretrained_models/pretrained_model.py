@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 import torch
 import torch.nn as nn
 
@@ -32,6 +33,8 @@ class PretrainedModel(nn.Module):
     def __init__(self,
                  model: nn.Module,
                  adapter_cls: List[Callable] = [],
+                 module_blacklist: List[str] = None,
+                 module_whitelist: List[str] = None,
                  name: str = 'PretrainedModel'):
         """
         Args:
@@ -40,9 +43,19 @@ class PretrainedModel(nn.Module):
                 model layers. An adapter instance of each class will be created
                 for each of all qualified layers. The adapter weights will be
                 stored in the adapter instance.
+            module_blacklist: an optional blacklist of modules not to be adapted.
+                Each entry can be a regex or a substring of the module name.
+            module_whitelist: an optional whitelist of modules not to be adapted.
+                Each entry can be a regex or a substring of the module name. By
+                default this is None which means all modules are valid. Only at
+                most one of ``module_blacklist`` and ``module_whitelist`` can be
+                provided.
             name: name of the pretrained model
         """
         super().__init__()
+        assert not (module_blacklist and module_whitelist), (
+            "Blacklist and whitelist cannot be provided at the same time!")
+        self._name = name
         # Freeze all parameters
         for para in model.parameters():
             para.requires_grad = False
@@ -50,16 +63,38 @@ class PretrainedModel(nn.Module):
         self._model = [model]
         # This is the ONLY module that affects checkpointing
         self._adapters = nn.ModuleList()
-        for m in self.model.modules():
+        self._adapted_module_names = []
+        for name, m in self.model.named_modules():
+            skip = False
+            if module_blacklist is not None:
+                for b in module_blacklist:
+                    if re.search(b, name):
+                        skip = True
+                        break
+            elif module_whitelist is not None:
+                skip = True
+                for w in module_whitelist:
+                    if re.search(w, name):
+                        skip = False
+                        break
+            if skip:
+                continue
+
             for acls in adapter_cls:
                 if acls.can_adapt(m):
                     self._adapters.append(acls(m))
-        self._name = name
+                    self._adapted_module_names.append(name)
 
     @property
     def model(self) -> nn.Module:
         """Return the base model."""
         return self._model[0]
+
+    @property
+    def adapted_module_names(self) -> List[str]:
+        """Return a list of adapted module names, in the adapter adding order.
+        """
+        return self._adapted_module_names
 
     def remove_adapter(self) -> nn.ModuleList:
         """Remove the adapter (if existed).
