@@ -61,10 +61,9 @@ def extract_sub_state_dict_from_checkpoint(checkpoint_prefix, checkpoint_path):
             by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
     """
 
-    map_location = None
-    if not torch.cuda.is_available():
-        map_location = torch.device('cpu')
-
+    # use ``cpu`` as the map location to avoid GPU RAM surge when loading a
+    # model checkpoint.
+    map_location = torch.device('cpu')
     checkpoint = torch.load(checkpoint_path, map_location=map_location)
 
     if checkpoint_prefix != '':
@@ -249,9 +248,9 @@ class Checkpointer(object):
                 "Checkpoint '%s' does not exist. Train from scratch." % f_path)
             return self._global_step
 
-        map_location = None
-        if not torch.cuda.is_available():
-            map_location = torch.device('cpu')
+        # use ``cpu`` as the map location to avoid GPU RAM surge when loading a
+        # model checkpoint.
+        map_location = torch.device('cpu')
 
         checkpoint = torch.load(f_path, map_location=map_location)
         if including_optimizer:
