@@ -14,6 +14,7 @@
 """Collection of spec utility functions."""
 
 import numpy as np
+import sys
 import torch
 from typing import Iterable
 
@@ -114,3 +115,40 @@ def is_same_spec(spec1, spec2):
         return False
     same = nest.map_structure(lambda s1, s2: s1 == s2, spec1, spec2)
     return all(nest.flatten(same))
+
+
+def consistent_with_spec(nested, spec):
+    """Check whether the nested structure is consistent with the spec.
+
+    Besides return the bool value, it will also print out the mismatching
+    information.
+
+    Args:
+        nested (nested Tensor): the nested structure to be checked
+        spec (nested TensorSpec): the spec
+    Returns:
+        bool: True if the nested structure is consistent with the spec
+    """
+    nested_paths = nest.flatten(
+        nest.py_map_structure_with_path(lambda path, x: path, nested))
+    spec_paths = nest.flatten(
+        nest.py_map_structure_with_path(lambda path, x: path, spec))
+    if set(nested_paths) != set(spec_paths):
+        print("The nest does not match the spec!", file=sys.stderr)
+        not_in_spec = set(nested_paths) - set(spec_paths)
+        not_in_obs = set(spec_paths) - set(nested_paths)
+        if not_in_spec:
+            print("Not in spec: ", not_in_spec, file=sys.stderr)
+        if not_in_obs:
+            print("Not in nested: ", not_in_obs, file=sys.stderr)
+        return False
+
+    def _check_spec(path, x, s):
+        if not (x.shape == s.shape and x.dtype == np.dtype(s.dtype_str)):
+            print("Spec mismatch at path: ", path, file=sys.stderr)
+            return False
+        else:
+            return True
+
+    ok = nest.py_map_structure_with_path(_check_spec, nested, spec)
+    return all(nest.flatten(ok))

@@ -195,7 +195,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             func_name (str): name of the function to call
             *args: args to pass to the function
             **kwargs: kwargs to pass to the function
-        
+
         return:
             list: list of results from each environment
         """
