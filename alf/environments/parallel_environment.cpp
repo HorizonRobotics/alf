@@ -259,6 +259,7 @@ class EnvironmentBase {
   std::string name_;
   int num_envs_;
   int batch_size_per_env_;
+  bool batched_;
 
  protected:
   SharedDataBuffer action_buffer_;
@@ -266,6 +267,7 @@ class EnvironmentBase {
 
   EnvironmentBase(int num_envs,
                   int batch_size_per_env,
+                  bool batched,
                   const py::object& action_spec,
                   const py::object& timestep_spec,
                   const std::string& name);
@@ -273,12 +275,14 @@ class EnvironmentBase {
 
 EnvironmentBase::EnvironmentBase(int num_envs,
                                  int batch_size_per_env,
+                                 bool batched,
                                  const py::object& action_spec,
                                  const py::object& timestep_spec,
                                  const std::string& name)
     : name_(name),
       num_envs_(num_envs),
       batch_size_per_env_(batch_size_per_env),
+      batched_(batched || batch_size_per_env > 1),
       action_buffer_(
           action_spec, num_envs * batch_size_per_env, name + ".action"),
       timestep_buffer_(
@@ -299,6 +303,7 @@ class ParallelEnvironment : public EnvironmentBase {
   ParallelEnvironment(int num_envs,
                       int num_spare_envs,
                       int batch_size_per_env,
+                      bool batched,
                       py::object action_spec,
                       py::object timestep_spec,
                       const std::string& name);
@@ -318,11 +323,16 @@ struct Job {
 ParallelEnvironment::ParallelEnvironment(int num_envs,
                                          int num_spare_envs,
                                          int batch_size_per_env,
+                                         bool batched,
                                          py::object action_spec,
                                          py::object timestep_spec,
                                          const std::string& name)
-    : EnvironmentBase(
-          num_envs, batch_size_per_env, action_spec, timestep_spec, name),
+    : EnvironmentBase(num_envs,
+                      batch_size_per_env,
+                      batched,
+                      action_spec,
+                      timestep_spec,
+                      name),
       num_spare_envs_(num_spare_envs),
       original_env_ids_(num_envs),
       reseted_(num_envs, 0),
@@ -443,6 +453,7 @@ class ProcessEnvironment : public EnvironmentBase {
                      int env_id,
                      int num_envs,
                      int batch_size_per_env,
+                     bool batched,
                      const py::object& action_spec,
                      const py::object& timestep_spec,
                      const std::string& name);
@@ -461,11 +472,16 @@ ProcessEnvironment::ProcessEnvironment(py::object env,
                                        int env_id,
                                        int num_envs,
                                        int batch_size_per_env,
+                                       bool batched,
                                        const py::object& action_spec,
                                        const py::object& timestep_spec,
                                        const std::string& name)
-    : EnvironmentBase(
-          num_envs, batch_size_per_env, action_spec, timestep_spec, name),
+    : EnvironmentBase(num_envs,
+                      batch_size_per_env,
+                      batched,
+                      action_spec,
+                      timestep_spec,
+                      name),
       name_(name),
       env_id_(env_id),
       env_(env),
@@ -536,8 +552,7 @@ void ProcessEnvironment::Step(int env_id) {
     just_reseted_ = false;
   } else {
     auto action = action_buffer_.ViewAsNestedArray(
-        env_id * batch_size_per_env_,
-        (batch_size_per_env_ > 1) ? batch_size_per_env_ : 0);
+        env_id * batch_size_per_env_, batched_ ? batch_size_per_env_ : 0);
     timestep = py_step_(action);
   }
   SendTimestep(timestep, env_id);
@@ -549,7 +564,7 @@ void ProcessEnvironment::Reset() {
 }
 
 void ProcessEnvironment::SendTimestep(const py::object& timestep, int env_id) {
-  if (batch_size_per_env_ == 1) {
+  if (!batched_) {
     timestep_buffer_.WriteSlice(timestep, env_id);
     env_id_buf_[env_id] = env_id;
   } else {
@@ -590,14 +605,20 @@ void ProcessEnvironment::Worker() {
 
 PYBIND11_MODULE(_penv, m) {
   py::class_<ParallelEnvironment>(m, "ParallelEnvironment")
-      .def(
-          py::init<int, int, int, py::object, py::object, const std::string&>(),
-          py::arg("num_envs"),
-          py::arg("num_spare_envs"),
-          py::arg("batch_size_per_env"),
-          py::arg("action_spec"),
-          py::arg("timestep_spec"),
-          py::arg("name"))
+      .def(py::init<int,
+                    int,
+                    int,
+                    int,
+                    py::object,
+                    py::object,
+                    const std::string&>(),
+           py::arg("num_envs"),
+           py::arg("num_spare_envs"),
+           py::arg("batch_size_per_env"),
+           py::arg("batched"),
+           py::arg("action_spec"),
+           py::arg("timestep_spec"),
+           py::arg("name"))
       .def("step",
            &ParallelEnvironment::Step,
            R"pbdoc(
@@ -613,6 +634,7 @@ PYBIND11_MODULE(_penv, m) {
                     int,
                     int,
                     int,
+                    int,
                     py::object,
                     py::object,
                     const std::string&>(),
@@ -621,6 +643,7 @@ PYBIND11_MODULE(_penv, m) {
            py::arg("env_id"),
            py::arg("num_envs"),
            py::arg("batch_size_per_env"),
+           py::arg("batched"),
            py::arg("action_spec"),
            py::arg("timestep_spec"),
            py::arg("name"))

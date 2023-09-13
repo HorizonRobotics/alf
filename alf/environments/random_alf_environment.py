@@ -125,6 +125,10 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         return self._action_spec
 
     @property
+    def is_tensor_based(self):
+        return self._use_tensor_time_step
+
+    @property
     def batch_size(self):
         return self._batch_size if self.batched else 1
 

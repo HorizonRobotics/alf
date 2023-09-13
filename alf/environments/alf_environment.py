@@ -78,6 +78,15 @@ class AlfEnvironment(object):
         return [str(i) for i in range(self.num_tasks)]
 
     @property
+    def is_tensor_based(self):
+        """Whether the environment is tensor-based or not.
+
+        Tensor-based environment means that the observations and actions are
+        represented as tensors. Otherwise, they are represented as numpy arrays.
+        """
+        return False
+
+    @property
     def batched(self):
         """Whether the environment is batched or not.
 

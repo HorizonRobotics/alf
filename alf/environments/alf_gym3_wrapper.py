@@ -265,6 +265,10 @@ class AlfGym3Wrapper(AlfEnvironment):
         self._prev_first = [False] * self.batch_size
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 

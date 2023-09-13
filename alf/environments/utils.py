@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import inspect
 import numpy as np
 import random
 
@@ -56,6 +57,13 @@ class UnwrappedEnvChecker(object):
         self.update(wrap_with_process)
 
 
+def _get_wrapped_fn(fn):
+    """Get the function that is wrapped by ``functools.partial``"""
+    while isinstance(fn, functools.partial):
+        fn = fn.func
+    return fn
+
+
 def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
     # We need to set random seed before env_load_fn because some environment
     # perform use random numbers in its constructor, so we need to randomize
@@ -67,7 +75,8 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
     #
     # NOTE: here it ASSUMES that the created batched environment will take the
     # following env IDs: env_id, env_id + 1, ... ,env_id + batch_size - 1
-    if hasattr(env_load_fn, "batched") and env_load_fn.batched:
+    batched = getattr(_get_wrapped_fn(env_load_fn), 'batched', False)
+    if batched:
         return env_load_fn(
             env_name, env_id=env_id, batch_size=batch_size_per_env)
     if batch_size_per_env == 1:
@@ -85,7 +94,8 @@ def create_environment(env_name='CartPole-v0',
                        eval_env_load_fn=None,
                        for_evaluation=False,
                        num_parallel_environments=30,
-                       batch_size_per_env=1,
+                       batch_size_per_env=None,
+                       eval_batch_size_per_env=None,
                        nonparallel=False,
                        flatten=True,
                        start_serially=True,
@@ -103,9 +113,13 @@ def create_environment(env_name='CartPole-v0',
             consists of the environments listed in ``env_name``.
         env_load_fn (Callable) : callable that create an environment
             If env_load_fn has attribute ``batched`` and it is True,
-            ``evn_load_fn(env_name, batch_size=num_parallel_environments)``
-            will be used to create the batched environment. Otherwise, a
-            ``ParallAlfEnvironment`` will be created.
+            ``evn_load_fn(env_name, env_id=env_id, batch_size=batch_size_per_env)``
+            will be used to create the batched environment. Otherwise,
+            ``env_load_fn(env_name, env_id)`` will be used to create the environment.
+            env_id is the index of the environment in the batch in the range of
+            ``[0, num_parallel_enviroments / batch_size_per_env)``.
+            And if "num_parallel_environments" is in the signature of ``env_load_fn``,
+            num_parallel_environments will be provided as a keyword argument.
         eval_env_load_fn (Callable) : callable that create an environment for
             evaluation. If None, use ``env_load_fn``. This argument is useful
             for cases when the evaluation environment is different from the
@@ -115,7 +129,7 @@ def create_environment(env_name='CartPole-v0',
             will be used for creating the environment if provided. Otherwise,
             ``env_load_fn`` will be used.
         num_parallel_environments (int): num of parallel environments
-        batch_size_per_env (int): if >1, will create
+        batch_size_per_env (Optional[int]): if >1, will create
             ``num_parallel_environments/batch_size_per_env``
             ``ProcessEnvironment``. Each of these ``ProcessEnvironment`` holds
             ``batch_size_per_env`` environments. If each underlying environment
@@ -127,9 +141,15 @@ def create_environment(env_name='CartPole-v0',
             ``batch_size_per_env>1`` is to reduce the number of processes being
             used, or to take advantages of the batched nature of the underlying
             environment.
+            If None, it will be `num_parallel_envrironments` if ``env_load_fn``
+                is batched and 1 otherwise.
+        eval_batch_size_per_env (int): if provided, it will be used as the
+            batch size for evaluation environment. Otherwise, use
+            ``batch_size_per_env``.
         num_spare_envs (int): num of spare parallel envs for speed up reset.
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
+            If True, ``num_parallel_environments`` will be ignored and set to 1.
         start_serially (bool): start environments serially or in parallel.
         flatten (bool): whether to use flatten action and time_steps during
             communication to reduce overhead.
@@ -154,7 +174,23 @@ def create_environment(env_name='CartPole-v0',
     if for_evaluation:
         # for creating an evaluation environment, use ``eval_env_load_fn`` if
         # provided and fall back to ``env_load_fn`` otherwise
-        env_load_fn = eval_env_load_fn if eval_env_load_fn else env_load_fn
+        env_load_fn = eval_env_load_fn or env_load_fn
+        batch_size_per_env = eval_batch_size_per_env or batch_size_per_env
+
+    # env_load_fn may be a functools.partial, so we need to get the wrapped
+    # function to get its attributes
+    batched = getattr(_get_wrapped_fn(env_load_fn), 'batched', False)
+    no_thread_env = getattr(
+        _get_wrapped_fn(env_load_fn), 'no_thread_env', False)
+
+    if nonparallel:
+        num_parallel_environments = 1
+
+    if batch_size_per_env is None:
+        if batched:
+            batch_size_per_env = num_parallel_environments
+        else:
+            batch_size_per_env = 1
 
     assert num_parallel_environments % batch_size_per_env == 0, (
         f"num_parallel_environments ({num_parallel_environments}) cannot be"
@@ -163,20 +199,23 @@ def create_environment(env_name='CartPole-v0',
     if batch_size_per_env > 1:
         assert num_spare_envs == 0, "Do not support spare environments for batch_size_per_env > 1"
         assert parallel_environment_ctor == fast_parallel_environment.FastParallelEnvironment
+
+    if 'num_parallel_environments' in inspect.signature(
+            env_load_fn).parameters:
+        env_load_fn = functools.partial(
+            env_load_fn, num_parallel_environments=num_parallel_environments)
+
     if isinstance(env_name, (list, tuple)):
         env_load_fn = functools.partial(alf_wrappers.MultitaskWrapper.load,
                                         env_load_fn)
 
-    if hasattr(env_load_fn,
-               'batched') and env_load_fn.batched and batch_size_per_env == 1:
-        if nonparallel:
-            alf_env = env_load_fn(env_name, batch_size=1)
-        else:
-            alf_env = env_load_fn(
-                env_name, batch_size=num_parallel_environments)
+    if batched and batch_size_per_env == num_parallel_environments:
+        alf_env = env_load_fn(env_name, batch_size=num_parallel_environments)
+        if not alf_env.is_tensor_based:
+            alf_env = alf_wrappers.TensorWrapper(alf_env)
     elif nonparallel:
         # Each time we can only create one unwrapped env at most
-        if getattr(env_load_fn, 'no_thread_env', False):
+        if no_thread_env:
             # In this case the environment is marked as "not compatible with
             # thread environment", and we will create it in the main thread.
             # BatchedTensorWrapper is applied to make sure the I/O is batched

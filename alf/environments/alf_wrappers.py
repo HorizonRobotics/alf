@@ -63,6 +63,10 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
         return getattr(self._env, name)
 
     @property
+    def is_tensor_based(self):
+        return self._env.is_tensor_based
+
+    @property
     def batched(self):
         return self._env.batched
 
@@ -818,6 +822,14 @@ class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
             'BatchedTensorWrapper can only be used to wrap non-batched env')
         super().__init__(env)
 
+    @property
+    def is_tensor_based(self):
+        return True
+
+    @property
+    def batched(self):
+        return True
+
     @staticmethod
     def _to_batched_tensor(raw):
         """Conver the structured input into batched (batch_size = 1) tensors
@@ -845,6 +857,10 @@ class TensorWrapper(AlfEnvironmentBaseWrapper):
         assert env.batched, (
             'TensorWrapper can only be used to wrap batched env')
         super().__init__(env)
+
+    @property
+    def is_tensor_based(self):
+        return True
 
     @staticmethod
     def _to_tensor(raw):
@@ -1098,6 +1114,8 @@ class BatchEnvironmentWrapper(AlfEnvironment):
         self._env_info_spec = self._envs[0].env_info_spec()
         self._num_tasks = self._envs[0].num_tasks
         self._task_names = self._envs[0].task_names
+        if any(env.is_tensor_based for env in self._envs):
+            raise ValueError('All environments must be array-based.')
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')
@@ -1115,6 +1133,10 @@ class BatchEnvironmentWrapper(AlfEnvironment):
     @property
     def metadata(self):
         return self._envs[0].metadata
+
+    @property
+    def is_tensor_based(self):
+        return False
 
     @property
     def batched(self):
