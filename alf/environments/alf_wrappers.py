@@ -837,6 +837,32 @@ class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
         return BatchedTensorWrapper._to_batched_tensor(super()._reset())
 
 
+class TensorWrapper(AlfEnvironmentBaseWrapper):
+    """Wrapper that converts numpy-based I/O to tensors.
+    """
+
+    def __init__(self, env):
+        assert env.batched, (
+            'TensorWrapper can only be used to wrap batched env')
+        super().__init__(env)
+
+    @staticmethod
+    def _to_tensor(raw):
+        """Conver the structured input into batched (batch_size = 1) tensors
+        of the same structure.
+        """
+        return nest.map_structure(
+            lambda x: (torch.as_tensor(x) if isinstance(
+                x, (np.ndarray, np.number, float, int)) else x), raw)
+
+    def _step(self, action):
+        numpy_action = nest.map_structure(lambda x: x.cpu().numpy(), action)
+        return TensorWrapper._to_tensor(super()._step(numpy_action))
+
+    def _reset(self):
+        return TensorWrapper._to_tensor(super()._reset())
+
+
 @alf.configurable
 class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
     """Discretize each continuous action dim into several evenly distributed
