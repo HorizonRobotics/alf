@@ -128,10 +128,10 @@ void CheckStrides(const py::buffer_info& info,
 void SharedDataBuffer::CheckSize(const py::list& arrays,
                                  const py::object& nested_array) {
   if (arrays.size() != sizes_.size()) {
-    throw std::runtime_error(
-        py::str("array structure mismatch. Expected: {} arrays {}, Got: {} "
-                "arrays {}.")
-            .format(sizes_.size(), data_spec_, arrays.size(), nested_array));
+    py::object consistent_with_spec =
+        py::module::import("alf.utils.spec_utils").attr("consistent_with_spec");
+    consistent_with_spec(nested_array, data_spec_);
+    throw std::runtime_error(py::str("array structure mismatch."));
   }
 }
 
