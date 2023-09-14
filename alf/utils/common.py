@@ -1419,9 +1419,13 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         relative = os.path.relpath(path, directory)
         return not relative.startswith(os.pardir)
 
-    def rsync(src, target, includes):
-        args = ['rsync', '-rI', '--include=*/']
-        args += ['--include=%s' % i for i in includes]
+    def rsync(src, target, includes, excludes=[]):
+        args = [
+            'rsync',
+            '-rI',
+        ]
+        args += ['--exclude=%s' % e for e in excludes]
+        args += ['--include=*/'] + ['--include=%s' % i for i in includes]
         args += ['--exclude=*']
         args += [src, target]
         # shell=True preserves string arguments
@@ -1429,9 +1433,10 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
             " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
     includes = [
-        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.hpp",
-        "*.h", "*.stl", "*.png", "*.txt"
+        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.cc",
+        "*.hpp", "*.h", "*.stl", "*.png", "*.txt"
     ]
+    excludes = ['*/build/']
     repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
     for name, root in repo_roots.items():
         assert not _is_subdir(dest_path, root), (
@@ -1439,7 +1444,7 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
             (dest_path, root) + "Use a different one!")
         # Only copy the module dir because the root dir might contain many
         # other modules in the case where repo is pip installed in 'site-packages'.
-        rsync(root + f'/{name}', dest_path, includes)
+        rsync(root + f'/{name}', dest_path, includes, excludes)
         # compress the snapshot repo into a ".tar.gz" file
         os.system(
             f"cd {dest_path}; tar -czf {name}.tar.gz {name}; rm -rf {name}")
