@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Tuple
+from typing import Callable, Tuple, List
 import numpy as np
 
 import torch
@@ -90,27 +90,29 @@ class MoNetUNet(alf.networks.Network):
             input_tensor_spec=input_tensor_spec).output_spec
 
         self._nonskip_mlp = alf.networks.EncodingNetwork(
-            input_tensor_spec=last_skip_tensor_spec,
-            input_preprocessors=alf.layers.Reshape(-1),
-            fc_layer_params=nonskip_fc_layers,
-            last_layer_size=last_skip_tensor_spec.numel,
-            last_activation=torch.relu_)
+            input_tensor_spec=alf.TensorSpec((last_skip_tensor_spec.numel, )),
+            fc_layer_params=nonskip_fc_layers)
 
-        self._reshape = alf.layers.Reshape(*last_skip_tensor_spec.shape)
+        self._reshape = torch.nn.Sequential(
+            alf.layers.FC(nonskip_fc_layers[-1], last_skip_tensor_spec.numel,
+                          torch.relu_),
+            alf.layers.Reshape(*last_skip_tensor_spec.shape))
 
         deconv_blocks = []
         filters = filters[::-1]
         for i in range(len(filters)):
+            out_channels = filters[i +
+                                   1] if i < len(filters) - 1 else filters[-1]
             block = [
                 alf.layers.Conv2D(
                     channels * 2,
-                    filters[i],
+                    out_channels,
                     3,
                     strides=1,
                     padding=1,
                     use_bias=False,
                     activation=alf.math.identity),
-                torch.nn.InstanceNorm2d(filters[i], affine=True),
+                torch.nn.InstanceNorm2d(out_channels, affine=True),
                 torch.nn.ReLU()
             ]
             if i < len(filters) - 1:
@@ -118,14 +120,13 @@ class MoNetUNet(alf.networks.Network):
             else:
                 block.append(
                     alf.layers.Conv2D(
-                        channels,
+                        out_channels,
                         output_channels,
                         1,
                         strides=1,
                         activation=alf.math.identity))
             deconv_blocks.append(torch.nn.Sequential(*block))
-
-            channels = filters[i]
+            channels = out_channels
 
         self._upsampling_path = torch.nn.ModuleList(deconv_blocks)
 
@@ -141,20 +142,43 @@ class MoNetUNet(alf.networks.Network):
                 ``output_channels``. The output image is non-activated.
             - state: empty
         """
+        return self.decode(*self.encode(inputs)), state
+
+    def encode(self, inputs: torch.Tensor):
+        """Do an encoding step of the UNet.
+
+        Args:
+            inputs: the input image of shape ``[B,C,H,W]`` where ``C`` can be
+                any value.
+        Returns:
+            tuple:
+            - output: a latent image of shape ``[B,c,h,w]``.
+            - encodings: the intermediate encodings in the downsampling path.
+        """
         output = inputs
         outputs = []
         for l in self._downsampling_path:
             output = l(output)
             outputs.append(output)
+        output = output.reshape((output.shape[0], -1))
+        return self._nonskip_mlp(output)[0], outputs
 
-        output = self._reshape(self._nonskip_mlp(output)[0])
+    def decode(self, inputs: torch.Tensor, encodings: List[torch.Tensor]):
+        """The decoding step of the UNet.
 
-        outputs = outputs[::-1]
+        Args:
+            inputs: the latent image of shape ``[B,c,h,w]``.
+            encodings: the intermediate encodings in the downsampling path.
+        Returns:
+            torch.Tensor: an output image of the shape ``[B,K,H,W]``, where ``K`` is
+                ``output_channels``. The output image is non-activated.
+        """
+        output = self._reshape(inputs)
+        encodings = encodings[::-1]
         for i, l in enumerate(self._upsampling_path):
-            output = torch.cat([output, outputs[i]], dim=1)
+            output = torch.cat([output, encodings[i]], dim=1)
             output = l(output)
-
-        return output, state
+        return output
 
 
 MoNetInfo = namedtuple(
