@@ -105,6 +105,10 @@ class AlfMetaDriveWrapper(AlfEnvironment):
         self._current_observation = None
 
     @property
+    def is_tensor_based(self):
+        return False
+
+    @property
     def batched(self):
         # TODO(breakds): Add support for multiple algorithm controlled agents in
         # the future. This environment should be batched in that case.

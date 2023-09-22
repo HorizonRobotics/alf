@@ -85,7 +85,7 @@ def _worker(conn: multiprocessing.connection,
             penv = _penv.ProcessEnvironment(
                 env, partial(process_call, conn, env, flatten,
                              action_spec), env_id, num_envs, env.batch_size,
-                env.action_spec(),
+                env.batched, env.action_spec(),
                 env.time_step_spec()._replace(env_info=env.env_info_spec()),
                 name)
             conn.send(_MessageType.READY)  # Ready.

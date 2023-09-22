@@ -77,6 +77,10 @@ class UnittestEnv(AlfEnvironment):
         self.reset()
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 

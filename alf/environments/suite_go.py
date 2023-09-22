@@ -575,6 +575,10 @@ class GoEnvironment(AlfEnvironment):
             logging.info("SPACE : refresh display")
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 

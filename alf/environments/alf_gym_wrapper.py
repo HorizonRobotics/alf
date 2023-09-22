@@ -167,6 +167,10 @@ class AlfGymWrapper(AlfEnvironment):
         """Return the gym environment. """
         return self._gym_env
 
+    @property
+    def is_tensor_based(self):
+        return False
+
     def _obtain_zero_info(self):
         """Get an env info of zeros only once when the env is created.
         This info will be filled in each ``FIRST`` time step as a placeholder.

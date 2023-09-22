@@ -102,6 +102,10 @@ class MyEnv(object):
             shape=(), dtype='int64', minimum=0, maximum=2)
         self.reset()
 
+    @property
+    def is_tensor_based(self):
+        return True
+
     def observation_spec(self):
         return self._observation_spec
 

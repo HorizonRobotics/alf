@@ -125,10 +125,10 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
         batch_size_per_env = self._envs[0].batch_size
-        if batch_size_per_env == 1:
-            assert not self._envs[
-                0].batched, "Does not support batched environment for if batch_size is 1"
-        batched = batch_size_per_env > 1
+        batched = self._envs[0].batched
+        if any(env.is_tensor_based for env in self._envs):
+            raise ValueError(
+                'All environments must be array-based environments.')
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')
@@ -146,7 +146,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             raise ValueError('All environments must have the same batched.')
         self._closed = False
         self._penv = _penv.ParallelEnvironment(
-            num_envs, num_spare_envs_for_reload, batch_size_per_env,
+            num_envs, num_spare_envs_for_reload, batch_size_per_env, batched,
             self._action_spec, time_step_with_env_info_spec, name)
 
     @property
@@ -171,6 +171,10 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             for env in self._spare_envs:
                 env.wait_start()
         logging.info('All processes started.')
+
+    @property
+    def is_tensor_based(self):
+        return True
 
     @property
     def batched(self):

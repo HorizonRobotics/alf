@@ -97,6 +97,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._task_names = self._envs[0].task_names
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
+        if any(env.is_tensor_based for env in self._envs):
+            raise ValueError(
+                'All environments must be array-based environments.')
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
                 'All environments must have the same action spec.')
@@ -131,6 +134,10 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         logging.info('All processes started.')
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 
@@ -153,7 +160,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             func_name (str): name of the function to call
             *args: args to pass to the function
             **kwargs: kwargs to pass to the function
-        
+
         return:
             list: list of results from each environment
         """

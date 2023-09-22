@@ -48,7 +48,12 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
         super().__init__()
         self._pool = mp_threads.Pool(1)
         self._env = self._pool.apply(env_constructor)
+        assert not self._env.batched
         self._closed = False
+
+    @property
+    def is_tensor_based(self):
+        return True
 
     @property
     def batched(self):

@@ -52,6 +52,10 @@ class TicTacToeEnvironment(AlfEnvironment):
         self._player_1 = torch.tensor(1.)
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 

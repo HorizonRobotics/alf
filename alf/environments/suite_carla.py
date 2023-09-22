@@ -1682,6 +1682,10 @@ class CarlaEnvironment(AlfEnvironment):
         self._walkers.clear()
 
     @property
+    def is_tensor_based(self):
+        return True
+
+    @property
     def batched(self):
         return True
 
