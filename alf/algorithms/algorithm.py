@@ -1415,7 +1415,8 @@ class Algorithm(AlgorithmInterface):
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
         self.after_update(experience.time_step, train_info)
         self.summarize_train(experience, train_info, loss_info, params)
-        return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
+        shape = alf.nest.get_nest_shape(experience)
+        return shape[0] * shape[1]
 
     @common.mark_replay
     def train_from_replay_buffer(self, update_global_counter=False):
