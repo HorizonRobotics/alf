@@ -149,7 +149,8 @@ def create_environment(env_name='CartPole-v0',
         num_spare_envs (int): num of spare parallel envs for speed up reset.
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
-            If True, ``num_parallel_environments`` will be ignored and set to 1.
+            If True, both ``num_parallel_environments`` and ``batch_size_per_env``
+            will be ignored and set to 1.
         start_serially (bool): start environments serially or in parallel.
         flatten (bool): whether to use flatten action and time_steps during
             communication to reduce overhead.
@@ -185,6 +186,7 @@ def create_environment(env_name='CartPole-v0',
 
     if nonparallel:
         num_parallel_environments = 1
+        batch_size_per_env = 1
 
     if batch_size_per_env is None:
         if batched:
