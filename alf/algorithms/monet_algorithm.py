@@ -58,7 +58,10 @@ class MoNetUNet(alf.networks.Network):
             filters: a tuple of output channels along the downsampling path, each for
                 a conv layer. The upsampling path uses a reversed tuple.
             nonskip_fc_layers: a tuple of fc layer sizes for the bottleneck connection
-                (nonskip) of the UNet.
+                (nonskip MLP in the illustration) of the UNet. Note that there
+                will be implicitly an additional FC layer after this MLP to project
+                its output to a proper dimension (the output size of the downsampling
+                path) before being reshaped for the upsampling path.
             output_channels: final output channels. The output features are non-activated.
         """
         super().__init__(input_tensor_spec=input_tensor_spec, name=name)
