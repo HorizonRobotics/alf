@@ -556,6 +556,13 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
 
+        logging.info("predict_state_spec=\n%s" % pformat_pycolor(
+            self._algorithm.predict_state_spec))
+        logging.info("rollout_state_spec=\n%s" % pformat_pycolor(
+            self._algorithm.rollout_state_spec))
+        logging.info("train_state_spec=\n%s" % pformat_pycolor(
+            self._algorithm.train_state_spec))
+
         # recover offline buffer
         self._algorithm.load_offline_replay_buffer(
             untransformed_observation_spec)
