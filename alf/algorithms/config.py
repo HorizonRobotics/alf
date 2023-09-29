@@ -167,7 +167,7 @@ class TrainerConfig(object):
                 ``SarsaAlgorithm`` not using RNN), if there is no need to
                 recompute state at train_step, this option can also be used. If
                 ``None``, its value is inferred based on whether the algorithm
-                has RNN state (``True`` if there is RNN state, ``False`` if not).
+                has RNN state (``True`` if there is no RNN state, ``False`` if yes).
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
