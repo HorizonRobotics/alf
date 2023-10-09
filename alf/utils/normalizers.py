@@ -195,6 +195,21 @@ class Normalizer(nn.Module):
         m = (self._mean_averager.get() if self._mean_averager else None)
         return alf.nest.map_structure(_normalize, m2, tensor, m)
 
+    def scale(self, tensor, clip_value=-1.0):
+        if self._auto_update:
+            self.update(tensor)
+
+        def _scale(m2, t):
+            m = torch.zeros_like(m2)
+            t = alf.layers.normalize_along_batch_dims(
+                t, m, m2, variance_epsilon=self._variance_epsilon)
+            if clip_value > 0:
+                t = torch.clamp(t, -clip_value, clip_value)
+            return t
+
+        m2 = (self._m2_averager.get() if self._m2_averager else None)
+        return alf.nest.map_structure(_scale, m2, tensor)
+
     def forward(self, input):
         if self.training:
             self.update(input)

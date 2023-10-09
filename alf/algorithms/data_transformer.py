@@ -635,6 +635,7 @@ class RewardNormalizer(RewardTransformer):
                  normalizer=None,
                  update_max_calls=0,
                  clip_value=-1.0,
+                 zero_mean=True,
                  update_mode="replay"):
         """
         Args:
@@ -647,6 +648,7 @@ class RewardNormalizer(RewardTransformer):
                 only be updated so many first calls of ``_transform()``.
             clip_value (float): if > 0, will clip the normalized reward within
                 [-clip_value, clip_value]. Do not clip if ``clip_value`` < 0
+            zero_mean (bool): whether to transform the reward to be zero-mean.
             update_mode (str): update stats during either "replay" or "rollout".
         """
         super().__init__(observation_spec)
@@ -661,6 +663,7 @@ class RewardNormalizer(RewardTransformer):
                 debug_summaries=True)
         self._normalizer = normalizer
         self._clip_value = clip_value
+        self._zero_mean = zero_mean
         self._update_mode = update_mode
         self._max_calls = update_max_calls
         self._calls = 0
@@ -681,7 +684,10 @@ class RewardNormalizer(RewardTransformer):
                 norm.update(reward)
             self._calls += 1
 
-        return norm.normalize(reward, clip_value=self._clip_value)
+        if self._zero_mean:
+            return norm.normalize(reward, clip_value=self._clip_value)
+        else:
+            return norm.scale(reward, clip_value=self._clip_value)
 
 
 @alf.configurable

@@ -42,8 +42,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 observation_normalizer_ctor=None,
                  reward_spec=TensorSpec(()),
                  reward_weights=None,
+                 reward_scaler_ctor=None,
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
                  epsilon_greedy=None,
@@ -59,12 +61,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
+            observation_normalizer_ctor (Callable): Function to create the
+                observation_normalizer, default is None.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the v values
                 is used for training the actor if reward_weights is not None.
                 Otherwise, the sum of the v values is used.
+            reward_scaler_ctor (Callable): Function to scale the reward(s).
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -139,6 +144,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
+        self._observation_normalizer = None
+        if observation_normalizer_ctor is not None:
+            self._observation_normalizer = observation_normalizer_ctor(
+                tensor_spec=observation_spec)
+        self._reward_scaler = None
+        if reward_scaler_ctor is not None:
+            self._reward_scaler = reward_scaler_ctor()
 
         # The following checkpoint loading hook handles the case when value
         # network is not constructed. In this case the value network paramters
@@ -163,8 +175,12 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
+        observation = inputs.observation
+        if self._observation_normalizer is not None:
+            observation = self._observation_normalizer(observation)
+
         action_dist, actor_state = self._actor_network(
-            inputs.observation, state=state.actor)
+            observation, state=state.actor)
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
@@ -175,11 +191,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
+        observation = inputs.observation
+        if self._observation_normalizer is not None:
+            observation = self._observation_normalizer.normalize(observation)
+
         value, value_state = self._value_network(
-            inputs.observation, state=state.value)
+            observation, state=state.value)
 
         action_distribution, actor_state = self._actor_network(
-            inputs.observation, state=state.actor)
+            observation, state=state.actor)
 
         action, log_prob = dist_utils.sample_action_distribution(
             action_distribution, return_log_prob=True)
@@ -189,6 +209,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 self.reward_weights, dim=0, n=value.shape[0])
         else:
             reward_weights = ()
+        reward = inputs.reward
+        if self._reward_scaler is not None:
+            reward = self._reward_scaler.scale(reward)
+
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
@@ -197,7 +221,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 log_prob=common.detach(log_prob),
                 value=value,
                 step_type=inputs.step_type,
-                reward=inputs.reward,
+                reward=reward,
                 discount=inputs.discount,
                 action_distribution=action_distribution,
                 reward_weights=reward_weights))

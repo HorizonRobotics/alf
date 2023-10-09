@@ -258,7 +258,7 @@ class AdaptiveAverager(EMAverager):
         super().__init__(tensor_spec, update_rate)
         self.register_buffer("_update_ema_rate", update_rate)
         self.register_buffer("_total_steps",
-                             torch.as_tensor(speed, dtype=torch.int64))
+                             torch.as_tensor(int(speed), dtype=torch.int64))
         self._speed = speed
 
     def update(self, tensor):
