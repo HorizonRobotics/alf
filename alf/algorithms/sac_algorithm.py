@@ -320,6 +320,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._alpha_uncertainty_ratio = alpha_uncertainty_ratio
         if alpha_uncertainty_ratio > 0:
+            assert not use_entropy_reward
             assert num_critic_replicas > 1 and self._act_type == ActionType.Continuous
 
         self._use_entropy_reward = use_entropy_reward
@@ -385,10 +386,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(critic_optimizer, [critic_networks])
         if alpha_optimizer is not None:
             self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
-        self._log_alpha = log_alpha
-        if self._act_type == ActionType.Mixed:
-            self._log_alpha_paralist = nn.ParameterList(
-                nest.flatten(log_alpha))
+
+        if alpha_uncertainty_ratio == 0:
+            self._log_alpha = log_alpha
+            if self._act_type == ActionType.Mixed:
+                self._log_alpha_paralist = nn.ParameterList(
+                    nest.flatten(log_alpha))
 
         if max_log_alpha is not None:
             self._max_log_alpha = torch.tensor(float(max_log_alpha))
@@ -1019,7 +1022,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             with alf.summary.scope(self._name):
                 if self._alpha_uncertainty_ratio > 0:
                     summary_utils.add_mean_hist_summary("alpha", info.alpha)
-                if self._act_type == ActionType.Mixed:
+                elif self._act_type == ActionType.Mixed:
                     alf.summary.scalar("alpha/discrete",
                                        self._log_alpha[0].exp())
                     alf.summary.scalar("alpha/continuous",

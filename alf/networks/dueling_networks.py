@@ -67,10 +67,12 @@ class CriticDuelingNetwork(Network):
                  input_tensor_spec,
                  output_tensor_spec=TensorSpec(()),
                  observation_input_processors=None,
+                 observation_input_processors_ctor=None,
                  observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
                  action_input_processors=None,
+                 action_input_processors_ctor=None,
                  action_preprocessing_combiner=None,
                  action_fc_layer_params=None,
                  observation_action_combiner=None,
@@ -79,6 +81,7 @@ class CriticDuelingNetwork(Network):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_fc_ln=False,
                  use_naive_parallel_network=False,
                  name="CriticNetwork"):
         """
@@ -90,6 +93,10 @@ class CriticDuelingNetwork(Network):
             observation_input_preprocessors (nested Network|nn.Module|None): a nest of
                 input preprocessors, each of which will be applied to the
                 corresponding observation input.
+            observation_input_processors_ctor (Callable): if ``observation_input_processors``
+                is None and ``observation_input_processors_ctor`` is provided, then
+                ``observation_input_processors`` will be constructed by calling
+                ``observation_input_processors_ctor(observation_spec)``.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
             observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
@@ -100,6 +107,10 @@ class CriticDuelingNetwork(Network):
             action_input_processors (nested Network|nn.Module|None): a nest of
                 input preprocessors, each of which will be applied to the
                 corresponding action input.
+            action_input_processors_ctor (Callable): if ``action_input_processors``
+                is None and ``action_input_processors_ctor`` is provided, then
+                ``action_input_processors`` will be constructed by calling
+                ``action_input_processors_ctor(action_spec)``.
             action_preprocessing_combiner (NestCombiner): preprocessing called
                 to combine complex action inputs.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
@@ -138,6 +149,7 @@ class CriticDuelingNetwork(Network):
         obs_encoder = EncodingNetwork(
             observation_spec,
             input_preprocessors=observation_input_processors,
+            input_preprocessors_ctor=observation_input_processors_ctor,
             preprocessing_combiner=observation_preprocessing_combiner,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
@@ -152,11 +164,13 @@ class CriticDuelingNetwork(Network):
         action_encoder = EncodingNetwork(
             action_spec,
             input_preprocessors=action_input_processors,
+            input_preprocessors_ctor=action_input_processors_ctor,
             preprocessing_combiner=action_preprocessing_combiner,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             name=name + ".action_encoder")
 
         last_kernel_initializer = functools.partial(
@@ -176,6 +190,7 @@ class CriticDuelingNetwork(Network):
             last_layer_size=output_tensor_spec.numel,
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             last_kernel_initializer=last_kernel_initializer,
             name=name + ".adv_net")
 
@@ -189,6 +204,7 @@ class CriticDuelingNetwork(Network):
             last_layer_size=output_tensor_spec.numel,
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             last_kernel_initializer=last_kernel_initializer,
             name=name + ".value_net")
 
