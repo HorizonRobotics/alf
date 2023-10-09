@@ -80,6 +80,7 @@ class CriticNetwork(EncodingNetwork):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_fc_ln=False,
                  use_naive_parallel_network=False,
                  name="CriticNetwork"):
         """
@@ -91,9 +92,9 @@ class CriticNetwork(EncodingNetwork):
             observation_input_processors (nested Network|nn.Module|None): a nest of
                 input preprocessors, each of which will be applied to the
                 corresponding observation input.
-            observation_input_processors_ctor (Callable): if ``observation_input_processors`` 
+            observation_input_processors_ctor (Callable): if ``observation_input_processors``
                 is None and ``observation_input_processors_ctor`` is provided, then
-                ``observation_input_processors`` will be constructed by calling 
+                ``observation_input_processors`` will be constructed by calling
                 ``observation_input_processors_ctor(observation_spec)``.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
@@ -125,6 +126,8 @@ class CriticNetwork(EncodingNetwork):
                 with uniform distribution will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
+            use_fc_ln (bool): whether use Layer Normalization for the internal
+                FC layers (i.e. FC layers beside the last one).
             use_naive_parallel_network (bool): if True, will use
                 ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
                 might be useful in cases when the ``NaiveParallelNetwork``
@@ -152,6 +155,7 @@ class CriticNetwork(EncodingNetwork):
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             name=name + ".obs_encoder")
 
         _check_action_specs_for_critic_networks(action_spec,
@@ -166,6 +170,7 @@ class CriticNetwork(EncodingNetwork):
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             name=name + ".action_encoder")
 
         last_kernel_initializer = functools.partial(
@@ -185,6 +190,7 @@ class CriticNetwork(EncodingNetwork):
             last_layer_size=output_tensor_spec.numel,
             last_activation=math_ops.identity,
             use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             last_kernel_initializer=last_kernel_initializer,
             name=name)
         self._use_naive_parallel_network = use_naive_parallel_network

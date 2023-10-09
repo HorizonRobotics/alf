@@ -761,7 +761,7 @@ class ParallelFC(nn.Module):
             if self._bias is None:
                 self._ln.bias.data.zero_()
             y1 = y.reshape(-1, n * k)
-            y = self._ln(y1)
+            y1 = self._ln(y1)
             y = y1.view(-1, n, k)
         if self._bn is not None:
             if self._bias is None:

@@ -609,10 +609,12 @@ class EncodingNetwork(_Sequential):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_fc_ln=False,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
                  last_use_fc_bn=False,
+                 last_use_fc_ln=False,
                  name="EncodingNetwork"):
         """
         Args:
@@ -656,6 +658,7 @@ class EncodingNetwork(_Sequential):
                 the last layer. If None, a variance_scaling_initializer will be
                 used.
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            use_fc_ln (bool): whether use Layer Normalization for fc layers.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -664,6 +667,8 @@ class EncodingNetwork(_Sequential):
                 ``last_layer_size`` is not None, ``last_activation`` has to be
                 specified explicitly.
             last_use_fc_bn (bool): whether use Batch Normalization for the last
+                fc layer.
+            last_use_fc_ln (bool): whether use Layer Normalization for the last
                 fc layer.
             last_kernel_initializer (Callable): initializer for the the
                 additional layer specified by ``last_layer_size``.
@@ -733,6 +738,7 @@ class EncodingNetwork(_Sequential):
                     size,
                     activation=activation,
                     use_bn=use_fc_bn,
+                    use_ln=use_fc_ln,
                     kernel_initializer=kernel_initializer))
             input_size = size
 
@@ -752,6 +758,7 @@ class EncodingNetwork(_Sequential):
                     last_layer_size,
                     activation=last_activation,
                     use_bn=last_use_fc_bn,
+                    use_ln=last_use_fc_ln,
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
@@ -819,10 +826,12 @@ def ParallelEncodingNetwork(input_tensor_spec,
                             activation=torch.relu_,
                             kernel_initializer=None,
                             use_fc_bn=False,
+                            use_fc_ln=False,
                             last_layer_size=None,
                             last_activation=None,
                             last_kernel_initializer=None,
                             last_use_fc_bn=False,
+                            last_use_fc_ln=False,
                             name="ParallelEncodingNetwork"):
     """Parallel encoding network which effectively runs ``n`` individual encoding
     network simultaneuosl.
@@ -860,6 +869,7 @@ def ParallelEncodingNetwork(input_tensor_spec,
             the last layer. If None, a variance_scaling_initializer will be
             used.
         use_fc_bn (bool): whether use Batch Normalization for fc layers.
+        use_fc_ln (bool): whether use Layer Normalization for fc layers.
         last_layer_size (int): an optional size of an additional layer
             appended at the very end. Note that if ``last_activation`` is
             specified, ``last_layer_size`` has to be specified explicitly.
@@ -873,6 +883,8 @@ def ParallelEncodingNetwork(input_tensor_spec,
             ``last_layer_size`` is None, ``last_kernel_initializer`` will
             not be used.
         last_use_fc_bn (bool): whether use Batch Normalization for the last
+            fc layer.
+        last_use_fc_ln (bool): whether use Layer Normalization for the last
             fc layer.
         name (str):
     Returns:
