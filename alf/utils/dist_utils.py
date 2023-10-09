@@ -489,17 +489,17 @@ class AffineTransformedDistribution(td.TransformedDistribution):
     @property
     def mean(self):
         """Returns the mean of the distribution."""
-        return self.scale * self.base_dist.mean() + self.loc
+        return self.scale * self.base_dist.mean + self.loc
 
     @property
     def variance(self):
         """Returns the variance of the distribution."""
-        raise self.scale**self.scale * self.base_dist.variance()
+        return self.scale * self.scale * self.base_dist.variance
 
     @property
     def stddev(self):
         """Returns the variance of the distribution."""
-        raise self.scale * self.base_dist.stddev()
+        return self.scale * self.base_dist.stddev
 
 
 class StableCauchy(td.Cauchy):
