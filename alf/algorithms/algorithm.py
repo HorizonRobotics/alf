@@ -1875,7 +1875,7 @@ class Algorithm(AlgorithmInterface):
 
         self._update_priority(loss_info, batch_info, self._replay_buffer)
 
-        if self.is_rl():
+        if self.is_rl() and self._config.mask_out_loss_for_last_step:
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
         else:

@@ -38,6 +38,7 @@ class TrainerConfig(object):
                  unroll_parameter_update_period: int = 10,
                  use_rollout_state=False,
                  temporally_independent_train_step=None,
+                 mask_out_loss_for_last_step=True,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
                  no_thread_env_for_conf=False,
@@ -159,6 +160,11 @@ class TrainerConfig(object):
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
                 algorithm should always be a subset of the ``rollout_state_spec``.
+            mask_out_loss_for_last_step (bool): If True, the loss for the last
+                step of each sequence will be masked out. For RL training,
+                the last step of each episode is usually a terminal state and
+                the loss for it is not meaningful. Note that most RL algorithms
+                implemented in ALF implicitly assumes this behavior.
             temporally_independent_train_step (bool|None): If True, the ``train_step``
                 is called with all the experiences in one batch instead of being
                 called sequentially with ``mini_batch_length`` batches. Only used
@@ -322,6 +328,7 @@ class TrainerConfig(object):
         self.unroll_step_interval = unroll_step_interval
         self.unroll_parameter_update_period = unroll_parameter_update_period
         self.use_rollout_state = use_rollout_state
+        self.mask_out_loss_for_last_step = mask_out_loss_for_last_step
         self.temporally_independent_train_step = temporally_independent_train_step
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
