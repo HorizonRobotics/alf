@@ -141,6 +141,7 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_fc_ln=False,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name="ActorDistributionNetwork"):
@@ -178,6 +179,8 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
                 xavier_uniform will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers except the last one).
+            use_fc_ln (bool): whether use Layer Normalization for the internal
+                fc layers (i.e. FC layers except the last one).
             discrete_projection_net_ctor (ProjectionNetwork): constructor that
                 generates a discrete projection network that outputs discrete
                 actions.
@@ -200,7 +203,8 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
             fc_layer_params=fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn)
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln)
 
 
 class ParallelActorDistributionNetwork(Network):

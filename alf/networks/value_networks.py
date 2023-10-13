@@ -109,6 +109,7 @@ class ValueNetwork(ValueNetworkBase):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
+                 use_fc_ln=False,
                  name="ValueNetwork"):
         """Creates a value network that estimates the expected return.
 
@@ -145,6 +146,8 @@ class ValueNetwork(ValueNetworkBase):
                 initializer will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
+            use_fc_ln (bool): whether use Layer Normalization for the internal
+                fc layers (i.e. FC layers except the last one).
             name (str):
         """
         super().__init__(
@@ -159,7 +162,8 @@ class ValueNetwork(ValueNetworkBase):
             fc_layer_params=fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn)
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln)
 
 
 class ParallelValueNetwork(Network):
