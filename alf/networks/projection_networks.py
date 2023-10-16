@@ -169,6 +169,7 @@ class NormalProjectionNetwork(Network):
                  projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
+                 mean_transform=None,
                  state_dependent_std=False,
                  std_transform=nn.functional.softplus,
                  scale_distribution=False,
@@ -197,6 +198,8 @@ class NormalProjectionNetwork(Network):
             squash_mean (bool): If True, squash the output mean to fit the
                 action spec. If ``scale_distribution`` is also True, this value
                 will be ignored.
+            mean_transform (Callable): Transform to apply to the mean, on top of
+                `activation`.
             state_dependent_std (bool): If True, std will be generated depending
                 on the current state; otherwise a global std will be generated
                 regardless of the current state.
@@ -240,6 +243,8 @@ class NormalProjectionNetwork(Network):
                     dist_utils.AffineTransform(
                         loc=self._action_means, scale=self._action_magnitudes)
                 ]
+        if mean_transform is not None:
+            self._mean_transform = mean_transform
 
         self._std_transform = math_ops.identity
         if std_transform is not None:
@@ -787,7 +792,7 @@ class MixtureProjectionNetwork(Network):
 
     1. A categorical distribution for each of the component.
     2. A components distribution of ``num_components`` replicas.
-    
+
     """
 
     def __init__(
