@@ -286,6 +286,16 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                 self._reset_ts[i] = None
         return time_steps
 
+    def sync_progress(self):
+        """Sync the progress of all environments.
+
+        ALF schedulers need to have progress information to calculate scheduled
+        values. For parallel environments, the environments are in different
+        processes and the progress information needs to be synced with the main
+        in order to use schedulers in the environment.
+        """
+        [env.sync_progress() for env in envs]
+
     def close(self):
         """Close all external process."""
         if self._closed:
