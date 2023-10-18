@@ -19,7 +19,14 @@ import matplotlib
 matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
-plt.style.use('seaborn-dark')
+# The seaborn styles shipped by Matplotlib are deprecated since 3.6,
+# as they no longer correspond to the styles shipped by seaborn.
+# However, they will remain available as 'seaborn-v0_8-<style>'.
+try:
+    plt.style.use('seaborn-v0_8-dark')
+except Exception:
+    # Fallback if the matplotlib version is too low
+    plt.style.use('seaborn-dark')
 try:
     import rpack
 except ImportError:
