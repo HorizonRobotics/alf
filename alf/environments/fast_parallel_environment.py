@@ -239,7 +239,14 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         return stacked
 
     def _step(self, action):
-        action = nest.map_structure(lambda x: x.cpu().numpy(), action)
+        def _to_numpy(x):
+            x = x.cpu().numpy()
+            # parallel_environment.cpp requires the arrays to be contiguous. If
+            # x is already contiguous, ascontiguousarray() will simply return x.
+            x = np.ascontiguousarray(x)
+            return x
+
+        action = nest.map_structure(_to_numpy, action)
         return self._to_tensor(self._penv.step(action))
 
     def _reset(self):
