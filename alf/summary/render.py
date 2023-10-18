@@ -22,7 +22,11 @@ import matplotlib.pyplot as plt
 # The seaborn styles shipped by Matplotlib are deprecated since 3.6,
 # as they no longer correspond to the styles shipped by seaborn.
 # However, they will remain available as 'seaborn-v0_8-<style>'.
-plt.style.use('seaborn-v0_8-dark')
+try:
+    plt.style.use('seaborn-v0_8-dark')
+except Exception:
+    # Fallback if the matplotlib version is too low
+    plt.style.use('seaborn-dark')
 try:
     import rpack
 except ImportError:
