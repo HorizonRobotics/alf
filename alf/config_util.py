@@ -817,16 +817,19 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
 def define_config(name, default_value):
     """Define a configurable value with given ``default_value``.
 
-    Its value can be retrieved by ``get_config_value()``.
+    Its value can be retrieved by ``get_config_value("_CONFIG._USER.{name}")``.
 
     Args:
         name (str): name of the configurable value
         default_value (Any): default value
+    Returns:
+        the configured value
     """
     node = _Config()
     node.set_default_value(default_value)
     _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
     _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
+    return get_config_value("_CONFIG._USER." + name)
 
 
 def _get_conf_file_full_path(conf_file):
