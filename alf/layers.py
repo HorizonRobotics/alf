@@ -3214,7 +3214,7 @@ class SummarizeGradient(ElementwiseLayerBase):
 
         Summarize the gradient of the input tensor. Note that if the input tensor
         does not requires gradient (i.e. x.requires_grad is False), gradient
-        will not be summarized. (This is because )
+        will not be summarized.
 
         Args:
             name (str): used to describe the name of the summary, after the
