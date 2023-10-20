@@ -3212,30 +3212,23 @@ class SummarizeGradient(ElementwiseLayerBase):
     def __init__(self, name):
         """A layer for summarizing the gradient of the input tensor.
 
-        Summarize the gradient of the input tensor. Always first cloning the
-        input tensor and then setting ``requires_grad=True`` for the cloned
-        tensor to enable gradient calculation for summarization.
+        Summarize the gradient of the input tensor. Note that if the input tensor
+        does not requires gradient (i.e. x.requires_grad is False), gradient
+        will not be summarized.
 
         Args:
             name (str): used to describe the name of the summary, after the
                 tag 'tensor_gradient'.
-    Returns:
+        Returns:
             cloned ``tensor``: with ``requires_grad`` set to True and gradient
             summarization hook registered.
         """
         super().__init__()
 
-        self._name = name
+        self._name = f"tensor_gradient/{name}"
 
     def forward(self, x):
-        # clone the input tensor ``x`` to avoid impacts on training in the case
-        # where ``x`` does not require gradient
-        y = x.clone()
-        # explicitly turn on gradient calculation in order to summarize gradient
-        y.requires_grad = True
-        y = summarize_tensor_gradients(
-            "tensor_gradient/{}".format(self._name), y, clone=False)
-        return y
+        return summarize_tensor_gradients(self._name, x, clone=True)
 
 
 class Branch(nn.Module):
