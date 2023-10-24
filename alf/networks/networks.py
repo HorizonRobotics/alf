@@ -311,8 +311,7 @@ class AMPWrapper(Network):
 
     def forward(self, input, state):
         if torch.is_autocast_enabled() and not self._enabled:
-            input = alf.nest.map_structure(
-                lambda x: x.float() if x.dtype.is_floating_point else x, input)
+            input = alf.layers.to_float32(input)
         with torch.cuda.amp.autocast(self._enabled):
             return self._net(input, state)
 
