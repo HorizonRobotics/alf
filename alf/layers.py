@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributions as td
 from torch import Tensor
 from typing import Callable, Dict, Iterable, Optional, Tuple, Union
 
@@ -34,6 +35,7 @@ from alf.utils import common
 from alf.utils.math_ops import identity
 from alf.utils.summary_utils import summarize_tensor_gradients
 from alf.utils.tensor_utils import BatchSquash, tensor_extend_new_dim
+from alf.utils import dist_utils
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
 
@@ -3669,6 +3671,23 @@ def make_parallel_spec(specs, n: int):
     return map_structure(_make_spec, specs)
 
 
+def to_float32(nested):
+    def _to_float32(x):
+        if isinstance(x, torch.Tensor):
+            if x.dtype.is_floating_point:
+                return x.to(torch.float32)
+            else:
+                return x
+        elif isinstance(x, td.Distribution):
+            builder, input_params = dist_utils._get_builder(x)
+            input_params = alf.nest.map_structure(_to_float32, input_params)
+            return builder(**input_params)
+        else:
+            return x
+
+    return map_structure(_to_float32, nested)
+
+
 class AMPWrapper(nn.Module):
     """Wrap a layer to run in a given AMP context.
 
@@ -3684,8 +3703,7 @@ class AMPWrapper(nn.Module):
 
     def forward(self, input):
         if torch.is_autocast_enabled() and not self._enabled:
-            input = alf.nest.map_structure(
-                lambda x: x.float() if x.dtype.is_floating_point else x, input)
+            input = to_float32(input)
         with torch.cuda.amp.autocast(self._enabled):
             return self._net(input)
 
