@@ -629,6 +629,13 @@ class RLTrainer(Trainer):
         if self._evaluate and iter_num == 0:
             self._eval()
 
+        if self._evaluate:
+            if self._config.num_evals is None:
+                self._num_evals_performed = iter_num // self._eval_interval
+            else:
+                self._num_evals_performed = int(
+                    self.progress() * self._config.num_evals)
+
         while True:
             t0 = time.time()
             with record_time("time/train_iter"):
@@ -643,33 +650,20 @@ class RLTrainer(Trainer):
                  int(train_steps) / t),
                 n_seconds=3)
 
-            just_evaluated = False
-            if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
-                if (self._config.num_evals is None
-                        or (iter_num + 1) // self._eval_interval <
-                        self._config.num_evals):
-                    # If num_evals is specified, the last evaluation will be
-                    # performed after training finishes.
-                    self._eval()
-                    just_evaluated = True
             if not training_setting_summarized and train_steps > 0:
                 self._summarize_training_setting()
                 training_setting_summarized = True
 
-            # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
             total_time_steps = env_steps_metric.result()
             iter_num += 1
-
             self._trainer_progress.update(iter_num, total_time_steps)
 
-            if ((self._num_iterations and iter_num >= self._num_iterations)
-                    or (not self._num_iterations
-                        and total_time_steps >= self._num_env_steps)):
-                # Evaluate before exiting so that the eval curve shown in TB
-                # will align with the final iter/env_step.
-                if self._evaluate and not just_evaluated:
-                    self._eval()
+            if self._need_to_evaluate(iter_num):
+                self._eval()
+                self._num_evals_performed += 1
+
+            if self.progress() >= 1:
                 break
 
             self._check_dpp_paras_consistency(iter_num,
@@ -689,6 +683,18 @@ class RLTrainer(Trainer):
                 self._debug_requested = False
                 import pdb
                 pdb.set_trace()
+
+    def _need_to_evaluate(self, iter_num):
+        if not self._evaluate:
+            return False
+        if self.progress() >= 1:
+            # Evaluate before exiting so that the eval curve shown in TB
+            # will align with the final iter/env_step.
+            return True
+        if self._config.num_evals is None:
+            return iter_num % self._eval_interval == 0
+        return self.progress(
+        ) * self._config.num_evals > self._num_evals_performed + 1
 
     def _check_dpp_paras_consistency(self, iter_num: int,
                                      training_started: bool):
