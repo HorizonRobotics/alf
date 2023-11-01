@@ -389,15 +389,13 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
             reward_transformer (Callable): if provided, will calculate the
                 discounted return using the transformed reward. It will be called
                 as ``transformed_reward = reward_transformer(original_reward)``.
-            reward_clip (tuple): in the format (min, max), to optionally plot
-                return based on clipped reward when environment isn't clipping.
         """
+        torch.nn.Module.__init__(self)
         self._discount = discount
         batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._accumulated_discount = torch.zeros(batch_size, device='cpu')
         self._timestep_discount = torch.zeros(batch_size, device='cpu')
         self._reward_transformer = reward_transformer
-
         self._current_step = torch.zeros(batch_size, device='cpu')
 
         super().__init__(
@@ -493,14 +491,12 @@ class EpisodicStartAverageDiscountedReturnMetric(
                  example_time_step: TimeStep,
                  name='EpisodicStartAverageDiscountedReturn',
                  prefix='Metrics',
-                 buffer_size=10,
-                 reward_transformer=None):
+                 buffer_size=10):
         super().__init__(
             name=name,
             prefix=prefix,
             buffer_size=buffer_size,
-            example_time_step=example_time_step,
-            reward_transformer=reward_transformer)
+            example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
