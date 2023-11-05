@@ -784,9 +784,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _alpha_train_step(self, log_pi):
-        neg_entropy = sum(nest.flatten(log_pi))
-        alpha_loss = self._log_alpha * (
-            -neg_entropy - self._target_entropy).detach()
+        if self._act_type == ActionType.Mixed:
+            alpha_loss = nest.map_structure(
+                lambda la, lp, t: la * (-lp - t).detach(), self._log_alpha,
+                log_pi, self._target_entropy)
+            alpha_loss = sum(nest.flatten(alpha_loss))
+        else:
+            neg_entropy = sum(nest.flatten(log_pi))
+            alpha_loss = self._log_alpha * (
+                -neg_entropy - self._target_entropy).detach()
         return alpha_loss
 
     def train_step(self, inputs: TimeStep, state: SacState,
