@@ -789,9 +789,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # in the mixed action case, both log_pi and _target_entropy are tuples of two
             # elements, corresponding to the discrete action and continuous action respectively
             for i in range(2):
-                neg_entropy = sum(nest.flatten(log_pi[i]))
-                alpha_loss = self._log_alpha * (
-                    -neg_entropy - self._target_entropy[i]).detach()
+                neg_entropy_i = sum(nest.flatten(log_pi[i]))
+                alpha_loss += self._log_alpha[i] * (
+                    -neg_entropy_i - self._target_entropy[i]).detach()
         else:
             neg_entropy = sum(nest.flatten(log_pi))
             alpha_loss = self._log_alpha * (
