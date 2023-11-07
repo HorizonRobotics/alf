@@ -17,7 +17,7 @@ import functools
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from typing import Callable
+from typing import Callable, Union
 
 try:
     # If tensorflow has been installed, pytorch might use tensorflow's
@@ -164,6 +164,27 @@ def images(name, data, step=None, dataformat='NCHW', walltime=None):
     """
     _summary_writer_stack[-1].add_images(
         name, data, step, walltime=walltime, dataformats=dataformat)
+
+
+@_summary_wrapper
+def video(name: str,
+          data: Union[np.ndarray, torch.Tensor],
+          step: int = None,
+          fps: int = 4,
+          walltime: float = None):
+    """Add video data to summary.
+
+    Args:
+        name: data identifier
+        data: a video tensor or array of shape ``[B,T,C,H,W]``. The values should
+            lie in [0, 255] for type uint8 or [0, 1] for type float.
+        step: global step value to record
+        fps: frames per second
+        walltime: Optional override default walltime (time.time())
+            seconds after epoch of event
+    """
+    _summary_writer_stack[-1].add_video(
+        name, data, step, fps=fps, walltime=walltime)
 
 
 @_summary_wrapper
