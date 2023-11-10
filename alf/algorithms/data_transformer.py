@@ -328,12 +328,16 @@ class FrameStacker(DataTransformer):
             episode_begin_positions = episode_begin_positions.unsqueeze(-1)
             # [B, stack_size - 1]
             prev_positions = torch.max(prev_positions, episode_begin_positions)
+            # [B]
+            valid_prev = prev_positions[:,
+                                        0] >= replay_buffer.get_earliest_position(
+                                            env_ids)
+            assert torch.all(valid_prev), (
+                "Some previous posisions are no longer in the replay buffer: "
+                f"{prev_positions[:, 0][~valid_prev]}, "
+                f"{replay_buffer.get_earliest_position(env_ids)[~valid_prev]}")
             # [B, 1]
             env_ids = env_ids.unsqueeze(-1)
-            assert torch.all(
-                prev_positions[:, 0] >= replay_buffer.get_earliest_position(
-                    env_ids)
-            ), ("Some previous posisions are no longer in the replay buffer")
 
         batch_size, mini_batch_length = experience.step_type.shape
 
