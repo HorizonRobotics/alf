@@ -59,6 +59,14 @@ class StepMetric(nn.Module):
         raise NotImplementedError(
             'Metrics must define a result() member function')
 
+    def std(self):
+        """Computes the standard deviation of the metric.
+
+        Note that not all metrics have a meaningful standard deviation. For
+        those metrics, this function returns 0.
+        """
+        return torch.zeros(())
+
     def gen_summaries(self,
                       train_step=None,
                       step_metrics=(),

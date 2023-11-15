@@ -1002,7 +1002,9 @@ def log_metrics(metrics, prefix=''):
         metrics (list[alf.metrics.StepMetric]): list of metrics to be logged
         prefix (str): prefix to the log segment
     """
-    log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
+    log = [f'{m.name} = {m.result()}' for m in metrics]
+    logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
+    log = [f'{m.name}.std = {m.std()}' for m in metrics]
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
 
 
