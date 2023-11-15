@@ -37,11 +37,12 @@ import torch.distributions as td
 import torch.nn as nn
 import traceback
 import types
-from typing import Callable, List, Dict
+from typing import Callable, List, Dict, Union
 
 import alf
 from alf.algorithms.config import TrainerConfig
 import alf.nest as nest
+from alf.utils.schedulers import Scheduler, as_scheduler
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
 from alf.utils.per_process_context import PerProcessContext
@@ -186,7 +187,7 @@ class TargetUpdater(nn.Module):
                  models,
                  target_models,
                  tau=1.0,
-                 period=1,
+                 period: Union[int, Scheduler] = 1,
                  init_copy=True,
                  delayed_update: bool = False):
         super().__init__()
@@ -203,8 +204,8 @@ class TargetUpdater(nn.Module):
         if delayed_update:
             self._recent_models = list(
                 map(self._make_copy, models, target_models))
-        self._tau = tau
-        self._period = period
+        self._tau = as_scheduler(tau)
+        self._period = as_scheduler(period)
         self._delayed_update = delayed_update
         self._counter = 0
         if init_copy:
@@ -281,42 +282,47 @@ class TargetUpdater(nn.Module):
                 if id(ws) != id(wt):
                     wt.copy_(ws)
 
-    def _lerp_model_or_parameter(self, s, t):
+    def _lerp_model_or_parameter(self, s, t, tau):
         if isinstance(s, nn.Parameter):
             if id(s) != id(t):
-                t.data.lerp_(s, self._tau)
+                t.data.lerp_(s, tau)
         else:
             for ws, wt in zip(s.parameters(), t.parameters()):
                 if id(ws) != id(wt):
-                    wt.data.lerp_(ws, self._tau)
+                    wt.data.lerp_(ws, tau)
             for ws, wt in zip(s.buffers(), t.buffers()):
                 if id(ws) != id(wt):
                     wt.copy_(ws)
 
     def forward(self):
         self._counter += 1
-        if self._counter % self._period == 0:
+        period = self._period()
+        tau = self._tau()
+        if self._counter >= period:
             if self._delayed_update:
                 for model, target_model in zip(self._recent_models,
                                                self._target_models):
                     self._copy_model_or_parameter(model, target_model)
-            elif self._tau != 1.0:
+            elif tau != 1.0:
                 for model, target_model in zip(self._models,
                                                self._target_models):
-                    self._lerp_model_or_parameter(model, target_model)
+                    self._lerp_model_or_parameter(model, target_model, tau)
             else:
                 for model, target_model in zip(self._models,
                                                self._target_models):
                     self._copy_model_or_parameter(model, target_model)
         if self._delayed_update:
-            if self._tau != 1.0:
+            if tau != 1.0:
                 for model, target_model in zip(self._models,
                                                self._recent_models):
-                    self._lerp_model_or_parameter(model, target_model)
-            elif self._counter % self._period == 0:
+                    self._lerp_model_or_parameter(model, target_model, tau)
+            elif self._counter >= period:
                 for model, target_model in zip(self._models,
                                                self._recent_models):
                     self._copy_model_or_parameter(model, target_model)
+
+        if self._counter >= period:
+            self._counter = 0
 
 
 def expand_dims_as(x, y, end=True):
