@@ -104,6 +104,8 @@ def critic_network_visualizer(net,
     ext_obs = nest.map_structure(
         lambda obs: torch.repeat_interleave(obs, num_anchors, dim=0),
         observation)
+
+    assert action_upper_right.ndim == 1, "Only support 1D action"
     action_lower_right = action_upper_right + action_lower_left - action_upper_left
 
     # create the mini-image: [action_dim, 2, 2]
