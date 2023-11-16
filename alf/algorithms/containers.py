@@ -172,6 +172,15 @@ def SequentialAlg(*modules,
     named 'a'.  And ``named_results['state']['a']`` is state output of the
     algorithm/network named 'a'.
 
+    The result of ``(predict/rollout/train)_step()`` of the ``SequentialAlg`` is
+    an ``AlgStep`` with the following fields:
+
+    - output: the output of the last module or the output specified by ``output``.
+    - state: a list of states from all the modules.
+    - info: a dictionary of info from all the sub-algorithms. The keys
+        are the names of the sub-algorithms (i.e. the name obtained using
+        ``algorithm.name``)
+
     Example 1:
 
     The following contructs an algorithm which predicts the future of its input:
