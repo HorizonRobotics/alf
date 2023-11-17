@@ -18,6 +18,29 @@ from typing import Callable
 
 import alf
 
+_progress = {
+    "percent": 0.0,
+    "iterations": 0.0,
+    "env_steps": 0.0,
+    "global_counter": 0.0
+}
+
+
+def update_progress(progress_type: str, value: Number):
+    _progress[progress_type] = float(value)
+
+
+def update_all_progresses(progresses):
+    _progress.update(progresses)
+
+
+def get_progress(progress_type: str) -> float:
+    return _progress[progress_type]
+
+
+def get_all_progresses():
+    return _progress
+
 
 class Scheduler(object):
     """Base class of all schedulers.
@@ -41,28 +64,11 @@ class Scheduler(object):
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
         """
-        # Do not import from the top to prevent cyclic importing from
-        # algorithms/config.py: config -> shedulers -> policy_trainer -> config
-        from alf.trainers.policy_trainer import Trainer
-
-        if progress_type == "percent":
-            self._progress_func = Trainer.progress
-        elif progress_type == "iterations":
-            self._progress_func = Trainer.current_iterations
-        elif progress_type == "env_steps":
-            self._progress_func = Trainer.current_env_steps
-        elif progress_type == "global_counter":
-            self._progress_func = alf.summary.get_global_counter
-        else:
-            raise ValueError("Unknown progress_type: %s" % progress_type)
-
+        assert progress_type in _progress
         self._progress_type = progress_type
 
     def progress(self):
-        try:
-            return float(self._progress_func())
-        except AssertionError:
-            return 0
+        return _progress[self._progress_type]
 
 
 class ConstantScheduler(object):

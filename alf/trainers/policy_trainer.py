@@ -45,6 +45,7 @@ from alf.utils import git_utils
 from alf.utils import math_ops
 from alf.utils.pretty_print import pformat_pycolor
 from alf.utils.checkpoint_utils import Checkpointer
+from alf.utils.schedulers import update_progress
 import alf.utils.datagen as datagen
 from alf.utils.per_process_context import PerProcessContext
 from alf.utils.summary_utils import record_time
@@ -69,8 +70,10 @@ class _TrainerProgress(nn.Module):
     def update(self, iter_num=None, env_steps=None):
         if iter_num is not None:
             self._iter_num.fill_(iter_num)
+            update_progress("iterations", iter_num)
         if env_steps is not None:
             self._env_steps.fill_(env_steps)
+            update_progress("env_steps", env_steps)
 
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
@@ -81,6 +84,7 @@ class _TrainerProgress(nn.Module):
         else:
             self._progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
+        update_progress("percent", self._progress)
 
     def set_progress(self, value: float):
         """Manually set the current progress.
@@ -89,6 +93,7 @@ class _TrainerProgress(nn.Module):
             value: a float number in [0, 1]
         """
         self._progress = value
+        update_progress("percent", value)
 
     @property
     def progress(self):
@@ -631,6 +636,8 @@ class RLTrainer(Trainer):
 
         while True:
             t0 = time.time()
+            if self._config.sync_progress_to_envs:
+                env.sync_progress()
             with record_time("time/train_iter"):
                 train_steps = self._algorithm.train_iter()
             t = time.time() - t0

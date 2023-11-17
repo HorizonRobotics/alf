@@ -71,6 +71,8 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
 
     Args:
         env_constructors (list[Callable]): a list of callable environment creators.
+            Each callable should accept env_id as the only argument and return
+            the created environment.
         start_serially (bool): whether to start environments serially or in parallel.
         blocking (bool): not used. Kept for the same interface as ``ParallelAlfEnvironment``.
         flatten (bool): not used. Kept for the same interface as ``ParallelAlfEnvironment``.
@@ -251,6 +253,16 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
 
     def _reset(self):
         return self._to_tensor(self._penv.reset())
+
+    def sync_progress(self):
+        """Sync the progress of all environments.
+
+        ALF schedulers need to have progress information to calculate scheduled
+        values. For parallel environments, the environments are in different
+        processes and the progress information needs to be synced with the main
+        in order to use schedulers in the environment.
+        """
+        [env.sync_progress() for env in self._envs]
 
     def close(self):
         """Close all external process."""

@@ -28,7 +28,9 @@ from alf.environments import parallel_environment
 from alf.environments.alf_wrappers import BatchEnvironmentWrapper
 from alf.environments.fast_parallel_environment import FastParallelEnvironment
 from alf.environments.random_alf_environment import RandomAlfEnvironment
+from alf.environments.alf_environment import AlfEnvironment
 import alf.tensor_specs as ts
+from alf.utils.schedulers import update_progress, get_progress
 
 
 class SlowStartingEnvironment(RandomAlfEnvironment):
@@ -41,6 +43,45 @@ class SlowStartingEnvironment(RandomAlfEnvironment):
     def reset(self):
         time.sleep(self._reset_sleep)
         return super().reset()
+
+
+class ProgressEnvironment(AlfEnvironment):
+    def __init__(self, env_id):
+        super().__init__()
+        self._env_id = np.int32(env_id)
+
+    def action_spec(self):
+        return ts.BoundedTensorSpec((),
+                                    torch.float32,
+                                    minimum=-1.0,
+                                    maximum=1.0)
+
+    def observation_spec(self):
+        return ts.TensorSpec((), torch.float32)
+
+    def env_info_spec(self):
+        return {}
+
+    def _step(self, action):
+        return ds.TimeStep(
+            step_type=ds.StepType.MID,
+            prev_action=action,
+            reward=np.float32(1.0),
+            observation=np.float32(get_progress("global_counter")),
+            env_id=self._env_id,
+            discount=np.float32(1.0))
+
+    def seed(self, seed):
+        pass
+
+    def _reset(self):
+        return ds.TimeStep(
+            step_type=ds.StepType.MID,
+            prev_action=np.float32(0.0),
+            reward=np.float32(1.0),
+            observation=np.float32(get_progress("global_counter")),
+            env_id=self._env_id,
+            discount=np.float32(1.0))
 
 
 def slow_env_load(observation_spec,
@@ -379,6 +420,22 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
             self._check_same_nest(ts1, ts2)
         env1.close()
         env2.close()
+
+    def test_sync_progress(self):
+        self._parallel_environment_ctor = FastParallelEnvironment
+        env = self._make_parallel_environment(
+            constructor=ProgressEnvironment, num_envs=6, batch_size_per_env=2)
+        ts = env.reset()
+        for i in range(10):
+            update_progress("global_counter", i)
+            env.sync_progress()
+            ts = env.step(ts.prev_action)
+            self.assertTrue((ts.observation == i).all())
+        for i in range(10, 20):
+            update_progress("global_counter", i)
+            ts = env.step(ts.prev_action)
+            self.assertTrue((ts.observation == 9).all())
+        env.close()
 
 
 if __name__ == '__main__':

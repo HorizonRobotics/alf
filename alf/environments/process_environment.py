@@ -31,6 +31,7 @@ from typing import Callable
 import alf
 from alf.data_structures import TimeStep
 import alf.nest as nest
+from alf.utils.schedulers import update_all_progresses, get_all_progresses
 from . import _penv
 
 
@@ -46,6 +47,7 @@ class _MessageType(Enum):
     RESULT = 4
     EXCEPTION = 5
     CLOSE = 6
+    SYNC_PROGRESS = 7
 
 
 def _worker(conn: multiprocessing.connection,
@@ -146,6 +148,8 @@ def process_call(conn, env, flatten, action_spec):
             assert all([not isinstance(x, torch.Tensor) for x in result
                         ]), ("Tensor result is not allowed: %s" % name)
         conn.send((_MessageType.RESULT, result))
+    elif message == _MessageType.SYNC_PROGRESS:
+        update_all_progresses(payload)
     elif message == _MessageType.CLOSE:
         assert payload is None
         env.close()
@@ -349,6 +353,13 @@ class ProcessEnvironment(object):
             return promise()
         else:
             return promise
+
+    def sync_progress(self):
+        """Sync the progress of the environment.
+        """
+        if self._fast:
+            self._penv.call()
+        self._conn.send((_MessageType.SYNC_PROGRESS, get_all_progresses()))
 
     def _receive(self):
         """Wait for a message from the worker process and return its payload.

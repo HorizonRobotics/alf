@@ -39,6 +39,7 @@ class TrainerConfig(object):
                  use_rollout_state=False,
                  temporally_independent_train_step=None,
                  mask_out_loss_for_last_step=True,
+                 sync_progress_to_envs=False,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
                  no_thread_env_for_conf=False,
@@ -174,6 +175,11 @@ class TrainerConfig(object):
                 recompute state at train_step, this option can also be used. If
                 ``None``, its value is inferred based on whether the algorithm
                 has RNN state (``True`` if there is no RNN state, ``False`` if yes).
+            sync_progress_to_envs: ALF schedulers need to have progress information
+                to calculate scheduled values. For parallel environments, the
+                environments are in different processes and the progress information
+                needs to be synced with the main in order to use schedulers in
+                the environment.
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
@@ -330,6 +336,7 @@ class TrainerConfig(object):
         self.use_rollout_state = use_rollout_state
         self.mask_out_loss_for_last_step = mask_out_loss_for_last_step
         self.temporally_independent_train_step = temporally_independent_train_step
+        self.sync_progress_to_envs = sync_progress_to_envs
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf
