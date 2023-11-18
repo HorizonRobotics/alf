@@ -524,7 +524,7 @@ class Algorithm(AlgorithmInterface):
             alf.summary.scalar(name='memory/max_gpu_allocated', data=mem)
             mem = torch.cuda.max_memory_reserved() // 1e6
             alf.summary.scalar(name='memory/max_gpu_reserved', data=mem)
-            torch.cuda.reset_max_memory_allocated()
+            torch.cuda.reset_peak_memory_stats()
             # TODO: consider using torch.cuda.empty_cache() to save memory.
 
     def add_optimizer(self, optimizer: torch.optim.Optimizer,
