@@ -119,7 +119,7 @@ def action_importance_ratio(action_distribution,
 
 
 def discounted_return(rewards, values, step_types, discounts, time_major=True):
-    """Computes discounted return for the first T-1 steps.
+    r"""Computes discounted return for the first T-1 steps.
 
     The difference between this function and the one tf_agents.utils.value_ops
     is that the accumulated_discounted_reward is replaced by value for is_last

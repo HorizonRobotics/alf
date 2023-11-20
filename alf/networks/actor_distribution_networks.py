@@ -348,7 +348,7 @@ class UnitNormalActorDistributionNetwork(Network):
 
 @alf.configurable
 class LatentActorDistributionNetwork(Network):
-    """Generating an actor distribution by transforming a prior action distribution
+    r"""Generating an actor distribution by transforming a prior action distribution
     (e.g., standard Normal noise :math:`\mathcal{N}(0,1)`) with a normalizing
     flow network. The resulting distribution might have an arbitrary shape.
 
