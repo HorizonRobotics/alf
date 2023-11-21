@@ -170,9 +170,9 @@ class TargetUpdater(nn.Module):
             current model or parameter.
         target_models (Network | list[Network] | Parameter | list[Parameter]):
             the model or parameter to be updated.
-        tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
+        tau: A float scalar or scheduler in :math:`[0, 1]`. Default :math:`\tau=1.0`
             means hard update.
-        period (int): Step interval at which the target model is updated.
+        period: Step interval or scheduler at which the target model is updated.
         init_copy (bool): If True, also copy ``models`` to ``target_models`` in the
             beginning.
         delayed_update: if True, ``target_models`` is updated using recent_models
@@ -186,7 +186,7 @@ class TargetUpdater(nn.Module):
     def __init__(self,
                  models,
                  target_models,
-                 tau=1.0,
+                 tau: Union[float, Scheduler] = 1.0,
                  period: Union[int, Scheduler] = 1,
                  init_copy=True,
                  delayed_update: bool = False):
