@@ -395,7 +395,7 @@ class InvertibleTransform(object):
 
 @alf.repr_wrapper
 class SqrtLinearTransform(InvertibleTransform):
-    """The transformation used by MuZero.
+    r"""The transformation used by MuZero.
 
     .. math::
 
@@ -418,7 +418,7 @@ class SqrtLinearTransform(InvertibleTransform):
 
 @alf.repr_wrapper
 class Sqrt1pTransform(InvertibleTransform):
-    """The transformation used by MuZero with epsilon = 0.
+    r"""The transformation used by MuZero with epsilon = 0.
 
     .. math::
 

@@ -19,7 +19,7 @@ from torch.optim import Optimizer
 
 
 class AdamW(Optimizer):
-    """AdamW optimizer.
+    r"""AdamW optimizer.
 
     The current implementation of AdamW in pytorch 1.8 has a bug introduced
     during refactoring (https://github.com/pytorch/pytorch/pull/50411).

@@ -366,7 +366,7 @@ class AverageReturnMetric(AverageEpisodicAggregationMetric):
 
 @alf.configurable
 class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
-    """Metric for computing the average discounted episodic return.
+    r"""Metric for computing the average discounted episodic return.
     It is calculated according to the following formula:
 
     .. math::
@@ -479,7 +479,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
 @alf.configurable
 class EpisodicStartAverageDiscountedReturnMetric(
         AverageDiscountedReturnMetric):
-    """Metric for computing the discounted return from episode start states.
+    r"""Metric for computing the discounted return from episode start states.
     It is calculated according to the following formula:
 
     .. math::

@@ -44,6 +44,10 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
     reward is greater than the threshold (requirement satisfied) then it decreases
     the reward weight; otherwise it increases the weight.
 
+    Note: The parent algorithm should not call ``train_step()`` and ``calc_loss()``
+    of this algorithm. Instead, it should call ``after_train_iter()`` to perform
+    one gradient step of updating the reward weights.
+
     .. note::
 
         This algorithm doesn't put a constraint on per-step basis since it only
@@ -240,6 +244,8 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
+        assert not alf.get_config_value("TrainerConfig.async_eval"), (
+            "This algorithm doesn't support async evaluation!")
         self._pred_rewards_averager = pred_rewards_averager_ctor(reward_spec)
 
     def predict_step(self, inputs, state=None):
