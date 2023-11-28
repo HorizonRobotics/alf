@@ -621,6 +621,10 @@ def parse_conf_file(conf_file):
 
     It also looks for FLAGS.gin_param and FLAGS.conf_param for extra configs.
 
+    Note: a global environment will be created (which can be obtained by
+    alf.get_env()) and random seed will be initialized by this function using
+    common.set_random_seed().
+
     Args:
         conf_file (str): the full path to the config file
 

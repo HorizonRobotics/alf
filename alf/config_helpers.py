@@ -194,6 +194,10 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
 def parse_config(conf_file, conf_params):
     """Parse config file and config parameters
 
+    Note: a global environment will be created (which can be obtained by
+    alf.get_env()) and random seed will be initialized by this function using
+    common.set_random_seed().    
+
     Args:
         conf_file (str): The full path of the config file.
         conf_params (list[str]): the list of config parameters. Each one has a
