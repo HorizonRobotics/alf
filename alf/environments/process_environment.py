@@ -17,22 +17,53 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/parallel_py_environment.py
 """
 
-from absl import logging
+from absl import flags, logging
 import atexit
 from enum import Enum
 from functools import partial
 import multiprocessing
-import numpy as np
 import sys
 import torch
 import traceback
-from typing import Callable
+from typing import Dict, Any, Callable, List, Tuple
 
 import alf
-from alf.data_structures import TimeStep
 import alf.nest as nest
+from alf.utils import common
 from alf.utils.schedulers import update_all_progresses, get_all_progresses
 from . import _penv
+
+FLAGS = flags.FLAGS
+
+
+def _init_after_spawn(pre_configs: Dict[str, Any]):
+    """Perform necessary initialization of flags and configurations when a new
+    subprocess is "spawn"-ed for ``ProcessEnvironment``.
+
+    This function is not needed if the subprocess is created via "fork".
+    However, if it is created via "spawn", the subprocess will not automatically
+    inherit resources such as the ALF configurations, and this function needs to
+    be called to ensure the ALF configurations are initialized.
+
+    Args:
+        pre_configs: Specifies the set of pre configs that the parent process uses.
+
+    """
+    # 1. Parse the relevant flags for the current subprocess. The set of
+    #    relevant flags are defined below. Note that the command line arguments
+    #    and options are inherited from the parent process via ``sys.argv``.
+    flags.DEFINE_string("conf", None, "Path to the alf config file.")
+    flags.DEFINE_multi_string("conf_param", None, "Config binding parameters.")
+    FLAGS(sys.argv, known_only=True)
+    FLAGS.mark_as_parsed()
+    FLAGS.alsologtostderr = True
+
+    # 2. Configure the logging
+    logging.set_verbosity(logging.INFO)
+
+    # 3. Load the configuration
+    alf.pre_config(pre_configs)
+    common.parse_conf_file(FLAGS.conf, create_env=False)
 
 
 class _MessageType(Enum):
@@ -52,6 +83,8 @@ class _MessageType(Enum):
 
 def _worker(conn: multiprocessing.connection,
             env_constructor: Callable,
+            start_method: str,
+            pre_configs: List[Tuple[str, Any]],
             env_id: int = None,
             flatten: bool = False,
             fast: bool = False,
@@ -63,6 +96,8 @@ def _worker(conn: multiprocessing.connection,
     Args:
         conn: Connection for communication to the main process.
         env_constructor: callable environment creator.
+        start_method: whether this subprocess is created via "fork" or "spawn".
+        pre_configs: pre configs that need to be inherited if created via "spawn".
         env_id: the id of the env
         flatten: whether to assume flattened actions and time_steps
           during communication to avoid overhead.
@@ -78,6 +113,8 @@ def _worker(conn: multiprocessing.connection,
         KeyError: When receiving a message of unknown type.
     """
     try:
+        if start_method == "spawn":
+            _init_after_spawn(pre_configs=dict(pre_configs))
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
@@ -167,6 +204,7 @@ class ProcessEnvironment(object):
                  fast: bool = False,
                  num_envs: int = 0,
                  torch_num_threads_per_env: int = 1,
+                 start_method: str = "fork",
                  name: str = ""):
         """Step environment in a separate process for lock free paralellism.
 
@@ -186,6 +224,7 @@ class ProcessEnvironment(object):
             torch_num_threads_per_env: how many threads torch will use for each
                 env proc. Note that if you have lots of parallel envs, it's best
                 to set this number as 1. Leave this as 'None' to skip the change.
+            start_method: whether this subprocess is created via "fork" or "spawn".
             name: name of the FastParallelEnvironment. Only used if ``fast``
                 is True.
 
@@ -206,6 +245,11 @@ class ProcessEnvironment(object):
         self._fast = fast
         self._num_envs = num_envs
         self._torch_num_threads = torch_num_threads_per_env
+        assert start_method in [
+            "fork", "spawn"
+        ], (f"Unrecognized start method '{start_method}' specified for "        
+            "ProcessEnvironment. It should be either 'fork' or 'spawn'.")
+        self._start_method = start_method
         self._name = name
         if fast:
             self._penv = _penv.ProcessEnvironmentCaller(env_id, name)
@@ -216,22 +260,14 @@ class ProcessEnvironment(object):
         Args:
             wait_to_start (bool): Whether the call should wait for an env initialization.
         """
-        # The following context made sure that the newly created child process
-        # (for environment) is started using the "fork" start method.
-        #
-        # This is to prevent multiprocessing from accidentally creating the
-        # child process with the "spawn" start method. Using "fork" start method
-        # is required here because we would like to have the child process
-        # inherit the alf configurations from the parent process, so that such
-        # configuration are effective for the to-be-created environments in the
-        # child process.
         assert not self._conn, "Cannot start() ProcessEnvironment multiple times"
-        mp_ctx = multiprocessing.get_context('fork')
+        mp_ctx = multiprocessing.get_context(self._start_method)
         self._conn, conn = mp_ctx.Pipe()
         self._process = mp_ctx.Process(
             target=_worker,
-            args=(conn, self._env_constructor, self._env_id, self._flatten,
-                  self._fast, self._num_envs, self._torch_num_threads,
+            args=(conn, self._env_constructor, self._start_method,
+                  alf.get_handled_pre_configs(), self._env_id, self._flatten,
+                  self._fast, self._num_envs, self._torch_num_threads,            
                   self._name))
         atexit.register(self.close)
         self._process.start()

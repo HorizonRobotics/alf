@@ -190,17 +190,22 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
         config1('TrainerConfig.evaluate', False, raise_if_used=False)
 
 
-def parse_config(conf_file, conf_params):
+def parse_config(conf_file, conf_params, create_env: bool = True):
     """Parse config file and config parameters
 
-    Note: a global environment will be created (which can be obtained by
-    alf.get_env()) and random seed will be initialized by this function using
-    common.set_random_seed().
+    Note: by default a global environment will be created (which can be obtained
+    by alf.get_env()) and random seed will be initialized by this function using
+    common.set_random_seed(). Such behavior can be turned off by setting
+    ``create_env = False`` (one use case is when creating ``ProcessEnvironment``
+    wiht "spawn" instead of "fork", where each subprocess will need to parse the
+    config again but not creating the root environment by themselves).
 
     Args:
         conf_file (str): The full path of the config file.
         conf_params (list[str]): the list of config parameters. Each one has a
             format of CONFIG_NAME=VALUE.
+        create_env: Whether to create the environment at the end of parsing.
+
     """
     global _is_parsing
     _is_parsing = True
@@ -223,7 +228,8 @@ def parse_config(conf_file, conf_params):
         _is_parsing = False
 
     # Create the global environment and initialize random seed
-    get_env()
+    if create_env:
+        get_env()
 
 
 def get_env():
