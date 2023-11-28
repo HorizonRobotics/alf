@@ -196,7 +196,7 @@ def parse_config(conf_file, conf_params):
 
     Note: a global environment will be created (which can be obtained by
     alf.get_env()) and random seed will be initialized by this function using
-    common.set_random_seed().    
+    common.set_random_seed().
 
     Args:
         conf_file (str): The full path of the config file.
