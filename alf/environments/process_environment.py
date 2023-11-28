@@ -53,7 +53,7 @@ def _init_after_spawn(context: SpawnedProcessContext):
     # 0. Update the global context for this spawned process. This will
     #    alter the behavior of ``get_env()``.
     set_spawned_process_context(context)
-    
+
     # 1. Parse the relevant flags for the current subprocess. The set of
     #    relevant flags are defined below. Note that the command line arguments
     #    and options are inherited from the parent process via ``sys.argv``.
@@ -119,10 +119,11 @@ def _worker(conn: multiprocessing.connection,
     """
     try:
         if start_method == "spawn":
-            _init_after_spawn(SpawnedProcessContext(
-                env_id=env_id,
-                env_ctor=env_constructor,
-                pre_configs=pre_configs))
+            _init_after_spawn(
+                SpawnedProcessContext(
+                    env_id=env_id,
+                    env_ctor=env_constructor,
+                    pre_configs=pre_configs))
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)

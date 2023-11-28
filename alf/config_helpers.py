@@ -246,7 +246,7 @@ def get_env():
         if isinstance(ctx, SpawnedProcessContext):
             _env = ctx.create_env()
             return _env
-        
+
         if _is_parsing:
             random_seed = get_config_value('TrainerConfig.random_seed')
         else:
