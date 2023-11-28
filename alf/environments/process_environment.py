@@ -247,7 +247,7 @@ class ProcessEnvironment(object):
         self._torch_num_threads = torch_num_threads_per_env
         assert start_method in [
             "fork", "spawn"
-        ], (f"Unrecognized start method '{start_method}' specified for "        
+        ], (f"Unrecognized start method '{start_method}' specified for "
             "ProcessEnvironment. It should be either 'fork' or 'spawn'.")
         self._start_method = start_method
         self._name = name
@@ -267,7 +267,7 @@ class ProcessEnvironment(object):
             target=_worker,
             args=(conn, self._env_constructor, self._start_method,
                   alf.get_handled_pre_configs(), self._env_id, self._flatten,
-                  self._fast, self._num_envs, self._torch_num_threads,            
+                  self._fast, self._num_envs, self._torch_num_threads,
                   self._name))
         atexit.register(self.close)
         self._process.start()
