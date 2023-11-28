@@ -627,7 +627,6 @@ def parse_conf_file(conf_file):
 
     Args:
         conf_file (str): the full path to the config file
-
     """
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
