@@ -31,12 +31,13 @@ import alf
 import alf.nest as nest
 from alf.utils import common
 from alf.utils.schedulers import update_all_progresses, get_all_progresses
+from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
 from . import _penv
 
 FLAGS = flags.FLAGS
 
 
-def _init_after_spawn(pre_configs: Dict[str, Any]):
+def _init_after_spawn(context: SpawnedProcessContext):
     """Perform necessary initialization of flags and configurations when a new
     subprocess is "spawn"-ed for ``ProcessEnvironment``.
 
@@ -49,6 +50,10 @@ def _init_after_spawn(pre_configs: Dict[str, Any]):
         pre_configs: Specifies the set of pre configs that the parent process uses.
 
     """
+    # 0. Update the global context for this spawned process. This will
+    #    alter the behavior of ``get_env()``.
+    set_spawned_process_context(context)
+    
     # 1. Parse the relevant flags for the current subprocess. The set of
     #    relevant flags are defined below. Note that the command line arguments
     #    and options are inherited from the parent process via ``sys.argv``.
@@ -62,8 +67,8 @@ def _init_after_spawn(pre_configs: Dict[str, Any]):
     logging.set_verbosity(logging.INFO)
 
     # 3. Load the configuration
-    alf.pre_config(pre_configs)
-    common.parse_conf_file(FLAGS.conf, create_env=False)
+    alf.pre_config(dict(context.pre_configs))
+    common.parse_conf_file(FLAGS.conf)
 
 
 class _MessageType(Enum):
@@ -114,11 +119,19 @@ def _worker(conn: multiprocessing.connection,
     """
     try:
         if start_method == "spawn":
-            _init_after_spawn(pre_configs=dict(pre_configs))
+            _init_after_spawn(SpawnedProcessContext(
+                env_id=env_id,
+                env_ctor=env_constructor,
+                pre_configs=pre_configs))
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
-        env = env_constructor(env_id=env_id)
+        if start_method == "spawn":
+            ctx = get_spawned_process_context()
+            assert isinstance(ctx, SpawnedProcessContext)
+            env = ctx.create_env()
+        else:
+            env = env_constructor(env_id=env_id)
         action_spec = env.action_spec()
         if fast:
             penv = _penv.ProcessEnvironment(
@@ -268,7 +281,8 @@ class ProcessEnvironment(object):
             args=(conn, self._env_constructor, self._start_method,
                   alf.get_handled_pre_configs(), self._env_id, self._flatten,
                   self._fast, self._num_envs, self._torch_num_threads,
-                  self._name))
+                  self._name),
+            name=f"ProcessEnvironment-{self._env_id}")
         atexit.register(self.close)
         self._process.start()
         if wait_to_start:

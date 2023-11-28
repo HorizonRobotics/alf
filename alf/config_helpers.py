@@ -26,6 +26,7 @@ from alf.config_util import config1, get_config_value, load_config, pre_config, 
 from alf.environments.utils import create_environment
 from alf.utils.common import set_random_seed
 from alf.utils.per_process_context import PerProcessContext
+from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
@@ -190,21 +191,13 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
         config1('TrainerConfig.evaluate', False, raise_if_used=False)
 
 
-def parse_config(conf_file, conf_params, create_env: bool = True):
+def parse_config(conf_file, conf_params):
     """Parse config file and config parameters
-
-    Note: by default a global environment will be created (which can be obtained
-    by alf.get_env()) and random seed will be initialized by this function using
-    common.set_random_seed(). Such behavior can be turned off by setting
-    ``create_env = False`` (one use case is when creating ``ProcessEnvironment``
-    wiht "spawn" instead of "fork", where each subprocess will need to parse the
-    config again but not creating the root environment by themselves).
 
     Args:
         conf_file (str): The full path of the config file.
         conf_params (list[str]): the list of config parameters. Each one has a
             format of CONFIG_NAME=VALUE.
-        create_env: Whether to create the environment at the end of parsing.
 
     """
     global _is_parsing
@@ -228,8 +221,7 @@ def parse_config(conf_file, conf_params, create_env: bool = True):
         _is_parsing = False
 
     # Create the global environment and initialize random seed
-    if create_env:
-        get_env()
+    get_env()
 
 
 def get_env():
@@ -245,6 +237,16 @@ def get_env():
     """
     global _env
     if _env is None:
+        # When ``get_env()`` is called in a spawned process (this is almost
+        # always due to a ``ProcessEnvironment`` created with "spawn" method),
+        # use the environment construtor from the context to create the
+        # environment. This is to avoid creating a parallel environment which
+        # leads to infinite recursion.
+        ctx = get_spawned_process_context()
+        if isinstance(ctx, SpawnedProcessContext):
+            _env = ctx.create_env()
+            return _env
+        
         if _is_parsing:
             random_seed = get_config_value('TrainerConfig.random_seed')
         else:
