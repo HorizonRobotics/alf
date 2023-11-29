@@ -20,7 +20,11 @@ from alf.utils.losses import element_wise_huber_loss
 
 # Environment Configuration
 alf.config(
-    'create_environment', env_name='CartPole-v0', num_parallel_environments=8)
+    'create_environment',
+    env_name='CartPole-v0',
+    num_parallel_environments=8,
+    start_serially=False)
+alf.config('FastParallelEnvironment', start_method="spawn")
 
 # Reward Scailing
 alf.config('TrainerConfig', data_transformer_ctor=RewardScaling)

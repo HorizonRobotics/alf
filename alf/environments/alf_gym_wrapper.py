@@ -217,6 +217,11 @@ class AlfGymWrapper(AlfEnvironment):
 
         observation, reward, self._done, self._info = self._gym_env.step(
             action)
+        # NOTE: In recent version of gym, the environment info may have
+        # "TimeLimit.truncated" to indicate that the env has run beyond the time
+        # limit. If so, it will removed to avoid having conflict with our env
+        # info spec.
+        self._info.pop("TimeLimit.truncated", None)
         observation = self._to_spec_dtype_observation(observation)
         self._info = _as_array(self._info)
 
