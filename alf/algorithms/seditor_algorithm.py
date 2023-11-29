@@ -193,7 +193,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 actor_network,
                 d_actor_network,
                 critic_networks,
-            ] + log_alpha)
+            ] + list(log_alpha))
 
         self._log_alpha = log_alpha
         self._log_alpha_paralist = nn.ParameterList(log_alpha)
@@ -419,6 +419,13 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             })
 
     def rollout_step(self, inputs: TimeStep, state):
+        """
+        Returns:
+            AlgStep:
+            - output: the action to take
+            - state: unchanged
+            - info: ActPredOutput
+        """
         ap_out = self._predict_action(inputs, state, mode=Mode.rollout)
         return AlgStep(output=ap_out.output, state=state, info=ap_out)
 
@@ -456,7 +463,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             alpha=alpha_loss)
 
         return AlgStep(
-            output=ap_out.output.out_a_SE_detached, state=state, info=info)
+            output=0.5 * (ap_out.output.out_a_UM_detached + ap_out.output.out_a_SE_detached), state=state, info=info)
 
     def _compute_critics(self,
                          critic_net,
@@ -493,7 +500,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         # only maximize the utility Q value
         q = critics[..., 0].sum()
 
-        dqda = nest_utils.grad(ap_out.a, q)
+        dqda = nest_utils.grad(ap_out.a, q, retain_graph=True)
         actor_loss = self._actor_loss_fn(dqda, ap_out.a)
         actor_loss -= alpha * a_entropy
         return actor_loss
@@ -526,7 +533,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
 
         q2 = torch.stack((-change_a_loss, q), dim=-1)
         q2 = torch.matmul(q2, self.reward_weights).sum()
-        dqda = nest_utils.grad(ap_out.da, q2)
+        dqda = nest_utils.grad(ap_out.da, q2, retain_graph=True)
 
         actor_loss = self._actor_loss_fn(dqda, ap_out.da)
         actor_loss -= alpha * da_entropy
