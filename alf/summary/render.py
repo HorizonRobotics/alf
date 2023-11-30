@@ -107,6 +107,9 @@ class Image(object):
             width (int): the desired output image width. If ``None``, this will
                 be scaled to keep the original aspect ratio if ``height`` is
                 provided.
+
+        Returns:
+            Image: self after resizing
         """
         if width is not None and height is not None:
             self._img = cv2.resize(self._img, dsize=(width, height))
@@ -123,6 +126,7 @@ class Image(object):
             fx=scale,
             fy=scale,
             interpolation=cv2.INTER_LINEAR)
+        return self
 
     @classmethod
     def from_pyplot_fig(cls, fig, dpi=200):
