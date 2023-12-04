@@ -18,7 +18,6 @@ import numpy as np
 import random
 
 import alf
-from alf.environments import suite_gym
 from alf.environments import thread_environment, parallel_environment, fast_parallel_environment
 from alf.environments import alf_wrappers
 
@@ -89,8 +88,8 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
 
 
 @alf.configurable
-def create_environment(env_name='CartPole-v0',
-                       env_load_fn=suite_gym.load,
+def create_environment(env_name=None,
+                       env_load_fn=None,
                        eval_env_load_fn=None,
                        for_evaluation=False,
                        num_parallel_environments=30,
@@ -108,10 +107,10 @@ def create_environment(env_name='CartPole-v0',
     """Create a batched environment.
 
     Args:
-        env_name (str|list[str]): env name. If it is a list, ``MultitaskWrapper``
+        env_name (str|list[str]): env name (e.g 'CartPole-v0'). If it is a list, ``MultitaskWrapper``
             will be used to create multi-task environments. Each one of them
             consists of the environments listed in ``env_name``.
-        env_load_fn (Callable) : callable that create an environment
+        env_load_fn (Callable) : callable that create an environment (e.g. suite_gym.load)
             If env_load_fn has attribute ``batched`` and it is True,
             ``evn_load_fn(env_name, env_id=env_id, batch_size=batch_size_per_env)``
             will be used to create the batched environment. Otherwise,
@@ -171,6 +170,12 @@ def create_environment(env_name='CartPole-v0',
         AlfEnvironment:
 
     """
+
+    if env_name is None:
+        env_name = 'CartPole-v0'
+    if env_load_fn is None:
+        from alf.environments import suite_gym
+        env_load_fn = suite_gym.load
 
     if for_evaluation:
         # for creating an evaluation environment, use ``eval_env_load_fn`` if
@@ -266,7 +271,7 @@ def create_environment(env_name='CartPole-v0',
 
 @alf.configurable
 def load_with_random_max_episode_steps(env_name,
-                                       env_load_fn=suite_gym.load,
+                                       env_load_fn,
                                        min_steps=200,
                                        max_steps=250):
     """Create environment with random max_episode_steps in range
