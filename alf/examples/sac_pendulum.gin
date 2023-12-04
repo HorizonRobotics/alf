@@ -1,4 +1,4 @@
-
+import alf.environments.suite_gym
 include 'sac.gin'
 
 import alf.utils.math_ops

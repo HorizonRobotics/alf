@@ -172,8 +172,10 @@ def create_environment(env_name=None,
     """
 
     if env_name is None:
+        # Keep compatibility with the old default env_name
         env_name = 'CartPole-v0'
     if env_load_fn is None:
+        # Keep compatibility with the old default env_name
         from alf.environments import suite_gym
         env_load_fn = suite_gym.load
 
