@@ -168,6 +168,7 @@ def wrap_optimizer(cls):
             if isinstance(lr, Callable):
                 self._lr_scheduler = lr
                 kwargs["lr"] = float(lr())
+        self._lr_schedulers = []
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         if gradient_clipping is not None:
@@ -198,8 +199,14 @@ def wrap_optimizer(cls):
         """
         if self._lr_scheduler is not None:
             lr = float(self._lr_scheduler())
-            for param_group in self.param_groups:
-                param_group['lr'] = lr
+            for i, (lr_scheduler, param_group) in enumerate(
+                    zip(self._lr_schedulers, self.param_groups)):
+                if lr_scheduler is not None:
+                    param_group['lr'] = lr_scheduler()
+                    if alf.summary.should_record_summaries():
+                        alf.summary.scalar("lr/%s/%s" % (self.name, i), lr)
+                else:
+                    param_group['lr'] = lr
             if alf.summary.should_record_summaries():
                 alf.summary.scalar("lr/%s" % self.name, lr)
         params = []
@@ -327,6 +334,13 @@ def wrap_optimizer(cls):
         else:
             param_group['params'] = list(params)
 
+        lr_scheduler = param_group.get('lr_scheduler', None)
+        if isinstance(lr_scheduler, Callable):
+            self._lr_schedulers.append(lr_scheduler)
+            param_group['lr'] = lr_scheduler()
+        else:
+            self._lr_schedulers.append(None)
+
         len_params = len(param_group['params'])
         std_param_group = []
         ensemble_param_groups = [[] for i in range(len_params)]
@@ -372,10 +386,11 @@ def wrap_optimizer(cls):
 Adam = alf.repr_wrapper(
     alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam)))
 
-# TODO: uncomment this after removing `adamw.py`
-#AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
-AdamW = alf.repr_wrapper(
-    alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW)))
+if torch.__version__ >= '1.8.1':
+    AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
+else:
+    AdamW = alf.repr_wrapper(
+        alf.configurable('AdamW')(wrap_optimizer(adamw.AdamW)))
 
 SGD = alf.repr_wrapper(
     alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD)))
