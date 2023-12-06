@@ -698,6 +698,7 @@ class RLTrainer(Trainer):
             if self._config.sync_progress_to_envs:
                 env.sync_progress()
             with record_time("time/train_iter"):
+                print(f"rank {self._rank}: {self._algorithm}")
                 train_steps = self._algorithm.train_iter()
             t = time.time() - t0
             logging.log_every_n_seconds(
