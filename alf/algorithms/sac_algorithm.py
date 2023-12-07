@@ -17,6 +17,7 @@ from absl import logging
 import numpy as np
 import functools
 from enum import Enum
+import math
 
 import torch
 import torch.nn as nn
@@ -281,8 +282,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 "Only continuous/discrete action is supported for multidimensional reward"
             )
 
+        finite_alpha = math.isfinite(initial_log_alpha)
+
         def _init_log_alpha():
-            return nn.Parameter(torch.tensor(float(initial_log_alpha)))
+            if finite_alpha:
+                # Only when the initial log alpha is finite, we can train it with
+                # a finite loss. If we create a parameter for an infinite alpha and
+                # don't add its loss to the overall loss, then DDP might complain.
+                return nn.Parameter(torch.tensor(float(initial_log_alpha)))
+            else:
+                return torch.tensor(float(initial_log_alpha))
 
         if self._act_type == ActionType.Mixed:
             # separate alphas for discrete and continuous actions
@@ -327,13 +336,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None and critic_networks is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])
-        if alpha_optimizer is not None:
-            self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
+
+        if finite_alpha:
+            if alpha_optimizer is not None:
+                self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
+            if self._act_type == ActionType.Mixed:
+                self._log_alpha_paralist = nn.ParameterList(
+                    nest.flatten(log_alpha))
 
         self._log_alpha = log_alpha
-        if self._act_type == ActionType.Mixed:
-            self._log_alpha_paralist = nn.ParameterList(
-                nest.flatten(log_alpha))
 
         if max_log_alpha is not None:
             self._max_log_alpha = torch.tensor(float(max_log_alpha))
@@ -372,12 +383,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         else:
             if self._act_type == ActionType.Mixed:
                 if not isinstance(target_entropy, (tuple, list)):
-                    target_entropy = nest.map_structure(
-                        lambda _: target_entropy, self._action_spec)
+                    target_entropy = nest.map_structure_up_to(
+                        nest.nest_top_level(
+                            self._action_spec), lambda _: target_entropy,
+                        self._action_spec)
                 # separate target entropies for discrete and continuous actions
-                self._target_entropy = nest.map_structure(
-                    lambda spec, t: _set_target_entropy(self.name, t, [spec]),
-                    self._action_spec, target_entropy)
+                self._target_entropy = nest.map_structure_up_to(
+                    target_entropy, lambda spec, t: _set_target_entropy(
+                        self.name, t, nest.flatten(spec)), self._action_spec,
+                    target_entropy)
             else:
                 self._target_entropy = _set_target_entropy(
                     self.name, target_entropy, nest.flatten(self._action_spec))
@@ -784,19 +798,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _alpha_train_step(self, log_pi):
-        if self._act_type == ActionType.Mixed:
-            alpha_loss = 0
-            # in the mixed action case, both log_pi and _target_entropy are tuples of two
-            # elements, corresponding to the discrete action and continuous action respectively
-            for i in range(2):
-                neg_entropy_i = sum(nest.flatten(log_pi[i]))
-                alpha_loss += self._log_alpha[i] * (
-                    -neg_entropy_i - self._target_entropy[i]).detach()
-        else:
-            neg_entropy = sum(nest.flatten(log_pi))
-            alpha_loss = self._log_alpha * (
-                -neg_entropy - self._target_entropy).detach()
-        return alpha_loss
+        # ``log_pi`` should either be a scalar or a pair (mixed action case),
+        # so is ``self._target_entropy``
+        alpha_loss = nest.map_structure(
+            lambda la, lp, t: (la * (-lp - t).detach() if isinstance(
+                la, nn.Parameter) else torch.zeros_like(lp)), self._log_alpha,
+            log_pi, self._target_entropy)
+        return sum(nest.flatten(alpha_loss))
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: SacInfo):
