@@ -60,6 +60,7 @@ class Evaluator(object):
         if conf_file.endswith('.gin'):
             assert not self._async, "async_eval is not supported for gin_file"
         num_envs = config.num_eval_environments
+        batch_size_per_env = num_envs
         seed = config.random_seed
         if self._async:
             ctx = mp.get_context('spawn')
@@ -69,12 +70,14 @@ class Evaluator(object):
             self._worker = ctx.Process(
                 target=_worker,
                 args=(self._job_queue, self._done_queue, conf_file,
-                      pre_configs, num_envs, config.root_dir, seed))
+                      pre_configs, num_envs, batch_size_per_env,
+                      config.root_dir, seed))
             self._worker.start()
         else:
             self._env = create_environment(
                 for_evaluation=True,
                 num_parallel_environments=num_envs,
+                batch_size_per_env=num_envs,
                 seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
@@ -171,6 +174,7 @@ def _worker(job_queue: mp.Queue,
             conf_file: str,
             pre_configs: Dict,
             num_parallel_envs: int,
+            batch_size_per_env: int,
             root_dir: str,
             seed: Optional[int] = None):
     try:
@@ -194,6 +198,7 @@ def _worker(job_queue: mp.Queue,
             'create_environment',
             for_evaluation=True,
             num_parallel_environments=num_parallel_envs,
+            batch_size_per_env=batch_size_per_env,
             mutable=False)
         try:
             alf.pre_config(pre_configs)
