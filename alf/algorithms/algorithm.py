@@ -35,6 +35,7 @@ from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import (is_checkpoint_enabled,
                                         extract_sub_state_dict_from_checkpoint)
 from alf.utils import common, dist_utils, spec_utils, summary_utils
+from alf.utils.per_process_context import PerProcessContext
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from alf.utils.distributed import data_distributed_when
@@ -1290,7 +1291,9 @@ class Algorithm(AlgorithmInterface):
             with record_time("time/backward"):
                 if self._grad_scaler is not None:
                     loss = self._grad_scaler.scale(loss)
+                print(f"[rank {PerProcessContext().ddp_rank}] Start backward")
                 loss.mean().backward()
+                print(f"[rank {PerProcessContext().ddp_rank}] Finished backward")
 
         for optimizer in optimizers:
             if self._grad_scaler is not None:
