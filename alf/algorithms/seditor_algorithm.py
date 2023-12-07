@@ -53,8 +53,8 @@ SEditorActorInfo = namedtuple(
         "da_loss",  # loss for SE policy (Eq 7b)
         "a_entropy",  # entropy of UM policy
         "da_entropy",  # entropy of SE policy
-        "change_a_loss",  # action editing loss -d(a,\hat{a})
-        "a_l2"  # |a-\hat{a}|^2
+        "change_a_loss",  # action editing loss :math:`-d(a,\hat{a})`
+        "a_l2"  # :math:`|a-\hat{a}|^2`
     ],
     default_value=())
 
@@ -68,11 +68,15 @@ ActPredOutput = namedtuple(
     "ActPredOutput",
     [
         "a",  # action proposal by UM
-        "da",  # delta a by SE
+        "da",  # :math:`\delta a` by SE
         "a_dist",  # action proposal distribution
         "da_dist",  # delta distribution
         "output"  # final output after action editing
     ],
+    default_value=())
+
+Actions = namedtuple(
+    "Actions", ["out_a_UM_detached", "out_a_SE_detached", "a_UM_detached"],
     default_value=())
 
 Mode = Enum('AlgorithmMode', ('predict', 'rollout', 'train'))
@@ -80,17 +84,18 @@ Mode = Enum('AlgorithmMode', ('predict', 'rollout', 'train'))
 
 @alf.configurable
 class SEditorAlgorithm(OffPolicyAlgorithm):
-    """Implements the Safe Editor Policy algorithm in the paper:
+    r"""Implements the Safe Editor Policy algorithm in the paper:
 
     "Towards Safe Reinforcement Learning with a Safety Editor Policy", Yu et al. 2022.
 
-    SEditor consists of two policies UM and SE. UM proposes a preliminary action \hat{a}
-    that aims at maximizing the utility reward. Then SE outputs an adjustment \delta a,
-    to ensure a low constraint violation rate.
+    SEditor consists of two policies UM and SE. UM proposes a preliminary action
+    :math:`\hat{a}` that aims at maximizing the utility reward. Then SE outputs
+    an adjustment :math:`\delta a`, to ensure a low constraint violation rate.
 
     Notation: Note that the notation 'a' in this file actually refers
-    to \hat{a} in the paper. For simplicity, we directly write as 'a'. 'da' means
-    the delta action by SE. The final output action is stored in ``ActPredOutput.output``.
+    to :math:`\hat{a}` in the paper. For simplicity, we directly write as 'a'.
+    'da' means the delta action by SE. The final output action is stored in
+    ``ActPredOutput.output``.
     """
 
     def __init__(self,
@@ -131,9 +136,10 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 will have independent alpha training losses.
             train_alpha: whether to learn the entropy weights or not
             epsilon_greedy: epsilon greedy for prediction step
-            soft_clipping: if True, then after applying delta a to hat a, we use
-                a ``math_ops.softclip`` function to clip the modified action in range.
-                Otherwise, the modified action is hard clipped.
+            soft_clipping: if True, then after applying :math:`\delta a` to
+                :math:`\hat{a}`, we use a ``math_ops.softclip`` function to clip
+                the modified action in range. Otherwise, the modified action is
+                hard clipped.
             hinge_softness: parameter to ``math_ops.softclip()`` controlling how
                 soft the clipping is
             regularize_action_diff: if True, then the action dist function ``d``
@@ -200,8 +206,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
 
         # Here we make a copy of ``actor_network`` and ``d_actor_network`` but
         # refrain from training them, so that it's easier for us to compute
-        # dqd\hat{a} and dqd\delta a without being interfered by the other network
-        # (Blue and orange paths in Figure 2).
+        # :math:`dqd\hat{a}` and :math:`dqd\delta a` without being interfered by
+        # the other network (Blue and orange paths in Figure 2).
         # After each gradient update, these two copies will get updated.
         self._actor_network_opt_ignored = actor_network.copy(
             name='actor_network_opt_ignored')
@@ -284,10 +290,10 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                  epsilon_greedy: float,
                  mode: Mode,
                  opt_ignore: str = 'none') -> ActPredOutput:
-        """
-        Doing one inference of SEditor. We first compute \hat{a} using UM and
-        then compute \delta a using SE. Finally we using the action editing function
-        to output the edited action.
+        r"""
+        Doing one inference of SEditor. We first compute :math:`\hat{a}` using UM and
+        then compute :math:`\delta a` using SE. Finally we using the action editing
+        function to output the edited action.
 
         Args:
             time_step: current time step
@@ -352,23 +358,23 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 a_dist=ap_out1.a_dist,
                 da=ap_out0.da,
                 da_dist=ap_out0.da_dist,
-                output=(
-                    ap_out1.output,
-                    ap_out0.output,
+                output=Actions(
+                    out_a_SE_detached=ap_out1.output,
+                    out_a_UM_detached=ap_out0.output,
                     # for computing how much the safety policy changes the action
-                    ap_out0.a))
+                    a_UM_detached=ap_out0.a))
         else:
             return self._forward(
                 time_step, epsilon_greedy, mode, opt_ignore='none')
 
     def _safe_action(self, a, da):
-        """Perform action editing.
+        r"""Perform action editing.
 
         Depending on ``self._soft_clipping``, we use either ``softclip`` or
         ``clip_to_spec``.
 
         Args:
-            a: the proposed action (\hat{a}) by UM.
+            a: the proposed action (:math:`\hat{a}`) by UM.
             da: the delta action by SE.
 
         Output:
@@ -401,8 +407,6 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             imgs['l2'] = render.render_bar(name="action_l2", data=l2)
             imgs['a'] = render.render_action(
                 name="a", action=ap_out.a, action_spec=self._action_spec)
-            #imgs['da'] = render.render_action(
-            #    name="da", action=ap_out.da, action_spec=self._action_spec)
             imgs['out_a'] = render.render_action(
                 name="out_a",
                 action=ap_out.output,
@@ -418,7 +422,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         ap_out = self._predict_action(inputs, state, mode=Mode.rollout)
         return AlgStep(output=ap_out.output, state=state, info=ap_out)
 
-    def train_step(self, inputs: TimeStep, state, rollout_info: SEditorInfo):
+    def train_step(self, inputs: TimeStep, state, rollout_info: ActPredOutput):
         def _calc_entropy(dist, a):
             return -dist_utils.compute_log_probability(dist, a)
 
@@ -451,7 +455,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             critic=critic_info,
             alpha=alpha_loss)
 
-        return AlgStep(output=ap_out.output[0], state=state, info=info)
+        return AlgStep(
+            output=ap_out.output.out_a_SE_detached, state=state, info=info)
 
     def _compute_critics(self,
                          critic_net,
@@ -483,7 +488,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         alpha = self._log_alpha[0].exp().detach()
 
         critics = self._compute_critics(self._critic_networks,
-                                        inputs.observation, ap_out.output[0])
+                                        inputs.observation,
+                                        ap_out.output.out_a_SE_detached)
         # only maximize the utility Q value
         q = critics[..., 0].sum()
 
@@ -499,12 +505,14 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         alpha = self._log_alpha[1].exp().detach()
 
         critics = self._compute_critics(self._critic_networks,
-                                        inputs.observation, ap_out.output[1])
+                                        inputs.observation,
+                                        ap_out.output.out_a_UM_detached)
 
         # only maximize the constraint Q value
         q = critics[..., 1]
 
-        a_l2 = ((ap_out.output[1] - ap_out.output[2])**2).mean(dim=-1)
+        a_l2 = ((ap_out.output.out_a_UM_detached - ap_out.output.a_UM_detached)
+                **2).mean(dim=-1)
 
         if self._regularize_action_diff:
             # Take mean so that the loss magnitude is invariant to action dimension
@@ -513,11 +521,11 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             with torch.no_grad():
                 a_critics = self._compute_critics(self._critic_networks,
                                                   inputs.observation,
-                                                  ap_out.output[2])
+                                                  ap_out.output.a_UM_detached)
             change_a_loss = torch.relu(a_critics[..., 0] - critics[..., 0])
 
         q2 = torch.stack((-change_a_loss, q), dim=-1)
-        q2 = torch.einsum("bd,d->b", q2, self.reward_weights).sum()
+        q2 = torch.matmul(q2, self.reward_weights).sum()
         dqda = nest_utils.grad(ap_out.da, q2)
 
         actor_loss = self._actor_loss_fn(dqda, ap_out.da)
@@ -525,7 +533,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         return actor_loss, change_a_loss, a_l2
 
     def _critic_train_step(self, inputs: TimeStep, ap_out,
-                           rollout_info: SEditorInfo):
+                           rollout_info: ActPredOutput):
         """Typical TD learning as seen in SAC. The utility Q and constraint Q
         are learned in parallel.
         """
@@ -533,7 +541,7 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         with torch.no_grad():
             target_critics = self._compute_critics(
                 self._target_critic_networks, inputs.observation,
-                ap_out.output[0])
+                ap_out.output.out_a_SE_detached)
 
         critics = self._compute_critics(
             self._critic_networks,
