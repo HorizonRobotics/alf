@@ -17,7 +17,8 @@ import time
 import torch
 
 import alf
-from alf.networks import s5
+from alf.networks.s5 import s5
+from alf.networks.s5.utils import diag_ssm_forward_slow, diag_ssm_forward_triton
 
 
 class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
@@ -58,7 +59,7 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
         Lambda.grad = None
         x.grad = None
         s.grad = None
-        y1 = s5.diag_ssm_forward_slow(s, x, Lambda)
+        y1 = diag_ssm_forward_slow(s, x, Lambda)
         Lambda_grad1, x_grad1, s_grad1 = torch.autograd.grad((y1 * mask).sum(),
                                                              [Lambda, x, s])
 
@@ -67,7 +68,7 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
             Lambda.grad = None
             x.grad = None
             s.grad = None
-            y1 = s5.diag_ssm_forward_slow(s, x, Lambda)
+            y1 = diag_ssm_forward_slow(s, x, Lambda)
             Lambda_grad1, x_grad1, s_grad1 = torch.autograd.grad(
                 (y1 * mask).sum(), [Lambda, x, s])
 
@@ -77,7 +78,7 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
         Lambda.grad = None
         x.grad = None
         s.grad = None
-        y2 = s5.diag_ssm_forward_triton(s, x, Lambda)
+        y2 = diag_ssm_forward_triton(s, x, Lambda)
         Lambda_grad2, x_grad2, s_grad2 = torch.autograd.grad((y2 * mask).sum(),
                                                              [Lambda, x, s])
 
@@ -86,7 +87,7 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
             Lambda.grad = None
             x.grad = None
             s.grad = None
-            y2 = s5.diag_ssm_forward_triton(s, x, Lambda)
+            y2 = diag_ssm_forward_triton(s, x, Lambda)
             Lambda_grad2, x_grad2, s_grad2 = torch.autograd.grad(
                 (y2 * mask).sum(), [Lambda, x, s])
 
