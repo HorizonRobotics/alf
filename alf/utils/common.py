@@ -1366,13 +1366,11 @@ def get_all_parameters(obj):
             if name.startswith('__') and name.endswith('__'):
                 # Ignore system attributes,
                 continue
-            attr = None
-            try:
-                attr = getattr(obj, name)
-            except:
-                # some attrbutes are property function, which may raise exception
-                # when called in a wrong context (e.g. Algorithm.experience_spec)
-                pass
+            # We want to skip property functions, which may raise exception
+            # when called in a wrong context (e.g. Algorithm.experience_spec)
+            if isinstance(getattr(type(obj), name, None), property):
+                continue
+            attr = getattr(obj, name, None)
             if attr is None or id(attr) in memo:
                 continue
             unprocessed.append((attr, path + name))
