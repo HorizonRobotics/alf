@@ -27,7 +27,7 @@ from typing import Tuple
 import alf
 from alf.utils import common
 from alf.networks import s5
-from alf.networks.s5_test_data import create_mnist_classification_dataset
+from alf.networks.s5.s5_test_data import create_mnist_classification_dataset
 from alf.utils.schedulers import Scheduler, LinearScheduler, update_progress
 
 
