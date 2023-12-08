@@ -36,6 +36,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[BC](alf/algorithms/bc_algorithm.py)|Offline RL|Pomerleau "ALVINN: An Autonomous Land Vehicle in a Neural Network" [NeurIPS 1988](https://papers.nips.cc/paper/1988/hash/812b4ba287f5ee0bc9d43bbf5bbe87fb-Abstract.html) <br>  Bain et al. "A framework for behavioural cloning" [Machine Intelligence 1999](http://www.cse.unsw.edu.au/~claude/papers/MI15.pdf)|
 |[Causal BC](alf/algorithms/causal_bc_algorithm.py)|Offline RL|Swamy et al. "Causal Imitation Learning under Temporally Correlated Noise" [ICML2022](https://proceedings.mlr.press/v162/swamy22a/swamy22a.pdf)|
 |[IQL](alf/algorithms/iql_algorithm.py)|Offline RL|Kostrikov, et al. "Offline Reinforcement Learning with Implicit Q-Learning" [arXiv:2110.06169](https://arxiv.org/abs/2110.06169)|
+|[SEditor](alf/algorithms/seditor_algorithm.py)|Offline/Safe RL|Yu et al. "Towards Safe Reinforcement Learning with a Safety Editor Policy" [NeurIPS 2022](https://proceedings.neurips.cc/paper_files/paper/2022/file/11afefdd848d1bc9ac9f1604d9f45817-Paper-Conference.pdf)|
 |[MERLIN](alf/algorithms/merlin_algorithm.py)|Unsupervised learning|Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)|
 |[MoNet](alf/algorithms/monet_algorithm.py)|Unsupervised learning|Burgess et al. "MONet: Unsupervised Scene Decomposition and Representation" [arXiv:1901.11390](https://arxiv.org/abs/1901.11390)|
 |[Amortized SVGD](alf/algorithms/generator.py)|General|Feng et al. "Learning to Draw Samples with Amortized Stein Variational Gradient Descent" [arXiv:1707.06626](https://arxiv.org/abs/1707.06626)|
@@ -61,7 +62,7 @@ Python3.8 (and above) is currently supported by ALF. Note that some pip packages
 sudo apt install -y python3-dev
 ```
 
-Boost is also required by ALF for fast parallel environments. 
+Boost is also required by ALF for fast parallel environments.
 
 ```
 sudo apt install libboost-all-dev
@@ -76,7 +77,7 @@ cd alf
 pip install -e . --extra-index-url https://download.pytorch.org/whl/cu113
 ```
 
-#### For Nix Users 
+#### For Nix Users
 
 There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
 

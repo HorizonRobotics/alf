@@ -77,6 +77,7 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         super().__init__(env)
 
         self._fields = fields if (fields is not None) else [None]
+        assert isinstance(self._fields, list), f"{fields} is not a list!"
         observation_space = env.observation_space
         for field in self._fields:
             observation_space = transform_space(

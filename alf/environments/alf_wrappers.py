@@ -322,10 +322,10 @@ class NonEpisodicAgent(AlfEnvironmentBaseWrapper):
     opportunity cost incurred by having to play through the game from the
     beginning."
 
-    NOTE: For PURE intrinsic-motivated agents only. If you use both extrinsic
-    and intrinsic rewards, then DO NOT use this wrapper! Because without
-    episodic setting, the agent could exploit extrinsic rewards by intentionally
-    die to get easy early rewards in the game.
+    This wrapper could also be used for approximating the average reward objective
+    in an episodic setting, even if average reward always assumes an infinite
+    horizon. By setting the last discount=1, the value learning essentially
+    continues although an episode finishes.
 
     Example usage:
         suite_mario.load.env_wrappers=(@NonEpisodicAgent, )

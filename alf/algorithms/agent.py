@@ -312,6 +312,7 @@ class Agent(RLAlgorithm):
         if self._reward_weight_algorithm:
             rw_step = self._reward_weight_algorithm.rollout_step(
                 time_step, state.rw)
+            new_state = new_state._replace(rw=rw_step.state)
             info = info._replace(rw=rw_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)

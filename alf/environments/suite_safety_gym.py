@@ -35,6 +35,19 @@ Several general facts about the provided benchmark environments:
 
 See https://github.com/openai/safety-gym/blob/f31042f2f9ee61b9034dd6a416955972911544f5/safety_gym/envs/engine.py#L97
 for a complete list of default configurations.
+
+################## Customized Safety Gym ####################
+To use our own customized safet_gym env in the paper
+"Towards Safe Reinforcement Learning with a Safety Editor Policy", Yu et al 2022,
+please install https://github.com/hnyu/safety-gym.git instead of the official
+safety gym.
+
+You might need to install apt packages below when running safety_gym for the
+first time:
+
+.. code-block:: python
+
+    apt install patchelf libglew-dev
 """
 
 try:
@@ -47,9 +60,11 @@ except ImportError:
 import numpy as np
 import copy
 import gym
+from typing import Callable, List
 
 import alf
 from alf.environments import suite_gym
+from alf.environments.alf_wrappers import NonEpisodicAgent
 
 
 def is_available():
@@ -117,19 +132,25 @@ class VectorReward(gym.Wrapper):
     2. negative binary cost where -1 means that at least one constraint has been
        violated at the current time step (constraints vary depending on env
        configurations).
-    3. a success indicator where 1 means the goal is met at the current step
 
     All rewards are the higher the better.
     """
 
-    REWARD_DIMENSION = 3
+    REWARD_DIMENSION = 2
 
-    def __init__(self, env):
+    def __init__(self, env, sparse_reward):
+        """
+        Args:
+            env: env being wrapped
+            sparse_reward: if True, then the first reward dim will only be a
+                binary value indicating a success.
+        """
         super().__init__(env)
         self._reward_space = gym.spaces.Box(
             low=-float('inf'),
             high=float('inf'),
             shape=[self.REWARD_DIMENSION])
+        self._sparse_reward = sparse_reward
 
     def step(self, action):
         """Take one step through the environment and obtains several rewards.
@@ -150,7 +171,9 @@ class VectorReward(gym.Wrapper):
         # Get the second and third reward from ``info``
         cost_reward = -info["cost"]
         success_reward = float(info["goal_met"])
-        return obs, np.array([reward, cost_reward, success_reward],
+        if self._sparse_reward:
+            reward = success_reward
+        return obs, np.array([reward, cost_reward],
                              dtype=np.float32), done, info
 
     @property
@@ -195,13 +218,34 @@ class RGBRenderWrapper(gym.Wrapper):
 
 
 @alf.configurable
-def load(environment_name,
-         env_id=None,
-         discount=1.0,
-         max_episode_steps=None,
-         unconstrained=False,
-         gym_env_wrappers=(),
-         alf_env_wrappers=()):
+class EpisodicWrapper(gym.Wrapper):
+    """The original safety gym is non-episodic: a new goal will be re-spawned
+    after a goal is achieved. This wrapper makes the env episodic.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        if info["goal_met"]:
+            done = True
+        return obs, reward, done, info
+
+    def reset(self):
+        return self.env.reset()
+
+
+@alf.configurable
+def load(environment_name: str,
+         env_id: int = None,
+         discount: float = 1.0,
+         max_episode_steps: int = None,
+         unconstrained: bool = False,
+         sparse_reward: bool = False,
+         episodic: bool = False,
+         gym_env_wrappers: List[Callable] = (),
+         alf_env_wrappers: List[Callable] = ()):
     """Loads the selected environment and wraps it with the specified wrappers.
 
     Note that by default a ``TimeLimit`` wrapper is used to limit episode lengths
@@ -211,12 +255,20 @@ def load(environment_name,
         environment_name: Name for the environment to load.
         env_id: A scalar ``Tensor`` of the environment ID of the time step.
         discount: Discount to use for the environment.
-        max_episode_steps: If None or 0 the ``max_episode_steps`` will be set to
-            the default step limit -1 defined in the environment. Otherwise
-            ``max_episode_steps`` will be set to the smaller value of the two.
-        unconstrained (bool): if True, the suite will be used just as an
+        max_episode_steps: If None the ``max_episode_steps`` will be set to
+            the default step limit -1 defined in the environment. If 0, no
+            ``TimeLimit`` wrapper will be used.
+        unconstrained: if True, the suite will be used just as an
             unconstrained environment. The reward will always be scalar without
             including constraints.
+        sparse_reward: If True, only give reward when reaching a goal.
+        episodic: whether terminate the episode when a goal is achieved.
+            Note that if True, both ``EpisodicWrapper`` and ``NonEpisodicAgent``
+            wrapper will be used to simulate an infinite horizon even though the
+            success rate is computed on per-goal basis. This is for approximating
+            an average constraint reward objective. ``EpisodicWrapper`` first
+            returns ``done=True`` to signal the end of an episode, and ``NonEpisodicAgent``
+            replaces ``discount=0`` with ``discount=1``.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         alf_env_wrappers: Iterable with references to wrapper classes to use on
@@ -237,17 +289,21 @@ def load(environment_name,
 
     # make vector reward
     if not unconstrained:
-        env = VectorReward(env)
+        env = VectorReward(env, sparse_reward)
 
     env = RGBRenderWrapper(env)
+
+    if episodic:
+        env = EpisodicWrapper(env)
+        alf_env_wrappers = alf_env_wrappers + (NonEpisodicAgent, )
 
     # Have to -1 on top of the original env max steps here, because the
     # underlying gym env will output ``done=True`` when reaching the time limit
     # ``env.num_steps`` (before the ``AlfGymWrapper``), which is incorrect:
     # https://github.com/openai/safety-gym/blob/f31042f2f9ee61b9034dd6a416955972911544f5/safety_gym/envs/engine.py#L1302
-    if not max_episode_steps:  # None or 0
+    if max_episode_steps is None:
         max_episode_steps = env.num_steps - 1
-    max_episode_steps = min(env.num_steps - 1, max_episode_steps)
+        max_episode_steps = min(env.num_steps - 1, max_episode_steps)
 
     return suite_gym.wrap_env(
         env,
