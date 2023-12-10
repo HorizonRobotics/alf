@@ -815,7 +815,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                *self._reward_spec.shape).long()
         return q_values.gather(2, action).squeeze(2)
 
-    def _critic_train_step(self, observation, target_observation, reward,
+    def _critic_train_step(self, observation, target_observation,
                            state: SacCriticState, rollout_info: SacInfo,
                            action, action_distribution):
         critics, critics_state = self._compute_critics(
@@ -847,7 +847,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critics = torch.sum(
                 discrete_act_dist.probs * target_critics, dim=-1)
 
-        target_critic = target_critics.reshape(reward.shape)
+        target_critic = target_critics.reshape(target_critics.shape[0],
+                                               *self._reward_spec.shape)
 
         target_critic = target_critic.detach()
 
@@ -915,8 +916,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation, state.actor, action, critics, log_pi,
             action_distribution)
         critic_state, critic_info = self._critic_train_step(
-            observation, target_observation, inputs.reward, state.critic,
-            rollout_info, action, action_distribution)
+            observation, target_observation, state.critic, rollout_info,
+            action, action_distribution)
         alpha_loss = self._alpha_train_step(log_pi)
 
         new_state = new_state._replace(
