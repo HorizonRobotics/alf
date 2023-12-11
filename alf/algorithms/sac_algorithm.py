@@ -293,6 +293,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_spec=action_spec,
                 reward_spec=reward_spec,
                 config=config)
+            assert hasattr(repr_alg,
+                           'output_spec'), "repr_alg must have output_spec"
             observation_spec = repr_alg.output_spec
         else:
             repr_alg = None
