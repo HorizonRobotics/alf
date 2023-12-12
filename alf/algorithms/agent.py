@@ -133,6 +133,8 @@ class Agent(RLAlgorithm):
                 reward_spec=reward_spec,
                 config=config,
                 debug_summaries=debug_summaries)
+            assert hasattr(representation_learner, 'output_spec'), (
+                "representation_learner must have output_spec")
             rl_observation_spec = representation_learner.output_spec
             agent_helper.register_algorithm(representation_learner, "repr")
         self._representation_use_rl_state = representation_use_rl_state

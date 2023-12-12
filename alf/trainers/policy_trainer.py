@@ -1101,8 +1101,11 @@ def play(root_dir,
         # biased. Instead, we stick to using the first episodes_per_env episodes
         # from each environment to calculate the statistics and ignore the potentially
         # extra episodes from each environment.
-        invalid = env_episodes >= episodes_per_env
-        # Force the step_type of the extra episodes to be StepType.FIRST so that
+        invalid = (env_episodes >= episodes_per_env)
+        # Ingore the episodes that end at the first step
+        invalid = invalid | ((episode_length == 0) &
+                             (time_step.step_type == StepType.LAST))
+        # Force the step_type of the invalid episodes to be StepType.FIRST so that
         # these time steps do not affect metrics as the metrics are only updated
         # at StepType.LAST. The metric computation uses cpu version of time_step.
         time_step.cpu().step_type[invalid] = StepType.FIRST
@@ -1126,14 +1129,15 @@ def play(root_dir,
 
         for i in range(batch_size):
             if time_step.step_type[i] == StepType.LAST:
-                logging.info(
-                    "episode_length=%s episode_reward=%s" %
-                    (episode_length[i].item(), episode_reward[i].item()))
+                if episode_length[i] > 0:
+                    logging.info(
+                        "episode_length=%s episode_reward=%s" %
+                        (episode_length[i].item(), episode_reward[i].item()))
+                    env_episodes[i] += 1
+                    episodes += 1
+                    common.log_metrics(metrics)
                 episode_reward[i] = 0.
                 episode_length[i] = 0
-                env_episodes[i] += 1
-                episodes += 1
-                common.log_metrics(metrics)
 
         policy_state = policy_step.state
         time_step = next_time_step

@@ -479,6 +479,8 @@ def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
             tensor.register_hook(functools.partial(_hook, name=name))
         return tensor
 
+    if not torch.is_grad_enabled():
+        return tensor
     name = '/' + alf.summary.scope_name() + name
     if not is_nested(tensor):
         return _register_hook1(tensor, name)
