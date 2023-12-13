@@ -34,6 +34,7 @@ except ImportError:
 
 import cv2
 
+import torch
 import torch.distributions as td
 
 import alf
@@ -831,3 +832,53 @@ def render_action_distribution(name,
 
     return nest.py_map_structure_with_path(_render_act_dist, act_dist,
                                            action_spec)
+
+
+def render_heatmap_fast(imgs, min_value, max_value, pixel_size=10,
+                        bar_size=20):
+    """Render a heatmap for each image in ``imgs``
+
+    Different from render_heatmap(), this function does not use matplotlib and
+    is much faster.
+
+    It renders multiple heat maps in ``imgs``. The result is an ``Image`` instance
+    containing all the heat maps and their corresponding color bars. Each color
+    bar represents the color of the values from ``min_value`` to ``max_value``.
+
+    Args:
+        imgs (Tensor): a batch of images in shape [B, H, W] or [H, W]
+        min_value (Tensor): minimum values for each image, in shape [B]
+        max_value (Tensor): maximum values for each image, in shape [B]
+        pixel_size (int): size of each pixel in the heatmap
+        bar_size (int): size of the color bar
+    Returns:
+        Image: [H * pixel_size, B * (W * pixel_size + bar_size)]
+    """
+    if imgs.ndim == 2:
+        imgs = imgs[None, ..., ]
+    low = torch.maximum(imgs.min(1)[0].min(1)[0], min_value)
+    high = torch.minimum(imgs.max(1)[0].max(1)[0], max_value)
+    mid = (low + high) / 2
+    # high - mid should be at least 0.05 * (max_value - min_value)
+    high = torch.minimum(
+        torch.maximum(high, mid + 0.01 * (max_value - min_value)), max_value)
+    # mid - low should be at least 0.05 * (max_value - min_value)
+    low = torch.maximum(
+        torch.minimum(low, mid - 0.01 * (max_value - min_value)), min_value)
+    low = low[:, None, None]
+    high = high[:, None, None]
+    imgs = (imgs - low) / (high - low)
+    imgs = torch.clamp(imgs, 0, 1)
+    imgs = (imgs * 255).to(torch.uint8)
+    imgs = torch.repeat_interleave(imgs, pixel_size, dim=-2)
+    imgs = torch.repeat_interleave(imgs, pixel_size, dim=-1)
+    bars = torch.linspace(1.0, 0.0, imgs.shape[-2])[None, :] * (
+        max_value - min_value)[:, None] + min_value[:, None]
+    bars = torch.repeat_interleave(bars[..., None], bar_size, dim=-1)
+    bars = (bars - low) / (high - low)
+    bars = torch.clamp(bars, 0, 1)
+    bars = (bars * 255).to(torch.uint8)
+    imgs = torch.cat(
+        sum([[bar, img] for bar, img in zip(bars, imgs)], []),
+        dim=-1).cpu().numpy()
+    return Image(imgs)
