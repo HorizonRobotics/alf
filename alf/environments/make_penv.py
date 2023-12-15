@@ -30,6 +30,7 @@ def gen_penv():
     cmd = (f"g++ -O3 -Wall -shared -std=c++17 -fPIC -fvisibility=hidden "
            f"`{python} -m pybind11 --includes` parallel_environment.cpp "
            f"-o _penv`{python}-config --extension-suffix` -lrt")
+
     ret = os.system(cmd)
     assert ret == 0, "Fail to execute " + cmd
 
