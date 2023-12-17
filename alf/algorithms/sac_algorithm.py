@@ -61,7 +61,8 @@ SacInfo = namedtuple(
     ],
     default_value=())
 
-SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha', 'repr'))
+SacLossInfo = namedtuple(
+    'SacLossInfo', ('actor', 'critic', 'alpha', 'repr'), default_value=())
 
 
 def _set_target_entropy(name, target_entropy, flat_action_spec):
