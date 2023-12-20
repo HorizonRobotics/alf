@@ -14,7 +14,7 @@
 
 import math
 import alf
-from alf.environments import suite_gym
+from alf.environments import suite_gym, suite_dmc
 import alf.algorithms.mpo_algorithm
 import alf.utils.math_ops
 from alf.utils import losses
@@ -22,8 +22,10 @@ from alf.utils import losses
 # environment config
 alf.config(
     'create_environment',
-    env_load_fn=suite_gym.load,
-    env_name="Pendulum-v0",
+    # env_load_fn=suite_gym.load,
+    # env_name="Pendulum-v0",
+    env_load_fn=suite_dmc.load,
+    env_name='cheetah:run',
     num_parallel_environments=1)
 
 # algorithm config
@@ -34,13 +36,13 @@ alf.config(
 
 alf.config(
     "ActorDistributionNetwork",
-    fc_layer_params=(100, 100),
+    fc_layer_params=(256, 256, 256),
     continuous_projection_net_ctor=alf.networks.BetaProjectionNetwork)
 
 num_quantiles = 255
 alf.config(
     "CriticNetwork",
-    joint_fc_layer_params=(100, 100),
+    joint_fc_layer_params=(256, 256, 256),
     output_tensor_spec=alf.TensorSpec((num_quantiles, )))
 
 alf.config(
@@ -54,34 +56,34 @@ alf.config(
     "MPOLoss",
     action_weight_regulization=1.0,
     # value_loss=losses.SquareLoss())
-    value_loss=losses.QuantileRegressionLoss(
+    # value_loss=losses.QuantileRegressionLoss(
+    #     transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
+    value_loss=losses.OrderedDiscreteRegressionLoss(
         transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
-# value_loss=losses.OrderedDiscreteRegressionLoss(
-#     transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
 
 # training config
 alf.config(
     "TrainerConfig",
     algorithm_ctor=alf.algorithms.mpo_algorithm.MPOAlgorithm,
-    initial_collect_steps=1000,
+    initial_collect_steps=10000,
     mini_batch_length=2,
     unroll_length=1,
-    mini_batch_size=64,
+    mini_batch_size=256,
     num_updates_per_train_iter=1,
-    num_iterations=20000,
-    num_checkpoints=5,
+    num_iterations=1000000,
+    num_checkpoints=1,
     evaluate=True,
     profiling=False,
     eval_interval=0,
-    num_evals=10,
+    num_evals=20,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
     confirm_checkpoint_upon_crash=False,
     debug_summaries=True,
     summarize_grads_and_vars=True,
     summarize_action_distributions=True,
-    summary_interval=100,
-    replay_buffer_length=100000)
+    summary_interval=1000,
+    replay_buffer_length=1000000)
 
 alf.config("ReplayBuffer", enable_checkpoint=True, device='cuda')
 alf.config('summarize_gradients', with_histogram=False)
