@@ -111,7 +111,6 @@ rv_loss = define_config(
     'rv_loss',
     losses.OrderedDiscreteRegressionLoss(
         transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
-rv_bias_zero_init = define_config('rv_bias_zero_init', False)
 
 # This option can make the optimization of the parameters of quantile regression
 # invariant to the number of quantiles.
@@ -348,12 +347,6 @@ class SumNet(alf.nn.Network):
         return state, state
 
 
-def _get_rv_bias_initializer():
-    if rv_bias_zero_init:
-        return None
-    return rv_loss.initialize_bias
-
-
 @alf.configurable
 def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
     dim = 32
@@ -468,7 +461,6 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
                 num_quantiles,
                 weight_opt_args=rv_weight_opt_args,
                 bias_opt_args=rv_bias_opt_args,
-                bias_initializer=_get_rv_bias_initializer(),
                 kernel_initializer=torch.nn.init.zeros_)),
         *_scale_grad(num_quantiles if scale_grad_by_num_quantiles else 1),
         *reshape_layer,
@@ -485,7 +477,6 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
                 num_quantiles,
                 weight_opt_args=rv_weight_opt_args,
                 bias_opt_args=rv_bias_opt_args,
-                bias_initializer=_get_rv_bias_initializer(),
                 kernel_initializer=torch.nn.init.zeros_)),
         *_scale_grad(num_quantiles if scale_grad_by_num_quantiles else 1),
     ] + reshape_layer

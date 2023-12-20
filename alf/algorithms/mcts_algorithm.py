@@ -1482,7 +1482,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
     Args:
         value (Tensor): [N, K] Tensor
         prior (Tensor): [N, K] Tensor
-        c (Tensor): [N, 1] Tensor
+        c (float | Tensor): [N, 1] Tensor
         tol (float): Desired acurracy. The result satisfy :math:`|\sum_i p_i - 1| \le tol`
     Returns:
         tuple:
@@ -1491,13 +1491,14 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
     """
     batch_size = value.shape[0]
     assert value.shape == prior.shape
-    assert c.shape == (batch_size, 1)
+    if isinstance(c, torch.Tensor):
+        assert c.shape == (batch_size, 1)
 
     value[prior == 0] = -MAXIMUM_FLOAT_VALUE
-    v_max = value.max(dim=1, keepdim=True)[0]
+    v_max = value.max(dim=-1, keepdim=True)[0]
     u = (value - v_max) / c
 
-    beta = (prior + u).max(dim=1, keepdim=True)[0]
+    beta = (prior + u).max(dim=-1, keepdim=True)[0]
 
     converged = False
     i = 0
@@ -1505,12 +1506,12 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
         i += 1
         beta_u = beta - u
         p = prior / beta_u
-        sum_p = p.sum(dim=1, keepdim=True)
+        sum_p = p.sum(dim=-1, keepdim=True)
         diff = sum_p - 1
         if (diff < tol).all():
             converged = True
             break
-        d = (p / beta_u).sum(dim=1, keepdim=True)
+        d = (p / beta_u).sum(dim=-1, keepdim=True)
         beta = beta + diff / d
 
     if not converged:
@@ -1553,7 +1554,7 @@ def calculate_kl_exploration_policy(value, prior, c):
     Args:
         value (Tensor): [N, K] Tensor
         prior (Tensor): [N, K] Tensor
-        c (Tensor): [N, 1] Tensor
+        c (float | Tensor): [N, 1] Tensor
     Returns:
         tuple:
         - Tensor: [N, K], the exploration policy
@@ -1561,7 +1562,8 @@ def calculate_kl_exploration_policy(value, prior, c):
     """
     batch_size = value.shape[0]
     assert value.shape == prior.shape
-    assert c.shape == (batch_size, 1)
+    if isinstance(c, torch.Tensor):
+        assert c.shape == (batch_size, 1)
     p = prior * (value / c).exp()
     p = p / p.sum(dim=-1, keepdim=True)
 
