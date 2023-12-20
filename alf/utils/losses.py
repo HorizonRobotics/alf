@@ -292,6 +292,7 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
         else:
             self._inverse_after_mean = True
         self._support = None
+        self._bias = None
 
     def _calc_support(self, n: int):
         if self._support is not None and self._support.shape[0] == n:
@@ -337,6 +338,12 @@ class _DiscreteRegressionLossBase(ScalarPredictionLoss):
         w2 = w2.clamp(0, 1)
         return bin1, bin2, w2
 
+    def _add_bias(self, logits):
+        if self._bias is None:
+            self._bias = torch.zeros(logits.shape[-1])
+            self.initialize_bias(self._bias)
+        return logits + self._bias
+
 
 @alf.repr_wrapper
 class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
@@ -377,6 +384,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
         Returns:
             loss with the same shape as target
         """
+        logits = self._add_bias(logits)
         bin1, bin2, w2 = self._calc_bin(logits, target)
         w1 = 1 - w2
         nlp = -F.log_softmax(logits, dim=-1)
@@ -391,8 +399,9 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
         Args:
             pred: raw model prediction
         """
+        logits = self._add_bias(logits)
         support = self._calc_support(logits.shape[-1])
-        ret = torch.mv(logits.softmax(dim=-1), support)
+        ret = logits.softmax(dim=-1) @ support
         if self._inverse_after_mean and self._transform is not None:
             ret = self._transform.inverse_transform(ret)
         return ret
@@ -460,6 +469,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
             loss with the same shape as target
         """
         n = logits.shape[-1]
+        logits = self._add_bias(logits)
         bin1, bin2, w2 = self._calc_bin(logits, target)
         w = F.one_hot(bin1, num_classes=n).to(logits.dtype)
         w = 1 - w.cumsum(dim=-1)
@@ -479,6 +489,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         """
         n = logits.shape[-1]
         lower_bound = -((n - 1) // 2)
+        logits = self._add_bias(logits)
         logits = logits.cummin(dim=-1).values
         probs = logits.sigmoid()
         if self._inverse_after_mean:
@@ -489,7 +500,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
             probs = torch.cat(
                 [probs[..., :-1] - probs[..., 1:], probs[..., -1:]], dim=-1)
             support = self._calc_support(logits.shape[-1])
-            pred = torch.mv(probs, support)
+            pred = probs @ support
         return pred
 
     def initialize_bias(self, bias: torch.Tensor):
