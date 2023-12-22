@@ -214,8 +214,7 @@ class MPOAlgorithm(OffPolicyAlgorithm):
         self._target_critic_networks = critic_networks.copy(
             name='target_critic_networks')
         self._actor_network = actor_network
-        self._target_actor_network = actor_network.copy(
-            name='target_actor_network')
+        self._target_actor_network = None  # actor_network.copy(name='target_actor_network')
         self._repr_alg = repr_alg
         self._target_repr_alg = target_repr_alg
 
@@ -223,12 +222,9 @@ class MPOAlgorithm(OffPolicyAlgorithm):
             return list(filter(lambda x: x is not None, x))
 
         self._update_target = common.TargetUpdater(
-            models=_filter(
-                [self._actor_network, self._critic_networks, repr_alg]),
-            target_models=_filter([
-                self._target_actor_network, self._target_critic_networks,
-                target_repr_alg
-            ]),
+            models=_filter([self._critic_networks, repr_alg]),
+            target_models=_filter(
+                [self._target_critic_networks, target_repr_alg]),
             tau=target_update_tau,
             period=target_update_period)
 
@@ -352,11 +348,13 @@ class MPOAlgorithm(OffPolicyAlgorithm):
                                                rollout_info.action)
 
         with torch.no_grad():
-            action_dist = self._target_actor_network(target_observation)[0]
+            # action_dist = self._target_actor_network(target_observation)[0]
             candidate_actions, candidate_action_weights = self._sample_actions(
-                action_dist)
+                action_distribution)
+            action_values = self._calc_action_values(observation,
+                                                     candidate_actions)
             target_critics = self._calc_target_critics(target_observation,
-                                                       candidate_actions)
+                                                       action)
 
         new_state = MPOState(repr=repr_state, target_repr=target_repr_state)
         info = MPOInfo(
@@ -369,6 +367,7 @@ class MPOAlgorithm(OffPolicyAlgorithm):
             candidate_actions=candidate_actions,
             candidate_action_weights=candidate_action_weights,
             critics_dist=critics_dist,
+            action_values=action_values,
             target_critics=target_critics,
         )
         return AlgStep(output=action, state=new_state, info=info)
@@ -393,38 +392,68 @@ class MPOAlgorithm(OffPolicyAlgorithm):
             critics_dist = critics_dist[B, :, :, action, ...]
         return critics_dist
 
-    def _calc_target_critics(self, target_observation, candidate_actions):
+    def _calc_action_values(self, observation, candidate_actions):
         if self._critic_type == CriticType.Critic:
             # [B * num_candidate_actions, ...]
-            expanded_target_observation = nest.map_structure(
+            expanded_observation = nest.map_structure(
                 lambda x: x.repeat_interleave(
-                    self._num_candidate_actions, dim=0), target_observation)
+                    self._num_candidate_actions, dim=0), observation)
             # [B * num_candidate_actions, ...]
             expanded_candidate_actions = nest.map_structure(
                 lambda x: x.reshape(x.shape[0] * x.shape[1], *x.shape[2:]),
                 candidate_actions)
             # [B * num_candidate_actions, replicas * reward_dim, num_quantiles]
-            target_critics_dist = self._target_critic_networks(
-                (expanded_target_observation, expanded_candidate_actions))[0]
+            critics_dist = self._critic_networks(
+                (expanded_observation, expanded_candidate_actions))[0]
 
             # [B, num_candidate_actions, replicas, reward_dim, num_quantiles]
-            target_critics_dist = target_critics_dist.reshape(
+            critics_dist = critics_dist.reshape(
                 -1, self._num_candidate_actions, self._num_replicas,
-                self._reward_dim, *target_critics_dist.shape[2:])
+                self._reward_dim, *critics_dist.shape[2:])
             # [B, replicas, reward_dim, num_candidate_actions, num_quantiles]
-            target_critics_dist = target_critics_dist.transpose(1,
-                                                                2).transpose(
-                                                                    2, 3)
+            critics_dist = critics_dist.transpose(1, 2).transpose(2, 3)
+        else:
+            # [B, replicas * reward_dim, num_actions, num_quantiles]
+            critics_dist = self._critic_networks(observation)[0]
+            critics_dist = critics_dist.reshape(-1, self._num_replicas,
+                                                self._reward_dim,
+                                                *critics_dist.shape[2:])
+
+        # [B, replicas, reward_dim, num_candidate_actions]
+        action_values = self._loss.calc_value_expectation(critics_dist)
+        # [B, reward_dim, num_candidate_actions]
+        action_values = action_values.min(dim=1)[0]
+        if self._reward_dim > 1:
+            action_values = torch.einsum('bra,r->ba', action_values,
+                                         self._reward_weights)
+        else:
+            action_values = action_values.squeeze(1)
+        return action_values
+
+    def _calc_target_critics(self, target_observation, action):
+        if self._critic_type == CriticType.Critic:
+            # [B, replicas * reward_dim, num_quantiles]
+            target_critics_dist = self._target_critic_networks(
+                (target_observation, action))[0]
+            # [B, replicas, reward_dim, num_quantiles]
+            target_critics_dist = target_critics_dist.reshape(
+                -1, self._num_replicas, self._reward_dim,
+                *target_critics_dist.shape[2:])
         else:
             # [B, replicas * reward_dim, num_actions, num_quantiles]
             target_critics_dist = self._target_critic_networks(
                 target_observation)[0]
+            # [B, replicas, reward_dim, num_actions, num_quantiles]
             target_critics_dist = target_critics_dist.reshape(
                 -1, self._num_replicas, self._reward_dim,
                 *target_critics_dist.shape[2:])
+            B = torch.arange(target_critics_dist.shape[0])
+            # [B, replicas, reward_dim, num_quantiles]
+            target_critics_dist = target_critics_dist[B, :, :, action, ...]
 
-        # [B, replicas, reward_dim, num_candidate_actions]
+        # [B, replicas, reward_dim]
         target_critics = self._loss.calc_value_expectation(target_critics_dist)
+
         return target_critics
 
     def _sample_actions(self, action_distribution):
@@ -472,6 +501,7 @@ class MPOAlgorithm(OffPolicyAlgorithm):
             reward_weights (Tensor): a tensor that is compatible with
                 ``self._reward_spec``.
         """
+        super().set_reward_weights()
         self._loss.set_reward_weights(reward_weights)
 
     def after_update(self, root_inputs, info: MPOInfo):
