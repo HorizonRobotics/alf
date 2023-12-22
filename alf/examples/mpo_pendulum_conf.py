@@ -49,12 +49,13 @@ alf.config(
     "MPOAlgorithm",
     actor_optimizer=alf.optimizers.Adam(lr=5e-4, fused=True),
     critic_optimizer=alf.optimizers.Adam(lr=5e-4, fused=True),
-    target_update_tau=0.01,
+    target_update_tau=0.005,
 )
 
 alf.config(
     "MPOLoss",
     action_weight_regulization=1.0,
+    max_kld=0.2,
     # value_loss=losses.SquareLoss())
     # value_loss=losses.QuantileRegressionLoss(
     #     transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
@@ -85,6 +86,6 @@ alf.config(
     summary_interval=1000,
     replay_buffer_length=1000000)
 
-alf.config("ReplayBuffer", enable_checkpoint=True, device='cuda')
+alf.config("ReplayBuffer", enable_checkpoint=False, device='cuda')
 alf.config('summarize_gradients', with_histogram=False)
 alf.config('summarize_variables', with_histogram=False)
