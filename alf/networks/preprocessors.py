@@ -21,6 +21,7 @@ input2 (action) -> preprocessor2 -> embed2   /   (with `NestCombiner`)
 
 """
 import abc
+import math
 
 import torch
 import torch.nn as nn
@@ -109,3 +110,34 @@ class EmbeddingPreprocessor(Network):
 
         ret = self._preprocess(inputs)
         return ret, state
+
+
+@alf.configurable
+class CosineEmbeddingPreprocessor(Network):
+    """A preprocessor that converts the input to an embedding vector of 
+    cosine functions. It is suggested by the following IQN paper:
+
+    ::
+        
+        Dabney et al "Implicit Quantile Networks for Distributional Reinforcement Learning",
+        arXiv:1806.06923
+
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 embedding_dim,
+                 name="CosineEmbeddingNetwork"):
+        """
+        Args:
+            input_tensor_spec (TensorSpec): the input spec
+            embedding_dim (int): output embedding size
+        """
+        super().__init__(input_tensor_spec, name=name)
+        self.const_vec = torch.arange(1, 1 + embedding_dim)
+
+    def forward(self, tau, state=()):
+        return torch.cos(tau.unsqueeze(-1) * self.const_vec * math.pi), state
+
+    def make_parallel(self, n):
+        return self

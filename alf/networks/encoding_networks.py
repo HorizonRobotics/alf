@@ -721,9 +721,17 @@ class EncodingNetwork(_Sequential):
                 flatten_output=True)
             spec = net.output_spec
             nets.append(net)
-        assert spec.ndim == 1, \
-            "The input shape {} should be like (N,)!".format(spec.shape)
-        input_size = spec.shape[0]
+        # assert spec.ndim == 1, \
+        #     "The input shape {} should be like (N,)!".format(spec.shape)
+        # input_size = spec.shape[0]
+        if spec.ndim == 1:
+            input_size = spec.shape[0]
+        elif spec.ndim == 2:
+            input_size = spec.shape[-1]
+        else:
+            raise ValueError(
+                f"The input shape {spec.shape} should be like (N, )"
+                "or (N, D, ).")
 
         if fc_layer_params is None:
             fc_layer_params = []
@@ -763,10 +771,14 @@ class EncodingNetwork(_Sequential):
             input_size = last_layer_size
 
         if output_tensor_spec is not None:
-            assert output_tensor_spec.numel == input_size, (
-                "network output "
-                "size {a} is inconsisent with specified out_tensor_spec "
-                "of size {b}".format(a=input_size, b=output_tensor_spec.numel))
+            if spec.numel == 1:
+                assert output_tensor_spec.numel == input_size, (
+                    "network output "
+                    "size {a} is inconsisent with specified out_tensor_spec "
+                    "of size {b}".format(
+                        a=input_size, b=output_tensor_spec.numel))
+            elif spec.numel == 2:
+                assert output_tensor_spec.numel % input_size == 0
             nets.append(alf.layers.Reshape(output_tensor_spec.shape))
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)

@@ -53,7 +53,7 @@ class OneStepTDQRLoss(TDQRLoss):
     def __init__(self,
                  num_quantiles: int = 50,
                  gamma: Union[float, List[float]] = 0.99,
-                 td_error_loss_fn: Callable = losses.huber_function,
+                 td_error_loss_fn: Callable = losses.iqn_huber_loss,
                  sum_over_quantiles: bool = False,
                  debug_summaries: bool = False,
                  name: str = "OneStepTDQRLoss"):

@@ -110,6 +110,38 @@ def multi_quantile_huber_loss(quantiles: torch.Tensor,
     return loss.mean(dim=(-2, -1))
 
 
+@alf.configurable
+def iqn_huber_loss(value: torch.Tensor,
+                   target: torch.Tensor,
+                   tau_hat: Optional[torch.Tensor] = (),
+                   next_delta_tau: Optional[torch.Tensor] = (),
+                   sum_over_quantiles: bool = True,
+                   loss_fn: Callable = huber_function):
+
+    # for quantile regression TD, the value and target both have shape
+    # (T-1 or T, B, n_quantiles) for scalar reward and
+    # (T-1 or T, B, reward_dim, n_quantiles) for multi-dim reward.
+    # The quantile TD has shape
+    # (T-1 or T, B, n_quantiles, n_quantiles) for scalar reward and
+    # (T-1 or T, B, reward_dim, n_quantiles, n_quantiles) for multi-dim reward
+    assert value.shape[0] == target.shape[0]
+    assert tau_hat.shape[0] == next_delta_tau.shape[0] == target.shape[0]
+    quantiles = value.unsqueeze(-2)
+    quantiles_target = target.detach().unsqueeze(-1)
+    diff = quantiles_target - quantiles
+
+    error = loss_fn(diff)
+    loss = torch.abs(
+        (tau_hat.unsqueeze(-2) -
+         (diff.detach() < 0).float())) * error * next_delta_tau.unsqueeze(-1)
+    if sum_over_quantiles:
+        loss = loss.mean(-2).sum(-1)
+    else:
+        loss = loss.mean(dim=(-2, -1))
+
+    return loss, diff
+
+
 class ScalarPredictionLoss(object):
     def __call__(self, pred: torch.Tensor, target: torch.Tensor):
         """Calculate the loss given ``pred`` and ``target``.
