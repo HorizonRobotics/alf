@@ -103,8 +103,6 @@ class DSacAlgorithm(SacAlgorithm):
         """
         assert tau_type in ('fixed',
                             'iqn'), f"Unsupported tau_type: {tau_type}."
-        assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for qrsac algorithm.")
 
         self._tau_type = tau_type
         self._num_quantiles = num_quantiles
@@ -137,6 +135,9 @@ class DSacAlgorithm(SacAlgorithm):
             debug_summaries=debug_summaries,
             reproduce_locomotion=False,
             name=name)
+
+        assert self._act_type == ActionType.Continuous, (
+            "Only continuous action space is supported for qrsac algorithm.")
 
         if alpha_optimizer is None:
             self._epistemic_alpha = True
@@ -230,9 +231,10 @@ class DSacAlgorithm(SacAlgorithm):
                 -1, self._num_critic_replicas, *self._reward_spec.shape,
                 *remaining_shape)
         if replica_min:
-            assert delta_tau is not None, (
-                "Input delta_tau is required for computing replica_min.")
             if self._min_critic_by_critic_mean:
+                assert delta_tau is not None, (
+                    "Input delta_tau is required for computing replica_min"
+                    "by critic_mean.")
                 # Compute the min quantile distribution of critic replicas by
                 # choosing the one with the lowest distribution mean
                 assert not self.has_multidim_reward()
@@ -271,7 +273,8 @@ class DSacAlgorithm(SacAlgorithm):
         with torch.no_grad():
             target_critics, target_critics_state = self._compute_critics(
                 self._target_critic_networks, inputs.observation[bs:],
-                action[bs:], tau_info.next_tau_hat[bs:], state.target_critics)
+                action[bs:], tau_info.next_tau_hat[bs:], state.target_critics,
+                tau_info.next_delta_tau)
             # Prepend with zeros so that the tensors can be correctly reshape to
             # [T, B, ...]
             zeros = torch.zeros_like(target_critics[:bs])
@@ -358,7 +361,7 @@ class DSacAlgorithm(SacAlgorithm):
         if self._epistemic_alpha:
             return ()
         else:
-            return super()._alpha_train_step()
+            return super()._alpha_train_step(log_pi)
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: SacInfo):

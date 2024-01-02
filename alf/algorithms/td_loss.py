@@ -15,7 +15,7 @@
 import math
 import torch
 import torch.nn as nn
-from typing import Union, List, Callable
+from typing import Union, List, Callable, Optional
 
 import alf
 from alf.data_structures import LossInfo, namedtuple, StepType
@@ -362,13 +362,7 @@ class TDQRLoss(TDLoss):
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions
-            if self._gamma.ndim > 1:
-                weight = (1 - self._gamma).square() / (
-                    1 - self._gamma).square().sum(
-                        dim=-1, keepdim=True)
-                loss = (loss * weight).sum(-1)
-            else:
-                loss = loss.mean(dim=2)
+            loss = loss.mean(dim=2)
 
         # The shape of the loss expected by Algorith.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
