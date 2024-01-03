@@ -30,7 +30,7 @@ from alf.examples import sac_conf
 
 
 @alf.configurable
-def dsac_use_epistemic_alpha(epistemic_alpha=False):
+def dsac_use_epistemic_alpha(epistemic_alpha=True):
     return epistemic_alpha
 
 
@@ -117,6 +117,7 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     critic_loss_ctor=critic_loss_ctor,
+    num_critic_replicas=3,
     use_entropy_reward=True,
     target_update_tau=0.005,
     target_update_period=target_update_period,

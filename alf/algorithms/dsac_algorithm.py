@@ -139,14 +139,16 @@ class DSacAlgorithm(SacAlgorithm):
         assert self._act_type == ActionType.Continuous, (
             "Only continuous action space is supported for qrsac algorithm.")
 
+        self._min_critic_by_critic_mean = min_critic_by_critic_mean
         if alpha_optimizer is None:
             self._epistemic_alpha = True
+            self._min_critic_by_critic_mean = False
             self._use_entropy_reward = False
+            del self._log_alpha
             self._log_alpha = torch.tensor(float(initial_log_alpha))
         else:
             self._epistemic_alpha = False
 
-        self._min_critic_by_critic_mean = min_critic_by_critic_mean
         self._mini_batch_size = self._config.mini_batch_size
         self._eval_tau = self._get_tau(
             self._mini_batch_size, tau_type="fixed")[0]
@@ -221,6 +223,7 @@ class DSacAlgorithm(SacAlgorithm):
         critic_inputs = (observation, action)
         critic_quantiles, critics_state = critic_net((critic_inputs, tau_hat),
                                                      state=critics_state)
+        extra_info = ()
 
         # For multi-dim reward, do:
         # [B, replicas * reward_dim, n_quantiles] -> [B, replicas, reward_dim, n_quantiles]
@@ -248,9 +251,15 @@ class DSacAlgorithm(SacAlgorithm):
             else:
                 # Compute the min quantile distribution by taking a minimum value
                 # across all critic replicas for each quantile value
-                critic_quantiles = critic_quantiles.min(dim=1)[0]
+                critic_std_quantiles = critic_quantiles.std(1, unbiased=True)
+                extra_info = critic_std_quantiles
+                if self._num_critic_replicas == 2:
+                    critic_quantiles = critic_quantiles.min(dim=1)[0]
+                else:
+                    critic_mean_quantiles = critic_quantiles.mean(1)
+                    critic_quantiles = critic_mean_quantiles - critic_std_quantiles
 
-        return critic_quantiles, critics_state
+        return critic_quantiles, critics_state, extra_info
 
     def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
                            rollout_info: SacInfo, action, tau_info: TauInfo):
@@ -258,7 +267,7 @@ class DSacAlgorithm(SacAlgorithm):
         # Calculate the critics and value for both the current observation
         # and next observation
         # [B * (T-1), n_quantiles]
-        critics, critics_state = self._compute_critics(
+        critics, critics_state, _ = self._compute_critics(
             self._critic_networks,
             inputs.observation[:-bs],
             rollout_info.action[:-bs],
@@ -271,7 +280,7 @@ class DSacAlgorithm(SacAlgorithm):
         critics = torch.cat((critics, zeros), dim=0)
 
         with torch.no_grad():
-            target_critics, target_critics_state = self._compute_critics(
+            target_critics, target_critics_state, _ = self._compute_critics(
                 self._target_critic_networks, inputs.observation[bs:],
                 action[bs:], tau_info.next_tau_hat[bs:], state.target_critics,
                 tau_info.next_delta_tau)
@@ -288,13 +297,13 @@ class DSacAlgorithm(SacAlgorithm):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with torch.no_grad():
-                critics_eval, _ = self._compute_critics(
+                critics_eval = self._compute_critics(
                     self._critic_networks,
                     inputs.observation[:-bs],
                     rollout_info.action[:-bs],
                     self._eval_tau,
                     state.critics,
-                    replica_min=False)
+                    replica_min=False)[0]
                 critics_eval = critics_eval.mean(dim=(0, 1))
 
             with alf.summary.scope(self._name):
@@ -310,20 +319,28 @@ class DSacAlgorithm(SacAlgorithm):
                            tau_info: TauInfo):
         # [B, num_quantiles]
         tau_hat, delta_tau = tau_info.actor_tau_hat, tau_info.actor_delta_tau
-        critics, critics_state = self._compute_critics(
+        critics, critics_state, critics_std = self._compute_critics(
             self._critic_networks, inputs.observation, action, tau_hat, state)
         # This sum() will reduce all dims so q_value can be any rank
         q_value = (critics * delta_tau).sum()
-        return q_value, critics_state
+        if self._epistemic_alpha:
+            q_std = (critics_std * delta_tau).sum(-1)
+        else:
+            q_std = ()
+        return q_value, q_std, critics_state
 
     def _actor_train_step(self, inputs: TimeStep, state, action, log_pi,
                           tau_info: TauInfo):
-        neg_entropy = sum(nest.flatten(log_pi))
-        const_alpha = torch.exp(self._log_alpha).detach()
 
-        q_value, critics_state = self._get_actor_q_value(
+        q_value, q_std, critics_state = self._get_actor_q_value(
             inputs, state, action, tau_info)
         dqda = nest_utils.grad(action, q_value)
+
+        neg_entropy = sum(nest.flatten(log_pi))
+        const_alpha = torch.exp(self._log_alpha).detach()
+        entropy_loss = const_alpha * log_pi
+        if self._epistemic_alpha:
+            entropy_loss *= q_std.squeeze().detach()
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -336,7 +353,7 @@ class DSacAlgorithm(SacAlgorithm):
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
         actor_info = LossInfo(
-            loss=actor_loss + const_alpha * log_pi,
+            loss=actor_loss + entropy_loss,
             extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
         return critics_state, actor_info
 
