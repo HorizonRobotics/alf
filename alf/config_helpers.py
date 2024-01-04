@@ -20,6 +20,7 @@ based TrainerConfig in this module.
 """
 
 import math
+import random
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.config_util import config1, get_config_value, load_config, pre_config, validate_pre_configs
@@ -258,6 +259,21 @@ def get_env():
             # configured through gin-config can be properly retrieved.
             train_config = TrainerConfig(root_dir='')
             random_seed = train_config.random_seed
+
+        # Override the random seed based on ddp rank. With the following logic:
+        #
+        # - Rank 0 will get the original random seed specified in the config
+        # - Rank 1 will get the 1st pseudo random integer as seed (using original seed)
+        # - Rank 2 will get the 2nd pseudo random integer as seed (using original seed)
+        # - ...
+        #
+        # The random.seed(random_seed) is temporary and will be overridden by
+        # set_random_seed() below.
+        random.seed(random_seed)
+        for _ in range(PerProcessContext().ddp_rank):
+            random_seed = random.randint(0, 2**32)
+        config1("TrainerConfig.random_seed", random_seed, raise_if_used=False)
+
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.
         seed = set_random_seed(random_seed)
