@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2023 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,15 +47,14 @@ TauInfo = namedtuple(
 @alf.configurable
 class DSacAlgorithm(SacAlgorithm):
     """Distributional Soft Actor-Critic algorithm. 
-    
-    A SAC variant that applies the following quantile regression based 
+
+    A SAC variant that applies the following implicit quantile regression based 
     distributional RL approach to model the critic function:
 
     ::
-        
-        Dabney et al "Distributional Reinforcement Learning with Quantile Regression",
-        arXiv:1710.10044
-
+        Dabney et al "Implicit Quantile Networks for Distributional Reinforcement Learning",
+        arXiv:1806.06923
+    
     Currently, only continuous action space is supported, and ``need_full_rollout_state``
     is not supported.
     """
@@ -137,7 +136,7 @@ class DSacAlgorithm(SacAlgorithm):
             name=name)
 
         assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for qrsac algorithm.")
+            "Only continuous action space is supported for dsac algorithm.")
 
         self._min_critic_by_critic_mean = min_critic_by_critic_mean
         if alpha_optimizer is None:

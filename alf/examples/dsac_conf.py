@@ -61,29 +61,27 @@ if dmc_tasks:
         max_episode_steps=1000)
     if use_epistemic_alpha:
         alpha_optimizer = None
-        initial_log_alpha = math.log(0.2)
+        initial_log_alpha = math.log(0.02)
     else:
         alpha_optimizer = AdamTF(lr=1e-4)
-        # alpha_optimizer = AdamTF(lr=3e-4)
         initial_log_alpha = math.log(0.1)
     layer_width = 1024
     target_update_period = 2
-    num_iterations = 2000000
+    num_iterations = 1000000
 else:
     alf.config(
         'create_environment',
         env_name="HalfCheetah-v3",
         num_parallel_environments=1)
-    layer_width = 256
-    target_update_period = 1
     if use_epistemic_alpha:
         alpha_optimizer = None
-        initial_log_alpha = math.log(0.2)
-        num_iterations = 2500000
+        initial_log_alpha = -3.2
     else:
         alpha_optimizer = AdamTF(lr=3e-4)
         initial_log_alpha = 0.0
-        num_iterations = 1000000
+    layer_width = 256
+    target_update_period = 1
+    num_iterations = 2500000
 
 # algorithm config
 fc_layer_params = (layer_width, layer_width)
@@ -117,7 +115,7 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     critic_loss_ctor=critic_loss_ctor,
-    num_critic_replicas=3,
+    num_critic_replicas=2,
     use_entropy_reward=True,
     target_update_tau=0.005,
     target_update_period=target_update_period,

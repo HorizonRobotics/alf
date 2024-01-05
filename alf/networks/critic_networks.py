@@ -404,22 +404,6 @@ class CriticQuantileNetwork(EncodingNetwork):
             use_naive_parallel_network=use_naive_parallel_network,
             name=name + ".ObsActEncoder")
 
-        # obs_act_encoder = EncodingNetwork(
-        #     input_tensor_spec,
-        #     output_tensor_spec=TensorSpec(
-        #         (1, obs_act_tau_joint_fc_layer_params[0])),
-        #     preprocessing_combiner=alf.layers.NestConcat(dim=-1),
-        #     fc_layer_params=obs_act_joint_fc_layer_params,
-        #     kernel_initializer=kernel_initializer,
-        #     use_fc_bn=use_fc_bn,
-        #     use_fc_ln=use_fc_ln,
-        #     last_layer_size=obs_act_tau_joint_fc_layer_params[0],
-        #     last_activation=torch.relu_,
-        #     last_use_fc_ln=use_fc_ln,
-        #     last_kernel_initializer=last_kernel_initializer,
-        #     name=name + ".ObsActEncoder"
-        # )
-
         if tau_input_processors is None:
             tau_input_processors = CosineEmbeddingPreprocessor(
                 tau_spec, tau_embedding_dim)
