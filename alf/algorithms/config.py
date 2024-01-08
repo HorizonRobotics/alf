@@ -31,6 +31,7 @@ class TrainerConfig(object):
                  num_env_steps=0,
                  unroll_length=8,
                  unroll_with_grad=False,
+                 use_root_inputs_for_after_train_iter=True,
                  async_unroll: bool = False,
                  max_unroll_length: int = 0,
                  unroll_queue_size: int = 200,
@@ -136,6 +137,10 @@ class TrainerConfig(object):
                 is an on-policy sub-algorithm, we can enable this flag for its
                 training. ``OnPolicyAlgorithm`` always unrolls with grads and this
                 flag doesn't apply to it.
+            use_root_inputs_for_after_train_iter (bool): whether to use root_inputs
+                (TimeStep) to call ``after_train_iter()``. If False, the the root_inputs
+                argument will be ``None``. When memory usage is a concern, setting
+                this to False can save memory.
             async_unroll: whether to unroll asynchronously. If True, unroll will
                 be performed in parallel with training.
             max_unroll_length: the maximal length of unroll results for each iteration.
@@ -323,6 +328,7 @@ class TrainerConfig(object):
         self.num_env_steps = num_env_steps
         self.unroll_length = unroll_length
         self.unroll_with_grad = unroll_with_grad
+        self.use_root_inputs_for_after_train_iter = use_root_inputs_for_after_train_iter
         self.async_unroll = async_unroll
         if async_unroll:
             assert not unroll_with_grad, ("unroll_with_grad is not supportd "

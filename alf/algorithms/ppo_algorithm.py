@@ -20,6 +20,7 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.data_structures import namedtuple, TimeStep
 from alf.utils import value_ops, tensor_utils
+from alf.nest.utils import convert_device
 
 PPOInfo = namedtuple(
     "PPOInfo", [
@@ -59,23 +60,31 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                               batch_info):
         """Compute advantages and put it into exp.rollout_info."""
 
+        # The device of rollout_info can be different from the default device
+        # when ReplayBuffer.gather_all.convert_to_default_device is configured
+        # to False to save gpu memory.
+        step_type = convert_device(rollout_info.step_type)
+        discount = convert_device(rollout_info.discount)
+        reward = convert_device(rollout_info.reward)
+        value = convert_device(rollout_info.value)
+
         if rollout_info.reward.ndim == 3:
             # [B, T, D] or [B, T, 1]
-            discounts = rollout_info.discount.unsqueeze(-1) * self._loss.gamma
+            discounts = discount.unsqueeze(-1) * self._loss.gamma
         else:
             # [B, T]
-            discounts = rollout_info.discount * self._loss.gamma
+            discounts = discount * self._loss.gamma
 
         advantages = value_ops.generalized_advantage_estimation(
-            rewards=rollout_info.reward,
-            values=rollout_info.value,
-            step_types=rollout_info.step_type,
+            rewards=reward,
+            values=value,
+            step_types=step_type,
             discounts=discounts,
             td_lambda=self._loss._lambda,
             time_major=False)
         advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
 
-        returns = rollout_info.value + advantages
+        returns = value + advantages
         return root_inputs, PPOInfo(
             rollout_action_distribution=rollout_info.action_distribution,
             rollout_log_prob=rollout_info.log_prob,

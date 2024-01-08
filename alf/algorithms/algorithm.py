@@ -1643,6 +1643,8 @@ class Algorithm(AlgorithmInterface):
                     mini_batch_size)
                 if do_summary:
                     self.summarize_train(exp, train_info, loss_info, params)
+                # These are no longer used, release them to reduce memory usage.
+                del exp, train_info, loss_info, params
 
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps

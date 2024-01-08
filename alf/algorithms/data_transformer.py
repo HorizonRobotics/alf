@@ -952,15 +952,26 @@ class UntransformedTimeStep(SimpleDataTransformer):
     data transformer must be applied first, before any other data transformer.
     """
 
-    def __init__(self, observation_spec=None):
+    def __init__(self,
+                 observation_spec=None,
+                 fields_to_keep: Optional[Iterable[str]] = None):
         """
         observation_spec (nested TensorSpec): describing the observation. This
             should be provided when ``transformed_observation_spec`` propery
             needs to be accessed.
+        fields_to_keep (list[str]): fields to be kept in ``untransformed``. This
+            is useful if memory usage is a concern so that you only keep what
+            you need.
         """
         super().__init__(observation_spec)
+        self._fields_to_keep = fields_to_keep
 
     def _transform(self, timestep):
+        if self._fields_to_keep is not None:
+            return timestep._replace(
+                untransformed=TimeStep(
+                    **{f: getattr(timestep, f)
+                       for f in self._fields_to_keep}))
         return timestep._replace(untransformed=timestep)
 
 
