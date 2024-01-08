@@ -87,7 +87,6 @@ class OACAlgorithmTest(alf.test.TestCase):
             use_entropy_reward=reward_dim == 1,
             env=env,
             config=config,
-            explore=True,
             explore_delta=1.,
             beta_ub=1.,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),

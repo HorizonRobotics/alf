@@ -52,7 +52,6 @@ alf.config(
     'OacAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    explore=True,
     explore_delta=6.,
     target_update_tau=0.005,
     actor_optimizer=AdamTF(lr=3e-4),
