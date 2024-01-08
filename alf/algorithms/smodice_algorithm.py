@@ -46,7 +46,8 @@ SmoInfo = namedtuple(
 SmoCriticInfo = namedtuple("SmoCriticInfo",
                            ["values", "initial_v_values", "is_first"])
 
-SmoLossInfo = namedtuple("SmoLossInfo", ["actor"], default_value=())
+SmoLossInfo = namedtuple(
+    "SmoLossInfo", ["actor", "grad_penalty"], default_value=())
 
 
 @alf.configurable
@@ -77,7 +78,8 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
                  value_optimizer=None,
                  discriminator_optimizer=None,
                  gamma: float = 0.99,
-                 f="chi",
+                 f: str = "chi",
+                 gradient_penalty_weight: float = 1,
                  env=None,
                  config: TrainerConfig = None,
                  checkpoint=None,
@@ -104,7 +106,8 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
             value_optimizer (torch.optim.optimizer): The optimizer for value network.
             discriminator_optimizer (torch.optim.optimizer): The optimizer for discriminator.
             gamma (float): the discount factor.
-            f (str): the function form for f-divergence. Currently support 'chi' and 'kl'
+            f: the function form for f-divergence. Currently support 'chi' and 'kl'
+            gradient_penalty_weight: the weight for discriminator gradient penalty
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -155,6 +158,7 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         self._discriminator_net = discriminator_net
+        self._gradient_penalty_weight = gradient_penalty_weight
 
         assert actor_optimizer is not None
         if actor_optimizer is not None and actor_network is not None:
@@ -236,18 +240,44 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
         """
         observation = inputs.observation
         action = rollout_info.action
-        expert_logits, _ = self._discriminator_net((observation, action),
-                                                   state)
+
+        discriminator_inputs = (observation, action)
 
         if is_expert:
+            # turn on input gradient for gradient penalty in the case of expert data
+            for e in discriminator_inputs:
+                e.requires_grad = True
+
+        expert_logits, _ = self._discriminator_net(discriminator_inputs, state)
+
+        if is_expert:
+            grads = torch.autograd.grad(
+                outputs=expert_logits,
+                inputs=discriminator_inputs,
+                grad_outputs=torch.ones_like(expert_logits),
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True)
+
+            grad_pen = 0
+            for g in grads:
+                grad_pen += self._gradient_penalty_weight * (
+                    g.norm(2, dim=1) - 1).pow(2)
+
             label = torch.ones(expert_logits.size())
+            # turn on input gradient for gradient penalty in the case of expert data
+            for e in discriminator_inputs:
+                e.requires_grad = True
         else:
             label = torch.zeros(expert_logits.size())
+            grad_pen = ()
 
         expert_loss = F.binary_cross_entropy_with_logits(
             expert_logits, label, reduction='none')
 
-        return LossInfo(loss=expert_loss, extra=SmoLossInfo(actor=expert_loss))
+        return LossInfo(
+            loss=expert_loss if grad_pen == () else expert_loss + grad_pen,
+            extra=SmoLossInfo(actor=expert_loss, grad_penalty=grad_pen))
 
     def value_train_step(self, inputs: TimeStep, state, rollout_info):
         observation = inputs.observation
@@ -285,7 +315,7 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("imitation_loss_online",
                                    actor_loss.loss.mean())
                 alf.summary.scalar("discriminator_loss_online",
-                                   expert_disc_loss.loss.mean())
+                                   expert_disc_loss.extra.actor.mean())
 
         # use predicted reward
         reward = self.predict_reward(inputs, rollout_info)
@@ -305,7 +335,6 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
                            state,
                            rollout_info,
                            pre_train=False):
-
         action_dist, new_state = self._predict_action(
             inputs.observation, state=state.actor)
 
@@ -324,7 +353,8 @@ class SmodiceAlgorithm(OffPolicyAlgorithm):
                                    actor_loss.loss.mean())
                 alf.summary.scalar("discriminator_loss_offline",
                                    expert_disc_loss.loss.mean())
-
+                alf.summary.scalar("grad_penalty",
+                                   expert_disc_loss.extra.grad_penalty.mean())
         # use predicted reward
         reward = self.predict_reward(inputs, rollout_info)
 

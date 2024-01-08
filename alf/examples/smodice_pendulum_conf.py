@@ -76,6 +76,7 @@ alf.config(
     # add weight decay to the v_net following smodice paper
     value_optimizer=alf.optimizers.Adam(lr=lr, weight_decay=1e-4),
     discriminator_optimizer=alf.optimizers.Adam(lr=lr),
+    gradient_penalty_weight=0.1,
 )
 
 num_iterations = 1000000
@@ -91,6 +92,7 @@ alf.config(
     rl_train_after_update_steps=0,  # joint training
     mini_batch_size=256,
     mini_batch_length=2,
+    unroll_length=1,
     offline_buffer_dir=offline_buffer_dir,
     offline_buffer_length=offline_buffer_length,
     num_checkpoints=1,

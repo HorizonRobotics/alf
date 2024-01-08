@@ -30,7 +30,7 @@ activation = torch.relu_
 
 offline_buffer_length = None
 offline_buffer_dir = [
-    "./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac_10k"
+    "/home/haichaozhang/data/DATA/sac_bipedal_baseline/train/algorithm/ckpt-80000-replay_buffer"
 ]
 
 alf.config('Agent', rl_algorithm_cls=SmodiceAlgorithm, optimizer=None)
@@ -67,4 +67,11 @@ alf.config(
     # add weight decay to the v_net following smodice paper
     value_optimizer=alf.optimizers.Adam(lr=lr, weight_decay=1e-4),
     discriminator_optimizer=alf.optimizers.Adam(lr=lr),
+    gradient_penalty_weight=0.1,
 )
+
+# training config
+alf.config(
+    "TrainerConfig",
+    offline_buffer_dir=offline_buffer_dir,
+    offline_buffer_length=offline_buffer_length)
