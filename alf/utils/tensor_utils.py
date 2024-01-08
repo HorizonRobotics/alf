@@ -89,7 +89,7 @@ def tensor_extend_zero(x, dim=0):
     """
     zero_shape = list(x.shape)
     zero_shape[dim] = 1
-    zeros = torch.zeros(zero_shape, dtype=x.dtype)
+    zeros = torch.zeros(zero_shape, dtype=x.dtype, device=x.device)
     return torch.cat((x, zeros), dim=dim)
 
 
