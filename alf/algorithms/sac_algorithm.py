@@ -611,14 +611,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if (self._reproduce_locomotion and rollout
                 and not self._training_started):
-            # get batch size with ``get_outer_rank`` since the observation can
-            # be a nest in the general case
-            batch_size = nest_utils.get_outer_rank(observation,
+            # get batch size with ``get_outer_rank`` and ``get_nest_shape``
+            # since the observation can be a nest in the general case
+            outer_rank = nest_utils.get_outer_rank(observation,
                                                    self._observation_spec)
+            outer_dims = alf.nest.get_nest_shape(observation)[:outer_rank]
             # This uniform sampling seems important because for a squashed Gaussian,
             # even with a large scale, a random policy is not nearly uniform.
             action = alf.nest.map_structure(
-                lambda spec: spec.sample(outer_dims=[batch_size]),
+                lambda spec: spec.sample(outer_dims=outer_dims),
                 self._action_spec)
 
         return action_dist, action, q_values, new_state
