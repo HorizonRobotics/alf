@@ -15,6 +15,7 @@
 
 import torch
 import torch.distributions as td
+from typing import Callable, Optional
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -46,7 +47,7 @@ class OacAlgorithm(SacAlgorithm):
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
-                 q_network_cls=QNetwork,
+                 repr_alg_ctor: Optional[Callable] = None,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  calculate_priority=False,
@@ -58,7 +59,6 @@ class OacAlgorithm(SacAlgorithm):
                  prior_actor_ctor=None,
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
-                 explore=True,
                  explore_delta=6.8,
                  beta_ub=4.6,
                  max_log_alpha=None,
@@ -70,14 +70,12 @@ class OacAlgorithm(SacAlgorithm):
                  alpha_optimizer=None,
                  checkpoint=None,
                  debug_summaries=False,
+                 reproduce_locomotion=False,
                  name="OacAlgorithm"):
         """
         Refer to SacAlgorithm for Args besides the following.
 
         Args:
-            explore (bool): default is True for OAC algorithm, where only
-                continuous action space is supported. When 'explore' is False,
-                OAC is the same as SAC.
             explore_delta (float): parameter controlling how optimistic in shifting
                 the mean of the target policy to get the mean of the explore policy.
             beta_ub (float): parameter for computing the upperbound of Q value:
@@ -89,7 +87,7 @@ class OacAlgorithm(SacAlgorithm):
             reward_spec=reward_spec,
             actor_network_cls=actor_network_cls,
             critic_network_cls=critic_network_cls,
-            q_network_cls=q_network_cls,
+            repr_alg_ctor=repr_alg_ctor,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
             calculate_priority=calculate_priority,
@@ -109,12 +107,11 @@ class OacAlgorithm(SacAlgorithm):
             alpha_optimizer=alpha_optimizer,
             checkpoint=checkpoint,
             debug_summaries=debug_summaries,
+            reproduce_locomotion=reproduce_locomotion,
             name=name)
 
-        if explore:
-            assert self._act_type == ActionType.Continuous, (
-                "Only continuous action space is supported for explore mode.")
-        self._explore = explore
+        assert self._act_type == ActionType.Continuous, (
+            "Only continuous action space is supported for explore mode.")
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
 
@@ -123,14 +120,14 @@ class OacAlgorithm(SacAlgorithm):
                         state: SacActionState,
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
-                        explore=False):
+                        rollout=False):
         """
         Differences between SacAlgorithm._predict_action:
 
         1. Only continuous actions are supported.
 
-        2. Add a switch for explore mode where OAC explore policy is constructed
-        from the target policy (actor_network) and used for action prediction.
+        2. OAC explore policy is constructed from the target policy (actor_network) 
+        and used for action prediction during rollout.
         """
         new_state = SacActionState()
         action_dist, actor_network_state = self._actor_network(
@@ -154,7 +151,17 @@ class OacAlgorithm(SacAlgorithm):
             shift = self._explore_delta * torch.mul(sigma, dqda) / norm
             return mu + shift
 
-        if explore:
+        if (rollout and not self._training_started):
+            # get batch size with ``get_outer_rank`` since the observation can
+            # be a nest in the general case
+            batch_size = nest_utils.get_outer_rank(observation,
+                                                   self._observation_spec)
+            # This uniform sampling seems important because for a squashed Gaussian,
+            # even with a large scale, a random policy is not nearly uniform.
+            action = alf.nest.map_structure(
+                lambda spec: spec.sample(outer_dims=[batch_size]),
+                self._action_spec)
+        elif rollout and self._training_started:
             critic_action = normal_dist.mean.detach().clone()
             critic_action.requires_grad = True
             transformed_action = critic_action
@@ -187,35 +194,3 @@ class OacAlgorithm(SacAlgorithm):
                 action = dist_utils.rsample_action_distribution(action_dist)
 
         return action_dist, action, None, new_state
-
-    def rollout_step(self, inputs: TimeStep, state: SacState):
-        """Same as SacAlgorithm.rollout_step except that `explore` is set to be
-        `self._explore` when calling `_predict_action`.
-        """
-        action_dist, action, _, action_state = self._predict_action(
-            inputs.observation,
-            state=state.action,
-            epsilon_greedy=1.0,
-            eps_greedy_sampling=True,
-            explore=self._explore)
-
-        if self.need_full_rollout_state():
-            _, critics_state = self._compute_critics(
-                self._critic_networks, inputs.observation, action,
-                state.critic.critics)
-            _, target_critics_state = self._compute_critics(
-                self._target_critic_networks, inputs.observation, action,
-                state.critic.target_critics)
-            critic_state = SacCriticState(
-                critics=critics_state, target_critics=target_critics_state)
-            actor_state = critics_state
-        else:
-            actor_state = state.actor
-            critic_state = state.critic
-
-        new_state = SacState(
-            action=action_state, actor=actor_state, critic=critic_state)
-        return AlgStep(
-            output=action,
-            state=new_state,
-            info=SacInfo(action=action, action_distribution=action_dist))

@@ -710,7 +710,8 @@ class RLAlgorithm(Algorithm):
             steps = self.train_from_unroll(experience, train_info)
 
         with record_time("time/after_train_iter"):
-            self.after_train_iter(experience, train_info)
+            root_inputs = experience.time_step if self._config.use_root_inputs_for_after_train_iter else None
+            self.after_train_iter(root_inputs, train_info)
 
         return steps
 
@@ -729,6 +730,8 @@ class RLAlgorithm(Algorithm):
         self._ensure_rollout_summary.tick()
 
         unrolled = False
+        root_inputs = None
+        train_info = None
         if (alf.summary.get_global_counter() >=
                 self._rl_train_after_update_steps
                 and (unroll_length > 0 or self._config.unroll_length == 0)
@@ -750,6 +753,10 @@ class RLAlgorithm(Algorithm):
                         if experience:
                             self.summarize_rollout(experience)
                             self.summarize_metrics()
+                            train_info = experience.rollout_info
+                            if self._config.use_root_inputs_for_after_train_iter:
+                                root_inputs = experience.time_step
+                            del experience
 
         # replay buffer may not have been created for two different reasons:
         # 1. in online RL training (``has_offline`` is False), unroll is not
@@ -765,13 +772,7 @@ class RLAlgorithm(Algorithm):
 
         if unrolled:
             with record_time("time/after_train_iter"):
-                if experience is not None:
-                    train_info = experience.rollout_info
-                    experience = experience._replace(rollout_info=())
-                else:
-                    experience = None
-                    train_info = None
-                self.after_train_iter(experience, train_info)
+                self.after_train_iter(root_inputs, train_info)
 
         # For now, we only return the steps of the primary algorithm's training
         return steps
