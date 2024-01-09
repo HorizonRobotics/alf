@@ -1069,7 +1069,8 @@ def set_random_seed(seed):
         force_torch_deterministic = getattr(flags.FLAGS,
                                             'force_torch_deterministic', True)
         # causes RuntimeError: scatter_add_cuda_kernel does not have a deterministic implementation
-        torch.use_deterministic_algorithms(force_torch_deterministic)
+        torch.use_deterministic_algorithms(
+            force_torch_deterministic, warn_only=True)
     seed %= 2**32
     random.seed(seed)
     # sometime the seed passed in can be very big, but np.random.seed
