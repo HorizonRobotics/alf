@@ -116,7 +116,7 @@ class SACAlgorithmTestInit(alf.test.TestCase):
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((True, 1), (False, 3))
     def test_sac_algorithm(self, use_naive_parallel_network, reward_dim):
-        num_env = 1
+        num_env = 4
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
@@ -174,6 +174,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             alpha_optimizer=alf.optimizers.Adam(lr=1e-2),
+            reproduce_locomotion=True,
             debug_summaries=False,
             name="MySAC")
 
