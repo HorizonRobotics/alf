@@ -35,7 +35,7 @@ from alf.utils.math_ops import clipped_exp
 class OACAlgorithmTest(alf.test.TestCase):
     def test_oac_algorithm(self):
         reward_dim = 3
-        num_env = 1
+        num_env = 4
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
