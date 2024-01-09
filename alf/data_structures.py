@@ -445,7 +445,8 @@ def time_step_spec(observation_spec, action_spec, reward_spec):
     def is_valid_tensor_spec(spec):
         return isinstance(spec, ts.TensorSpec)
 
-    assert all(map(is_valid_tensor_spec, nest.flatten(observation_spec)))
+    assert all(map(is_valid_tensor_spec, nest.flatten(observation_spec))), \
+        observation_spec
     assert all(map(is_valid_tensor_spec, nest.flatten(action_spec)))
     return TimeStep(
         step_type=ts.TensorSpec([], torch.int32),
