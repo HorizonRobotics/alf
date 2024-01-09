@@ -86,6 +86,7 @@ class DSacAlgorithm(SacAlgorithm):
                  actor_optimizer: Optional[torch.optim.Optimizer] = None,
                  critic_optimizer: Optional[torch.optim.Optimizer] = None,
                  alpha_optimizer: Optional[torch.optim.Optimizer] = None,
+                 reset_last_layer_only: bool = False,
                  debug_summaries: bool = False,
                  name: str = "DSacAlgorithm"):
         """
@@ -99,6 +100,8 @@ class DSacAlgorithm(SacAlgorithm):
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
                 quantile value.
+            reset_last_layer_only: serves as the ``last_layer_only`` argument 
+                when ``reset_parameters`` is called without specifying the argument.
         """
         assert tau_type in ('fixed',
                             'iqn'), f"Unsupported tau_type: {tau_type}."
@@ -151,6 +154,7 @@ class DSacAlgorithm(SacAlgorithm):
         self._mini_batch_size = self._config.mini_batch_size
         self._eval_tau = self._get_tau(
             self._mini_batch_size, tau_type="fixed")[0]
+        self._reset_last_layer_only = reset_last_layer_only
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
@@ -210,6 +214,12 @@ class DSacAlgorithm(SacAlgorithm):
     #     y_idx = torch.min((tau_hat - target_percentile).abs(), dim=1)[1]
     #     target_percentiles = quantiles[x_idx, y_idx]
     #     return target_percentiles
+
+    def reset_parameters(self, last_layer_only=None):
+        if last_layer_only is None:
+            last_layer_only = self._reset_last_layer_only
+        self._actor_network.reset_parameters(last_layer_only=last_layer_only)
+        self._critic_networks.reset_parameters(last_layer_only=last_layer_only)
 
     def _compute_critics(self,
                          critic_net,

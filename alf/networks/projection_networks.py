@@ -306,6 +306,12 @@ class NormalProjectionNetwork(Network):
             parallelism=n, name="parallel_" + self.name)
         return type(self)(**parallel_proj_net_args)
 
+    def reset_parameters(self):
+        if hasattr(self._means_projection_layer, 'reset_parameters'):
+            self._means_projection_layer.reset_parameters()
+        if hasattr(self._std_projection_layer, 'reset_parameters'):
+            self._std_projection_layer.reset_parameters()
+
 
 @alf.configurable
 class StableNormalProjectionNetwork(NormalProjectionNetwork):

@@ -248,6 +248,14 @@ class _Sequential(Network):
         return _Sequential(new_networks, new_named_networks, self._output,
                            input_spec, "parallel_" + self.name)
 
+    def reset_parameters(self, last_layer_only: bool = False):
+        if last_layer_only and hasattr(self._networks[-1], 'reset_parameters'):
+            self._networks[-1].reset_parameters()
+        else:
+            for net in self._networks:
+                if hasattr(net, 'reset_parameters'):
+                    net.reset_parameters()
+
 
 class Parallel(Network):
     """Apply each Network in the nest of Network to the corresponding input.

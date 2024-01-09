@@ -119,6 +119,10 @@ class ActorDistributionNetworkBase(Network):
         return ParallelActorDistributionNetwork(self, n,
                                                 "parallel_" + self._name)
 
+    def reset_parameters(self, last_layer_only: bool = False):
+        self._encoding_net.reset_parameters(last_layer_only=last_layer_only)
+        self._projection_net.reset_parameters()
+
     @property
     def state_spec(self):
         """Return the state spec of the actor network. It is simply the state spec
@@ -239,6 +243,10 @@ class ParallelActorDistributionNetwork(Network):
         act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
                                       self._projection_net)
         return act_dist, state
+
+    def reset_parameters(self, last_layer_only: bool = False):
+        self._encoding_net.reset_parameters(last_layer_only=last_layer_only)
+        self._projection_net.reset_parameters()
 
     @property
     def state_spec(self):

@@ -340,6 +340,16 @@ class NaiveParallelNetwork(Network):
                                                     output_state_spec)
         return output, new_state
 
+    def reset_parameters(self, last_layer_only: bool = False):
+        for i in range(self._n):
+            if last_layer_only and hasattr(self._networks[i][-1],
+                                           'reset_parameters'):
+                self._networks[i][-1].reset_parameters()
+            else:
+                for net in self._networks[i]:
+                    if hasattr(net, 'reset_parameters'):
+                        net.reset_parameters()
+
 
 class NetworkWrapper(Network):
     """Wrap module or function as a Network."""
