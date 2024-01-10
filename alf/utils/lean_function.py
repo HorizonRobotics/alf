@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import torch
 import torch.nn as nn
 import types
@@ -47,6 +48,11 @@ class _LeanFunction(torch.autograd.Function):
         ctx.args = tuple((isinstance(arg, torch.Tensor),
                           None if isinstance(arg, torch.Tensor) else arg)
                          for arg in args)
+        assert num_parameters > 0 or len(tensors) > 0, (
+            "No Tensor input for %s" % func)
+        ctx.device = _infer_device_type(*tensors, *ctx.parameters)
+        ctx.device_autocast_kwargs, ctx.cpu_autocast_kwargs = _get_autocast_kwargs(
+            ctx.device)
         ctx.save_for_backward(*tensors)
         func._inside_lean_function = True
         if keywords:
@@ -70,7 +76,13 @@ class _LeanFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        with torch.enable_grad():
+        device_module = _get_device_module(ctx.device)
+        device_autocast_ctx = device_module.amp.autocast(
+            **ctx.device_autocast_kwargs) if _supports_autocast(
+                ctx.device) else contextlib.nullcontext()
+
+        with torch.enable_grad(), device_autocast_ctx, \
+                 torch.cpu.amp.autocast(**ctx.cpu_autocast_kwargs):
             # saved_tensors is the tensors passed for ctx.save_for_backward
             tensors = list(ctx.saved_tensors)
             func = ctx.func
@@ -132,6 +144,8 @@ def lean_function(func: Callable) -> Callable:
 
         1. Keyword arguments are supported.
         2. Both ``torch.autograd.grad`` and ``torch.autograd.backward`` are supported.
+        3. It returns a decorated function or module so that all the original
+           attributes and methods can still be accessed in the same way.
 
     Examples:
 
@@ -201,3 +215,68 @@ def lean_function(func: Callable) -> Callable:
         return func
     else:
         return _wrapped
+
+
+# The following functions are copied from torch.utils.checkpoint.py. Since different
+# versions of pytorch may have different implementations or lack some functions,
+# we copy the functions here
+
+
+def _get_autocast_kwargs(device="cuda"):
+    if device == "cuda":
+        device_autocast_kwargs = {
+            "enabled": torch.is_autocast_enabled(),
+            "dtype": torch.get_autocast_gpu_dtype(),
+            "cache_enabled": torch.is_autocast_cache_enabled(),
+        }
+    elif _supports_autocast(device):
+        device_module = _get_device_module(device)
+        device_autocast_kwargs = {
+            "enabled": device_module.is_autocast_enabled(),
+            "dtype": device_module.get_autocast_dtype(),
+            "cache_enabled": torch.is_autocast_cache_enabled(),
+        }
+    else:
+        device_autocast_kwargs = None
+
+    cpu_autocast_kwargs = {
+        "enabled": torch.is_autocast_cpu_enabled(),
+        "dtype": torch.get_autocast_cpu_dtype(),
+        "cache_enabled": torch.is_autocast_cache_enabled(),
+    }
+
+    return device_autocast_kwargs, cpu_autocast_kwargs
+
+
+def _supports_autocast(device):
+    device_module = _get_device_module(device)
+    return device == "cuda" or (hasattr(device_module, "is_autocast_enabled")
+                                and hasattr(device_module,
+                                            "get_autocast_dtype"))
+
+
+def _get_device_module(device="cuda"):
+    device_module = getattr(torch, device)
+    return device_module
+
+
+def _infer_device_type(*args):
+    device_types = list({
+        arg.device.type
+        for arg in args
+        if isinstance(arg, torch.Tensor) and not arg.device.type == "cpu"
+    })
+    if len(device_types) > 1:
+        warnings.warn(
+            "Tensor arguments, excluding CPU tensors, are detected on at least two types of devices. "
+            "Device state will only be saved for devices of a single device type, and the remaining "
+            "devices will be ignored. Consequently, if any checkpointed functions involve randomness, "
+            "this may result in incorrect gradients. (Note that if CUDA devices are among the devices "
+            "detected, it will be prioritized; otherwise, the first device encountered will be selected.)"
+        )
+    if len(device_types) == 0:
+        return DefaultDeviceType.get_device_type()
+    elif "cuda" in device_types:
+        return "cuda"
+    else:
+        return device_types[0]
