@@ -319,9 +319,9 @@ class TDQRLoss(TDLoss):
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
 
-        loss, diff = self._td_error_loss_fn(value, returns, tau_hat[:-1],
-                                            next_delta_tau[1:],
-                                            self._sum_over_quantiles)
+        loss, diff = self._td_error_loss_fn(
+            value, returns, tau_hat[:-1], next_delta_tau[1:],
+            self._cdf_midpoints, self._sum_over_quantiles)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = info.step_type[:-1] != StepType.LAST

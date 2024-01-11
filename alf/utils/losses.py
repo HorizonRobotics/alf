@@ -115,6 +115,7 @@ def iqn_huber_loss(value: torch.Tensor,
                    target: torch.Tensor,
                    tau_hat: Optional[torch.Tensor] = (),
                    next_delta_tau: Optional[torch.Tensor] = (),
+                   fixed_tau: Optional[torch.Tensor] = (),
                    sum_over_quantiles: bool = True,
                    loss_fn: Callable = huber_function):
     """Huber loss used by the following IQN paper:
@@ -130,6 +131,8 @@ def iqn_huber_loss(value: torch.Tensor,
             for computing the loss.
         next_delta_tau: the sampled increments of the probility for the input 
             of the quantile function of the target critics.
+        fixed_tau: the fixed increments of probability, for non iqn style
+            quantile regression.
         sum_over_quantiles: If True, the quantile regression loss will
             be summed along the quantile dimension. Otherwise, it will be
             averaged along the quantile dimension instead. Default is False.
@@ -149,15 +152,23 @@ def iqn_huber_loss(value: torch.Tensor,
     # (T-1 or T, B, n_quantiles, n_quantiles) for scalar reward and
     # (T-1 or T, B, reward_dim, n_quantiles, n_quantiles) for multi-dim reward
     assert value.shape[0] == target.shape[0]
-    assert tau_hat.shape[0] == next_delta_tau.shape[0] == target.shape[0]
+    if isinstance(tau_hat, torch.Tensor) and isinstance(
+            next_delta_tau, torch.Tensor):
+        assert tau_hat.shape[0] == next_delta_tau.shape[0] == target.shape[0]
+        iqn_tau = True
+    else:
+        assert isinstance(fixed_tau, torch.Tensor)
+        iqn_tau = False
     quantiles = value.unsqueeze(-2)
     quantiles_target = target.detach().unsqueeze(-1)
     diff = quantiles_target - quantiles
 
     error = loss_fn(diff)
-    loss = torch.abs(
-        (tau_hat.unsqueeze(-2) -
-         (diff.detach() < 0).float())) * error * next_delta_tau.unsqueeze(-1)
+    if iqn_tau:
+        loss = torch.abs((tau_hat.unsqueeze(-2) - (diff.detach() < 0).float()
+                          )) * error * next_delta_tau.unsqueeze(-1)
+    else:
+        loss = torch.abs((fixed_tau - (diff.detach() < 0).float())) * error
     if sum_over_quantiles:
         loss = loss.mean(-2).sum(-1)
     else:
