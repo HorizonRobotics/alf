@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import contextlib
 import torch
 import torch.nn as nn
 import types
 from typing import Callable
 
+import alf
 from alf.nest import flatten, pack_sequence_as
 from alf.networks import Network
 
@@ -267,7 +269,7 @@ def _infer_device_type(*args):
         if isinstance(arg, torch.Tensor) and not arg.device.type == "cpu"
     })
     if len(device_types) > 1:
-        warnings.warn(
+        logging.warning(
             "Tensor arguments, excluding CPU tensors, are detected on at least two types of devices. "
             "Device state will only be saved for devices of a single device type, and the remaining "
             "devices will be ignored. Consequently, if any checkpointed functions involve randomness, "
@@ -275,7 +277,7 @@ def _infer_device_type(*args):
             "detected, it will be prioritized; otherwise, the first device encountered will be selected.)"
         )
     if len(device_types) == 0:
-        return DefaultDeviceType.get_device_type()
+        return alf.get_default_device()
     elif "cuda" in device_types:
         return "cuda"
     else:
