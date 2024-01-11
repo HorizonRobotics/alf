@@ -443,12 +443,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
 
-        self._update_target = common.TargetUpdater(
-            models=_filter([self._critic_networks, repr_alg]),
-            target_models=_filter(
-                [self._target_critic_networks, target_repr_alg]),
-            tau=target_update_tau,
-            period=target_update_period)
+        def _create_target_updater():
+            self._update_target = common.TargetUpdater(
+                models=_filter([self._critic_networks, repr_alg]),
+                target_models=_filter(
+                    [self._target_critic_networks, target_repr_alg]),
+                tau=target_update_tau,
+                period=target_update_period)
+
+        _create_target_updater()
 
         self._periodic_reset = common.PeriodicReset(
             models=_filter([
@@ -456,7 +459,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 self._target_critic_networks, repr_alg, target_repr_alg,
                 self._log_alpha
             ]),
-            post_processings=[self._update_target],
+            post_processings=[_create_target_updater],
             period=parameter_reset_period)
 
         # The following checkpoint loading hook handles the case when critic
