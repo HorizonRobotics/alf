@@ -336,8 +336,15 @@ class PeriodicReset(nn.Module):
 
         m <-- re-initialize.
 
-    Note: we reinitialize Network parameters and always reset buffers. For non-Network
+    Note: 
+        1) we reinitialize Network parameters and always reset buffers. For non-Network
         parameters, we record their initial value and reassign those values when reset.
+        2) for a ``Network`` instance, if it implements a member function ``reset_parameters``,
+        then this function will be used to reset the network parameter, which provides
+        the user more flexibilities to achieve customized reset behaviors (e.g. only reset
+        certain layers). If ``reset_parameters`` does not exist, then all the network
+        parameters will be reset. 
+        
     Args:
         models (Network | list[Network] | Parameter | list[Parameter] ): the
             models or parameters that will be reset periodically according to schedule.
@@ -384,14 +391,16 @@ class PeriodicReset(nn.Module):
         if self._counter >= period:
             for i, m in enumerate(self._models):
                 if isinstance(m, alf.networks.Network):
-                    self._copy_model_or_parameter(m.copy(), m)
+                    if callable(getattr(m, 'reset_parameters', None)):
+                        m.reset_parameters()
+                    else:
+                        self._copy_model_or_parameter(m.copy(), m)
                 elif isinstance(m, torch.nn.Parameter):
                     self._copy_model_or_parameter(
                         self._init_param_values[id(m)], m)
             for c in self._post_processings:
                 c()
 
-        if self._counter >= period:
             self._counter = 0
 
 
