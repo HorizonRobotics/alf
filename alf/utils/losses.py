@@ -117,6 +117,30 @@ def iqn_huber_loss(value: torch.Tensor,
                    next_delta_tau: Optional[torch.Tensor] = (),
                    sum_over_quantiles: bool = True,
                    loss_fn: Callable = huber_function):
+    """Huber loss used by the following IQN paper:
+
+    ::
+        Dabney et al "Implicit Quantile Networks for Distributional Reinforcement Learning",
+        arXiv:1806.06923
+
+    Args:
+        value: the time-major tensor for the value at each time step. The loss
+            is between this and the target.
+        target: the time-major tensor for return, this is used as the target
+            for computing the loss.
+        next_delta_tau: the sampled increments of the probility for the input 
+            of the quantile function of the target critics.
+        sum_over_quantiles: If True, the quantile regression loss will
+            be summed along the quantile dimension. Otherwise, it will be
+            averaged along the quantile dimension instead. Default is False.
+        loss_fn: the loss function for the difference between value and target.
+            Default is huber_function.
+
+    Returns:
+        loss: the computed loss.
+        diff: the difference bwtween target and value, for summary purpose.
+
+    """
 
     # for quantile regression TD, the value and target both have shape
     # (T-1 or T, B, n_quantiles) for scalar reward and

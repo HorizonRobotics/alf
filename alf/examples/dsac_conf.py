@@ -129,11 +129,7 @@ alf.config('Agent', rl_algorithm_cls=DSacAlgorithm)
 
 alf.config(
     'TrainerConfig',
-    # version='debug-wandb',
-    # use_wandb=True,
     async_eval=True,
-    # entity="jiachenli",
-    # project="aleatoric-iql",
     initial_collect_steps=10000,
     mini_batch_length=2,
     unroll_length=1,

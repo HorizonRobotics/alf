@@ -333,11 +333,10 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
 
 @alf.configurable
 class CriticQuantileNetwork(EncodingNetwork):
-    '''
-    We use the name `obs_act_tau_fc_layer_params` instead of
-    `joint_fc_layer_params` to prevent unexpected parameter
-    specification in the configuration file.
-    '''
+    """Creates an instance of ``CriticQuantileNetwork`` for estimating the quantiles 
+    of a (state, action) input for continuous or discrete actions. Used by the 
+    DSacAlgorithm.
+    """
 
     def __init__(self,
                  input_tensor_spec,
@@ -366,6 +365,72 @@ class CriticQuantileNetwork(EncodingNetwork):
                  last_kernel_initializer=None,
                  use_naive_parallel_network=False,
                  name="CriticQuantileNetwork"):
+        """
+
+        Args:
+            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
+                representing the inputs.
+            tau_spec (TensorSpec): spec for the tau input.
+            output_tensor_spec (TensorSpec): spec for the output
+            observation_input_processors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
+                corresponding observation input.
+            observation_input_processors_ctor (Callable): if ``observation_input_processors``
+                is None and ``observation_input_processors_ctor`` is provided, then
+                ``observation_input_processors`` will be constructed by calling
+                ``observation_input_processors_ctor(observation_spec)``.
+            observation_preprocessing_combiner (NestCombiner): preprocessing called
+                on complex observation inputs.
+            observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            observation_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes for observations.
+            action_input_processors (nested Network|nn.Module|None): a nest of
+                input preprocessors, each of which will be applied to the
+                corresponding action input.
+            action_input_processors_ctor (Callable): if ``action_input_processors``
+                is None and ``action_input_processors_ctor`` is provided, then
+                ``action_input_processors`` will be constructed by calling
+                ``action_input_processors_ctor(action_spec)``.
+            action_preprocessing_combiner (NestCombiner): preprocessing called
+                to combine complex action inputs.
+            action_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes for actions.
+            observation_action_combiner (NestCombiner): combiner class for fusing
+                the observation and action. If None, ``NestConcat`` will be used.
+            obs_act_joint_fc_layer_params (tuple[int]): a tuple of integers representing
+                hidden FC layer sizes FC layers after merging observations and
+                actions.
+            obs_act_activation (nn.functional): activation used for hidden layers after
+                merging observations and actions.
+            tau_embedding_dim (int): dimension of the tau embeddings.
+            tau_input_processors (Network|nn.Module|None): input preprocessors applied
+                to the input tau.
+            tau_fc_layer_params (tuple[int]): a tuple of integers representing hidden
+                FC layer sizes for the tau embedding.
+            tau_activation (nn.functional): activation used for hidden layers of
+                tau embedding.
+            obs_act_tau_joint_fc_layer_params (tuple[int]): a tuple of integers
+                representing hidden layers after merging the observation, action, and
+                tau embedding.
+            use_fc_bn (bool): whether use Batch Normalization for the internal
+                FC layers (i.e. FC layers beside the last one).
+            use_fc_ln (bool): whether use Layer Normalization for the internal
+                FC layers (i.e. FC layers beside the last one).
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
+            last_kernel_initializer (Callable): initializer for all the last layer
+                If none is provided a uniform initializer will be used.
+            use_naive_parallel_network (bool): if True, will use
+                ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
+                might be useful in cases when the ``NaiveParallelNetwork``
+                has an advantange in terms of speed over ``ParallelNetwork``.
+                You have to test to see which way is faster for your particular
+                situation.
+            name (str):
+        """
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(

@@ -301,9 +301,12 @@ class TDQRLoss(TDLoss):
             target_value: the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
                 can be same as ``value``.
-            tau_hat:
-            delta_tau:
-            next_delta_tau:
+            tau_hat: midpoints of the sampled tau's, used as the inputs to the
+                quantile function of the critics.
+            delta_tau: the sampled increments of the probability for input of
+                the quantile function of the critics.
+            next_delta_tau: the sampled increments of the probility for the input 
+                of the quantile function of the target critics.
 
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.

@@ -93,7 +93,11 @@ class DSacAlgorithm(SacAlgorithm):
         discrete and mixed actions are omitted.
 
         Args:
-            tau_type:
+            tau_type: type of the sampling method for the delta_tau of the 
+                probability space, options are ['fixed', 'iqn'], indicating
+                a fixed uniformly allocated probability and a random sampling
+                as done in the IQN paper.
+            num_quantiles: number of quantiles.
             min_critic_by_critic_mean: If True, compute the min quantile 
                 distribution of critic replicas by choosing the one with the
                 lowest distribution mean. Otherwise, compute the min quantile
@@ -194,22 +198,6 @@ class DSacAlgorithm(SacAlgorithm):
                                   dim=1)
             tau_hat = (tau + tau_shift) / 2
         return tau_hat, delta_tau
-
-    # def _compute_var_from_quantiles(self, quantiles, weight, mean=None):
-    #     # quantiles: [B, ..., num_quantiles]
-    #     # weight: [B, ..., num_quantiles]
-    #     if mean is None:
-    #         # [B, ..., 1]
-    #         mean = (quantiles * weight).sum(-1, keepdim=True)
-    #     # [B, ...]
-    #     var = ((quantiles - mean)**2 * weight).sum(-1)
-    #     return var
-
-    # def _get_target_quantile(self, quantiles, tau_hat, target_percentile):
-    #     x_idx = torch.arange(len(quantiles))
-    #     y_idx = torch.min((tau_hat - target_percentile).abs(), dim=1)[1]
-    #     target_percentiles = quantiles[x_idx, y_idx]
-    #     return target_percentiles
 
     def _compute_critics(self,
                          critic_net,
