@@ -86,6 +86,7 @@ class DSacAlgorithm(SacAlgorithm):
                  actor_optimizer: Optional[torch.optim.Optimizer] = None,
                  critic_optimizer: Optional[torch.optim.Optimizer] = None,
                  alpha_optimizer: Optional[torch.optim.Optimizer] = None,
+                 reset_parameters_cycle: Optional[int] = None,
                  reset_last_layer_only: bool = False,
                  debug_summaries: bool = False,
                  name: str = "DSacAlgorithm"):
@@ -100,6 +101,8 @@ class DSacAlgorithm(SacAlgorithm):
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
                 quantile value.
+            reset_parameter_cycle: the number of train_iter every which
+                ``reset_parameters`` will be called.
             reset_last_layer_only: serves as the ``last_layer_only`` argument 
                 when ``reset_parameters`` is called without specifying the argument.
         """
@@ -154,6 +157,7 @@ class DSacAlgorithm(SacAlgorithm):
         self._mini_batch_size = self._config.mini_batch_size
         self._eval_tau = self._get_tau(
             self._mini_batch_size, tau_type="fixed")[0]
+        self._reset_parameters_cycle = reset_parameters_cycle
         self._reset_last_layer_only = reset_last_layer_only
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
@@ -470,3 +474,11 @@ class DSacAlgorithm(SacAlgorithm):
             loss=critic_loss,
             priority=priority,
             extra=critic_loss / float(self._num_critic_replicas))
+
+    def after_train_iter(self, experience, info: DSacInfo):
+        """Reset network parameters if conditions are met. """
+
+        if self._reset_parameters_cycle is not None:
+            if alf.summary.get_global_counter(
+            ) % self._reset_parameters_cycle == 0:
+                self.reset_parameters()

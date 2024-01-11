@@ -49,7 +49,7 @@ print(f"Evaluate on DM control: {dmc_tasks}!")
 if dmc_tasks:
     alf.config(
         "create_environment",
-        env_name="cheetah:run",
+        env_name="hopper:hop",
         num_parallel_environments=1,
         env_load_fn=suite_dmc.load)
 
@@ -122,6 +122,8 @@ alf.config(
     initial_log_alpha=initial_log_alpha,
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
+    reset_parameters_cycle=int(num_iterations / 10),
+    reset_last_layer_only=True,
     alpha_optimizer=alpha_optimizer)
 
 # training config
