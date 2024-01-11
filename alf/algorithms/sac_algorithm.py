@@ -455,7 +455,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         # no need to include ``target_critic_networks`` and ``target_repr_alg``
         # since their parameter values will be copied from ``self._critic_networks``
-        # upon each reset via ``post_processings``
+        # and ``repr_alg`` upon each reset via ``post_processings``
         self._periodic_reset = common.PeriodicReset(
             models=_filter([
                 self._actor_network, self._critic_networks, repr_alg,
