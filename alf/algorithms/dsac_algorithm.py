@@ -141,6 +141,10 @@ class DSacAlgorithm(SacAlgorithm):
 
         assert self._act_type == ActionType.Continuous, (
             "Only continuous action space is supported for dsac algorithm.")
+        if self.has_multidim_reward():
+            assert not min_critic_by_critic_mean, (
+                "min_critic_by_critic_mean is not supported for multi-dim rewards."
+            )
 
         self._min_critic_by_critic_mean = min_critic_by_critic_mean
         if alpha_optimizer is None:
@@ -222,12 +226,11 @@ class DSacAlgorithm(SacAlgorithm):
                 *remaining_shape)
         if replica_min:
             if self._min_critic_by_critic_mean:
+                # Compute the min quantile distribution of critic replicas by
+                # choosing the one with the lowest distribution mean
                 assert delta_tau is not None, (
                     "Input delta_tau is required for computing replica_min"
                     "by critic_mean.")
-                # Compute the min quantile distribution of critic replicas by
-                # choosing the one with the lowest distribution mean
-                assert not self.has_multidim_reward()
                 # [B, replicas] or [B, replicas, reward_dim]
                 critic_mean = (
                     critic_quantiles * delta_tau.unsqueeze(1)).sum(-1)
@@ -270,7 +273,7 @@ class DSacAlgorithm(SacAlgorithm):
             target_critics, target_critics_state, _ = self._compute_critics(
                 self._target_critic_networks, inputs.observation[bs:],
                 action[bs:], tau_info.next_tau_hat[bs:], state.target_critics,
-                tau_info.next_delta_tau)
+                tau_info.next_delta_tau[bs:])
             # Prepend with zeros so that the tensors can be correctly reshape to
             # [T, B, ...]
             zeros = torch.zeros_like(target_critics[:bs])
@@ -307,8 +310,17 @@ class DSacAlgorithm(SacAlgorithm):
         # [B, num_quantiles]
         tau_hat, delta_tau = tau_info.actor_tau_hat, tau_info.actor_delta_tau
         critics, critics_state, critics_std = self._compute_critics(
-            self._critic_networks, inputs.observation, action, tau_hat, state)
-        # This sum() will reduce all dims so q_value can be any rank
+            self._critic_networks, inputs.observation, action, tau_hat, state,
+            delta_tau)
+
+        # For multi-dim reward, critics is of shape [B, reward_dim, n_quantiles]
+        # so for delta_tau: [B, n_quantiles] -> [B, 1, n_quantiles]
+        # For scalar reward, do nothing
+        if self.has_multidim_reward():
+            delta_tau = delta_tau.unsqueeze(-2)
+            critics_std = critics_std.mean(-2, keepdims=True)
+
+        # This sum() will reduce all dims
         q_value = (critics * delta_tau).sum()
         if self._epistemic_alpha:
             q_std = (critics_std * delta_tau).sum(-1)

@@ -51,6 +51,7 @@ function test() {
         alf.algorithms.containers_test \
         alf.algorithms.data_transformer_test \
         alf.algorithms.ddpg_algorithm_test \
+        alf.algorithms.dsac_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
         alf.algorithms.functional_particle_vi_algorithm_test \

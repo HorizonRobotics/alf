@@ -165,6 +165,12 @@ def iqn_huber_loss(value: torch.Tensor,
 
     error = loss_fn(diff)
     if iqn_tau:
+        if diff.ndim - tau_hat.ndim > 1:
+            # For multidimentional reward:
+            # diff is of shape [T or T-1, B, reward_dim, n_quantiles, n_quantiles]
+            # while tau_hat and next_delta_tau have shape [T or T-1, B, n_quantiles]
+            tau_hat = tau_hat.unsqueeze(-2)
+            next_delta_tau = next_delta_tau.unsqueeze(-2)
         loss = torch.abs((tau_hat.unsqueeze(-2) - (diff.detach() < 0).float()
                           )) * error * next_delta_tau.unsqueeze(-1)
     else:
