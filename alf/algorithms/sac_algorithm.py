@@ -169,6 +169,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  max_log_alpha=None,
                  target_update_tau=0.05,
                  target_update_period=1,
+                 parameter_reset_period=-1,
                  dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
@@ -258,6 +259,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            parameter_reset_period (int): Period for resetting the value of learnable
+                parameters. If negative, no reset is done.
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between
                 ``[-dqda_clipping, dqda_clipping]``. Will not perform clipping if
@@ -440,12 +443,26 @@ class SacAlgorithm(OffPolicyAlgorithm):
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
 
-        self._update_target = common.TargetUpdater(
-            models=_filter([self._critic_networks, repr_alg]),
-            target_models=_filter(
-                [self._target_critic_networks, target_repr_alg]),
-            tau=target_update_tau,
-            period=target_update_period)
+        def _create_target_updater():
+            self._update_target = common.TargetUpdater(
+                models=_filter([self._critic_networks, repr_alg]),
+                target_models=_filter(
+                    [self._target_critic_networks, target_repr_alg]),
+                tau=target_update_tau,
+                period=target_update_period)
+
+        _create_target_updater()
+
+        # no need to include ``target_critic_networks`` and ``target_repr_alg``
+        # since their parameter values will be copied from ``self._critic_networks``
+        # and ``repr_alg`` upon each reset via ``post_processings``
+        self._periodic_reset = common.PeriodicReset(
+            models=_filter([
+                self._actor_network, self._critic_networks, repr_alg,
+                self._log_alpha
+            ]),
+            post_processings=[_create_target_updater],
+            period=parameter_reset_period)
 
         # The following checkpoint loading hook handles the case when critic
         # network is not constructed. In this case the critic network paramters
@@ -938,6 +955,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def after_update(self, root_inputs, info: SacInfo):
         self._update_target()
+        self._periodic_reset()
         if self._repr_alg is not None:
             self._repr_alg.after_update(root_inputs, info.repr)
         if self._max_log_alpha is not None:

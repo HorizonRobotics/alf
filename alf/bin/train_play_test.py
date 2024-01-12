@@ -682,6 +682,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='sarsa_sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_param_reset_sac_bipedal_walker(self):
+        self._test(
+            conf_file='sac_bipedal_walker_param_reset_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_sarsa_sac_pendulum(self):
         self._test(
             conf_file='sarsa_sac_pendulum.gin',
