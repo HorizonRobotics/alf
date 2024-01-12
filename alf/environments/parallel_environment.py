@@ -294,7 +294,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         processes and the progress information needs to be synced with the main
         in order to use schedulers in the environment.
         """
-        [env.sync_progress() for env in envs]
+        [env.sync_progress() for env in self._envs]
 
     def close(self):
         """Close all external process."""

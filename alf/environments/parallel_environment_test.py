@@ -15,6 +15,7 @@
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
 from absl import logging
+from absl.testing import parameterized
 import collections
 import functools
 import multiprocessing.dummy as dummy_multiprocessing
@@ -108,7 +109,7 @@ def _batch_env_ctor(env_ctor, batch_size_per_env, env_id):
     return BatchEnvironmentWrapper(envs)
 
 
-class ParallelAlfEnvironmentTest(alf.test.TestCase):
+class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
 
@@ -421,8 +422,13 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
         env1.close()
         env2.close()
 
-    def test_sync_progress(self):
-        self._parallel_environment_ctor = FastParallelEnvironment
+
+    @parameterized.parameters(
+        (FastParallelEnvironment, ),
+        (parallel_environment.ParallelAlfEnvironment, )
+    )
+    def test_sync_progress(self, parallel_environment_ctor):
+        self._parallel_environment_ctor = parallel_environment_ctor
         env = self._make_parallel_environment(
             constructor=ProgressEnvironment, num_envs=6, batch_size_per_env=2)
         ts = env.reset()

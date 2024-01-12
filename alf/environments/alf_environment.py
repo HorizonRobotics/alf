@@ -218,6 +218,12 @@ class AlfEnvironment(object):
         self._current_time_step = self._step(action)
         return self._current_time_step
 
+    def sync_progress(self):
+        """A placeholder interface to make it consistent with some derived classes
+        such as ``ParallelAlfEnvironment`` and ``FastParallelAlfEnvironment``.
+        """
+        pass
+    
     def close(self):
         """Frees any resources used by the environment.
 
