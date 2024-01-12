@@ -422,11 +422,8 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
         env1.close()
         env2.close()
 
-
-    @parameterized.parameters(
-        (FastParallelEnvironment, ),
-        (parallel_environment.ParallelAlfEnvironment, )
-    )
+    @parameterized.parameters((FastParallelEnvironment, ),
+                              (parallel_environment.ParallelAlfEnvironment, ))
     def test_sync_progress(self, parallel_environment_ctor):
         self._parallel_environment_ctor = parallel_environment_ctor
         env = self._make_parallel_environment(

@@ -222,8 +222,11 @@ class AlfEnvironment(object):
         """A placeholder interface to make it consistent with some derived classes
         such as ``ParallelAlfEnvironment`` and ``FastParallelAlfEnvironment``.
         """
-        pass
-    
+        raise RuntimeError(
+            'This is a not a parallel environment. '
+            'Change to use parallel environment or set config.sync_progress_to_envs=False'
+        )
+
     def close(self):
         """Frees any resources used by the environment.
 
