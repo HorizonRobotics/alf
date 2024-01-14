@@ -117,7 +117,7 @@ def is_same_spec(spec1, spec2):
     return all(nest.flatten(same))
 
 
-def consistent_with_spec(nested, spec):
+def consistent_with_spec(nested, spec, from_dim=0):
     """Check whether the nested structure is consistent with the spec.
 
     Besides return the bool value, it will also print out the mismatching
@@ -144,8 +144,14 @@ def consistent_with_spec(nested, spec):
         return False
 
     def _check_spec(path, x, s):
-        if not (x.shape == s.shape and x.dtype == np.dtype(s.dtype_str)):
-            print("Spec mismatch at path: ", path, file=sys.stderr)
+        if not (len(x.shape) - from_dim == len(s.shape)
+                and x.shape[from_dim:] == s.shape
+                and x.dtype == np.dtype(s.dtype_str)):
+            print(
+                f"Spec mismatch at path: {path}, "
+                f"tensor shape={x.shape} tensor dtype={x.dtype} "
+                f"spec shape={s.shape} spec dtype={s.dtype}",
+                file=sys.stderr)
             return False
         else:
             return True

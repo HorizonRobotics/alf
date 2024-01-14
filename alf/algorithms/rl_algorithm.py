@@ -708,6 +708,7 @@ class RLAlgorithm(Algorithm):
             train_info = experience.rollout_info
             experience = experience._replace(rollout_info=())
             steps = self.train_from_unroll(experience, train_info)
+            self.summarize_rollout(experience)
 
         with record_time("time/after_train_iter"):
             root_inputs = experience.time_step if self._config.use_root_inputs_for_after_train_iter else None
