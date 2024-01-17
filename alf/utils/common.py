@@ -1449,7 +1449,14 @@ def get_all_parameters(obj):
             # when called in a wrong context (e.g. Algorithm.experience_spec)
             if isinstance(getattr(type(obj), name, None), property):
                 continue
-            attr = getattr(obj, name, None)
+            attr = None
+            try:
+                attr = getattr(obj, name)
+            except:
+                # some attrbutes are property function, which may raise exception
+                # when called in a wrong context (e.g. Algorithm.experience_spec)
+                pass
+
             if attr is None or id(attr) in memo:
                 continue
             unprocessed.append((attr, path + name))
