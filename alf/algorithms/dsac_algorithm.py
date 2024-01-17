@@ -88,7 +88,7 @@ class DSacAlgorithm(SacAlgorithm):
                  alpha_optimizer: Optional[torch.optim.Optimizer] = None,
                  debug_summaries: bool = False,
                  name: str = "DSacAlgorithm"):
-        """
+        r"""
         Refer to SacAlgorithm for Args beside the following. Args used for 
         discrete and mixed actions are omitted.
 
@@ -103,6 +103,15 @@ class DSacAlgorithm(SacAlgorithm):
                 lowest distribution mean. Otherwise, compute the min quantile
                 by taking a minimum value across all critic replicas for each
                 quantile value.
+            alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
+                If None, will use the following alpha based on the epistemic
+                uncertainty (approximated by std) of the critics' values 
+                instead of the automatic alpha optimization of SAC:
+
+                .. math::
+                    
+                    \alpha = intial_alpha * std(critics)
+
         """
         assert tau_type in ('fixed',
                             'iqn'), f"Unsupported tau_type: {tau_type}."
@@ -148,6 +157,9 @@ class DSacAlgorithm(SacAlgorithm):
 
         self._min_critic_by_critic_mean = min_critic_by_critic_mean
         if alpha_optimizer is None:
+            # use epistemic alpha rather than the SAC alpha optmization
+            # note that self._log_alpha has been initialized as nn.Parameters
+            # by SAC, so we need to delete it and reinitialize it as torch.Tensor
             self._epistemic_alpha = True
             self._min_critic_by_critic_mean = False
             self._use_entropy_reward = False

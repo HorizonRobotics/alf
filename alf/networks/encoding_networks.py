@@ -721,12 +721,13 @@ class EncodingNetwork(_Sequential):
                 flatten_output=True)
             spec = net.output_spec
             nets.append(net)
-        # assert spec.ndim == 1, \
-        #     "The input shape {} should be like (N,)!".format(spec.shape)
-        # input_size = spec.shape[0]
         if spec.ndim == 1:
+            # for general input_preprocessors and ImageEncodingNetwork,
+            # ndim of output_spec should be 1
             input_size = spec.shape[0]
         elif spec.ndim == 2:
+            # when CosineEmbeddingPreprocessor is used in input_preprocessors,
+            # its output_spec is 2
             input_size = spec.shape[-1]
         else:
             raise ValueError(
