@@ -163,7 +163,7 @@ class DSacAlgorithm(SacAlgorithm):
             self._epistemic_alpha = True
             self._min_critic_by_critic_mean = False
             self._use_entropy_reward = False
-            del self._log_alpha
+            delattr(self, '_log_alpha')
             self._log_alpha = torch.tensor(float(initial_log_alpha))
         else:
             self._epistemic_alpha = False
