@@ -677,13 +677,6 @@ class EncodingNetwork(_Sequential):
                 not be used.
             name (str):
         """
-        if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                mode='fan_in',
-                distribution='truncated_normal',
-                nonlinearity=activation)
-
         spec = input_tensor_spec
         nets = []
 
