@@ -988,8 +988,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_mask[-1, :] = 0.
             loss = critic_l * critic_mask + policy_l * policy_mask
         else:
-            loss = math_ops.add_ignore_empty(actor_loss.loss,
-                                             critic_loss.loss + alpha_loss)
+            loss = math_ops.add_ignore_empty(actor_loss.loss, critic_loss.loss)
+            loss = math_ops.add_ignore_empty(loss, alpha_loss)
 
         if self._repr_alg is not None:
             repr_loss = self._repr_alg.calc_loss(info.repr)
