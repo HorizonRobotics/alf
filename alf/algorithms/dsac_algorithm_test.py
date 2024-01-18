@@ -29,17 +29,18 @@ from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.algorithms.sac_algorithm import SacState
 from alf.data_structures import TimeStep
 from alf.environments.suite_unittest import (PolicyUnittestEnv, ActionType)
+from alf.nest.utils import NestConcat
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import clipped_exp
 
 
 class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters(('iqn', 1, True, True, True, True),
-                              ('fixed', 3, False, False, False, False))
+    @parameterized.parameters(('iqn', 1, True, True, True, True, True),
+                              ('fixed', 3, False, False, False, False, False))
     def test_dsac_algorithm(self, tau_type, reward_dim, use_epistemic_alpha,
                             use_naive_parallel_network, use_n_step_td,
-                            min_critic_by_critic_mean):
+                            min_critic_by_critic_mean, nested_observation):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -49,7 +50,8 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False)
-        env_class = PolicyUnittestEnv
+        env_class = partial(
+            PolicyUnittestEnv, nested_observation=nested_observation)
         steps_per_episode = 13
         env = env_class(
             num_env,
@@ -75,8 +77,13 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             scale_distribution=True,
             std_transform=clipped_exp)
 
+        if nested_observation:
+            obs_combiner = NestConcat()
+        else:
+            obs_combiner = None
         actor_network = partial(
             alf.nn.ActorDistributionNetwork,
+            preprocessing_combiner=obs_combiner,
             fc_layer_params=fc_layer_params,
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
@@ -84,6 +91,7 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         tau_embedding_dim = 64
         critic_network = partial(
             alf.nn.CriticQuantileNetwork,
+            observation_preprocessing_combiner=obs_combiner,
             tau_embedding_dim=tau_embedding_dim,
             obs_act_tau_joint_fc_layer_params=fc_layer_params,
             use_naive_parallel_network=use_naive_parallel_network)
