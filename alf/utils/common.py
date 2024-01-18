@@ -1453,8 +1453,7 @@ def get_all_parameters(obj):
             try:
                 attr = getattr(obj, name)
             except:
-                # some attrbutes are property function, which may raise exception
-                # when called in a wrong context (e.g. Algorithm.experience_spec)
+                # handle the case that the attribute cannot be accessed
                 pass
 
             if attr is None or id(attr) in memo:
