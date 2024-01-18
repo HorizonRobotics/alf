@@ -1405,7 +1405,7 @@ class Algorithm(AlgorithmInterface):
         Returns:
             int: number of steps that have been trained
         """
-        if self.is_rl():
+        if self.is_rl() and self._config.mask_out_loss_for_last_step:
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
         else:
