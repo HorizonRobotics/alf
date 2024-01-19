@@ -24,6 +24,7 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.td_loss import TDQRLoss
 from alf.algorithms.one_step_loss import OneStepTDQRLoss
 from alf.algorithms.dsac_algorithm import DSacAlgorithm
+from alf.algorithms.doac_algorithm import DOacAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.algorithms.sac_algorithm import SacState
@@ -107,7 +108,7 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         else:
             alpha_optimizer = alf.optimizers.Adam(lr=1e-2)
 
-        alg = DSacAlgorithm(
+        alg = DOacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
