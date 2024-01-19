@@ -37,7 +37,7 @@ setup(
         # with python3.7, the default version of pillow (PIL) is 8.2.0,
         # which breaks some pyglet based rendering in gym
         'pillow==7.2.0',
-        'procgen==0.10.4',
+        'procgen>=0.10.4',
         'protobuf==3.20.1',
         'psutil',
         'pybullet==2.5.0',
