@@ -828,7 +828,7 @@ def render_action_distribution(name,
 
         name_ = name if path == '' else name + '/' + path
         return render_curve(
-            name=name_, data=probs, legends=legends, x_range=x_range)
+            name=name_, data=probs, legends=legends, x_range=x_range, **kwargs)
 
     return nest.py_map_structure_with_path(_render_act_dist, act_dist,
                                            action_spec)
