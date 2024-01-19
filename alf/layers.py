@@ -750,7 +750,14 @@ class ParallelFC(nn.Module):
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
 
-        if self.bias is not None:
+        if self._output_size == 1:
+            # Temp fix due to https://github.com/pytorch/pytorch/issues/106951
+            y = torch.einsum('nbi,ni->nb', inputs,
+                             self._weight.squeeze(1))  # [n, B]
+            if self._bias is not None:
+                y = y + self._bias
+            y = y.unsqueeze(2)  # [n, B, 1]
+        elif self.bias is not None:
             y = torch.baddbmm(
                 self._bias.unsqueeze(1), inputs,
                 self.weight.transpose(1, 2))  # [n, B, k]
