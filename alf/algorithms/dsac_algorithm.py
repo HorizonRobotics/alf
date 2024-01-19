@@ -168,11 +168,6 @@ class DSacAlgorithm(SacAlgorithm):
         else:
             self._epistemic_alpha = False
 
-        self._mini_batch_size = self._config.mini_batch_size
-        self._batch_size = self._mini_batch_size * self._config.mini_batch_length
-        self._eval_tau = self._get_tau(
-            self._mini_batch_size, tau_type="fixed")[0]
-
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
                        q_network_cls):
@@ -266,39 +261,22 @@ class DSacAlgorithm(SacAlgorithm):
 
     def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
                            rollout_info: SacInfo, action, tau_info: TauInfo):
-        bs = self._mini_batch_size
         # Calculate the critics and value for both the current observation
         # and next observation
-        # [B * (T-1), n_quantiles]
-        critic_observation = nest.map_structure(lambda tensor: tensor[:-bs],
-                                                inputs.observation)
-        critic_action = nest.map_structure(lambda tensor: tensor[:-bs],
-                                           rollout_info.action)
+        # [B * T, n_quantiles] or [B, n_quantiles]
         critics, critics_state, _ = self._compute_critics(
             self._critic_networks,
-            critic_observation,
-            critic_action,
-            tau_info.tau_hat[:-bs],
+            inputs.observation,
+            rollout_info.action,
+            tau_info.tau_hat,
             state.critics,
             replica_min=False)
-        # Extend with zeros so that the tensors can be correctly reshape to
-        # [T, B, ...]
-        zeros = torch.zeros_like(critics[:bs])
-        critics = torch.cat((critics, zeros), dim=0)
 
         with torch.no_grad():
-            target_critic_observation = nest.map_structure(
-                lambda tensor: tensor[bs:], inputs.observation)
-            target_critic_action = nest.map_structure(
-                lambda tensor: tensor[bs:], action)
             target_critics, target_critics_state, _ = self._compute_critics(
-                self._target_critic_networks, target_critic_observation,
-                target_critic_action, tau_info.next_tau_hat[bs:],
-                state.target_critics, tau_info.next_delta_tau[bs:])
-            # Prepend with zeros so that the tensors can be correctly reshape to
-            # [T, B, ...]
-            zeros = torch.zeros_like(target_critics[:bs])
-            target_critics = torch.cat((zeros, target_critics), dim=0)
+                self._target_critic_networks, inputs.observation, action,
+                tau_info.next_tau_hat, state.target_critics,
+                tau_info.next_delta_tau)
 
         target_critic = target_critics.detach()
 
@@ -307,12 +285,14 @@ class DSacAlgorithm(SacAlgorithm):
         info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
+            bs = tau_info.tau_hat.shape[0]
+            eval_tau = self._get_tau(bs, tau_type="fixed")[0]
             with torch.no_grad():
                 critics_eval = self._compute_critics(
                     self._critic_networks,
-                    inputs.observation[:-bs],
-                    rollout_info.action[:-bs],
-                    self._eval_tau,
+                    inputs.observation,
+                    rollout_info.action,
+                    eval_tau,
                     state.critics,
                     replica_min=False)[0]
                 critics_eval = critics_eval.mean(dim=(0, 1))
@@ -321,7 +301,7 @@ class DSacAlgorithm(SacAlgorithm):
                 interval = self._num_quantiles // 5
                 for idx, val in enumerate(critics_eval):
                     if idx % interval == 0:
-                        quantile = int(self._eval_tau[0, idx] * 100)
+                        quantile = int(eval_tau[0, idx] * 100)
                         alf.summary.scalar(f"ZQ_Qunatile_{quantile}", val)
 
         return state, info
@@ -412,7 +392,8 @@ class DSacAlgorithm(SacAlgorithm):
                                     action_distribution, action)
         log_pi = sum(nest.flatten(log_pi))
 
-        tau_info = self._get_tau_info(self._batch_size)
+        batch_size = nest.get_nest_shape(inputs.observation)[0]
+        tau_info = self._get_tau_info(batch_size)
 
         actor_state, actor_loss = self._actor_train_step(
             inputs, state.actor, action, log_pi, tau_info)
