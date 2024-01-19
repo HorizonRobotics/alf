@@ -118,7 +118,8 @@ class S5SSM(Network):
     :math:`A` is the state transition matrix, :math:`B` is the input matrix,
     :math:`C` is the output matrix, :math:`D` is the feedforward matrix,
     :math:`\Lambda` is the diagonal matrix of eigenvalues of :math:`A`,
-    and :math:`V` is the matrix of eigenvectors of :math:`A`.
+    and :math:`V` is the matrix of eigenvectors of :math:`A`. Note that we use
+    diagonal :math:`D`.
 
     The discrete time version is:
 
@@ -137,8 +138,10 @@ class S5SSM(Network):
         discretization='zoh'
 
     Args:
-        data_dim: dimension of input (H)
+        data_dim: dimension of input and output (H)
         state_dim: dimension of state (2*P)
+        num_blocks: number of blocks (J). The state_dim must be divisible by 2 * num_blocks.
+            This affect the initial values of B, Lambda, C and D.
         dt_min: minimum value to draw timescale values from when initializing log_step
         dt_max: maximum value to draw timescale values from when initializing log_step
         step_rescale: allows for uniformly changing the timescale parameter, e.g. after training
@@ -160,6 +163,7 @@ class S5SSM(Network):
             name=name)
         assert state_dim % 2 == 0
         assert state_dim // 2 % num_blocks == 0
+        # dimension of the complex state
         cstate_dim = state_dim // 2
         self._data_dim = data_dim
         self._state_dim = state_dim
@@ -303,11 +307,28 @@ class Dropout(nn.Module):
 
 
 class S5Block(Network):
-    """
-    Corresponds to s5.layers.SequenceLayer
+    """Corresponds to s5.layers.SequenceLayer.
+
+    It performs the following computation:
+
+    For prenorm=True: output = input + Activation(SSM(Norm(input)))
+
+    For prenorm=False: output = Norm(input + Activation(SSM(input)))
+
+    where Activation included dropout.
 
     Note: for sequence input, the input is assumed to be [T, B, C]
 
+    Args:
+        ssm_ctor: a callable that returns an instance of S5SSM, will be called
+            as ``ssm_ctor(step_rescale=step_rescale)``
+        dropout: dropout rate
+        activation: one of "full_glu", "half_glu1", "half_glu2", "gelu"
+        prenorm: whether to apply layer norm before the block
+        batchnorm: True to use BatchNorm, False to use LayerNorm
+        bn_momentum: momentum for BatchNorm
+        step_rescale: allows for uniformly changing the timescale parameter,
+            e.g. after training on a different resolution
     """
 
     def __init__(self,

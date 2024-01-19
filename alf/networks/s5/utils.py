@@ -86,6 +86,13 @@ def make_DPLR_HiPPO(N):
 @triton.jit
 def diag_ssm_forward_kernel(s_ptr, x_ptr, lambda_ptr, y_ptr, length,
                             batch_size, dim, BLOCK_SIZE: tl.constexpr):
+    """
+    Args:
+        s_ptr: [batch_size, dim]
+        x_ptr: [length, batch_size, dim]
+        lambda_ptr: [dim]
+        y_ptr: [length, batch_size, dim]
+    """
     col_idx = tl.program_id(0) * BLOCK_SIZE
     col_offsets = col_idx + tl.arange(0, BLOCK_SIZE)
     mask = col_offsets < batch_size * dim
@@ -102,6 +109,18 @@ def diag_ssm_forward_kernel(s_ptr, x_ptr, lambda_ptr, y_ptr, length,
 def diag_ssm_backward_kernel(s_ptr, lambda_ptr, y_ptr, grad_s_ptr, grad_x_ptr,
                              grad_lambda_ptr, grad_y_ptr, length, batch_size,
                              dim, BLOCK_SIZE: tl.constexpr):
+    """
+    Args:
+        s_ptr: [batch_size, dim]
+        lambda_ptr: [dim]
+        y_ptr: [length, batch_size, dim]
+        grad_s_ptr: [batch_size, dim]
+        grad_x_ptr: [length, batch_size, dim]
+        grad_lambda_ptr: [batch_size, dim]. The shape is different from ``grad_s_ptr``
+            because we need the caller to sum the gradients after the kernel finish.
+            It's more complicated to sum the gradients inside the kernel.
+        grad_y_ptr: [length, batch_size, dim]
+    """
 
     col_idx = tl.program_id(0) * BLOCK_SIZE
     col_offsets = col_idx + tl.arange(0, BLOCK_SIZE)
@@ -138,6 +157,13 @@ def diag_ssm_backward_kernel(s_ptr, lambda_ptr, y_ptr, grad_s_ptr, grad_x_ptr,
 @triton.jit
 def diag_ssm_forward_kernel_complex(s_ptr, x_ptr, y_ptr, lambda_ptr, length,
                                     batch_size, dim, BLOCK_SIZE: tl.constexpr):
+    """
+    Args:
+        s_ptr: [batch_size, dim, 2]
+        x_ptr: [length, batch_size, dim, 2]
+        lambda_ptr: [dim, 2]
+        y_ptr: [length, batch_size, dim, 2]
+    """
     col_idx = tl.program_id(0) * BLOCK_SIZE
     col_offsets = col_idx + tl.arange(0, BLOCK_SIZE)
     mask = col_offsets < batch_size * dim
@@ -172,10 +198,24 @@ def diag_ssm_forward_kernel_complex(s_ptr, x_ptr, y_ptr, lambda_ptr, length,
 def diag_ssm_backward_kernel_complex(
         s_ptr, lambda_ptr, y_ptr, grad_s_ptr, grad_x_ptr, grad_lambda_ptr,
         grad_y_ptr, length, batch_size, dim, BLOCK_SIZE: tl.constexpr):
+    """
+    Args:
+        s_ptr: [batch_size, dim, 2]
+        lambda_ptr: [dim, 2]
+        y_ptr: [length, batch_size, dim, 2]
+        grad_s_ptr: [batch_size, dim, 2]
+        grad_x_ptr: [length, batch_size, dim, 2]
+        grad_lambda_ptr: [batch_size, dim, 2]. The shape is different from ``grad_s_ptr``
+            because we need the caller to sum the gradients after the kernel finish.
+            It's more complicated to sum the gradients inside the kernel.
+        grad_y_ptr: [length, batch_size, dim, 2]
+    """
 
     # autograd for complex numbers calculates \partial f / \partial z^*
     # so we need to take conjugate during the calculation.
     # https://pytorch.org/docs/stable/notes/autograd.html#autograd-for-complex-numbers
+    # So in the following code, when we load/store the imaginary part of a gradient,
+    # we need to negate it.
 
     col_idx = tl.program_id(0) * BLOCK_SIZE
     col_offsets = col_idx + tl.arange(0, BLOCK_SIZE)
@@ -230,6 +270,8 @@ def diag_ssm_backward_kernel_complex(
 
 
 class _ssm_forward(torch.autograd.Function):
+    # TODO use @triton.autotune to choose the best BLOCK_SIZE
+    # BLOCK_SIZE = 128 seems work well for 3090
     BLOCK_SIZE = 128
 
     @staticmethod
@@ -248,9 +290,11 @@ class _ssm_forward(torch.autograd.Function):
                                                   torch.view_as_real(Lambda),
                                                   length, batch_size, dim,
                                                   _ssm_forward.BLOCK_SIZE)
-        else:
+        elif Lambda.dtype.is_floating_point:
             diag_ssm_forward_kernel[grid](s, x, Lambda, y, length, batch_size,
                                           dim, _ssm_forward.BLOCK_SIZE)
+        else:
+            raise ValueError("Unsupported dtype: %s" % Lambda.dtype)
         ctx.save_for_backward(s, y, Lambda)
         return y
 
@@ -262,6 +306,8 @@ class _ssm_forward(torch.autograd.Function):
         n = batch_size * dim
         grad_s = torch.empty_like(s)
         grad_x = torch.empty_like(grad_y)
+        # Here grad_lambda stores the gradients of Lambda for each sample
+        # in the batch. We will sum them up after the kernel finishes.
         grad_lambda = torch.empty_like(s)
         grid = lambda meta: (triton.cdiv(n, meta['BLOCK_SIZE']), )
         if Lambda.dtype == torch.complex64:
@@ -289,7 +335,7 @@ def diag_ssm_forward(s, x, Lambda):
 
     Args:
         s (torch.Tensor): shape is [batch_size, state_dim]
-        x (torch.Tensor): shape is [length, batch_size, data_dim]
+        x (torch.Tensor): shape is [length, batch_size, state_dim]
         Lambda (torch.Tensor): shape is [state_dim]
     Returns:
         torch.Tensor: y in the above equation. The shape is
