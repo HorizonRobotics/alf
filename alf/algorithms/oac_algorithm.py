@@ -111,7 +111,7 @@ class OacAlgorithm(SacAlgorithm):
             name=name)
 
         assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for explore mode.")
+            "Only continuous action space is supported for OacAlgorithm.")
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
 

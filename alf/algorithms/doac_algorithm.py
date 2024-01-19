@@ -77,8 +77,7 @@ class DOacAlgorithm(DSacAlgorithm):
                  debug_summaries: bool = False,
                  name: str = "DOacAlgorithm"):
         """
-        Refer to OSacAlgorithm for Args beside the following. Args used for 
-        discrete and mixed actions are omitted.
+        Refer to DSacAlgorithm for Args beside the following.
 
         Args:
             explore_delta (float): parameter controlling how optimistic in shifting
@@ -118,7 +117,7 @@ class DOacAlgorithm(DSacAlgorithm):
             name=name)
 
         assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for explore mode.")
+            "Only continuous action space is supported for DOacAlgorithm.")
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
 
