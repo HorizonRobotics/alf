@@ -37,11 +37,22 @@ from alf.utils.math_ops import clipped_exp
 
 
 class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters(('iqn', 1, True, True, True, True, True),
-                              ('fixed', 3, False, False, False, False, False))
+    @parameterized.parameters(
+        (
+            'iqn',
+            1,
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+        ), ('iqn', 1, False, False, False, True, True, True),
+        ('fixed', 3, False, False, False, False, False, True))
     def test_dsac_algorithm(self, tau_type, reward_dim, use_epistemic_alpha,
                             use_naive_parallel_network, use_n_step_td,
-                            min_critic_by_critic_mean, nested_observation):
+                            min_critic_by_critic_mean, nested_observation,
+                            use_doac):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -76,7 +87,8 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             alf.nn.NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
-            std_transform=clipped_exp)
+            std_transform=partial(
+                clipped_exp, clip_value_min=-10, clip_value_max=2))
 
         if nested_observation:
             obs_combiner = NestConcat()
@@ -108,7 +120,14 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         else:
             alpha_optimizer = alf.optimizers.Adam(lr=1e-2)
 
-        alg = DOacAlgorithm(
+        if use_doac:
+            extra_kwargs = dict(explore_delta=1., beta_ub=5.)
+            alg_ctor = DOacAlgorithm
+        else:
+            extra_kwargs = {}
+            alg_ctor = DSacAlgorithm
+
+        alg = alg_ctor(
             observation_spec=obs_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
@@ -125,7 +144,8 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             alpha_optimizer=alpha_optimizer,
             debug_summaries=False,
-            name="MyDSAC")
+            name="MyDSAC",
+            **extra_kwargs)
 
         eval_env.reset()
         for i in range(540):
