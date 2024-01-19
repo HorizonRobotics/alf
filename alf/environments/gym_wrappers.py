@@ -302,7 +302,12 @@ class FrameSkip(gym.Wrapper):
 
 @alf.configurable
 class FrameResize(BaseObservationWrapper):
-    def __init__(self, env, width=84, height=84, fields=None):
+    def __init__(self,
+                 env,
+                 width=84,
+                 height=84,
+                 fields=None,
+                 interpolation=cv2.INTER_AREA):
         """Create a FrameResize instance
 
         Args:
@@ -311,9 +316,11 @@ class FrameResize(BaseObservationWrapper):
              height (int): resize height
              fields (list[str]):  fields to be resized, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is resized
+             interpolation (int): cv2 interploation type
         """
         self._width = width
         self._height = height
+        self._interpolation = interpolation
         super().__init__(env, fields=fields)
 
     def transform_space(self, observation_space):
@@ -328,7 +335,7 @@ class FrameResize(BaseObservationWrapper):
     def transform_observation(self, observation):
         obs = cv2.resize(
             observation, (self._width, self._height),
-            interpolation=cv2.INTER_AREA)
+            interpolation=self._interpolation)
         if len(obs.shape) != 3:
             obs = obs[:, :, np.newaxis]
         return obs
