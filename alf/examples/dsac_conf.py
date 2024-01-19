@@ -61,7 +61,7 @@ if dmc_tasks:
         max_episode_steps=1000)
     if use_epistemic_alpha:
         alpha_optimizer = None
-        initial_log_alpha = math.log(0.02)
+        initial_log_alpha = -3.2
     else:
         alpha_optimizer = AdamTF(lr=1e-4)
         initial_log_alpha = math.log(0.1)
@@ -140,8 +140,8 @@ alf.config(
     evaluate=True,
     eval_interval=5000,
     num_eval_episodes=5,
-    debug_summaries=False,
+    debug_summaries=True,
     random_seed=0,
-    summarize_grads_and_vars=False,
+    summarize_grads_and_vars=True,
     summary_interval=1000,
     replay_buffer_length=int(1e6))
