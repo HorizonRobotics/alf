@@ -18,7 +18,8 @@ import torch
 
 import alf
 from alf.networks.s5 import s5
-from alf.networks.s5.utils import diag_ssm_forward_slow, diag_ssm_forward_triton
+from alf.networks.s5.utils import diag_ssm_forward_slow
+from alf.networks.s5.utils_triton import diag_ssm_forward_triton
 
 
 class S5SSMTest(parameterized.TestCase, alf.test.TestCase):

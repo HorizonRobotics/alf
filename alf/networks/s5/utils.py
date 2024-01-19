@@ -350,11 +350,14 @@ def diag_ssm_forward(s, x, Lambda):
         s (torch.Tensor): shape is [batch_size, state_dim]
         x (torch.Tensor): shape is [length, batch_size, state_dim]
         Lambda (torch.Tensor): shape is [state_dim]
+        use_triton (bool): whether to use triton kernel.  Only use triton when
+            input tensor is on cuda.
     Returns:
         torch.Tensor: y in the above equation. The shape is
             [length, batch_size, state_dim]
     """
-    if x.is_cuda:
+    if x.is_cuda and use_triton:
+        from .utils_triton import diag_ssm_forward_triton
         return diag_ssm_forward_triton(s, x, Lambda)
     else:
         return diag_ssm_forward_slow(s, x, Lambda)
