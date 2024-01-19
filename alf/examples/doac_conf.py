@@ -13,14 +13,14 @@
 # limitations under the License.
 
 from functools import partial
-import math
 
+import math
 import alf
-from alf.algorithms.dsac_algorithm import DSacAlgorithm
+from alf.algorithms.doac_algorithm import DOacAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDQRLoss
 from alf.environments import suite_dmc
 from alf.environments.gym_wrappers import FrameSkip
-from alf.networks import NormalProjectionNetwork, ActorDistributionNetwork
+from alf.networks import ActorDistributionNetwork
 from alf.networks import CriticQuantileNetwork, CriticNetwork
 from alf.optimizers import AdamTF
 from alf.tensor_specs import TensorSpec
@@ -30,26 +30,26 @@ from alf.examples import sac_conf
 
 
 @alf.configurable
-def dsac_use_epistemic_alpha(epistemic_alpha=True):
+def doac_use_epistemic_alpha(epistemic_alpha=False):
     return epistemic_alpha
 
 
 @alf.configurable
-def dsac_dmc_tasks(dmc=True):
+def doac_dmc_tasks(dmc=True):
     return dmc
 
 
 # algorithm config
-use_epistemic_alpha = dsac_use_epistemic_alpha()
+use_epistemic_alpha = doac_use_epistemic_alpha()
 print(f"Use epistemic alpha: {use_epistemic_alpha}!")
-dmc_tasks = dsac_dmc_tasks()
+dmc_tasks = doac_dmc_tasks()
 print(f"Evaluate on DM control: {dmc_tasks}!")
 
 # environment config
 if dmc_tasks:
     alf.config(
         "create_environment",
-        env_name="cheetah:run",
+        env_name="hopper:hop",
         num_parallel_environments=1,
         env_load_fn=suite_dmc.load)
 
@@ -61,7 +61,7 @@ if dmc_tasks:
         max_episode_steps=1000)
     if use_epistemic_alpha:
         alpha_optimizer = None
-        initial_log_alpha = -3.2
+        initial_log_alpha = math.log(0.1)
     else:
         alpha_optimizer = AdamTF(lr=1e-4)
         initial_log_alpha = math.log(0.1)
@@ -84,15 +84,16 @@ else:
     num_iterations = 2500000
 
 # algorithm config
-fc_layer_params = (layer_width, layer_width)
+hidden_layers = (layer_width, ) * 2
+
+alf.config(
+    "NormalProjectionNetwork",
+    state_dependent_std=True,
+    scale_distribution=True,
+    std_transform=partial(clipped_exp, clip_value_min=-10, clip_value_max=2))
+
 actor_network_cls = partial(
-    ActorDistributionNetwork,
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
-        state_dependent_std=True,
-        scale_distribution=True,
-        std_transform=clipped_exp))
+    ActorDistributionNetwork, fc_layer_params=hidden_layers)
 
 obs_act_tau_joint_fc_layer_params = (layer_width, )
 num_quantiles = 32
@@ -109,9 +110,11 @@ alf.config('OneStepTDQRLoss', num_quantiles=num_quantiles)
 
 critic_loss_ctor = OneStepTDQRLoss
 alf.config(
-    'DSacAlgorithm',
+    'DOacAlgorithm',
     tau_type='iqn',
     num_quantiles=num_quantiles,
+    explore_delta=6.86,
+    beta_ub=4.66,
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     critic_loss_ctor=critic_loss_ctor,
@@ -125,7 +128,7 @@ alf.config(
     alpha_optimizer=alpha_optimizer)
 
 # training config
-alf.config('Agent', rl_algorithm_cls=DSacAlgorithm)
+alf.config('Agent', rl_algorithm_cls=DOacAlgorithm)
 
 alf.config(
     'TrainerConfig',
@@ -140,7 +143,7 @@ alf.config(
     evaluate=True,
     eval_interval=5000,
     num_eval_episodes=5,
-    debug_summaries=False,
+    debug_summaries=True,
     random_seed=0,
     summarize_grads_and_vars=True,
     summary_interval=1000,
