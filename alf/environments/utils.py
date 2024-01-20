@@ -185,7 +185,7 @@ def create_environment(env_name='CartPole-v0',
         _get_wrapped_fn(env_load_fn), 'no_thread_env', False)
 
     if nonparallel:
-        num_parallel_environments = 1
+        assert num_parallel_environments == 1, "nonparallel is True"
         batch_size_per_env = 1
 
     if batch_size_per_env is None:
