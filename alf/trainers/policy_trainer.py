@@ -605,7 +605,9 @@ class RLTrainer(Trainer):
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
         if not config.no_thread_env_for_conf and _env_in_subprocess(env):
             self._thread_env = create_environment(
-                nonparallel=True, seed=self._random_seed)
+                nonparallel=True,
+                seed=self._random_seed,
+                num_parallel_environments=1)
 
         if self._evaluate:
             self._evaluator = Evaluator(self._config, common.get_conf_file())
