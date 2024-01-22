@@ -21,7 +21,7 @@ from enum import Enum
 import torch
 import torch.nn as nn
 import torch.distributions as td
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import alf
 from alf.algorithms.config import TrainerConfig
@@ -37,6 +37,7 @@ from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.schedulers import Scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -167,9 +168,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
-                 target_update_tau=0.05,
-                 target_update_period=1,
-                 parameter_reset_period=-1,
+                 target_update_tau: Union[float, Scheduler] = 0.05,
+                 target_update_period: Union[int, Scheduler] = 1,
+                 parameter_reset_period: Union[int, Scheduler] = -1,
                  dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
@@ -255,12 +256,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 ``alf.algorithms.prior_actor.UniformPriorActor``.
             target_kld_per_dim (float): ``alpha`` is dynamically adjusted so that
                 the KLD is about ``target_kld_per_dim * dim``.
-            target_update_tau (float): Factor for soft update of the target
+            target_update_tau: Factor for soft update of the target
                 networks.
-            target_update_period (int): Period for soft update of the target
-                networks.
-            parameter_reset_period (int): Period for resetting the value of learnable
-                parameters. If negative, no reset is done.
+            target_update_period: Period in terms of gradient updates for soft update of
+                the target networks.
+            parameter_reset_period: Period in terms of iterations for resetting the value
+                of learnable parameters. If negative, no reset is done.
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between
                 ``[-dqda_clipping, dqda_clipping]``. Will not perform clipping if
@@ -955,13 +956,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def after_update(self, root_inputs, info: SacInfo):
         self._update_target()
-        self._periodic_reset()
         if self._repr_alg is not None:
             self._repr_alg.after_update(root_inputs, info.repr)
         if self._max_log_alpha is not None:
             nest.map_structure(
                 lambda la: la.data.copy_(torch.min(la, self._max_log_alpha)),
                 self._log_alpha)
+
+    def after_train_iter(self, inputs: TimeStep, info: SacInfo):
+        self._periodic_reset()
 
     def calc_loss(self, info: SacInfo):
         assert not self._is_eval
