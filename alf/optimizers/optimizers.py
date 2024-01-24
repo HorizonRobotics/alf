@@ -205,19 +205,18 @@ def wrap_optimizer(cls):
         Args:
             capacity_ratio: the capacity ration specifying the ratio of learnable parameters
                 to the number of all parameters. Only copy if ``capacity_ratio < 1``
-                and ``masked_out_value`` is not None.
+                and ``masked_out_value`` is None.
         Returns:
             an empty dictionary if ``self._masked_out_value`` is None; otherwise, return
             a dictionary with the parameter as the key and the current parameter value as
             the value of the dictionary.
         """
         param_values = {}
-        if capacity_ratio < 1:
+        if capacity_ratio < 1 and self._masked_out_value is None:
             for param_group in self.param_groups:
                 for p in param_group['params']:
-                    if self._masked_out_value is None:
-                        # only save previous param value if masked_out_value is unspecified
-                        param_values[p] = p.data.clone()
+                    # only save previous param value if masked_out_value is unspecified
+                    param_values[p] = p.data.clone()
         return param_values
 
     @common.add_method(NewCls)
