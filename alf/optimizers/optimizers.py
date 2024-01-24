@@ -173,11 +173,8 @@ def wrap_optimizer(cls):
                 kwargs["lr"] = float(lr())
         self._lr_schedulers = []
 
-        capacity_ratio = alf.utils.schedulers.as_scheduler(capacity_ratio)
-
-        # record initial capacity ratio in order to be used in ``add_param_group``,
-        # within which the capacity scheduler (``self._capacity_ratio``) is inaccessible
-        self._initial_capacity_ratio = capacity_ratio()
+        self._capacity_ratio = alf.utils.schedulers.as_scheduler(
+            capacity_ratio)
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         if gradient_clipping is not None:
@@ -186,7 +183,6 @@ def wrap_optimizer(cls):
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
         self._parvi = parvi
-        self._capacity_ratio = capacity_ratio
 
         self._min_capacity = min_capacity
         self._masked_out_value = masked_out_value
@@ -203,36 +199,39 @@ def wrap_optimizer(cls):
             NewCls.counter += 1
 
     @common.add_method(NewCls)
-    def _prepare_capacity_states(self, capacity_ratio: float):
-        """prepare capacity related states
+    def _clone_params(self, capacity_ratio: float):
+        """clone the parameters
 
         Args:
             capacity_ratio: the capacity ration specifying the ratio of learnable parameters
                 to the number of all parameters
         Returns:
-            states: the states containing:
-                - old_param: the value of the parameters before gradient step if
-                    ``self._masked_out_value`` is not None
+            an empty dictionary if ``self._masked_out_value`` is None; otherwise, return
+            a dictionary with the parameter as the key and the current parameter value as
+            the value of the dictionary.
         """
-        states = {}
+        param_values = {}
         if capacity_ratio < 1:
             for param_group in self.param_groups:
                 for p in param_group['params']:
-                    s = {}
                     if self._masked_out_value is None:
                         # only save previous param value if masked_out_value is unspecified
-                        s['old_param'] = p.data.clone()
-                    states[p] = s
-        return states
+                        param_values[p] = p.data.clone()
+        return param_values
 
     @common.add_method(NewCls)
-    def _apply_capacity_mask(self, capacity_ratio: float, states: Dict):
-        """apply the current capacity mask to parameters.
+    def _adjust_capacity(self, capacity_ratio: float, old_param_values: Dict):
+        """adjust the capacity of by apply reassigning old parameter values to the
+        parameter according to the capacity mask.
 
         Args:
             capacity_ratio: the capacity ration specifying the ratio of learnable parameters
                 to the number of all parameters
-            states: states for all parameters
+            old_param_values: a dictionary with the parameter as the key and the parameter
+                value (e.g. from the previous iteration)  as the dictionary value.
+                These values will be used to reset the corresponding parameter values
+                after each gradient step if the corresonding capacity mask is True,
+                effectively excluding it from learning. 
         """
         if capacity_ratio < 1:
             # To achieve this, we assign a random number for each element of
@@ -244,12 +243,12 @@ def wrap_optimizer(cls):
             for param_group in self.param_groups:
                 for p in param_group['params']:
                     state = self.state[p]
-                    s = states[p]
-
+                    old_param_val = old_param_values.get(p, None)
                     # get, save and set random number generator state
                     if 'rng_state' not in state:
                         rng_state = torch.get_rng_state()
-                        s['rng_state'] = rng_state
+                        # record random number generator state in ``self.state``
+                        state['rng_state'] = rng_state
                     else:
                         rng_state = state['rng_state']
                         torch.set_rng_state(rng_state)
@@ -260,15 +259,13 @@ def wrap_optimizer(cls):
                     mask = torch.rand_like(p) >= ratio
 
                     if self._masked_out_value is None:
-                        # The following is faster than p.data[mask] = old_param[mask]
-                        p.data.copy_(torch.where(mask, s['old_param'], p.data))
-                        del s['old_param']
+                        if old_param_val is not None:
+                            # The following is faster than p.data[mask] = old_param[mask]
+                            p.data.copy_(
+                                torch.where(mask, old_param_val, p.data))
+                            del old_param_val
                     else:
                         p.data[mask] = self._masked_out_value
-
-                    # record random number generator state in ``self.state``
-                    if 'rng_state' in s:
-                        state['rng_state'] = s['rng_state']
 
             # recover the original random number generator state
             torch.set_rng_state(org_rng_state)
@@ -317,7 +314,7 @@ def wrap_optimizer(cls):
 
         capacity_ratio = self._capacity_ratio()
 
-        states = self._prepare_capacity_states(capacity_ratio)
+        param_values = self._clone_params(capacity_ratio)
 
         super(NewCls, self).step(closure=closure)
 
@@ -328,7 +325,7 @@ def wrap_optimizer(cls):
                     param.data.mul_(
                         self._norms[param] / (param.norm() + 1e-30))
 
-        self._apply_capacity_mask(capacity_ratio, states)
+        self._adjust_capacity(capacity_ratio, param_values)
 
         if capacity_ratio < 1:
             if alf.summary.should_record_summaries():
@@ -432,9 +429,8 @@ def wrap_optimizer(cls):
         else:
             super(NewCls, self).add_param_group(param_group)
 
-        initial_capacity_ratio = self._initial_capacity_ratio
-        states = self._prepare_capacity_states(initial_capacity_ratio)
-        self._apply_capacity_mask(initial_capacity_ratio, states)
+        capacity_ratio = self._capacity_ratio()
+        self._adjust_capacity(capacity_ratio, {})
 
     return NewCls
 
