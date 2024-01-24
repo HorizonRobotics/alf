@@ -123,7 +123,8 @@ def play():
             'create_environment',
             for_evaluation=True,
             nonparallel=True,
-            num_parallel_environments=1)
+            num_parallel_environments=1,
+            mutable=False)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"
