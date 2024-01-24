@@ -261,11 +261,11 @@ def wrap_optimizer(cls):
                         # The following is faster than p.data[mask] = old_param[mask]
                         p.data.copy_(
                             torch.where(s['mask'], s['old_param'], p.data))
+                        del s['old_param']
                     else:
                         p.data[s['mask']] = self._masked_out_value
 
                     del s['mask']
-                    del s['old_param']
                     if 'rng_state' in s:
                         state['rng_state'] = s['rng_state']
 
