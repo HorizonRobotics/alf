@@ -176,7 +176,7 @@ def wrap_optimizer(cls):
         capacity_ratio = alf.utils.schedulers.as_scheduler(capacity_ratio)
 
         # record initial capacity ratio in order to be used in ``add_param_group``,
-        # within which the capacity scheduler (``self._capacity_ratio``) is inaccessable
+        # within which the capacity scheduler (``self._capacity_ratio``) is inaccessible
         self._initial_capacity_ratio = capacity_ratio()
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
