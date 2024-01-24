@@ -204,7 +204,8 @@ def wrap_optimizer(cls):
 
         Args:
             capacity_ratio: the capacity ration specifying the ratio of learnable parameters
-                to the number of all parameters
+                to the number of all parameters. Only copy if ``capacity_ratio < 1``
+                and ``masked_out_value`` is not None.
         Returns:
             an empty dictionary if ``self._masked_out_value`` is None; otherwise, return
             a dictionary with the parameter as the key and the current parameter value as
