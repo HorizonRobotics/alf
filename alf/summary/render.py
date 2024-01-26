@@ -99,7 +99,7 @@ class Image(object):
         """Return the image numpy array which is always RGB."""
         return self._img
 
-    def resize(self, height=None, width=None, interploation=cv2.INTER_NEAREST):
+    def resize(self, height=None, width=None, interpolation=cv2.INTER_NEAREST):
         """Resize the image in-place given the desired width and/or height.
 
         Args:
@@ -127,7 +127,7 @@ class Image(object):
             dsize=(0, 0),
             fx=scale,
             fy=scale,
-            interpolation=interploation)
+            interpolation=interpolation)
         return self
 
     @classmethod
