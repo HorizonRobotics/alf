@@ -21,7 +21,8 @@ from alf.algorithms.hypernetwork_algorithm import regression_loss
 from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.optimizers import Adam, AdamTF
 from alf.tensor_specs import TensorSpec
-from alf.utils import tensor_utils
+from alf.utils import common, tensor_utils
+from alf.utils.schedulers import LinearScheduler
 
 
 class LRBatchEnsemble(nn.Module):
@@ -251,6 +252,65 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertLess(mean_err, 0.5)
         self.assertLess(cov_err, 0.5)
+
+    @parameterized.parameters(
+        dict(capacity_ratio=0.5, masked_out_value=None),
+        dict(capacity_ratio=0.5, masked_out_value=0),
+        dict(
+            capacity_ratio=LinearScheduler(
+                progress_type="percent", schedule=[(0, 0.5), (1., 1)]),
+            masked_out_value=0),
+    )
+    def test_capacity_scheduling(self, capacity_ratio, masked_out_value):
+        layer = torch.nn.Linear(5, 3)
+        x = torch.randn(2, 5)
+        y = layer(x)
+        loss = torch.sum(y**2)
+        clip_norm = 1e-4
+        opt = AdamTF(
+            lr=0.1,
+            gradient_clipping=clip_norm,
+            clip_by_global_norm=True,
+            capacity_ratio=capacity_ratio,
+            masked_out_value=masked_out_value,
+            min_capacity=1)
+        opt.add_param_group({'params': layer.parameters()})
+
+        def _generate_rand_matrix_for_capacity_mask(opt):
+            org_rng_state = common.get_torch_rng_state()
+            rand_matrix_for_capacity_mask = {}
+            opt_state = opt.state
+            for param_group in opt.param_groups:
+                for p in param_group['params']:
+                    param_state = opt_state[p]
+                    if param_state != {}:
+                        self.assertTrue(
+                            'rng_state' in param_state,
+                            "`rng_state` should be in parameter state")
+
+                        rng_state = param_state['rng_state']
+
+                        common.set_torch_rng_state(*rng_state)
+                        # use str type as the key so that later map_structure can be used
+                        # for nested checking
+                        rand_matrix_for_capacity_mask[str(
+                            id(p))] = torch.rand_like(p)
+
+            common.set_torch_rng_state(*org_rng_state)
+            return rand_matrix_for_capacity_mask
+
+        rand_matrix0 = _generate_rand_matrix_for_capacity_mask(opt)
+
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+        rand_matrix1 = _generate_rand_matrix_for_capacity_mask(opt)
+
+        # check that the random matrices used to generate the capacity mask
+        # keeps unchanged across opt steps
+        alf.nest.map_structure(self.assertTensorClose, rand_matrix0,
+                               rand_matrix1)
 
 
 if __name__ == "__main__":

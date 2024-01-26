@@ -250,7 +250,7 @@ def wrap_optimizer(cls):
                         state['rng_state'] = common.get_torch_rng_state()
                     else:
                         rng_state = state['rng_state']
-                        common.set_torch_rng_state(rng_state)
+                        common.set_torch_rng_state(*rng_state)
 
                     # generate capacity mask using the same random number generator state
                     n = p.numel()
@@ -267,7 +267,7 @@ def wrap_optimizer(cls):
                         p.data[mask] = self._masked_out_value
 
             # recover the original random number generator state
-            common.set_torch_rng_state(org_rng_state)
+            common.set_torch_rng_state(*org_rng_state)
 
     @common.add_method(NewCls)
     def step(self, closure=None):

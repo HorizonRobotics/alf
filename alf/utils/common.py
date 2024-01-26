@@ -1713,18 +1713,26 @@ def get_torch_rng_state():
     Note that in torch cpu and gpu random number generators are handled
     seperately, therefore we need to get the rng state according to the device
     currently running on.
+
+    Returns: a tuple of (rng_state, device)
     """
-    on_gpu = torch.cuda.is_available()
-    return torch.cuda.random.get_rng_state(
-    ) if on_gpu else torch.get_rng_state()
+    device = alf.get_default_device()
+    on_cpu = (device == 'cpu')
+    return (torch.get_rng_state()
+            if on_cpu else torch.cuda.random.get_rng_state(), device)
 
 
-def set_torch_rng_state(rng_state):
-    """Set random number generator state for torch.
+def set_torch_rng_state(rng_state, device):
+    """Set random number generator state for torch on the specified device.
     Note that in torch cpu and gpu random number generators are handled
     seperately, therefore we need to set rng state according to the device
-    currently running on.
+    specified, which is paired with the specified rng_state.
+
+    Args:
+        rng_state : random number generator state 
+        device: the device to set the rng state
     """
-    on_gpu = torch.cuda.is_available()
-    return torch.cuda.random.set_rng_state(
-        rng_state) if on_gpu else torch.set_rng_state(rng_state)
+    on_cpu = (device == 'cpu')
+    return torch.set_rng_state(
+        rng_state) if on_cpu else torch.cuda.random.set_rng_state(
+            rng_state, device)
