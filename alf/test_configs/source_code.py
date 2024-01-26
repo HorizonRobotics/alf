@@ -104,6 +104,17 @@ class Test3(Test):
         return self._a - 1, self._b - 2, self._c - 3
 
 
+@alf.configurable
+class Test4(Test):
+    def __new__(cls, a, b, c=10):
+        return super().__new__(cls)
+
+    def __init__(self, a, b, c=10):
+        self._a = a
+        self._b = b
+        self._c = c
+
+
 @alf.repr_wrapper
 class MyClass(object):
     def __init__(self, a, b, c=100, d=200):
