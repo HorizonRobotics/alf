@@ -102,6 +102,12 @@ class ConfigTest(alf.test.TestCase):
         obj3 = Test3(1, 2)
         self.assertEqual(obj3(), (0, 0, 7))
 
+        # Test class with __new__ and __init__
+        # A singleton class is such a class.
+        alf.config('Test4', c=12)
+        obj4 = Test4(1, 2)
+        self.assertEqual(obj4(), (1, 2, 12))
+
         # test pre_config for config not defined yet
         alf.pre_config({'test_func8.c': 10})
         self.assertRaisesRegex(ValueError,
