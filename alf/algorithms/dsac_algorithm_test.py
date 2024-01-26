@@ -148,7 +148,7 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             **extra_kwargs)
 
         eval_env.reset()
-        for i in range(540):
+        for i in range(550):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue

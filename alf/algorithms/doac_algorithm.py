@@ -150,19 +150,38 @@ class DOacAlgorithm(DSacAlgorithm):
         2. OAC explore policy is constructed from the target policy (actor_network) 
         and used for action prediction during rollout.
         """
+
+        # new_state = SacActionState()
+        # action_dist, actor_network_state = self._actor_network(
+        #     observation, state=state.actor_network)
+        # assert isinstance(action_dist, td.TransformedDistribution), (
+        #     "Squashed distribution is expected from actor_network.")
+        # assert isinstance(
+        #     action_dist.base_dist, dist_utils.DiagMultivariateNormal
+        # ), ("the base distribution should be diagonal multivariate normal.")
+        # normal_dist = action_dist.base_dist
+        # unsquashed_mean = normal_dist.mean
+        # unsquashed_std = normal_dist.stddev
+        # unsquashed_var = normal_dist.variance
+        # new_state = new_state._replace(actor_network=actor_network_state)
+
         new_state = SacActionState()
         action_dist, actor_network_state = self._actor_network(
             observation, state=state.actor_network)
-        assert isinstance(action_dist, td.TransformedDistribution), (
-            "Squashed distribution is expected from actor_network.")
-        assert isinstance(
-            action_dist.base_dist, dist_utils.DiagMultivariateNormal
-        ), ("the base distribution should be diagonal multivariate normal.")
-        normal_dist = action_dist.base_dist
-        unsquashed_mean = normal_dist.mean
-        unsquashed_std = normal_dist.stddev
-        unsquashed_var = normal_dist.variance
         new_state = new_state._replace(actor_network=actor_network_state)
+
+        action_dist_type = nest.map_structure(
+            lambda dist: isinstance(dist, td.TransformedDistribution),
+            action_dist)
+        action_base_dist_type = nest.map_structure(
+            lambda dist: isinstance(dist.base_dist, dist_utils.
+                                    DiagMultivariateNormal), action_dist)
+        action_dist_type = nest.flatten(action_dist_type)
+        action_base_dist_type = nest.flatten(action_base_dist_type)
+        assert all(nest.flatten(action_dist_type)), (
+            "Squashed distribution is expected from actor_network.")
+        assert all(nest.flatten(action_base_dist_type)), (
+            "the base distribution should be diagonal multivariate normal.")
 
         def mean_shift_fn(mu, dqda, sigma):
             if self._dqda_clipping:
@@ -184,23 +203,55 @@ class DOacAlgorithm(DSacAlgorithm):
                 lambda spec: spec.sample(outer_dims=outer_dims),
                 self._action_spec)
         elif rollout and self._training_started:
-            critic_action = normal_dist.mean.detach().clone()
-            critic_action.requires_grad = True
-            transformed_action = critic_action
+            normal_dist = nest.map_structure(lambda dist: dist.base_dist,
+                                             action_dist)
+            unsquashed_mean = nest.map_structure(lambda dist: dist.mean,
+                                                 normal_dist)
+            unsquashed_std = nest.map_structure(lambda dist: dist.stddev,
+                                                normal_dist)
+            unsquashed_var = nest.map_structure(lambda dist: dist.variance,
+                                                normal_dist)
+
+            def _prepare_critic_action(dist_mean):
+                critic_action = dist_mean.detach().clone()
+                critic_action.requires_grad = True
+                return critic_action
+
+            def _prepare_tranform_action(action, dist):
+                for transform in dist.transforms:
+                    transformed_action = transform(action)
+                return transformed_action
+
+            def mean_shift_fn(mu, dqda, sigma):
+                if self._dqda_clipping:
+                    dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                       self._dqda_clipping)
+                norm = torch.sqrt(torch.sum(torch.mul(dqda * dqda,
+                                                      sigma))) + 1e-6
+                shift = self._explore_delta * torch.mul(sigma, dqda) / norm
+                return mu + shift
+
+            critic_action = nest.map_structure(_prepare_critic_action,
+                                               unsquashed_mean)
+
             with torch.enable_grad():
-                for transform in action_dist.transforms:
-                    transformed_action = transform(transformed_action)
+                transformed_action = nest.map_structure(
+                    _prepare_tranform_action, critic_action, action_dist)
                 q_ub, critic_state = self._get_q_ub_from_critics(
                     observation, transformed_action, state.critic)
                 new_state = new_state._replace(critic=critic_state)
                 dqda = nest_utils.grad(critic_action, q_ub.sum())
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
                                               dqda, unsquashed_var)
-            normal_dist = dist_utils.DiagMultivariateNormal(
-                loc=shifted_mean, scale=unsquashed_std)
-            action_dist = td.TransformedDistribution(
-                base_distribution=normal_dist,
-                transforms=action_dist.transforms)
+            normal_dist = nest.map_structure(
+                lambda dist_mean, dist_std: dist_utils.DiagMultivariateNormal(
+                    loc=dist_mean, scale=dist_std), shifted_mean,
+                unsquashed_std)
+            action_dist = nest.map_structure(
+                lambda base_dist, transform_dist: td.TransformedDistribution(
+                    base_distribution=base_dist,
+                    transforms=transform_dist.transforms), normal_dist,
+                action_dist)
             action = dist_utils.rsample_action_distribution(action_dist)
         else:
             if eps_greedy_sampling:
