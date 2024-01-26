@@ -1706,3 +1706,25 @@ def get_unused_port(start, end=65536, n=1):
         if process_locks:
             for process_lock in process_locks:
                 process_lock.release()
+
+
+def get_torch_rng_state():
+    """Get random number generator state for torch.
+    Note that in torch cpu and gpu random number generators are handled
+    seperately, therefore we need to get the rng state according to the device
+    currently running on.
+    """
+    on_gpu = torch.cuda.is_available()
+    return torch.cuda.random.get_rng_state(
+    ) if on_gpu else torch.get_rng_state()
+
+
+def set_torch_rng_state(rng_state):
+    """Set random number generator state for torch.
+    Note that in torch cpu and gpu random number generators are handled
+    seperately, therefore we need to set rng state according to the device
+    currently running on.
+    """
+    on_gpu = torch.cuda.is_available()
+    return torch.cuda.random.set_rng_state(
+        rng_state) if on_gpu else torch.set_rng_state(rng_state)
