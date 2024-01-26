@@ -146,11 +146,12 @@ def wrap_optimizer(cls):
 
             repulsive_weight (float): the weight of the repulsive gradient term
                 for parameters with attribute ``ensemble_group``.
-
             capacity_ratio: For each parameter, `numel() * capacity_ratio`
                 elements are turned on for training. The remaining elements
                 are frozen. ``capacity_ratio`` can be a scheduler to control
                 the capacity over the training process.
+                Note that capacity_ratio scheduling does not support the mixed precision
+                case and should not be used under that setting.
             min_capacity: For each parameter, at least so many elements
                 are turned on for training.
             masked_out_value: the value to be set for the masked out parameters, i.e.,
@@ -175,6 +176,8 @@ def wrap_optimizer(cls):
 
         self._capacity_ratio = alf.utils.schedulers.as_scheduler(
             capacity_ratio)
+        self._random_number_generator = torch.Generator(
+            alf.get_default_device())
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         if gradient_clipping is not None:
@@ -247,7 +250,8 @@ def wrap_optimizer(cls):
                     # get, save and set random number generator state
                     if 'rng_state' not in state:
                         # record random number generator state in ``self.state``
-                        state['rng_state'] = common.get_torch_rng_state()
+                        state['rng_state'] = common.get_torch_rng_state(
+                            self._random_number_generator.device)
                     else:
                         rng_state = state['rng_state']
                         common.set_torch_rng_state(*rng_state)
@@ -255,7 +259,9 @@ def wrap_optimizer(cls):
                     # generate capacity mask using the same random number generator state
                     n = p.numel()
                     ratio = max(self._min_capacity / n, capacity_ratio)
-                    mask = torch.rand_like(p) >= ratio
+                    mask = torch.rand(
+                        p.shape,
+                        generator=self._random_number_generator) >= ratio
 
                     if self._masked_out_value is None:
                         if old_param_val is not None:

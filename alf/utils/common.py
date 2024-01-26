@@ -1708,11 +1708,14 @@ def get_unused_port(start, end=65536, n=1):
                 process_lock.release()
 
 
-def get_torch_rng_state():
+def get_torch_rng_state(device=None):
     """Get random number generator state for torch.
     Note that in torch cpu and gpu random number generators are handled
     seperately, therefore we need to get the rng state according to the device
     currently running on.
+
+    Args:
+        device: if None, will use the default device. Otherwise, use the specified device
 
     Returns: a tuple of (rng_state, device)
     """
