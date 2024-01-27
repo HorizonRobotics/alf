@@ -32,6 +32,18 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
 
 
+def prepare_critic_action(action):
+    critic_action = action.detach().clone()
+    critic_action.requires_grad = True
+    return critic_action
+
+
+def dist_transform_action(action, dist):
+    for transform in dist.transforms:
+        action = transform(action)
+    return action
+
+
 @alf.configurable
 class OacAlgorithm(SacAlgorithm):
     """Optimistic Actor Critic algorithm, described in:
@@ -168,16 +180,6 @@ class OacAlgorithm(SacAlgorithm):
             unsquashed_var = nest.map_structure(lambda dist: dist.variance,
                                                 normal_dist)
 
-            def _prepare_critic_action(dist_mean):
-                critic_action = dist_mean.detach().clone()
-                critic_action.requires_grad = True
-                return critic_action
-
-            def _prepare_tranform_action(action, dist):
-                for transform in dist.transforms:
-                    transformed_action = transform(action)
-                return transformed_action
-
             def mean_shift_fn(mu, dqda, sigma):
                 if self._dqda_clipping:
                     dqda = torch.clamp(dqda, -self._dqda_clipping,
@@ -187,12 +189,11 @@ class OacAlgorithm(SacAlgorithm):
                 shift = self._explore_delta * torch.mul(sigma, dqda) / norm
                 return mu + shift
 
-            critic_action = nest.map_structure(_prepare_critic_action,
+            critic_action = nest.map_structure(prepare_critic_action,
                                                unsquashed_mean)
-
             with torch.enable_grad():
                 transformed_action = nest.map_structure(
-                    _prepare_tranform_action, critic_action, action_dist)
+                    dist_transform_action, critic_action, action_dist)
                 critics, critic_state = self._critic_networks(
                     (observation, transformed_action), state=state.critic)
                 new_state = new_state._replace(critic=critic_state)

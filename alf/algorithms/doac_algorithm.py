@@ -21,6 +21,7 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.dsac_algorithm import DSacAlgorithm
 from alf.algorithms.sac_algorithm import ActionType, SacActionState
+from alf.algorithms.oac_algorithm import prepare_critic_action, dist_transform_action
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork
@@ -151,20 +152,6 @@ class DOacAlgorithm(DSacAlgorithm):
         and used for action prediction during rollout.
         """
 
-        # new_state = SacActionState()
-        # action_dist, actor_network_state = self._actor_network(
-        #     observation, state=state.actor_network)
-        # assert isinstance(action_dist, td.TransformedDistribution), (
-        #     "Squashed distribution is expected from actor_network.")
-        # assert isinstance(
-        #     action_dist.base_dist, dist_utils.DiagMultivariateNormal
-        # ), ("the base distribution should be diagonal multivariate normal.")
-        # normal_dist = action_dist.base_dist
-        # unsquashed_mean = normal_dist.mean
-        # unsquashed_std = normal_dist.stddev
-        # unsquashed_var = normal_dist.variance
-        # new_state = new_state._replace(actor_network=actor_network_state)
-
         new_state = SacActionState()
         action_dist, actor_network_state = self._actor_network(
             observation, state=state.actor_network)
@@ -182,14 +169,6 @@ class DOacAlgorithm(DSacAlgorithm):
             "Squashed distribution is expected from actor_network.")
         assert all(nest.flatten(action_base_dist_type)), (
             "the base distribution should be diagonal multivariate normal.")
-
-        def mean_shift_fn(mu, dqda, sigma):
-            if self._dqda_clipping:
-                dqda = torch.clamp(dqda, -self._dqda_clipping,
-                                   self._dqda_clipping)
-            norm = torch.sqrt(torch.sum(torch.mul(dqda * dqda, sigma))) + 1e-6
-            shift = self._explore_delta * torch.mul(sigma, dqda) / norm
-            return mu + shift
 
         if (rollout and not self._training_started):
             # get batch size with ``get_outer_rank`` and ``get_nest_shape``
@@ -212,16 +191,6 @@ class DOacAlgorithm(DSacAlgorithm):
             unsquashed_var = nest.map_structure(lambda dist: dist.variance,
                                                 normal_dist)
 
-            def _prepare_critic_action(dist_mean):
-                critic_action = dist_mean.detach().clone()
-                critic_action.requires_grad = True
-                return critic_action
-
-            def _prepare_tranform_action(action, dist):
-                for transform in dist.transforms:
-                    transformed_action = transform(action)
-                return transformed_action
-
             def mean_shift_fn(mu, dqda, sigma):
                 if self._dqda_clipping:
                     dqda = torch.clamp(dqda, -self._dqda_clipping,
@@ -231,12 +200,11 @@ class DOacAlgorithm(DSacAlgorithm):
                 shift = self._explore_delta * torch.mul(sigma, dqda) / norm
                 return mu + shift
 
-            critic_action = nest.map_structure(_prepare_critic_action,
+            critic_action = nest.map_structure(prepare_critic_action,
                                                unsquashed_mean)
-
             with torch.enable_grad():
                 transformed_action = nest.map_structure(
-                    _prepare_tranform_action, critic_action, action_dist)
+                    dist_transform_action, critic_action, action_dist)
                 q_ub, critic_state = self._get_q_ub_from_critics(
                     observation, transformed_action, state.critic)
                 new_state = new_state._replace(critic=critic_state)
