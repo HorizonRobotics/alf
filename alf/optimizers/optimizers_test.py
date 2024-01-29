@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import parameterized
+import copy
 import torch
 import torch.nn as nn
 
@@ -254,18 +255,11 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(cov_err, 0.5)
 
     @parameterized.parameters(
-        dict(capacity_ratio=0.5, masked_out_value=None),
-        dict(capacity_ratio=0.5, masked_out_value=0),
-        dict(
-            capacity_ratio=LinearScheduler(
-                progress_type="percent", schedule=[(0, 0.5), (1., 1)]),
-            masked_out_value=0),
-    )
-    def test_capacity_scheduling(self, capacity_ratio, masked_out_value):
+        dict(capacity_ratio=0.5, masked_out_value=None, opt_steps=3),
+        dict(capacity_ratio=0.5, masked_out_value=0, opt_steps=5))
+    def test_capacity_scheduling(self, capacity_ratio, masked_out_value,
+                                 opt_steps):
         layer = torch.nn.Linear(5, 3)
-        x = torch.randn(2, 5)
-        y = layer(x)
-        loss = torch.sum(y**2)
         clip_norm = 1e-4
         opt = AdamTF(
             lr=0.1,
@@ -276,40 +270,48 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
             min_capacity=1)
         opt.add_param_group({'params': layer.parameters()})
 
-        local_rng = torch.Generator(alf.get_default_device())
+        def _train_step():
+            x = torch.randn(2, 5)
+            y = layer(x)
+            loss = torch.sum(y**2)
+            return loss
 
-        def _generate_rand_matrix_for_capacity_mask(opt):
-            rand_matrix_for_capacity_mask = {}
-            opt_state = opt.state
-            for param_group in opt.param_groups:
-                for p in param_group['params']:
-                    param_state = opt_state[p]
-                    if param_state != {}:
-                        self.assertTrue(
-                            'rng_state' in param_state,
-                            "`rng_state` should be in parameter state")
-
-                        rng_state = param_state['rng_state']
-                        local_rng.set_state(rng_state)
-
-                        # use str type as the key so that later map_structure can be used
-                        # for nested checking
-                        rand_matrix_for_capacity_mask[str(id(p))] = torch.rand(
-                            p.shape, generator=local_rng)
-            return rand_matrix_for_capacity_mask
-
-        rand_matrix0 = _generate_rand_matrix_for_capacity_mask(opt)
+        def _infer_capacity_mask_from_params_pairs(param_groups_before,
+                                                   param_groups_after):
+            """infer the capacity mask as the parameter elements with unchanged values
+            in the provided before and after pairs.
+            """
+            capacity_mask = []
+            for pg_before, pg_after in zip(param_groups_before,
+                                           param_groups_after):
+                for p_before, p_after in zip(pg_before['params'],
+                                             pg_after['params']):
+                    capacity_mask.append(p_before == p_after)
+            return capacity_mask
 
         opt.zero_grad()
+        loss = _train_step()
+        param_groups_before = copy.deepcopy(opt.param_groups)
         loss.backward()
+
+        # perform one opt step in order to infer capacity mask from parameters
         opt.step()
+        initial_capacity_mask = _infer_capacity_mask_from_params_pairs(
+            param_groups_before, opt.param_groups)
 
-        rand_matrix1 = _generate_rand_matrix_for_capacity_mask(opt)
+        for _ in range(opt_steps):
+            loss = _train_step()
+            loss.backward()
+            opt.step()
+            print(opt._capacity_ratio())
 
-        # check that the random matrices used to generate the capacity mask
-        # keeps unchanged across opt steps
-        alf.nest.map_structure(self.assertTensorClose, rand_matrix0,
-                               rand_matrix1)
+        capacity_mask = _infer_capacity_mask_from_params_pairs(
+            param_groups_before, opt.param_groups)
+
+        # check that the capacity mask remains unchanged across opt steps when
+        # the specified capacity is unchanged
+        alf.nest.map_structure(self.assertTensorEqual, initial_capacity_mask,
+                               capacity_mask)
 
 
 if __name__ == "__main__":
