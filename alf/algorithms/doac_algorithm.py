@@ -157,19 +157,6 @@ class DOacAlgorithm(DSacAlgorithm):
             observation, state=state.actor_network)
         new_state = new_state._replace(actor_network=actor_network_state)
 
-        action_dist_type = nest.map_structure(
-            lambda dist: isinstance(dist, td.TransformedDistribution),
-            action_dist)
-        action_base_dist_type = nest.map_structure(
-            lambda dist: isinstance(dist.base_dist, dist_utils.
-                                    DiagMultivariateNormal), action_dist)
-        action_dist_type = nest.flatten(action_dist_type)
-        action_base_dist_type = nest.flatten(action_base_dist_type)
-        assert all(nest.flatten(action_dist_type)), (
-            "Squashed distribution is expected from actor_network.")
-        assert all(nest.flatten(action_base_dist_type)), (
-            "the base distribution should be diagonal multivariate normal.")
-
         if (rollout and not self._training_started):
             # get batch size with ``get_outer_rank`` and ``get_nest_shape``
             # since the observation can be a nest in the general case
@@ -182,8 +169,21 @@ class DOacAlgorithm(DSacAlgorithm):
                 lambda spec: spec.sample(outer_dims=outer_dims),
                 self._action_spec)
         elif rollout and self._training_started:
+            action_dist_type = nest.map_structure(
+                lambda dist: isinstance(dist, td.TransformedDistribution),
+                action_dist)
+            assert all(nest.flatten(action_dist_type)), (
+                "Squashed distribution is expected from actor_network.")
+
             normal_dist = nest.map_structure(lambda dist: dist.base_dist,
                                              action_dist)
+            normal_dist_type = nest.map_structure(
+                lambda dist: isinstance(dist, dist_utils.DiagMultivariateNormal
+                                        ), normal_dist)
+            assert all(nest.flatten(normal_dist_type)), (
+                "the base distribution should be diagonal multivariate normal."
+            )
+
             unsquashed_mean = nest.map_structure(lambda dist: dist.mean,
                                                  normal_dist)
             unsquashed_std = nest.map_structure(lambda dist: dist.stddev,
@@ -220,7 +220,7 @@ class DOacAlgorithm(DSacAlgorithm):
                     base_distribution=base_dist,
                     transforms=transform_dist.transforms), normal_dist,
                 action_dist)
-            action = dist_utils.rsample_action_distribution(action_dist)
+            action = dist_utils.sample_action_distribution(action_dist)
         else:
             if eps_greedy_sampling:
                 action = dist_utils.epsilon_greedy_sample(
