@@ -303,7 +303,6 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
             loss = _train_step()
             loss.backward()
             opt.step()
-            print(opt._capacity_ratio())
 
         capacity_mask = _infer_capacity_mask_from_params_pairs(
             param_groups_before, opt.param_groups)
