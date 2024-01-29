@@ -276,8 +276,9 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
             min_capacity=1)
         opt.add_param_group({'params': layer.parameters()})
 
+        local_rng = torch.Generator(alf.get_default_device())
+
         def _generate_rand_matrix_for_capacity_mask(opt):
-            org_rng_state = common.get_torch_rng_state()
             rand_matrix_for_capacity_mask = {}
             opt_state = opt.state
             for param_group in opt.param_groups:
@@ -289,14 +290,12 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
                             "`rng_state` should be in parameter state")
 
                         rng_state = param_state['rng_state']
+                        local_rng.set_state(rng_state)
 
-                        common.set_torch_rng_state(*rng_state)
                         # use str type as the key so that later map_structure can be used
                         # for nested checking
-                        rand_matrix_for_capacity_mask[str(
-                            id(p))] = torch.rand_like(p)
-
-            common.set_torch_rng_state(*org_rng_state)
+                        rand_matrix_for_capacity_mask[str(id(p))] = torch.rand(
+                            p.shape, generator=local_rng)
             return rand_matrix_for_capacity_mask
 
         rand_matrix0 = _generate_rand_matrix_for_capacity_mask(opt)

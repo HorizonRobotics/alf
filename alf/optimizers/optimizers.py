@@ -241,7 +241,6 @@ def wrap_optimizer(cls):
             # the parameter. An element is turned on if its assigned random number
             # is less than capacity_ratio. To save memory, we don't store the
             # random numbers. Instead, we save the random number generator state.
-            org_rng_state = common.get_torch_rng_state()
 
             for param_group in self.param_groups:
                 for p in param_group['params']:
@@ -250,11 +249,12 @@ def wrap_optimizer(cls):
                     # get, save and set random number generator state
                     if 'rng_state' not in state:
                         # record random number generator state in ``self.state``
-                        state['rng_state'] = common.get_torch_rng_state(
-                            self._random_number_generator.device)
+                        state[
+                            'rng_state'] = self._random_number_generator.get_state(
+                            )
                     else:
                         rng_state = state['rng_state']
-                        common.set_torch_rng_state(*rng_state)
+                        self._random_number_generator.set_state(rng_state)
 
                     # generate capacity mask using the same random number generator state
                     n = p.numel()
@@ -271,9 +271,6 @@ def wrap_optimizer(cls):
                             del old_param_val
                     else:
                         p.data[mask] = self._masked_out_value
-
-            # recover the original random number generator state
-            common.set_torch_rng_state(*org_rng_state)
 
     @common.add_method(NewCls)
     def step(self, closure=None):

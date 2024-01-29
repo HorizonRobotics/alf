@@ -1706,36 +1706,3 @@ def get_unused_port(start, end=65536, n=1):
         if process_locks:
             for process_lock in process_locks:
                 process_lock.release()
-
-
-def get_torch_rng_state(device=None):
-    """Get random number generator state for torch.
-    Note that in torch cpu and gpu random number generators are handled
-    seperately, therefore we need to get the rng state according to the device
-    currently running on.
-
-    Args:
-        device: if None, will use the default device. Otherwise, use the specified device
-
-    Returns: a tuple of (rng_state, device)
-    """
-    device = alf.get_default_device()
-    on_cpu = (device == 'cpu')
-    return (torch.get_rng_state()
-            if on_cpu else torch.cuda.random.get_rng_state(), device)
-
-
-def set_torch_rng_state(rng_state, device):
-    """Set random number generator state for torch on the specified device.
-    Note that in torch cpu and gpu random number generators are handled
-    seperately, therefore we need to set rng state according to the device
-    specified, which is paired with the specified rng_state.
-
-    Args:
-        rng_state : random number generator state 
-        device: the device to set the rng state
-    """
-    on_cpu = (device == 'cpu')
-    return torch.set_rng_state(
-        rng_state) if on_cpu else torch.cuda.random.set_rng_state(
-            rng_state, device)
