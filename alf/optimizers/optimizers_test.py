@@ -23,7 +23,6 @@ from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.optimizers import Adam, AdamTF
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, tensor_utils
-from alf.utils.schedulers import LinearScheduler
 
 
 class LRBatchEnsemble(nn.Module):
@@ -255,11 +254,11 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(cov_err, 0.5)
 
     @parameterized.parameters(
-        dict(capacity_ratio=0.5, masked_out_value=None, opt_steps=3),
-        dict(capacity_ratio=0.5, masked_out_value=0, opt_steps=5))
+        dict(capacity_ratio=0.2, masked_out_value=None, opt_steps=3),
+        dict(capacity_ratio=0.7, masked_out_value=0, opt_steps=5))
     def test_capacity_scheduling(self, capacity_ratio, masked_out_value,
                                  opt_steps):
-        layer = torch.nn.Linear(5, 3)
+        layer = torch.nn.Linear(512, 512)
         clip_norm = 1e-4
         opt = AdamTF(
             lr=0.1,
@@ -271,7 +270,7 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         opt.add_param_group({'params': layer.parameters()})
 
         def _train_step():
-            x = torch.randn(2, 5)
+            x = torch.randn(2, 512)
             y = layer(x)
             loss = torch.sum(y**2)
             return loss
@@ -307,10 +306,17 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         capacity_mask = _infer_capacity_mask_from_params_pairs(
             param_groups_before, opt.param_groups)
 
-        # check that the capacity mask remains unchanged across opt steps when
+        # 1) check that the capacity mask remains unchanged across opt steps when
         # the specified capacity is unchanged
         alf.nest.map_structure(self.assertTensorEqual, initial_capacity_mask,
                                capacity_mask)
+
+        # 2) check the empirical capacity matches the expected capacity
+        capacity_ratios = alf.nest.map_structure(
+            lambda x: 1 - x.float().mean(), capacity_mask)
+        empirical_capacity_ratio = sum(capacity_ratios) / len(capacity_ratios)
+        self.assertAlmostEqual(
+            empirical_capacity_ratio, capacity_ratio, delta=0.1)
 
 
 if __name__ == "__main__":
