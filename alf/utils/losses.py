@@ -110,6 +110,79 @@ def multi_quantile_huber_loss(quantiles: torch.Tensor,
     return loss.mean(dim=(-2, -1))
 
 
+@alf.configurable
+def iqn_huber_loss(value: torch.Tensor,
+                   target: torch.Tensor,
+                   tau_hat: Optional[torch.Tensor] = (),
+                   next_delta_tau: Optional[torch.Tensor] = (),
+                   fixed_tau: Optional[torch.Tensor] = (),
+                   sum_over_quantiles: bool = True,
+                   loss_fn: Callable = huber_function):
+    """Huber loss used by the following IQN paper:
+
+    ::
+        Dabney et al "Implicit Quantile Networks for Distributional Reinforcement Learning",
+        arXiv:1806.06923
+
+    Args:
+        value: the time-major tensor for the value at each time step. The loss
+            is between this and the target.
+        target: the time-major tensor for return, this is used as the target
+            for computing the loss.
+        next_delta_tau: the sampled increments of the probility for the input 
+            of the quantile function of the target critics.
+        fixed_tau: the fixed increments of probability, for non iqn style
+            quantile regression.
+        sum_over_quantiles: If True, the quantile regression loss will
+            be summed along the quantile dimension. Otherwise, it will be
+            averaged along the quantile dimension instead. Default is False.
+        loss_fn: the loss function for the difference between value and target.
+            Default is huber_function.
+
+    Returns:
+        loss: the computed loss.
+        diff: the difference bwtween target and value, for summary purpose.
+
+    """
+
+    # for quantile regression TD, the value and target both have shape
+    # (T-1 or T, B, n_quantiles) for scalar reward and
+    # (T-1 or T, B, reward_dim, n_quantiles) for multi-dim reward.
+    # The quantile TD has shape
+    # (T-1 or T, B, n_quantiles, n_quantiles) for scalar reward and
+    # (T-1 or T, B, reward_dim, n_quantiles, n_quantiles) for multi-dim reward
+    assert value.shape[0] == target.shape[0]
+    if isinstance(tau_hat, torch.Tensor) and isinstance(
+            next_delta_tau, torch.Tensor):
+        assert tau_hat.shape[0] == next_delta_tau.shape[0] == target.shape[0]
+        iqn_tau = True
+    else:
+        assert isinstance(fixed_tau, torch.Tensor)
+        iqn_tau = False
+    quantiles = value.unsqueeze(-2)
+    quantiles_target = target.detach().unsqueeze(-1)
+    diff = quantiles_target - quantiles
+
+    error = loss_fn(diff)
+    if iqn_tau:
+        if diff.ndim - tau_hat.ndim > 1:
+            # For multidimentional reward:
+            # diff is of shape [T or T-1, B, reward_dim, n_quantiles, n_quantiles]
+            # while tau_hat and next_delta_tau have shape [T or T-1, B, n_quantiles]
+            tau_hat = tau_hat.unsqueeze(-2)
+            next_delta_tau = next_delta_tau.unsqueeze(-2)
+        loss = torch.abs((tau_hat.unsqueeze(-2) - (diff.detach() < 0).float()
+                          )) * error * next_delta_tau.unsqueeze(-1)
+    else:
+        loss = torch.abs((fixed_tau - (diff.detach() < 0).float())) * error
+    if sum_over_quantiles:
+        loss = loss.mean(-2).sum(-1)
+    else:
+        loss = loss.mean(dim=(-2, -1))
+
+    return loss, diff
+
+
 class ScalarPredictionLoss(object):
     def __call__(self, pred: torch.Tensor, target: torch.Tensor):
         """Calculate the loss given ``pred`` and ``target``.

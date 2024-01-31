@@ -170,11 +170,12 @@ class QrsacAlgorithm(SacAlgorithm):
 
         return critic_quantiles, critics_state
 
-    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
-                           rollout_info: SacInfo, action, action_distribution):
+    def _critic_train_step(self, observation, target_observation,
+                           state: SacCriticState, rollout_info: SacInfo,
+                           action, action_distribution):
         critics, critics_state = self._compute_critics(
             self._critic_networks,
-            inputs.observation,
+            observation,
             rollout_info.action,
             state.critics,
             replica_min=False,
@@ -182,7 +183,7 @@ class QrsacAlgorithm(SacAlgorithm):
 
         target_critics, target_critics_state = self._compute_critics(
             self._target_critic_networks,
-            inputs.observation,
+            target_observation,
             action,
             state.target_critics,
             quantile_mean=False)

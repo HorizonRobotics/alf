@@ -325,6 +325,85 @@ class TargetUpdater(nn.Module):
             self._counter = 0
 
 
+@alf.configurable
+class PeriodicReset(nn.Module):
+    r"""Performs a periodic reset to model parameters.
+
+    For each weight :math:`m` in the model, reset (reinitialization) is done periodically
+    according to the specified schedule:
+
+    .. math::
+
+        m <-- re-initialize.
+
+    Note: 
+        1) we reinitialize Network parameters and always reset buffers. For non-Network
+        parameters, we record their initial value and reassign those values when reset.
+        2) for a ``Network`` instance, if it implements a member function ``reset_parameters``,
+        then this function will be used to reset the network parameter, which provides
+        the user more flexibilities to achieve customized reset behaviors (e.g. only reset
+        certain layers). If ``reset_parameters`` does not exist, then all the network
+        parameters will be reset. 
+        
+    Args:
+        models (Network | list[Network] | Parameter | list[Parameter] ): the
+            models or parameters that will be reset periodically according to schedule.
+        period: Step interval or scheduler at which the models or parameters will be reset.
+            If negative, no reset is done.
+        reset_buffers: if True, the torch.buffer instances will also be reset
+        post_processings: a list of callables to be applied after reset. For example,
+            initial parameter copy to the target critic in some RL algorithms.
+    """
+
+    def __init__(self,
+                 models,
+                 period: Union[int, Scheduler] = 1,
+                 reset_buffers: bool = True,
+                 post_processings=List[Callable]):
+        super().__init__()
+        models = as_list(models)
+        self._models = models
+        self._period = as_scheduler(period)
+        self._counter = 0
+        self._reset_buffers = reset_buffers
+        self._post_processings = post_processings
+        # record the inital values of torch.nn.Parameter instances in ``models``
+        self._init_param_values = {
+            id(p): p.data.clone()
+            for p in models if isinstance(p, torch.nn.Parameter)
+        }
+
+    def _copy_model_or_parameter(self, s, t):
+        if isinstance(t, nn.Parameter):
+            t.data.copy_(s)
+        else:
+            for ws, wt in zip(s.parameters(), t.parameters()):
+                wt.data.copy_(ws)
+            if self._reset_buffers:
+                for ws, wt in zip(s.buffers(), t.buffers()):
+                    wt.copy_(ws)
+
+    def forward(self):
+        self._counter += 1
+        period = self._period()
+        if period < 0:
+            return
+        if self._counter >= period:
+            for i, m in enumerate(self._models):
+                if isinstance(m, alf.networks.Network):
+                    if callable(getattr(m, 'reset_parameters', None)):
+                        m.reset_parameters()
+                    else:
+                        self._copy_model_or_parameter(m.copy(), m)
+                elif isinstance(m, torch.nn.Parameter):
+                    self._copy_model_or_parameter(
+                        self._init_param_values[id(m)], m)
+            for c in self._post_processings:
+                c()
+
+            self._counter = 0
+
+
 def expand_dims_as(x, y, end=True):
     """Expand the shape of ``x`` with extra singular dimensions.
 
@@ -1366,13 +1445,17 @@ def get_all_parameters(obj):
             if name.startswith('__') and name.endswith('__'):
                 # Ignore system attributes,
                 continue
+            # We want to skip property functions, which may raise exception
+            # when called in a wrong context (e.g. Algorithm.experience_spec)
+            if isinstance(getattr(type(obj), name, None), property):
+                continue
             attr = None
             try:
                 attr = getattr(obj, name)
             except:
-                # some attrbutes are property function, which may raise exception
-                # when called in a wrong context (e.g. Algorithm.experience_spec)
+                # handle the case that the attribute cannot be accessed
                 pass
+
             if attr is None or id(attr) in memo:
                 continue
             unprocessed.append((attr, path + name))

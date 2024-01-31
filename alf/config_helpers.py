@@ -20,12 +20,14 @@ based TrainerConfig in this module.
 """
 
 import math
+import random
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.config_util import config1, get_config_value, load_config, pre_config, validate_pre_configs
 from alf.environments.utils import create_environment
 from alf.utils.common import set_random_seed
 from alf.utils.per_process_context import PerProcessContext
+from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
@@ -201,6 +203,7 @@ def parse_config(conf_file, conf_params):
         conf_file (str): The full path of the config file.
         conf_params (list[str]): the list of config parameters. Each one has a
             format of CONFIG_NAME=VALUE.
+
     """
     global _is_parsing
     _is_parsing = True
@@ -239,6 +242,16 @@ def get_env():
     """
     global _env
     if _env is None:
+        # When ``get_env()`` is called in a spawned process (this is almost
+        # always due to a ``ProcessEnvironment`` created with "spawn" method),
+        # use the environment construtor from the context to create the
+        # environment. This is to avoid creating a parallel environment which
+        # leads to infinite recursion.
+        ctx = get_spawned_process_context()
+        if isinstance(ctx, SpawnedProcessContext):
+            _env = ctx.create_env()
+            return _env
+
         if _is_parsing:
             random_seed = get_config_value('TrainerConfig.random_seed')
         else:
@@ -246,6 +259,21 @@ def get_env():
             # configured through gin-config can be properly retrieved.
             train_config = TrainerConfig(root_dir='')
             random_seed = train_config.random_seed
+
+        # Override the random seed based on ddp rank. With the following logic:
+        #
+        # - Rank 0 will get the original random seed specified in the config
+        # - Rank 1 will get the 1st pseudo random integer as seed (using original seed)
+        # - Rank 2 will get the 2nd pseudo random integer as seed (using original seed)
+        # - ...
+        #
+        # The random.seed(random_seed) is temporary and will be overridden by
+        # set_random_seed() below.
+        random.seed(random_seed)
+        for _ in range(PerProcessContext().ddp_rank):
+            random_seed = random.randint(0, 2**32)
+        config1("TrainerConfig.random_seed", random_seed, raise_if_used=False)
+
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.
         seed = set_random_seed(random_seed)

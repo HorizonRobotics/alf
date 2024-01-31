@@ -72,9 +72,20 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 3
         x_dim = 4
         pfc = alf.layers.ParallelFC(
-            x_dim, 6, n=n, activation=act, use_bias=use_bias, use_bn=use_bn)
+            x_dim,
+            6,
+            n=n,
+            activation=act,
+            use_bias=use_bias,
+            use_bn=use_bn,
+            use_ln=use_ln)
         fc = alf.layers.FC(
-            x_dim, 6, activation=act, use_bias=use_bias, use_bn=use_bn)
+            x_dim,
+            6,
+            activation=act,
+            use_bias=use_bias,
+            use_bn=use_bn,
+            use_ln=use_ln)
 
         if parallel_x:
             px = torch.randn((batch_size, n, x_dim))

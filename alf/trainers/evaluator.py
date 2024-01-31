@@ -190,15 +190,11 @@ def _worker(job_queue: mp.Queue,
             seed = seed + 13579
         common.set_random_seed(seed)
         alf.config('TrainerConfig', mutable=False, random_seed=seed)
-        if num_parallel_envs > 1:
-            alf.config(
-                'create_environment',
-                for_evaluation=True,
-                num_parallel_environments=num_parallel_envs,
-                mutable=False)
-        else:
-            alf.config(
-                'create_environment', for_evaluation=True, nonparallel=True)
+        alf.config(
+            'create_environment',
+            for_evaluation=True,
+            num_parallel_environments=num_parallel_envs,
+            mutable=False)
         try:
             alf.pre_config(pre_configs)
             common.parse_conf_file(conf_file)

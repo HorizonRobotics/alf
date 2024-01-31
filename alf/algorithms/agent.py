@@ -133,6 +133,8 @@ class Agent(RLAlgorithm):
                 reward_spec=reward_spec,
                 config=config,
                 debug_summaries=debug_summaries)
+            assert hasattr(representation_learner, 'output_spec'), (
+                "representation_learner must have output_spec")
             rl_observation_spec = representation_learner.output_spec
             agent_helper.register_algorithm(representation_learner, "repr")
         self._representation_use_rl_state = representation_use_rl_state
@@ -312,6 +314,7 @@ class Agent(RLAlgorithm):
         if self._reward_weight_algorithm:
             rw_step = self._reward_weight_algorithm.rollout_step(
                 time_step, state.rw)
+            new_state = new_state._replace(rw=rw_step.state)
             info = info._replace(rw=rw_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)

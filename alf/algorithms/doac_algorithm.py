@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2023 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,80 +11,74 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Optimistic Actor Critic algorithm."""
+"""Distributional Optimistic Actor-Critic algorithm."""
 
 import torch
 import torch.distributions as td
-from typing import Callable, Optional
+from typing import Union, Callable, Optional
 
 import alf
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.sac_algorithm import SacAlgorithm, SacInfo, ActionType
-from alf.algorithms.sac_algorithm import SacActionState, SacCriticState, SacState
-from alf.data_structures import TimeStep
-from alf.data_structures import AlgStep
+from alf.algorithms.dsac_algorithm import DSacAlgorithm
+from alf.algorithms.sac_algorithm import ActionType, SacActionState
+from alf.algorithms.oac_algorithm import prepare_critic_action, dist_transform_action
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorDistributionNetwork, CriticNetwork
-from alf.networks import QNetwork
-from alf.networks.projection_networks import NormalProjectionNetwork
+from alf.networks import ActorDistributionNetwork
+from alf.networks import CriticQuantileNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import dist_utils
 
 
-def prepare_critic_action(action):
-    action.requires_grad = True
-    return action
-
-
-def dist_transform_action(action, dist):
-    for transform in dist.transforms:
-        action = transform(action)
-    return action
-
-
 @alf.configurable
-class OacAlgorithm(SacAlgorithm):
-    """Optimistic Actor Critic algorithm, described in:
+class DOacAlgorithm(DSacAlgorithm):
+    """Distributional Optimistic Actor-Critic algorithm. 
+    
+    A OAC variant that applies the following implicit quantile regression based 
+    distributional RL approach to model the critic function:
 
     ::
+        Dabney et al "Implicit Quantile Networks for Distributional Reinforcement Learning",
+        arXiv:1806.06923
 
-        Ciosek et al "Better Exploration with Optimistic Actor-Critic", arXiv:1910.12807
+    Currently, only continuous action space is supported, and ``need_full_rollout_state``
+    is not supported.
     """
 
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
-                 actor_network_cls=ActorDistributionNetwork,
-                 critic_network_cls=CriticNetwork,
+                 num_quantiles: int = 32,
+                 tau_type: str = 'iqn',
+                 actor_network_cls: Callable = ActorDistributionNetwork,
+                 critic_network_cls: Callable = CriticQuantileNetwork,
                  repr_alg_ctor: Optional[Callable] = None,
-                 epsilon_greedy=None,
-                 use_entropy_reward=True,
-                 calculate_priority=False,
-                 num_critic_replicas=2,
+                 epsilon_greedy: Optional[float] = None,
+                 use_entropy_reward: bool = False,
+                 normalize_entropy_reward: bool = False,
+                 calculate_priority: bool = False,
+                 num_critic_replicas: int = 2,
+                 min_critic_by_critic_mean: bool = False,
                  env=None,
-                 config: TrainerConfig = None,
-                 critic_loss_ctor=None,
-                 target_entropy=None,
-                 prior_actor_ctor=None,
-                 target_kld_per_dim=3.,
-                 initial_log_alpha=0.0,
-                 explore_delta=6.8,
-                 beta_ub=4.6,
-                 max_log_alpha=None,
-                 target_update_tau=0.05,
-                 target_update_period=1,
-                 dqda_clipping=None,
-                 actor_optimizer=None,
-                 critic_optimizer=None,
-                 alpha_optimizer=None,
-                 checkpoint=None,
-                 debug_summaries=False,
-                 reproduce_locomotion=False,
-                 name="OacAlgorithm"):
+                 config: Optional[TrainerConfig] = None,
+                 critic_loss_ctor: Optional[Callable] = None,
+                 target_entropy: Optional[Union[float, Callable]] = None,
+                 target_kld_per_dim: float = 3.,
+                 initial_log_alpha: float = 0.0,
+                 max_log_alpha: Optional[float] = None,
+                 explore_delta: float = 6.86,
+                 beta_ub: float = 4.66,
+                 target_update_tau: float = 0.05,
+                 target_update_period: int = 1,
+                 dqda_clipping: Optional[float] = None,
+                 actor_optimizer: Optional[torch.optim.Optimizer] = None,
+                 critic_optimizer: Optional[torch.optim.Optimizer] = None,
+                 alpha_optimizer: Optional[torch.optim.Optimizer] = None,
+                 debug_summaries: bool = False,
+                 name: str = "DOacAlgorithm"):
         """
-        Refer to SacAlgorithm for Args besides the following.
+        Refer to DSacAlgorithm for Args beside the following.
 
         Args:
             explore_delta (float): parameter controlling how optimistic in shifting
@@ -96,18 +90,22 @@ class OacAlgorithm(SacAlgorithm):
             observation_spec,
             action_spec,
             reward_spec=reward_spec,
+            num_quantiles=num_quantiles,
+            tau_type=tau_type,
             actor_network_cls=actor_network_cls,
             critic_network_cls=critic_network_cls,
             repr_alg_ctor=repr_alg_ctor,
             epsilon_greedy=epsilon_greedy,
             use_entropy_reward=use_entropy_reward,
+            normalize_entropy_reward=normalize_entropy_reward,
             calculate_priority=calculate_priority,
             num_critic_replicas=num_critic_replicas,
+            min_critic_by_critic_mean=min_critic_by_critic_mean,
             env=env,
             config=config,
             critic_loss_ctor=critic_loss_ctor,
             target_entropy=target_entropy,
-            prior_actor_ctor=prior_actor_ctor,
+            target_kld_per_dim=target_kld_per_dim,
             initial_log_alpha=initial_log_alpha,
             max_log_alpha=max_log_alpha,
             target_update_tau=target_update_tau,
@@ -116,15 +114,28 @@ class OacAlgorithm(SacAlgorithm):
             actor_optimizer=actor_optimizer,
             critic_optimizer=critic_optimizer,
             alpha_optimizer=alpha_optimizer,
-            checkpoint=checkpoint,
             debug_summaries=debug_summaries,
-            reproduce_locomotion=reproduce_locomotion,
             name=name)
 
         assert self._act_type == ActionType.Continuous, (
-            "Only continuous action space is supported for OacAlgorithm.")
+            "Only continuous action space is supported for DOacAlgorithm.")
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
+
+        self._explore_tau_hat, _ = self._get_tau(
+            batch_size=1, tau_type='fixed')
+
+    def _get_q_ub_from_critics(self, observation, action, state):
+        critic_inputs = (observation, action)
+        critics_quantiles, critic_state = self._critic_networks(
+            (critic_inputs, self._explore_tau_hat), state=state)
+        critics = critics_quantiles.mean(-1)
+        assert critics.ndim == 2
+        q_mean = critics.mean(dim=1)
+        q_std = critics.std(1, unbiased=True)
+        q_ub = q_mean + self._beta_ub * q_std
+
+        return q_ub, critic_state
 
     def _predict_action(self,
                         observation,
@@ -133,13 +144,14 @@ class OacAlgorithm(SacAlgorithm):
                         eps_greedy_sampling=False,
                         rollout=False):
         """
-        Differences between SacAlgorithm._predict_action:
+        Differences between DSacAlgorithm._predict_action:
 
         1. Only continuous actions are supported.
 
         2. OAC explore policy is constructed from the target policy (actor_network) 
         and used for action prediction during rollout.
         """
+
         new_state = SacActionState()
         action_dist, actor_network_state = self._actor_network(
             observation, state=state.actor_network)
@@ -193,17 +205,10 @@ class OacAlgorithm(SacAlgorithm):
             with torch.enable_grad():
                 transformed_action = nest.map_structure(
                     dist_transform_action, critic_action, action_dist)
-                critics, critic_state = self._critic_networks(
-                    (observation, transformed_action), state=state.critic)
+                q_ub, critic_state = self._get_q_ub_from_critics(
+                    observation, transformed_action, state.critic)
                 new_state = new_state._replace(critic=critic_state)
-                if critics.ndim > 2:
-                    critics = critics.squeeze()
-                assert critics.ndim == 2
-                q_mean = critics.mean(dim=1)
-                q_std = torch.abs(critics[:, 0] - critics[:, 1]) / 2.0
-                q_ub = q_mean + self._beta_ub * q_std
                 dqda = nest_utils.grad(critic_action, q_ub.sum())
-
             shifted_mean = nest.map_structure(mean_shift_fn, unsquashed_mean,
                                               dqda, unsquashed_var)
             normal_dist = nest.map_structure(

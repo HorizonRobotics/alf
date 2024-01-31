@@ -41,6 +41,7 @@ class UnittestEnv(AlfEnvironment):
                  episode_length,
                  obs_dim=1,
                  action_type=ActionType.Discrete,
+                 nested_observation=False,
                  reward_dim=1):
         """Initializes the environment.
 
@@ -49,6 +50,7 @@ class UnittestEnv(AlfEnvironment):
                 observations.
             episode_length (int): length of each episode
             action_type (nest): ActionType
+            nested_observation (bool): whether observation is a tensor
         """
         self._steps = 0
         self._episode_length = episode_length
@@ -65,8 +67,13 @@ class UnittestEnv(AlfEnvironment):
 
         self._action_spec = alf.nest.map_structure(_create_action_spec,
                                                    action_type)
-        self._observation_spec = TensorSpec(
-            shape=(obs_dim, ), dtype=torch.float32)
+
+        self._nested_observation = nested_observation
+        observation_spec = TensorSpec(shape=(obs_dim, ), dtype=torch.float32)
+        if nested_observation:
+            self._observation_spec = (observation_spec, observation_spec)
+        else:
+            self._observation_spec = observation_spec
         self._batch_size = batch_size
         self._reward_dim = reward_dim
         if reward_dim == 1:
@@ -182,6 +189,8 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = torch.zeros(self.batch_size)
         else:
             prev_observation = self._current_time_step.observation
+            if self._nested_observation:
+                prev_observation = prev_observation[0]
             reward = 1.0 - torch.abs(prev_observation -
                                      action.reshape(prev_observation.shape))
             reward = reward.reshape(self.batch_size)
@@ -191,6 +200,8 @@ class PolicyUnittestEnv(UnittestEnv):
 
         observation = torch.randint(
             0, 2, size=(self.batch_size, 1), dtype=torch.float32)
+        if self._nested_observation:
+            observation = (observation, torch.randn_like(observation))
 
         return TimeStep(
             step_type=torch.full([self.batch_size],

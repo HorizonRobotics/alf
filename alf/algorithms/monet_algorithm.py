@@ -101,6 +101,8 @@ class MoNetUNet(alf.networks.Network):
                           torch.relu_),
             alf.layers.Reshape(*last_skip_tensor_spec.shape))
 
+        self._encoding_dim = self._nonskip_mlp.output_spec.numel
+
         deconv_blocks = []
         filters = filters[::-1]
         for i in range(len(filters)):
@@ -133,6 +135,12 @@ class MoNetUNet(alf.networks.Network):
 
         self._upsampling_path = torch.nn.ModuleList(deconv_blocks)
 
+    @property
+    def encoding_dim(self):
+        """Return the output dim of the non-skip MLP.
+        """
+        return self._encoding_dim
+
     def forward(self, inputs: torch.Tensor, state=()):
         """Do a forward step of the UNet.
 
@@ -155,7 +163,7 @@ class MoNetUNet(alf.networks.Network):
                 any value.
         Returns:
             tuple:
-            - output: a latent image of shape ``[B,c,h,w]``.
+            - output: a latent image embedding of shape ``[B,D]``.
             - encodings: the intermediate encodings in the downsampling path.
         """
         output = inputs
@@ -170,7 +178,7 @@ class MoNetUNet(alf.networks.Network):
         """The decoding step of the UNet.
 
         Args:
-            inputs: the latent image of shape ``[B,c,h,w]``.
+            inputs: the latent image embedding of shape ``[B,D]``.
             encodings: the intermediate encodings in the downsampling path.
         Returns:
             torch.Tensor: an output image of the shape ``[B,K,H,W]``, where ``K`` is

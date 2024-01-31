@@ -89,7 +89,7 @@ def tensor_extend_zero(x, dim=0):
     """
     zero_shape = list(x.shape)
     zero_shape[dim] = 1
-    zeros = torch.zeros(zero_shape, dtype=x.dtype)
+    zeros = torch.zeros(zero_shape, dtype=x.dtype, device=x.device)
     return torch.cat((x, zeros), dim=dim)
 
 
@@ -423,7 +423,7 @@ def append_coordinate(im: torch.Tensor):
     assert len(im.shape) == 4, "Image must have a shape of [B,C,H,W]!"
     y = torch.arange(-1., 1., step=2. / im.shape[-2])
     x = torch.arange(-1., 1., step=2. / im.shape[-1])
-    yy, xx = torch.meshgrid(y, x)
+    yy, xx = torch.meshgrid(y, x, indexing='ij')
     # [H,W] -> [B,H,W]
     yy = alf.utils.tensor_utils.tensor_extend_new_dim(yy, dim=0, n=im.shape[0])
     xx = alf.utils.tensor_utils.tensor_extend_new_dim(xx, dim=0, n=im.shape[0])

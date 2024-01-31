@@ -1405,7 +1405,7 @@ class Algorithm(AlgorithmInterface):
         Returns:
             int: number of steps that have been trained
         """
-        if self.is_rl():
+        if self.is_rl() and self._config.mask_out_loss_for_last_step:
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
         else:
@@ -1643,6 +1643,8 @@ class Algorithm(AlgorithmInterface):
                     mini_batch_size)
                 if do_summary:
                     self.summarize_train(exp, train_info, loss_info, params)
+                # These are no longer used, release them to reduce memory usage.
+                del exp, train_info, loss_info, params
 
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps

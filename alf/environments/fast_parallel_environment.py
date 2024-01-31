@@ -82,9 +82,16 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         torch_num_threads_per_env (int): how many threads torch will use for each
             env proc. Note that if you have lots of parallel envs, it's best
             to set this number as 1. Leave this as 'None' to skip the change.
+        start_method: either "fork" or "spawn". This specifies how the
+            subprocesses for the ``ProcessEnvironment`` is created. Normally you
+            should use "fork" because it is faster. There are cases when "fork"
+            is too bloated or not safe (e.g. inherit shared resources that may
+            cause contention), and using "spawn" can resolve that at the price
+            of the process creation (and only the creation) speed.
 
     Raises:
         ValueError: If the action or observation specs don't match.
+
     """
 
     def __init__(
@@ -94,12 +101,14 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             blocking=False,  # unused
             flatten=True,  # unused
             num_spare_envs_for_reload=0,
-            torch_num_threads_per_env=1):
+            torch_num_threads_per_env=1,
+            start_method: str = "fork"):
         super().__init__()
         num_envs = len(env_constructors) - num_spare_envs_for_reload
         name = f"alf_penv_{os.getpid()}_{time.time()}"
         self._envs = []
         self._spare_envs = []
+        self._start_method = start_method
         for env_id, ctor in enumerate(env_constructors):
             env = ProcessEnvironment(
                 ctor,
@@ -107,6 +116,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
                 fast=True,
                 num_envs=num_envs,
                 torch_num_threads_per_env=torch_num_threads_per_env,
+                start_method=start_method,
                 name=name)
             if env_id < num_envs:
                 self._envs.append(env)
@@ -161,7 +171,11 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         return self._num_spare_envs_for_reload
 
     def start(self):
-        logging.info('Spawning all processes.')
+        acting_text = {
+            "fork": "Forking",
+            "spawn": "Spawning"
+        }[self._start_method]
+        logging.info(f"{acting_text} all {len(self._envs)} processes.")
         for env in self._envs:
             env.start(wait_to_start=self._start_serially)
         for env in self._spare_envs:
