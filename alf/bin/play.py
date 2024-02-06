@@ -124,7 +124,7 @@ def play():
             for_evaluation=True,
             nonparallel=True,
             num_parallel_environments=1,
-            batch_size_per_env=None,
+            batch_size_per_env=1,
             mutable=False)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
