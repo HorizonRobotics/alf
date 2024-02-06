@@ -15,7 +15,7 @@
 import copy
 import numpy as np
 import torch
-from typing import Callable, Dict, Union
+from typing import Callable, Dict, List, Union
 
 import alf
 from alf.utils import common
@@ -186,7 +186,7 @@ def wrap_optimizer(cls):
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
         self._parvi = parvi
-
+        self._first_stepping_done = False  # whether done the first optimizer stepping
         self._min_capacity = min_capacity
         self._masked_out_value = masked_out_value
         self._norms = {}  # norm of each parameter
@@ -241,7 +241,6 @@ def wrap_optimizer(cls):
             # the parameter. An element is turned on if its assigned random number
             # is less than capacity_ratio. To save memory, we don't store the
             # random numbers. Instead, we save the random number generator state.
-
             for param_group in self.param_groups:
                 for p in param_group['params']:
                     state = self.state[p]
@@ -271,6 +270,42 @@ def wrap_optimizer(cls):
                             del old_param_val
                     else:
                         p.data[mask] = self._masked_out_value
+
+    @common.add_method(NewCls)
+    def _remove_customized_states(self,
+                                  customized_keys: List[str] = ['rng_state']):
+        """extract and remove the customized states (e.g. ``state['rng_state']``) from the
+        optimizer's state attributes (``self.state``)
+
+        Args:
+            customized_keys: a list of keys for the customized states
+
+        Returns:
+            a dictionary with the parameter as the key and the customized states value
+        """
+        customized_state = {}
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                state = self.state[p]
+                customized_state[p] = {
+                    key: state[key]
+                    for key in customized_keys
+                }
+                [state.pop(key) for key in customized_keys]
+        self._customized_state = customized_state
+        return customized_state
+
+    @common.add_method(NewCls)
+    def _append_customized_states(self, customized_state: Dict):
+        """append the customized states to the optimizer's state attributes (``self.state``)
+
+        Args:
+            customized_state: a dictionary of customized state
+        """
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                state = self.state[p]
+                state.update(customized_state[p])
 
     @common.add_method(NewCls)
     def step(self, closure=None):
@@ -318,7 +353,18 @@ def wrap_optimizer(cls):
 
         param_values = self._clone_params(capacity_ratio)
 
+        if not self._first_stepping_done and capacity_ratio < 1:
+            # if no stepping done yet, remove customized states to avoid any impacts on
+            # some specific optimizers' internal procedures, e.g. lazy state initialization
+            # https://github.com/pytorch/pytorch/blob/b2e0f8d82d721f6598113f64a408b0017bb90cb2/torch/optim/adam.py#L102-L103
+            customzied_states = self._remove_customized_states()
+        else:
+            customzied_states = {}
+
         super(NewCls, self).step(closure=closure)
+
+        if len(customzied_states):
+            self._append_customized_states(customzied_states)
 
         if not isinstance(self, NeroPlus):
             for param in params:
@@ -332,6 +378,8 @@ def wrap_optimizer(cls):
         if capacity_ratio < 1:
             if alf.summary.should_record_summaries():
                 alf.summary.scalar("capacity_ratio", capacity_ratio)
+
+        self._first_stepping_done = True
 
     @common.add_method(NewCls)
     def _parvi_step(self):
