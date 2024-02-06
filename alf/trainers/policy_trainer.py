@@ -608,7 +608,7 @@ class RLTrainer(Trainer):
                 nonparallel=True,
                 seed=self._random_seed,
                 num_parallel_environments=1,
-                batch_size_per_env=None)
+                batch_size_per_env=1)
 
         if self._evaluate:
             self._evaluator = Evaluator(self._config, common.get_conf_file())
