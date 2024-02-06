@@ -363,7 +363,7 @@ def wrap_optimizer(cls):
 
         super(NewCls, self).step(closure=closure)
 
-        if len(customzied_states) > 1:
+        if len(customzied_states):
             self._append_customized_states(customzied_states)
 
         if not isinstance(self, NeroPlus):
