@@ -43,9 +43,9 @@ class GymWrapperSpecTest(alf.test.TestCase):
         self.assertEqual((4, ), spec.shape)
         self.assertEqual(torch.int64, spec.dtype)
         np.testing.assert_array_equal(
-            np.array([0], dtype=np.int), spec.minimum)
+            np.array([0], dtype=np.int64), spec.minimum)
         np.testing.assert_array_equal(
-            np.array([0, 1, 2, 3], dtype=np.int), spec.maximum)
+            np.array([0, 1, 2, 3], dtype=np.int64), spec.maximum)
 
     def test_tensor_spec_from_gym_space_multi_binary(self):
         multi_binary_space = gym.spaces.MultiBinary(4)
@@ -54,9 +54,9 @@ class GymWrapperSpecTest(alf.test.TestCase):
         self.assertEqual((4, ), spec.shape)
         self.assertEqual(torch.int8, spec.dtype)
         np.testing.assert_array_equal(
-            np.array([0], dtype=np.int), spec.minimum)
+            np.array([0], dtype=np.int64), spec.minimum)
         np.testing.assert_array_equal(
-            np.array([1], dtype=np.int), spec.maximum)
+            np.array([1], dtype=np.int64), spec.maximum)
 
     def test_tensor_spec_from_gym_space_box_scalars(self):
         for dtype in (np.float32, np.float64):
@@ -89,9 +89,9 @@ class GymWrapperSpecTest(alf.test.TestCase):
         self.assertEqual((3, 4), spec.shape)
         self.assertEqual(torch.float32, spec.dtype)
         np.testing.assert_array_equal(
-            np.array([-1], dtype=np.int), spec.minimum)
+            np.array([-1], dtype=np.int64), spec.minimum)
         np.testing.assert_array_equal(
-            np.array([1], dtype=np.int), spec.maximum)
+            np.array([1], dtype=np.int64), spec.maximum)
 
     def test_tensor_spec_from_gym_space_when_simplify_box_bounds_false(self):
         # testing on gym.spaces.Dict which makes recursive calls to
@@ -106,13 +106,13 @@ class GymWrapperSpecTest(alf.test.TestCase):
         self.assertEqual(torch.float32, spec['box1'].dtype)
         self.assertEqual(torch.float32, spec['box2'].dtype)
         np.testing.assert_array_equal(
-            np.array([-1, -1], dtype=np.int), spec['box1'].minimum)
+            np.array([-1, -1], dtype=np.int64), spec['box1'].minimum)
         np.testing.assert_array_equal(
-            np.array([1, 1], dtype=np.int), spec['box1'].maximum)
+            np.array([1, 1], dtype=np.int64), spec['box1'].maximum)
         np.testing.assert_array_equal(
-            np.array([-1, -1], dtype=np.int), spec['box2'].minimum)
+            np.array([-1, -1], dtype=np.int64), spec['box2'].minimum)
         np.testing.assert_array_equal(
-            np.array([1, 1], dtype=np.int), spec['box2'].maximum)
+            np.array([1, 1], dtype=np.int64), spec['box2'].maximum)
 
     def test_tensor_spec_from_gym_space_box_array(self):
         for dtype in (np.float32, np.float64):
