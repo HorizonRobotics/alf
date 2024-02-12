@@ -447,6 +447,14 @@ class RLAlgorithm(Algorithm):
             if len(field) == 1:
                 summary_utils.summarize_distribution("action_dist", field[0])
 
+    @alf.configurable(whitelist=["custom_summary"])
+    def summarize_play(
+            self,
+            time_step: TimeStep,
+            custom_summary: Optional[Callable[[TimeStep], None]] = None):
+        if custom_summary is not None:
+            custom_summary(time_step)
+
     def summarize_metrics(self):
         """Generate summaries for metrics ``AverageEpisodeLength``,
         ``AverageReturn``, etc.
