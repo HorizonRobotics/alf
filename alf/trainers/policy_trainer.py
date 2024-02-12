@@ -969,6 +969,7 @@ def _step(algorithm,
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
+    algorithm.summarize_play(next_time_step.cpu())
 
     return next_time_step, policy_step, trans_state
 
