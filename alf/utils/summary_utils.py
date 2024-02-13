@@ -256,16 +256,14 @@ def summarize_action(actions, action_specs, name="action"):
         action_specs (nested TensorSpec): spec for the actions
         name (str): name of the summary
     """
-    action_specs = alf.nest.flatten(action_specs)
-    actions = alf.nest.flatten(actions)
 
-    for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
+    def _summarize_one(path, action, action_spec):
         if len(action_spec.shape) > 1:
-            continue
+            return
 
         if action_spec.is_discrete:
             histogram_discrete(
-                name="%s/%s" % (name, i),
+                name="%s/%s" % (name, path),
                 data=action,
                 bucket_min=int(action_spec.minimum),
                 bucket_max=int(action_spec.maximum))
@@ -281,12 +279,14 @@ def summarize_action(actions, action_specs, name="action"):
 
             for a in range(action_dim):
                 histogram_continuous(
-                    name="%s/%s/%s/value" % (name, i, a),
+                    name="%s/%s/%s/value" % (name, path, a),
                     data=action[:, a],
                     bucket_min=_get_val(action_spec.minimum, a),
                     bucket_max=_get_val(action_spec.maximum, a))
-                alf.summary.scalar("%s/%s/%s/mean" % (name, i, a),
+                alf.summary.scalar("%s/%s/%s/mean" % (name, path, a),
                                    action[:, a].mean())
+
+    py_map_structure_with_path(_summarize_one, actions, action_specs)
 
 
 @_summary_wrapper
@@ -307,14 +307,13 @@ def summarize_distribution(name, distributions):
         distributions (nested td.distribuation.Distribution): distributions to
             be summarized.
     """
-    actions = alf.nest.flatten(distributions)
 
-    for i, dist in enumerate(actions):
+    def _summarize_one(path, dist):
         if isinstance(dist, torch.Tensor):
             # dist might be a Tensor
             action_dim = dist.shape[-1]
             for a in range(action_dim):
-                add_mean_hist_summary("%s_loc/%s/%s" % (name, i, a),
+                add_mean_hist_summary("%s_loc/%s/%s" % (name, path, a),
                                       dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
@@ -326,14 +325,16 @@ def summarize_distribution(name, distributions):
                 loc = dist.mean
                 log_scale = 0.5 * dist.variance.log()
             else:
-                continue
+                return
 
             action_dim = loc.shape[-1]
             for a in range(action_dim):
-                add_mean_hist_summary("%s_log_scale/%s/%s" % (name, i, a),
+                add_mean_hist_summary("%s_log_scale/%s/%s" % (name, path, a),
                                       log_scale[..., a])
-                add_mean_hist_summary("%s_loc/%s/%s" % (name, i, a),
+                add_mean_hist_summary("%s_loc/%s/%s" % (name, path, a),
                                       loc[..., a])
+
+    py_map_structure_with_path(_summarize_one, distributions)
 
 
 def add_mean_hist_summary(name, value):
