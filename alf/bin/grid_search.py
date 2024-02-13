@@ -394,10 +394,7 @@ def launch_snapshot_gridsearch():
     # write the current conf file as
     # ``<root_dir>/alf_config.py`` or ``<root_dir>/configured.gin``
     conf_file = common.get_conf_file()
-    if conf_file.endswith('.gin'):
-        # for gin, we need to parse it first. Otherwise, configured.gin will be
-        # empty
-        common.parse_conf_file(conf_file)
+    common.parse_conf_file(conf_file)
     common.write_config(root_dir)
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``
