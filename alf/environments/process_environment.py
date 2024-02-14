@@ -57,18 +57,22 @@ def _init_after_spawn(context: SpawnedProcessContext):
     # 1. Parse the relevant flags for the current subprocess. The set of
     #    relevant flags are defined below. Note that the command line arguments
     #    and options are inherited from the parent process via ``sys.argv``.
+    flags.DEFINE_string(
+        "root_dir", None,
+        'Root directory for writing logs/summaries/checkpoints.')
     flags.DEFINE_string("conf", None, "Path to the alf config file.")
     flags.DEFINE_multi_string("conf_param", None, "Config binding parameters.")
     FLAGS(sys.argv, known_only=True)
     FLAGS.mark_as_parsed()
     FLAGS.alsologtostderr = True
+    conf_file = common.get_conf_file()
 
     # 2. Configure the logging
     logging.set_verbosity(logging.INFO)
 
     # 3. Load the configuration
     alf.pre_config(dict(context.pre_configs))
-    common.parse_conf_file(FLAGS.conf)
+    common.parse_conf_file(conf_file)
 
 
 class _MessageType(Enum):
