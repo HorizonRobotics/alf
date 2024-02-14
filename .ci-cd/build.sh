@@ -28,6 +28,7 @@ function check_style() {
     set -e
 
     export PATH=/usr/bin:$PATH
+    git config --global --add safe.directory `pwd`
     pre-commit install
     clang-format --version
 
