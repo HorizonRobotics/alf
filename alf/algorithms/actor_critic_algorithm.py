@@ -159,6 +159,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._register_load_state_dict_pre_hook(_deployment_hook)
 
+        self._averaged_model = torch.optim.swa_utils.AveragedModel(
+            self._actor_network)
+
+    def after_update(self, root_inputs: TimeStep, info: ActorCriticInfo):
+        self._averaged_model.update_parameters(self._actor_network)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_averaged_model']
+
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
