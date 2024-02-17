@@ -14,6 +14,7 @@
 
 import os
 import sys
+import subprocess
 
 
 def gen_penv():
@@ -30,8 +31,8 @@ def gen_penv():
     cmd = (f"g++ -O3 -Wall -shared -std=c++17 -fPIC -fvisibility=hidden "
            f"`{python} -m pybind11 --includes` parallel_environment.cpp "
            f"-o _penv`{python}-config --extension-suffix` -lrt")
-    ret = os.system(cmd)
-    assert ret == 0, "Fail to execute " + cmd
+    ret = subprocess.run(["/bin/bash", "-c", cmd])
+    assert ret.returncode == 0, "Fail to execute " + cmd
 
 
 if __name__ == "__main__":
