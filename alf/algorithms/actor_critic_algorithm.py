@@ -23,6 +23,7 @@ from alf.data_structures import TimeStep, AlgStep, namedtuple
 from alf.utils import common, dist_utils, tensor_utils
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
+from alf.utils.model_averager import create_averaged_model
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
@@ -51,6 +52,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  config: TrainerConfig = None,
                  loss=None,
                  loss_class=ActorCriticLoss,
+                 predict_average_type: str = "none",
                  optimizer=None,
                  checkpoint=None,
                  debug_summaries=False,
@@ -159,21 +161,22 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._register_load_state_dict_pre_hook(_deployment_hook)
 
-        self._averaged_model = torch.optim.swa_utils.AveragedModel(
-            self._actor_network)
+        self._predict_model = create_averaged_model(self._actor_network,
+                                                    predict_average_type)
 
     def after_update(self, root_inputs: TimeStep, info: ActorCriticInfo):
-        self._averaged_model.update_parameters(self._actor_network)
+        if self._predict_model != self._actor_network:
+            self._predict_model.update_parameters(self._actor_network)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_averaged_model']
+        return ['_predict_model']
 
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
-        action_dist, actor_state = self._actor_network(
+        action_dist, actor_state = self._predict_model(
             inputs.observation, state=state.actor)
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
