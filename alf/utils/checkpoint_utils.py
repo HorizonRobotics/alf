@@ -142,7 +142,7 @@ class Checkpointer(object):
                 the most recent checkpoint named 'latest' will be loaded.
             ingored_parameter_prefixes (list[str]): ignore the parameters whose
                 name has one of these prefixes in the checkpoint.
-            including_optimizer (bool): whether load optimizer checkpoint
+            including_optimizer (bool): whether load optimizer checkpoint.
             including_replay_buffer (bool): whether load replay buffer checkpoint.
             including_data_transformers (bool): whether load data transformer checkpoint.
             strict (bool, optional): whether to strictly enforce that the keys
@@ -266,7 +266,17 @@ class Checkpointer(object):
         for k in self._modules.keys():
             _remove_ignored_parameters(checkpoint[k])
             _convert_legacy_parameter(checkpoint[k])
-            _load_one(self._modules[k], checkpoint[k])
+            if k == "metrics":
+                try:
+                    _load_one(self._modules[k], checkpoint[k])
+                except RuntimeError as e:
+                    logging.warning(
+                        "Skip loading checkpoints for metrics due to error. "
+                        "This could be caused by num_parallel_environments "
+                        "or metrics different from the previous trining. "
+                        "Error: %s" % e)
+            else:
+                _load_one(self._modules[k], checkpoint[k])
 
         logging.info(
             "Checkpoint 'ckpt-{}' is loaded successfully.".format(global_step))
