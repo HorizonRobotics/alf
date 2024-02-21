@@ -798,7 +798,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             _get_batch_position_target, _get_batch_relative_position_based
         ][task_type]
 
-        iters = [200, 500, 800, 500][task_type]
+        iters = [200, 500, 900, 500][task_type]
         optimizer = torch.optim.Adam(list(model.parameters()), lr=1e-3)
         for i in range(iters):
             optimizer.zero_grad()
