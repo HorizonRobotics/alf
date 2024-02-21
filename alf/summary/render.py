@@ -614,6 +614,100 @@ def render_curve(name,
     return _convert_to_image(name, fig, dpi, img_height, img_width)
 
 
+def render_3d_curve(name,
+                    data,
+                    x_range=None,
+                    y_range=None,
+                    z_range=None,
+                    x_label=None,
+                    y_label=None,
+                    z_label=None,
+                    legends=None,
+                    legend_kwargs={},
+                    img_height=None,
+                    img_width=None,
+                    dpi=300,
+                    figsize=(2, 2),
+                    **kwargs):
+    """Plot 3D curves.
+
+    Args:
+        name (stor): rendering identifier
+        data (Tensor|np.ndarray): a rank-2 tensor/np.array with 3 columns, and
+            each column represents x, y, z respectively.
+        x_range (tuple[float]): a tuple of ``(min_x, max_x)`` for showing on
+            the figure. If None, then it will be decided according to the
+            ``x`` values. Note that this range won't change ``x`` data; it's
+            only used by matplotlib for drawing ``x`` limits.
+        y_range (tuple[float]): same as ``x_range`` but for y.
+        z_range (tuple[float]): same as ``x_range`` but for z.
+        x_label (str): shown besides x-axis
+        y_label (str): shown besides y-axis
+        z_label (str): shown besides z-axis
+        legends (list[str]): label for each curve. No legends are shown if
+            None.
+        legend_kwargs (dict): optional legend kwargs
+        img_height (int): height of the output image
+        img_width (int): width of the output image
+        dpi (int): resolution of each rendered image
+        figsize (tuple[int]): figure size. For the relationship between ``dpi``
+            and ``figsize``, please refer to `this post <https://stackoverflow.com/questions/47633546/relationship-between-dpi-and-figure-size>`_.
+        **kwargs: all other arguments to ``ax.plot()``.
+
+    Returns:
+        Image: an output image rendered for the tensor
+    """
+
+    assert len(x_data.shape) == 2, "must be rank-2"
+    assert data.shape[
+        1] == 3, "expecting 3 rows in data for x, y, z respectively"
+    x_data = data[..., 0]
+    y_data = data[..., 1]
+    z_data = data[..., 2]
+
+    if not isinstance(x_data, np.ndarray):
+        x_array = x_data.cpu().numpy()
+        y_array = y_data.cpu().numpy()
+        z_array = z_data.cpu().numpy()
+    else:
+        x_array = x_data
+        y_array = y_data
+        z_array = z_data
+
+    def expand_array(array):
+        if len(array.shape) == 1:
+            array = np.expand_dims(array, 0)
+        return array
+
+    x_array = np.expand_dims(x_array, 0)
+    y_array = np.expand_dims(y_array, 0)
+    z_array = np.expand_dims(z_array, 0)
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection='3d')
+    M, N = x_array.shape
+
+    for i in range(M):
+        ax.plot(x_array[i], y_array[i], z_array[i], **kwargs)
+    if legends is not None:
+        ax.legend(legends, loc="best", **legend_kwargs)
+
+    if x_range:
+        ax.set_xlim(x_range)
+    if y_range:
+        ax.set_ylim(y_range)
+    if z_range:
+        ax.set_zlim(z_range)
+    if x_label:
+        ax.set_xlabel(x_label)
+    if y_label:
+        ax.set_ylabel(y_label)
+    if z_label:
+        ax.set_zlabel(z_label)
+
+    return _convert_to_image(name, fig, dpi, img_height, img_width)
+
+
 @_rendering_wrapper
 def render_bar(name,
                data,
