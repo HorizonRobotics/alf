@@ -614,6 +614,7 @@ def render_curve(name,
     return _convert_to_image(name, fig, dpi, img_height, img_width)
 
 
+@_rendering_wrapper
 def render_3d_curve(name,
                     data,
                     x_range=None,
