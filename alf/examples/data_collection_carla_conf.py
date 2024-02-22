@@ -27,7 +27,7 @@ from alf.examples import carla_conf
 # This is an example config file for data collection in CARLA.
 
 # the desired replay buffer size for collection
-# 100 is just an example. Should set it to he actual desired size.
+# 100 is just an example. Should set it to the actual desired size.
 replay_buffer_length = 100
 
 # the desired environment for data collection
