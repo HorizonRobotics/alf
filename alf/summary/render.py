@@ -659,7 +659,7 @@ def render_3d_curve(name,
         Image: an output image rendered for the tensor
     """
 
-    assert len(x_data.shape) == 2, "must be rank-2"
+    assert len(data.shape) == 2, "must be rank-2"
     assert data.shape[
         1] == 3, "expecting 3 rows in data for x, y, z respectively"
     x_data = data[..., 0]
