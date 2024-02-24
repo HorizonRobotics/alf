@@ -252,8 +252,8 @@ def wrap_optimizer(cls):
                             'rng_state'] = self._random_number_generator.get_state(
                             )
                     else:
-                        rng_state = state['rng_state']
-                        self._random_number_generator.set_state(rng_state)
+                        self._random_number_generator.set_state(
+                            state['rng_state'])
 
                     # generate capacity mask using the same random number generator state
                     n = p.numel()
