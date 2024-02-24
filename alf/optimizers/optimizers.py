@@ -252,8 +252,7 @@ def wrap_optimizer(cls):
                             'rng_state'] = self._random_number_generator.get_state(
                             )
                     else:
-                        # the state['rng_state'] could be float tensor if loaded from ckpt
-                        rng_state = state['rng_state'].cpu().byte()
+                        rng_state = state['rng_state']
                         self._random_number_generator.set_state(rng_state)
 
                     # generate capacity mask using the same random number generator state
@@ -482,6 +481,21 @@ def wrap_optimizer(cls):
 
         capacity_ratio = self._capacity_ratio()
         self._adjust_capacity(capacity_ratio, {})
+
+    @common.add_method(NewCls)
+    def load_state_dict(self, state_dict):
+        """
+        Byte type is required for ``rng_state`` but within optimizer.load_state_dict,
+        it is converted to float.
+        This function first call the parent's ``load_state_dict()`` function, and
+        then make sure the ``rng_state`` is in correct data type.
+        """
+        super(NewCls, self).load_state_dict(state_dict)
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                state = self.state[p]
+                if 'rng_state' in state:
+                    state['rng_state'] = state['rng_state'].cpu().byte()
 
     return NewCls
 
