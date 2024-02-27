@@ -48,6 +48,7 @@ class CyclicalSchedulerTest(parameterized.TestCase, unittest.TestCase):
     def test_step_switch_iterations(self, progress_type, half_cycle_size,
                                     switch_mode):
 
+        alf.config("TrainerConfig", sync_progress_to_envs=True)
         trainer_progress = Trainer._trainer_progress
         # set the trainer_progress mode
         if progress_type in {"iterations", "percent"}:
