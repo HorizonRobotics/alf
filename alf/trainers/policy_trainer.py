@@ -70,10 +70,8 @@ class _TrainerProgress(nn.Module):
     def update(self, iter_num=None, env_steps=None):
         if iter_num is not None:
             self._iter_num.fill_(iter_num)
-            update_progress("iterations", iter_num)
         if env_steps is not None:
             self._env_steps.fill_(env_steps)
-            update_progress("env_steps", env_steps)
 
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
@@ -81,9 +79,11 @@ class _TrainerProgress(nn.Module):
         if self._num_iterations > 0:
             self._progress = float(
                 self._iter_num.to(torch.float64) / self._num_iterations)
+            update_progress("iterations", self._iter_num)
         else:
             self._progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
+            update_progress("env_steps", self._env_steps)
         update_progress("percent", self._progress)
 
     def set_progress(self, value: float):
@@ -1045,6 +1045,9 @@ def play(root_dir,
         alf.get_config_value('TrainerConfig.num_iterations'),
         alf.get_config_value('TrainerConfig.num_env_steps'))
     Trainer._trainer_progress.update()
+    if alf.get_config_value('TrainerConfig.sync_progress_to_envs'):
+        if not alf.get_config_value('create_environment.nonparallel'):
+            env.sync_progress()
     logging.info("global_step=%s TrainerProgress=%s" % (recovered_global_step,
                                                         Trainer.progress()))
 

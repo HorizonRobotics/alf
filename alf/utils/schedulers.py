@@ -65,6 +65,12 @@ class Scheduler(object):
             progress_type (str): one of "percent", "iterations", "env_steps"
         """
         assert progress_type in _progress
+        if not alf.get_config_value('create_environment.nonparallel'):
+            assert alf.get_config_value(
+                'TrainerConfig.sync_progress_to_envs'), (
+                    "When using parallel environments, the progress should be "
+                    "synchronized to the environments. Please set "
+                    "TrainerConfig.sync_progress_to_envs to True.")
         self._progress_type = progress_type
 
     def progress(self):
