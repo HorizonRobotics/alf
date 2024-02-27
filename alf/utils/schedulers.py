@@ -42,6 +42,20 @@ def get_all_progresses():
     return _progress
 
 
+_is_scheduler_allowed = True
+
+
+def disallow_scheduler():
+    """Disallow the use of scheduler.
+
+    In some context, scheduler cannot be used due to the lack of the information
+    about training progress. This function is called by the framework to prevent
+    the use of scheduler in such context.
+    """
+    global _is_scheduler_allowed
+    _is_scheduler_allowed = False
+
+
 class Scheduler(object):
     """Base class of all schedulers.
 
@@ -68,6 +82,9 @@ class Scheduler(object):
         self._progress_type = progress_type
 
     def progress(self):
+        assert _is_scheduler_allowed, (
+            "Scheduler is not allowed in Environment "
+            "unless TrainerConfig.sync_progress_to_envs is set to True")
         return _progress[self._progress_type]
 
 
