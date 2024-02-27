@@ -77,7 +77,7 @@ class SummaryTest(alf.test.TestCase):
                              b'sample text')
             self.assertEqual(tag2val['root/b/histogram'].min(), 0)
             self.assertEqual(tag2val['root/b/histogram'].max(), 99)
-            self.assertEqual(len(tag2val['root/b/histogram']), 31)
+            self.assertEqual(len(tag2val['root/b/histogram']), 30)
 
 
 if __name__ == "__main__":

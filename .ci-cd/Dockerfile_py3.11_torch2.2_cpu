@@ -1,0 +1,71 @@
+# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM ubuntu:22.04
+
+ENV TZ=US/Pacific
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+RUN apt update
+
+RUN apt install -y python3.11 python3-pip python3.11-dev python3-setuptools
+
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+RUN python -m pip install --upgrade pip
+
+
+RUN apt install -y \
+        libsm6  \
+        libxext-dev \
+        libxrender1 \
+        git \
+        unzip \
+        cmake \
+        libxml2 libxml2-dev libxslt1-dev \
+        dirmngr gnupg2 lsb-release \
+        xvfb kmod swig patchelf \
+        libopenmpi-dev  libcups2-dev \
+        libssl-dev  libosmesa6-dev \
+        mesa-utils python3-opengl
+
+RUN apt install -y \
+    libboost-all-dev \
+    libglib2.0-0 libsm6 libxrender1 libxext6 \
+    ffmpeg wget
+
+RUN pip3 install torch==2.2.0+cpu torchvision==0.17.0+cpu torchtext==0.17.0+cpu \
+    -f https://download.pytorch.org/whl/torch_stable.html
+
+RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git
+
+# python libs requirement by alf
+COPY requirements_py3.11.txt  /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
+
+RUN wget http://www.atarimania.com/roms/Atari-2600-VCS-ROM-Collection.zip -O /tmp/roms.zip \
+    && (unzip -d tmp /tmp/roms.zip || true) \
+    && python3 -m atari_py.import_roms /tmp/ROMS \
+    && rm /tmp/roms.zip && rm -rf /tmp/ROMS
+
+# install code style tools
+RUN pip3 install  pre-commit==3.6.2 \
+    cpplint==1.6.1 \
+    clang-format==17.0.6 \
+    pydocstyle==6.3.0 \
+    pylint==2.17.7 \
+    yapf==0.40.2
+
+RUN rm -rf /var/lib/apt/lists/*

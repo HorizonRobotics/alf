@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-readonly VERSION="9.0"
+readonly VERSION="17.0.6"
 
 version=$(clang-format -version)
 
