@@ -19,7 +19,7 @@ import torch.nn as nn
 
 
 def _avg_fn(averaged_model_parameter, model_parameter, num_averaged):
-    return torch.lerp(model_parameter, averaged_model_parameter,
+    return torch.lerp(averaged_model_parameter, model_parameter,
                       1 / (num_averaged + 1))
 
 
@@ -123,14 +123,7 @@ class AveragedModel(nn.Module):
             self.module = self.module.to(device)
         self.register_buffer('n_averaged',
                              torch.tensor(0, dtype=torch.long, device=device))
-        if avg_fn is None:
-
-            def avg_fn(averaged_model_parameter, model_parameter,
-                       num_averaged):
-                return averaged_model_parameter + \
-                    (model_parameter - averaged_model_parameter) / (num_averaged + 1)
-
-        self.avg_fn = avg_fn
+        self.avg_fn = _avg_fn
         self.use_buffers = use_buffers
 
     def forward(self, *args, **kwargs):
@@ -190,7 +183,7 @@ class DoubleAveragedModel(nn.Module):
 
 
 def create_averaged_model(model, average_type, device=None, use_buffers=False):
-    if average_type == "simple":
+    if average_type == "single":
         return AveragedModel(
             model, device=device, avg_fn=_avg_fn, use_buffers=use_buffers)
     elif average_type == "double":
