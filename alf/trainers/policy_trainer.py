@@ -70,10 +70,8 @@ class _TrainerProgress(nn.Module):
     def update(self, iter_num=None, env_steps=None):
         if iter_num is not None:
             self._iter_num.fill_(iter_num)
-            update_progress("iterations", iter_num)
         if env_steps is not None:
             self._env_steps.fill_(env_steps)
-            update_progress("env_steps", env_steps)
 
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
@@ -84,6 +82,12 @@ class _TrainerProgress(nn.Module):
         else:
             self._progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
+
+        # Always update iterations and evn_steps so that in the case of the progress
+        # is loaded from a checkpoint, they are still updated by update() without
+        # specifying the arguments.
+        update_progress("iterations", self._iter_num)
+        update_progress("env_steps", self._env_steps)
         update_progress("percent", self._progress)
 
     def set_progress(self, value: float):
