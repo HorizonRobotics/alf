@@ -31,7 +31,7 @@ import alf
 import alf.nest as nest
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
-from alf.utils.schedulers import update_all_progresses, get_all_progresses
+from alf.utils.schedulers import update_all_progresses, get_all_progresses, disallow_scheduler
 from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
 from . import _penv
 
@@ -132,6 +132,8 @@ def _worker(conn: multiprocessing.connection,
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
+        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
+            disallow_scheduler()
         if start_method == "spawn":
             _init_after_spawn(
                 SpawnedProcessContext(

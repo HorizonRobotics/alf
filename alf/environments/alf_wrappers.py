@@ -118,6 +118,9 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
     def wrapped_env(self):
         return self._env
 
+    def sync_progress(self):
+        return self._env.sync_progress()
+
 
 # Used in ALF
 @alf.configurable
