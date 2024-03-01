@@ -333,6 +333,39 @@ class CyclicalScheduler(Scheduler):
             "This scheduler is cyclical and does not have a final value.")
 
 
+class PowerDecayScheduler(Scheduler):
+    """The sheduled value decays according to the following power law:
+
+        ``initial_value / (1 + progress / time_constant) ** degree``
+
+    Args:
+        progress_type (str): one of "percent", "iterations", "env_steps"
+        initial_value (float): initial value
+        time_constant (float): the time constant
+        degree (float): the degree of the power law
+    """
+
+    def __init__(self,
+                 progress_type,
+                 initial_value,
+                 time_constant,
+                 degree=0.75):
+        super().__init__(progress_type)
+        self._initial_value = initial_value
+        self._time_constant = time_constant
+        self._degree = degree
+
+    def __call__(self):
+        progress = self.progress()
+        return self._initial_value / (
+            1 + progress / self._time_constant)**self._degree
+
+    def __repr__(self):
+        return "PolynomialScheduler('%s', initial_value=%s time_constant=%s degree=%s" % (
+            self._progress_type, self._initial_value, self._time_constant,
+            self._degree)
+
+
 def as_scheduler(value_or_scheduler):
     if isinstance(value_or_scheduler, Callable):
         return value_or_scheduler
