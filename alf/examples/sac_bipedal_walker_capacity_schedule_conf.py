@@ -17,7 +17,7 @@ from alf.utils.schedulers import LinearScheduler
 
 from alf.examples import sac_bipedal_walker_conf
 
-optimizer = alf.optimizers.AdamTF(
+optimizer = alf.optimizers.Adam(
     lr=5e-4,
     capacity_ratio=LinearScheduler(
         progress_type="percent", schedule=[(0, 0.1), (1., 1)]),
@@ -25,8 +25,4 @@ optimizer = alf.optimizers.AdamTF(
 alf.config("Agent", optimizer=optimizer)
 
 # training config
-alf.config(
-    "TrainerConfig",
-    evaluate=True,
-    async_eval=True,
-)
+alf.config("TrainerConfig", evaluate=True, async_eval=True, eval_interval=1)
