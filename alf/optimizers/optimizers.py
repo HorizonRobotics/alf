@@ -178,6 +178,8 @@ def wrap_optimizer(cls):
             capacity_ratio)
         self._random_number_generator = torch.Generator(
             alf.get_default_device())
+        self._rng_state_device = self._random_number_generator.get_state(
+        ).device
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         if gradient_clipping is not None:
@@ -496,7 +498,8 @@ def wrap_optimizer(cls):
                 for p in param_group['params']:
                     state = self.state[p]
                     if 'rng_state' in state:
-                        state['rng_state'] = state['rng_state'].cpu().byte()
+                        state['rng_state'] = state['rng_state'].to(
+                            self._rng_state_device).byte()
 
     return NewCls
 
