@@ -27,6 +27,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import Network, wrap_as_network
 from alf.utils import dist_utils
 import alf.utils.math_ops as math_ops
+from alf.utils.tensor_utils import expand_batch_dim
 
 
 @alf.configurable
@@ -271,7 +272,8 @@ class NormalProjectionNetwork(Network):
                 action_spec.constant(
                     std_bias_initializer_value, outer_dims=outer_dims),
                 requires_grad=True)
-            self._std_projection_layer = lambda _: self._std
+            self._std_projection_layer = lambda x: expand_batch_dim(
+                self._std, x)
 
     def _normal_dist(self, means, stds):
         normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
@@ -663,7 +665,8 @@ class TruncatedProjectionNetwork(Network):
             self._scale = nn.Parameter(
                 action_spec.constant(scale_bias_initializer_value),
                 requires_grad=True)
-            self._scale_projection_layer = lambda _: self._scale
+            self._scale_projection_layer = lambda x: expand_batch_dim(
+                self._scale, x)
 
         self._action_high = torch.tensor(action_spec.maximum).broadcast_to(
             action_spec.shape)

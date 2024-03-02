@@ -443,3 +443,17 @@ def spatial_broadcast(z: torch.Tensor, im_shape: Tuple[int]):
             input embedding size and ``[H,W]`` are input height and width.
     """
     return z.reshape(z.shape + (1, 1)).expand(*(z.shape + im_shape[-2:]))
+
+
+def expand_batch_dim(tensor, batch_data):
+    """Expand the dimension of ``tensor`` to hava a batch dimension matching the
+    ``batch_data``.
+
+    Args:
+        tensor (Tensor): a tensor without batch dimension.
+        batch_data (Tensor): a tensor with batch dimension.
+
+    Returns:
+        Tensor: a tensor with batch dimension.
+    """
+    return tensor[None, ...].expand(batch_data.shape[0], *tensor.shape)
