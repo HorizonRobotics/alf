@@ -178,6 +178,8 @@ def wrap_optimizer(cls):
             capacity_ratio)
         self._random_number_generator = torch.Generator(
             alf.get_default_device())
+        self._rng_state_device = self._random_number_generator.get_state(
+        ).device
 
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         if gradient_clipping is not None:
@@ -252,8 +254,8 @@ def wrap_optimizer(cls):
                             'rng_state'] = self._random_number_generator.get_state(
                             )
                     else:
-                        rng_state = state['rng_state']
-                        self._random_number_generator.set_state(rng_state)
+                        self._random_number_generator.set_state(
+                            state['rng_state'])
 
                     # generate capacity mask using the same random number generator state
                     n = p.numel()
@@ -357,14 +359,14 @@ def wrap_optimizer(cls):
             # if no stepping done yet, remove customized states to avoid any impacts on
             # some specific optimizers' internal procedures, e.g. lazy state initialization
             # https://github.com/pytorch/pytorch/blob/b2e0f8d82d721f6598113f64a408b0017bb90cb2/torch/optim/adam.py#L102-L103
-            customzied_states = self._remove_customized_states()
+            customized_states = self._remove_customized_states()
         else:
-            customzied_states = {}
+            customized_states = {}
 
         super(NewCls, self).step(closure=closure)
 
-        if len(customzied_states):
-            self._append_customized_states(customzied_states)
+        if len(customized_states):
+            self._append_customized_states(customized_states)
 
         if not isinstance(self, NeroPlus):
             for param in params:
@@ -481,6 +483,23 @@ def wrap_optimizer(cls):
 
         capacity_ratio = self._capacity_ratio()
         self._adjust_capacity(capacity_ratio, {})
+
+    @common.add_method(NewCls)
+    def load_state_dict(self, state_dict):
+        """
+        Byte type is required for ``rng_state`` but within optimizer.load_state_dict,
+        it is converted to float.
+        This function first call the parent's ``load_state_dict()`` function, and
+        then make sure the ``rng_state`` is in correct data type.
+        """
+        super(NewCls, self).load_state_dict(state_dict)
+        if len(self.state) > 0:
+            for param_group in self.param_groups:
+                for p in param_group['params']:
+                    state = self.state[p]
+                    if 'rng_state' in state:
+                        state['rng_state'] = state['rng_state'].to(
+                            self._rng_state_device).byte()
 
     return NewCls
 
