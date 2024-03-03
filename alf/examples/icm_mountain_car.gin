@@ -2,7 +2,7 @@ import alf.algorithms.agent
 import alf.algorithms.actor_critic_loss
 import alf.algorithms.icm_algorithm
 import alf.algorithms.entropy_target_algorithm
-
+import alf.environments.suite_gym
 
 # environment config
 create_environment.num_parallel_environments=30

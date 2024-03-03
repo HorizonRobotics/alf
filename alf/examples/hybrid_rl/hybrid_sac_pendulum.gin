@@ -1,4 +1,3 @@
-
 include 'sac_pendulum.gin'
 
 # Example config for Hybrid RL training.

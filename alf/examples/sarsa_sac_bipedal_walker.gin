@@ -1,4 +1,5 @@
 include 'sarsa_sac.gin'
+import alf.environments.suite_gym
 
 # Need to install Box2D by "pip install box2d-py"
 create_environment.env_name="BipedalWalker-v2"
