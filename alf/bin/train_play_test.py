@@ -460,6 +460,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='dyna_actrepeat_sac_bipedalwalker_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_bipedal_walker_w_capacity_schedule(self):
+        self._test(
+            conf_file='sac_bipedal_walker_capacity_schedule_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_dyna_actrepeat_sac_pickplace(self):
         self._test(
             conf_file="dyna_actrepeat_sac_pickplace.gin",
