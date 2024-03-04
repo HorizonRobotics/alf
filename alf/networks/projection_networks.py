@@ -652,9 +652,8 @@ class TruncatedProjectionNetwork(Network):
         assert isinstance(action_spec, TensorSpec)
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
 
-        self._scale_transform = math_ops.identity
-        if scale_transform is not None:
-            self._scale_transform = scale_transform
+        if scale_transform is None:
+            scale_transform = math_ops.identity
 
         self._loc_projection_layer = layers.FC(
             input_size,
@@ -690,7 +689,8 @@ class TruncatedProjectionNetwork(Network):
         # for better numerical stability
         self._loc_transform = (lambda inputs: action_means + action_magnitudes
                                * loc_transform(inputs))
-
+        self._scale_transform = lambda inputs: action_magnitudes * scale_transform(
+            inputs)
         self._min_scale = min_scale
         self._max_scale = max_scale
 
