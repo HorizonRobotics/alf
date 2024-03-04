@@ -75,7 +75,7 @@ def _define_flags():
     flags.DEFINE_string('conf', None, 'Path to the alf config file.')
     flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
     flags.DEFINE_bool(
-        'force_torch_deterministic', True,
+        'force_torch_deterministic', False,
         'torch.use_deterministic_algorithms when random_seed is set')
     flags.DEFINE_bool('store_snapshot', True,
                       'Whether store an ALF snapshot before training')
