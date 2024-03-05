@@ -106,6 +106,7 @@ def wrap_optimizer(cls):
                  repulsive_weight=1.,
                  capacity_ratio: Union[float, Scheduler] = 1.0,
                  min_capacity: int = 8192,
+                 full_rank_update: bool = True,
                  masked_out_value: Union[float, None] = None,
                  name=None,
                  **kwargs):
@@ -154,6 +155,7 @@ def wrap_optimizer(cls):
                 case and should not be used under that setting.
             min_capacity: For each parameter, at least so many elements
                 are turned on for training.
+            full_rank_update: whether or not the update will be made full rank.
             masked_out_value: the value to be set for the masked out parameters, i.e.,
                 parameters whose mask value is True. If None, no operation will be applied.
                 Otherwise, set the parameter values as the specified value.
@@ -190,6 +192,7 @@ def wrap_optimizer(cls):
         self._parvi = parvi
         self._first_stepping_done = False  # whether done the first optimizer stepping
         self._min_capacity = min_capacity
+        self._full_rank_update = full_rank_update
         self._masked_out_value = masked_out_value
         self._norms = {}  # norm of each parameter
         if parvi is not None:
@@ -267,8 +270,13 @@ def wrap_optimizer(cls):
                     if self._masked_out_value is None:
                         if old_param_val is not None:
                             # The following is faster than p.data[mask] = old_param[mask]
-                            p.data.copy_(
-                                torch.where(mask, old_param_val, p.data))
+                            if self._full_rank_update:
+                                p.data.copy_(
+                                    torch.where(mask, p.data,
+                                                p.data * 2 - old_param_val))
+                            else:
+                                p.data.copy_(
+                                    torch.where(mask, old_param_val, p.data))
                             del old_param_val
                     else:
                         p.data[mask] = self._masked_out_value
