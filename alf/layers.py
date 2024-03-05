@@ -16,6 +16,7 @@
 from absl import logging
 import copy
 from functools import partial
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -329,6 +330,7 @@ class FC(nn.Module):
                  kernel_init_gain=1.0,
                  bias_init_value=0.0,
                  bias_initializer=None,
+                 use_torch_init=False,
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
         """A fully connected layer that's also responsible for activation and
@@ -355,6 +357,11 @@ class FC(nn.Module):
             bias_init_value (float): a constant for the initial bias value.
                 This is ignored if ``bias_initializer`` is provided.
             bias_initializer (Callable):  initializer for the bias parameter.
+            use_torch_init (bool): whehter to initialize in the same way as
+                ``torch.nn.Linear``. If True, when ``kernel_initializer`` is None,
+                weight will be initialized in the same way as ``torch.nn.Linear``.
+                and when ``bias_initializer`` is None and ``bias_init_value==0``,
+                bias will be initialized in the same way as ``torch.nn.Linear``.
             weight_opt_args: optimizer arguments for weight
             bias_opt_args: optimizer arguments for bias
         """
@@ -371,6 +378,7 @@ class FC(nn.Module):
         self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
         # bias is useless if there is BN
         use_bias = use_bias and not use_bn
+        self._use_torch_init = use_torch_init
         if use_bias:
             self._bias = nn.Parameter(torch.Tensor(output_size))
         else:
@@ -408,16 +416,23 @@ class FC(nn.Module):
     def reset_parameters(self):
         """Initialize the parameters."""
         if self._kernel_initializer is None:
-            variance_scaling_init(
-                self._weight.data,
-                gain=self._kernel_init_gain,
-                nonlinearity=self._activation)
+            if self._use_torch_init:
+                nn.init.kaiming_uniform_(self._weight, a=math.sqrt(5))
+            else:
+                variance_scaling_init(
+                    self._weight.data,
+                    gain=self._kernel_init_gain,
+                    nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._weight.data)
 
         if self._use_bias:
             if self._bias_initializer is not None:
                 self._bias_initializer(self._bias.data)
+            elif self._use_torch_init and self._bias_init_value == 0.0:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self._weight)
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self._bias, -bound, bound)
             else:
                 nn.init.constant_(self._bias.data, self._bias_init_value)
 
@@ -645,6 +660,7 @@ class ParallelFC(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.,
+                 use_torch_init=False,
                  bias_initializer=None,
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
@@ -671,6 +687,11 @@ class ParallelFC(nn.Module):
             bias_init_value (float): a constant for the initial bias value.
                 This is ignored if ``bias_initializer`` is provided.
             bias_initializer (Callable):  initializer for the bias parameter.
+            use_torch_init: whehter to initialize in the same way as
+                ``torch.nn.Linear``. If True, when ``kernel_initializer`` is None,
+                weight will be initialized in the same way as ``torch.nn.Linear``.
+                and when ``bias_initializer`` is None and ``bias_init_value==0``,
+                bias will be initialized in the same way as ``torch.nn.Linear``.
             weight_opt_args: optimizer arguments for weight
             bias_opt_args: optimizer arguments for bias
         """
@@ -683,6 +704,7 @@ class ParallelFC(nn.Module):
             self._bias = nn.Parameter(torch.Tensor(n, output_size))
         else:
             self._bias = None
+        self._use_torch_init = use_torch_init
 
         self._n = n
         self._kernel_initializer = kernel_initializer
@@ -709,10 +731,14 @@ class ParallelFC(nn.Module):
     def reset_parameters(self):
         for i in range(self._n):
             if self._kernel_initializer is None:
-                variance_scaling_init(
-                    self._weight.data[i],
-                    gain=self._kernel_init_gain,
-                    nonlinearity=self._activation)
+                if self._use_torch_init:
+                    nn.init.kaiming_uniform_(
+                        self._weight.data[i], a=math.sqrt(5))
+                else:
+                    variance_scaling_init(
+                        self._weight.data[i],
+                        gain=self._kernel_init_gain,
+                        nonlinearity=self._activation)
             else:
                 self._kernel_initializer(self._weight.data[i])
 
@@ -720,6 +746,11 @@ class ParallelFC(nn.Module):
             if self._bias_initializer is not None:
                 for i in range(self._n):
                     self._bias_initializer(self._bias.data[i])
+            elif self._use_torch_init and self._bias_init_value == 0.0:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(
+                    self._weight.data[0])
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+                nn.init.uniform_(self._bias.data[i], -bound, bound)
             else:
                 nn.init.constant_(self._bias.data, self._bias_init_value)
 
@@ -1119,21 +1150,24 @@ class CausalConv1D(nn.Module):
 class Conv2D(nn.Module):
     """2D Convolution Layer."""
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 activation=torch.relu_,
-                 strides=1,
-                 padding=0,
-                 use_bias=None,
-                 use_bn=False,
-                 use_ln=False,
-                 weight_opt_args: Optional[Dict] = None,
-                 bn_ctor=nn.BatchNorm2d,
-                 kernel_initializer=None,
-                 kernel_init_gain=1.0,
-                 bias_init_value=0.0):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel_size,
+            activation=torch.relu_,
+            strides=1,
+            padding=0,
+            use_bias=None,
+            use_bn=False,
+            use_ln=False,
+            weight_opt_args: Optional[Dict] = None,
+            bn_ctor=nn.BatchNorm2d,
+            kernel_initializer=None,
+            kernel_init_gain=1.0,
+            bias_init_value=0.0,
+            use_torch_init=False,
+    ):
         """A 2D Conv layer that's also responsible for activation and customized
         weights initialization. An auto gain calculation might depend on the
         activation following the conv layer. Suggest using this wrapper module
@@ -1159,6 +1193,11 @@ class Conv2D(nn.Module):
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
+            use_torch_init (bool): whehter to initialize in the same way as
+                ``torch.nn.Conv2d``. If True, when ``kernel_initializer`` is None,
+                weight will be initialized in the same way as ``torch.nn.Conv2d``.
+                and when ``bias_initializer`` is None and ``bias_init_value==0``,
+                bias will be initialized in the same way as ``torch.nn.Conv2d``.
         """
         # get the argument list with vals
         self._kwargs = copy.deepcopy(locals())
@@ -1181,6 +1220,7 @@ class Conv2D(nn.Module):
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
         self._use_bias = use_bias
+        self._use_torch_init = use_torch_init
         if use_bn:
             self._bn = bn_ctor(out_channels)
         else:
@@ -1197,14 +1237,24 @@ class Conv2D(nn.Module):
     def reset_parameters(self):
         """Initialize the parameters."""
         if self._kernel_initializer is None:
-            variance_scaling_init(
-                self._conv2d.weight.data,
-                gain=self._kernel_init_gain,
-                nonlinearity=self._activation)
+            if self._use_torch_init:
+                nn.init.kaiming_uniform_(self._conv2d.weight, a=math.sqrt(5))
+            else:
+                variance_scaling_init(
+                    self._conv2d.weight.data,
+                    gain=self._kernel_init_gain,
+                    nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._conv2d.weight.data)
         if self._use_bias:
-            nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
+            if self._bias_init_value == 0:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(
+                    self._conv2d.weight)
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self._conv2d.bias, -bound, bound)
+            else:
+                nn.init.constant_(self._conv2d.bias.data,
+                                  self._bias_init_value)
         if self._bn is not None:
             self._bn.reset_parameters()
         if self._ln is not None:
@@ -1406,7 +1456,8 @@ class ParallelConv2D(nn.Module):
                  bn_ctor=nn.BatchNorm2d,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
-                 bias_init_value=0.0):
+                 bias_init_value=0.0,
+                 use_torch_init=False):
         """A parallel 2D Conv layer that can be used to perform n independent
         2D convolutions in parallel.
 
@@ -1434,6 +1485,11 @@ class ParallelConv2D(nn.Module):
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
+            use_torch_init (bool): : whehter to initialize in the same way as
+                ``torch.nn.Conv2d``. If True, when ``kernel_initializer`` is None,
+                weight will be initialized in the same way as ``torch.nn.Conv2d``.
+                and when ``bias_initializer`` is None and ``bias_init_value==0``,
+                bias will be initialized in the same way as ``torch.nn.Conv2d``.
         """
         super(ParallelConv2D, self).__init__()
         if use_bias is None:
@@ -1446,6 +1502,7 @@ class ParallelConv2D(nn.Module):
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
+        self._use_torch_init = use_torch_init
 
         self._kernel_size = common.tuplify2d(kernel_size)
         self._conv2d = nn.Conv2d(
@@ -1472,18 +1529,32 @@ class ParallelConv2D(nn.Module):
     def reset_parameters(self):
         for i in range(self._n):
             if self._kernel_initializer is None:
-                variance_scaling_init(
-                    self._conv2d.weight.data[i * self._out_channels:(i + 1) *
-                                             self._out_channels],
-                    gain=self._kernel_init_gain,
-                    nonlinearity=self._activation)
+                if self._use_torch_init:
+                    nn.init.kaiming_uniform_(
+                        self._conv2d.weight.data[i * self._out_channels:
+                                                 (i + 1) * self._out_channels],
+                        a=math.sqrt(5))
+                else:
+                    variance_scaling_init(
+                        self._conv2d.weight.data[i * self._out_channels:
+                                                 (i + 1) * self._out_channels],
+                        gain=self._kernel_init_gain,
+                        nonlinearity=self._activation)
             else:
                 self._kernel_initializer(
                     self._conv2d.weight.data[i * self._out_channels:(i + 1) *
                                              self._out_channels])
 
         if self._use_bias:
-            nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
+            if self._bias_init_value == 0:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(
+                    self._conv2d.weight.data[i * self._out_channels:(i + 1) *
+                                             self._out_channels])
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self._conv2d.bias, -bound, bound)
+            else:
+                nn.init.constant_(self._conv2d.bias.data,
+                                  self._bias_init_value)
 
         if self._bn:
             self._bn.reset_parameters()

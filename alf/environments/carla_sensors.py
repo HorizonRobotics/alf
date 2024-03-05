@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
-plt.style.use('seaborn-dark')
+plt.style.use('classic')
 
 import weakref
 import threading
@@ -897,33 +897,33 @@ NumpyLaneMarking = namedtuple("NumpyLaneMarking",
                               ['color', 'lane_change', 'type', 'width'])
 
 dummy_lane_marking = NumpyLaneMarking(
-    color=np.int(-1),
-    lane_change=np.int(-1),
-    type=np.int(-1),
-    width=np.float(0.),
+    color=np.int64(-1),
+    lane_change=np.int64(-1),
+    type=np.int64(-1),
+    width=np.float64(0.),
 )
 
 
 def _to_numpy_lane_marking(lane_marking: carla.LaneMarking):
     return NumpyLaneMarking(
-        color=np.int(lane_marking.color),
-        lane_change=np.int(lane_marking.lane_change),
-        type=np.int(lane_marking.type),
-        width=np.float(lane_marking.width))
+        color=np.int64(lane_marking.color),
+        lane_change=np.int64(lane_marking.lane_change),
+        type=np.int64(lane_marking.type),
+        width=np.float64(lane_marking.width))
 
 
 def _to_numpy_waypoint(wp: carla.Waypoint):
     return NumpyWaypoint(
-        id=np.int(wp.id),
+        id=np.int64(wp.id),
         location=_to_numpy_loc(wp.transform.location),
         rotation=_to_numpy_rot(wp.transform.rotation),
-        road_id=np.int(wp.road_id),
-        section_id=np.int(wp.section_id),
-        lane_id=np.int(wp.lane_id),
+        road_id=np.int64(wp.road_id),
+        section_id=np.int64(wp.section_id),
+        lane_id=np.int64(wp.lane_id),
         is_junction=bool(wp.is_junction),
-        lane_width=np.float(wp.lane_width),
-        lane_change=np.int(wp.lane_change),
-        lane_type=np.int(wp.lane_type),
+        lane_width=np.float64(wp.lane_width),
+        lane_change=np.int64(wp.lane_change),
+        lane_type=np.int64(wp.lane_type),
         right_lane_marking=_to_numpy_lane_marking(wp.right_lane_marking),
         left_lane_marking=_to_numpy_lane_marking(wp.left_lane_marking))
 
@@ -1043,16 +1043,16 @@ def _is_segments_intersecting(seg1, seg2):
 
 
 dummy_waypoint = NumpyWaypoint(
-    id=np.int(-1),
+    id=np.int64(-1),
     location=np.zeros(3),
     rotation=np.zeros(3),
-    road_id=np.int(-1),
-    section_id=np.int(-1),
-    lane_id=np.int(-1),
+    road_id=np.int64(-1),
+    section_id=np.int64(-1),
+    lane_id=np.int64(-1),
     is_junction=False,
-    lane_width=np.float(0),
-    lane_change=np.int(0),
-    lane_type=np.int(0),
+    lane_width=np.float64(0),
+    lane_change=np.int64(0),
+    lane_type=np.int64(0),
     right_lane_marking=dummy_lane_marking,
     left_lane_marking=dummy_lane_marking,
 )

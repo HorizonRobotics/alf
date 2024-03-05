@@ -30,7 +30,8 @@ from typing import Dict, Any, Callable, List, Tuple
 import alf
 import alf.nest as nest
 from alf.utils import common
-from alf.utils.schedulers import update_all_progresses, get_all_progresses
+from alf.utils.per_process_context import PerProcessContext
+from alf.utils.schedulers import update_all_progresses, get_all_progresses, disallow_scheduler
 from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
 from . import _penv
 
@@ -50,6 +51,10 @@ def _init_after_spawn(context: SpawnedProcessContext):
         pre_configs: Specifies the set of pre configs that the parent process uses.
 
     """
+    if context.ddp_rank >= 0:
+        PerProcessContext().set_distributed(context.ddp_rank,
+                                            context.ddp_num_procs)
+
     # 0. Update the global context for this spawned process. This will
     #    alter the behavior of ``get_env()``.
     set_spawned_process_context(context)
@@ -57,18 +62,22 @@ def _init_after_spawn(context: SpawnedProcessContext):
     # 1. Parse the relevant flags for the current subprocess. The set of
     #    relevant flags are defined below. Note that the command line arguments
     #    and options are inherited from the parent process via ``sys.argv``.
+    flags.DEFINE_string(
+        "root_dir", None,
+        'Root directory for writing logs/summaries/checkpoints.')
     flags.DEFINE_string("conf", None, "Path to the alf config file.")
     flags.DEFINE_multi_string("conf_param", None, "Config binding parameters.")
     FLAGS(sys.argv, known_only=True)
     FLAGS.mark_as_parsed()
     FLAGS.alsologtostderr = True
+    conf_file = common.get_conf_file()
 
     # 2. Configure the logging
     logging.set_verbosity(logging.INFO)
 
     # 3. Load the configuration
     alf.pre_config(dict(context.pre_configs))
-    common.parse_conf_file(FLAGS.conf)
+    common.parse_conf_file(conf_file)
 
 
 class _MessageType(Enum):
@@ -95,6 +104,8 @@ def _worker(conn: multiprocessing.connection,
             fast: bool = False,
             num_envs: int = 0,
             torch_num_threads_per_env: int = 1,
+            ddp_num_procs: int = 1,
+            ddp_rank: int = -1,
             name: str = ''):
     """The process waits for actions and sends back environment results.
 
@@ -118,19 +129,22 @@ def _worker(conn: multiprocessing.connection,
         KeyError: When receiving a message of unknown type.
     """
     try:
-        if start_method == "spawn":
-            _init_after_spawn(
-                SpawnedProcessContext(
-                    env_id=env_id,
-                    env_ctor=env_constructor,
-                    pre_configs=pre_configs))
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
+        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
+            disallow_scheduler()
         if start_method == "spawn":
-            ctx = get_spawned_process_context()
-            assert isinstance(ctx, SpawnedProcessContext)
-            env = ctx.create_env()
+            _init_after_spawn(
+                SpawnedProcessContext(
+                    ddp_num_procs=ddp_num_procs,
+                    ddp_rank=ddp_rank,
+                    env_id=env_id,
+                    env_ctor=env_constructor,
+                    pre_configs=pre_configs))
+            # env may have been created during parse_conf_file called by _init_after_spawn
+            # so we should not create it again using env_constructor
+            env = alf.get_env()
         else:
             env = env_constructor(env_id=env_id)
         action_spec = env.action_spec()
@@ -277,12 +291,16 @@ class ProcessEnvironment(object):
         assert not self._conn, "Cannot start() ProcessEnvironment multiple times"
         mp_ctx = multiprocessing.get_context(self._start_method)
         self._conn, conn = mp_ctx.Pipe()
+
+        ddp_num_procs = PerProcessContext().num_processes
+        ddp_rank = PerProcessContext().ddp_rank
+
         self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._start_method,
                   alf.get_handled_pre_configs(), self._env_id, self._flatten,
                   self._fast, self._num_envs, self._torch_num_threads,
-                  self._name),
+                  ddp_num_procs, ddp_rank, self._name),
             name=f"ProcessEnvironment-{self._env_id}")
         atexit.register(self.close)
         self._process.start()

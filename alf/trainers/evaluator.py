@@ -267,6 +267,7 @@ def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
     """
     batch_size = env.batch_size
     env.reset()
+    env.sync_progress()
     time_step = common.get_initial_time_step(env)
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)

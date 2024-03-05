@@ -38,7 +38,8 @@ class PrettyPrinter(pprint.PrettyPrinter):
         if length:
             # We first try to print inline, and if it is too large then we print it on multiple lines
             inline_stream = StringIO()
-            self.format_namedtuple_items(
+            PrettyPrinter.format_namedtuple_items(
+                self,
                 object_dict.items(),
                 inline_stream,
                 indent,
@@ -48,7 +49,8 @@ class PrettyPrinter(pprint.PrettyPrinter):
                 inline=True)
             max_width = self._width - indent - allowance
             if len(inline_stream.getvalue()) > max_width:
-                self.format_namedtuple_items(
+                PrettyPrinter.format_namedtuple_items(
+                    self,
                     object_dict.items(),
                     stream,
                     indent,

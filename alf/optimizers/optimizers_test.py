@@ -254,13 +254,21 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(cov_err, 0.5)
 
     @parameterized.parameters(
-        dict(capacity_ratio=0.2, masked_out_value=None, opt_steps=3),
-        dict(capacity_ratio=0.7, masked_out_value=0, opt_steps=5))
-    def test_capacity_scheduling(self, capacity_ratio, masked_out_value,
-                                 opt_steps):
+        dict(
+            opt_cls=Adam,
+            capacity_ratio=0.2,
+            masked_out_value=None,
+            opt_steps=3),
+        dict(
+            opt_cls=AdamTF,
+            capacity_ratio=0.7,
+            masked_out_value=0,
+            opt_steps=5))
+    def test_capacity_scheduling(self, opt_cls, capacity_ratio,
+                                 masked_out_value, opt_steps):
         layer = torch.nn.Linear(512, 512)
         clip_norm = 1e-4
-        opt = AdamTF(
+        opt = opt_cls(
             lr=0.1,
             gradient_clipping=clip_norm,
             clip_by_global_norm=True,

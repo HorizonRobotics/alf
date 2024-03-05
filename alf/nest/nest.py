@@ -40,7 +40,11 @@ NestedTensor = Union[
 
 
 def flatten(nest):
-    """(C++) Returns a flat list from a given nested structure."""
+    """(C++) Returns a flat list from a given nested structure.
+
+    Note that the order of the values is the same as the alphabetical order of the
+    fields.
+    """
     try:
         return cnest.flatten(nest)
     except Exception as e:

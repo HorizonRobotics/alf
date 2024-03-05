@@ -29,6 +29,8 @@ class SpawnedProcessContext(NamedTuple):
     """Stores context information inherited from the main process.
 
     """
+    ddp_num_procs: int
+    ddp_rank: int
     env_id: int
     env_ctor: Callable[..., AlfEnvironment]
     pre_configs: List[Tuple[str, Any]]

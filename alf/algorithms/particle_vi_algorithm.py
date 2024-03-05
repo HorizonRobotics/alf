@@ -235,7 +235,7 @@ class ParVIAlgorithm(Algorithm):
         kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [Nx, Ny, W]
         return kappa, kappa_grad
 
-    def _score_func(self, x, alpha=1e-5):
+    def _score_func(self, x, alpha=1e-4):
         r"""
         Compute the stein estimator of the score function
         :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
