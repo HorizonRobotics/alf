@@ -469,9 +469,10 @@ def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
     """
 
     def _hook(grad, name):
-        norm = grad.reshape(*grad.shape[0:batch_dims], -1).norm(dim=-1)
-        alf.summary.scalar(name + '/max_norm', norm.max())
-        alf.summary.scalar(name + '/avg_norm', norm.mean())
+        if grad is not None:
+            norm = grad.reshape(*grad.shape[0:batch_dims], -1).norm(dim=-1)
+            alf.summary.scalar(name + '/max_norm', norm.max())
+            alf.summary.scalar(name + '/avg_norm', norm.mean())
 
     def _register_hook1(tensor, name):
         if tensor.requires_grad:
