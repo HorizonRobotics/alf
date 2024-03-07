@@ -132,8 +132,6 @@ def _worker(conn: multiprocessing.connection,
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
-        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
-            disallow_scheduler()
         if start_method == "spawn":
             _init_after_spawn(
                 SpawnedProcessContext(
@@ -147,6 +145,8 @@ def _worker(conn: multiprocessing.connection,
             env = alf.get_env()
         else:
             env = env_constructor(env_id=env_id)
+        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
+            disallow_scheduler()
         action_spec = env.action_spec()
         if fast:
             penv = _penv.ProcessEnvironment(
