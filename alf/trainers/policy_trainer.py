@@ -20,6 +20,7 @@ from typing import Dict
 import math
 import os
 from pathlib import Path
+import pickle
 import re
 import signal
 import threading
@@ -989,6 +990,7 @@ def play(root_dir,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
+         experience_file=None,
          last_step_repeats=0,
          append_blank_frames=0,
          render=True,
@@ -1017,6 +1019,20 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
+        experience_file (str): if provided, pickled experience will be saved to
+            this file. The experiences can be loaded using the following code:
+
+            .. code_block:: python
+
+                import pickle
+                with open(experience_file, 'rb') as f:
+                    experiences = []
+                    while True:
+                        try:
+                            experiences.append(pickle.load(f))
+                        except EOFError:
+                            break
+
         last_step_repeats (int): repeat such number of times for the
             last frame of each episode.
         append_blank_frames (int): If >0, will append such number of blank frames
@@ -1122,6 +1138,11 @@ def play(root_dir,
 
     # Sync the progress for all environments in case parallel_play > 1
     env.sync_progress()
+    if experience_file is not None:
+        exp_file = open(experience_file, 'wb')
+    else:
+        exp_file = None
+
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statistics) as it can be
@@ -1149,6 +1170,22 @@ def play(root_dir,
             sleep_time_per_step=sleep_time_per_step,
             selective_criteria_func=selective_criteria_func)
 
+        if exp_file is not None:
+            from alf.utils import dist_utils
+            experience = make_experience(time_step.cpu(), policy_step,
+                                         policy_state)
+
+            def _to_cpu(obj):
+                if isinstance(obj, torch.Tensor):
+                    return obj.cpu()
+                elif isinstance(obj, dist_utils.td.Distribution):
+                    builder, params = dist_utils._get_builder(obj)
+                    params = alf.nest.map_structure(lambda x: x.cpu(), params)
+                    return builder(**params)
+
+            experience = alf.nest.map_structure(_to_cpu, experience)
+            pickle.dump(experience, exp_file)
+
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST
         episode_length += started
@@ -1168,6 +1205,9 @@ def play(root_dir,
 
         policy_state = policy_step.state
         time_step = next_time_step
+
+    if exp_file is not None:
+        exp_file.close()
 
     env.reset()
     if recorder:

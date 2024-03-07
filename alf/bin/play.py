@@ -103,6 +103,10 @@ def _define_flags():
         "If True, only save the discoverted selective cases within"
         "the `num_episodes` of test episode. This mode "
         "should be used together with the video recording mode.")
+    flags.DEFINE_string(
+        'experience_file', None,
+        'If provided, the experience will be saved to '
+        'this file.')
 
 
 FLAGS = flags.FLAGS
@@ -184,6 +188,7 @@ def play():
             num_episodes=FLAGS.num_episodes,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
+            experience_file=FLAGS.experience_file,
             append_blank_frames=FLAGS.append_blank_frames,
             last_step_repeats=FLAGS.last_step_repeats,
             render=FLAGS.render,
