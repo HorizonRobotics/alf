@@ -14,6 +14,7 @@
 
 from absl import logging
 import contextlib
+import functools
 import torch
 import torch.nn as nn
 import types
@@ -189,34 +190,44 @@ def lean_function(func: Callable) -> Callable:
     """
 
     def _forward(self, *args, **kwargs):
-        if self._inside_lean_function:
+        if self._inside_lean_function or not torch.is_grad_enabled():
             return self._original_forward_for_lean_function(*args, **kwargs)
         else:
             return self._lean_function(*args, **kwargs)
 
-    parameters = ()
-    if isinstance(func, nn.Module):
-        parameters = tuple(func.parameters())
     if isinstance(func, Network):
         specs = (func.output_spec, func.state_spec)
 
-    def _wrapped(*args, **kwargs):
+    def _wrapped_module(self, *args, **kwargs):
+        # Note that the decorated module may be deepcopied. This means that we
+        # should not directly access ``func`` or its attributes here, since they
+        # will not be copied by copy.deepcopy. Instead, we should use ``self``
+        # to access the attributes. ``self`` is passed through ``types.MethodType``
+        # can will be correctly copied.
+        parameters = tuple(self.parameters())
         # Function.apply does not allow keyword arguments, so we have to convert
         # all keyword arguments to positional arguments
-        ret = _LeanFunction.apply(func, len(parameters), tuple(kwargs.keys()),
+        ret = _LeanFunction.apply(self, len(parameters), tuple(kwargs.keys()),
                                   *parameters, *args, *tuple(kwargs.values()))
-        if isinstance(func, Network):
+        if isinstance(self, Network):
             ret = pack_sequence_as(specs, ret)
         return ret
 
+    def _wrapped_func(func, *args, **kwargs):
+        # Function.apply does not allow keyword arguments, so we have to convert
+        # all keyword arguments to positional arguments
+        ret = _LeanFunction.apply(func, 0, tuple(kwargs.keys()), *args,
+                                  *tuple(kwargs.values()))
+        return ret
+
     if isinstance(func, nn.Module):
-        func._lean_function = _wrapped
+        func._lean_function = types.MethodType(_wrapped_module, func)
         func._original_forward_for_lean_function = func.forward
         func._inside_lean_function = False
         func.forward = types.MethodType(_forward, func)
         return func
     else:
-        return _wrapped
+        return functools.partial(_wrapped_func, func)
 
 
 # The following functions are copied from torch.utils.checkpoint.py. Since different
