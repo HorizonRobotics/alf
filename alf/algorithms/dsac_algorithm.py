@@ -181,15 +181,15 @@ class DSacAlgorithm(SacAlgorithm):
             input_tensor_spec=observation_spec, action_spec=action_spec)
 
         act_type = ActionType.Continuous
-        assert critic_network_cls is not None, (
-            "A CriticNetwork must be provided!")
-        critic_input_spec = (observation_spec, action_spec)
-        critic_network = critic_network_cls(
-            input_tensor_spec=critic_input_spec,
-            tau_spec=self._tau_spec,
-            use_naive_parallel_network=True)
-        critic_networks = critic_network.make_parallel(
-            self._num_critic_replicas * reward_spec.numel)
+        critic_networks = None
+        if critic_network_cls is not None:
+            critic_input_spec = (observation_spec, action_spec)
+            critic_network = critic_network_cls(
+                input_tensor_spec=critic_input_spec,
+                tau_spec=self._tau_spec,
+                use_naive_parallel_network=True)
+            critic_networks = critic_network.make_parallel(
+                self._num_critic_replicas * reward_spec.numel)
 
         return critic_networks, actor_network, act_type
 
