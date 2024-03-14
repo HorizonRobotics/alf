@@ -52,7 +52,7 @@ def _define_flags():
         "train_dir will be used.")
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_bool(
-        'force_torch_deterministic', True,
+        'force_torch_deterministic', False,
         'torch.use_deterministic_algorithms when random_seed is set. '
         'When it is False, deterministic behavior is not guaranteed, '
         'but could still be deterministic, e.g. for sac_breakout_conf.py. '
