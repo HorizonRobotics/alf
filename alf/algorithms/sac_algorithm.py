@@ -984,7 +984,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha_loss = self._alpha_train_step(log_pi)
         else:
             alpha_loss = ()
-        state = new_state._replace(
+        new_state = new_state._replace(
             action=action_state, actor=actor_state, critic=critic_state)
         info = info._replace(
             reward=inputs.reward,
