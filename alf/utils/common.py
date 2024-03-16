@@ -336,15 +336,15 @@ class PeriodicReset(nn.Module):
 
         m <-- re-initialize.
 
-    Note: 
+    Note:
         1) we reinitialize Network parameters and always reset buffers. For non-Network
         parameters, we record their initial value and reassign those values when reset.
         2) for a ``Network`` instance, if it implements a member function ``reset_parameters``,
         then this function will be used to reset the network parameter, which provides
         the user more flexibilities to achieve customized reset behaviors (e.g. only reset
         certain layers). If ``reset_parameters`` does not exist, then all the network
-        parameters will be reset. 
-        
+        parameters will be reset.
+
     Args:
         models (Network | list[Network] | Parameter | list[Parameter] ): the
             models or parameters that will be reset periodically according to schedule.
@@ -1292,7 +1292,9 @@ class eval_context(object):
     def __enter__(self):
         set_exe_mode(EXE_MODE_EVAL)
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            raise exc_type(exc_value).with_traceback(traceback)
         set_exe_mode(self._old_mode)
         return True
 
@@ -1309,7 +1311,9 @@ class replay_context(object):
     def __enter__(self):
         set_exe_mode(EXE_MODE_REPLAY)
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            raise exc_type(exc_value).with_traceback(traceback)
         set_exe_mode(self._old_mode)
         return True
 
@@ -1326,7 +1330,9 @@ class rollout_context(object):
     def __enter__(self):
         set_exe_mode(EXE_MODE_ROLLOUT)
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            raise exc_type(exc_value).with_traceback(traceback)
         set_exe_mode(self._old_mode)
         return True
 
@@ -1343,7 +1349,9 @@ class pretrain_context(object):
     def __enter__(self):
         set_exe_mode(EXE_MODE_PRETRAIN)
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is not None:
+            raise exc_type(exc_value).with_traceback(traceback)
         set_exe_mode(self._old_mode)
         return True
 
