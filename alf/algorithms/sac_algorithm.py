@@ -44,13 +44,15 @@ ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 SacActionState = namedtuple(
     "SacActionState", ["actor_network", "critic"], default_value=())
 
-SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
+SacCriticState = namedtuple(
+    "SacCriticState", ["critics", "target_critics"], default_value=())
 
 SacState = namedtuple(
     "SacState", ["action", "actor", "critic", "repr", "target_repr"],
     default_value=())
 
-SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
+SacCriticInfo = namedtuple(
+    "SacCriticInfo", ["critics", "target_critic"], default_value=())
 
 SacActorInfo = namedtuple(
     "SacActorInfo", ["actor_loss", "neg_entropy", "adv_loss"],
@@ -60,7 +62,7 @@ SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
         "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
-        "alpha_loss"
+        "alpha_loss", "returns"
     ],
     default_value=())
 
@@ -814,7 +816,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Discrete:
             # Pure discrete case doesn't need to learn an actor network
-            return (), LossInfo(extra=SacActorInfo(neg_entropy=neg_entropy))
+            return (), LossInfo(extra=SacActorInfo(
+                neg_entropy=neg_entropy)), ()
 
         adv_loss = ()
         alphas = ()
