@@ -214,7 +214,6 @@ class TDLoss(nn.Module):
                 if value.ndim == 2:
                     _summarize(value, returns, td_error, '')
                 else:
-                    td = returns - value
                     for i in range(value.shape[2]):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i],
@@ -235,7 +234,7 @@ class TDLoss(nn.Module):
 
 @alf.configurable
 class TDQRLoss(TDLoss):
-    """Temporal difference quantile regression loss. 
+    """Temporal difference quantile regression loss.
     Compared to TDLoss, GAE support has not been implemented. """
 
     def __init__(self,
@@ -305,7 +304,7 @@ class TDQRLoss(TDLoss):
                 quantile function of the critics.
             delta_tau: the sampled increments of the probability for input of
                 the quantile function of the critics.
-            next_delta_tau: the sampled increments of the probility for the input 
+            next_delta_tau: the sampled increments of the probility for the input
                 of the quantile function of the target critics.
 
         Returns:
