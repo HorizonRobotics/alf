@@ -48,7 +48,7 @@ SacCriticState = namedtuple(
     "SacCriticState", ["critics", "target_critics"], default_value=())
 
 SacState = namedtuple(
-    "SacState", ["action", "actor", "critic", "repr", "target_repr"],
+    "SacState", ["action", "actor", "critic", "value", "repr", "target_repr"],
     default_value=())
 
 SacCriticInfo = namedtuple(
@@ -62,7 +62,7 @@ SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
         "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
-        "alpha_loss", "returns"
+        "alpha_loss", "returns", "value"
     ],
     default_value=())
 
@@ -157,6 +157,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
+                 value_network_ctor=None,
                  repr_alg_ctor: Optional[Callable] = None,
                  reward_weights=None,
                  train_eps_greedy=1.0,
@@ -324,6 +325,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec, action_spec, reward_spec, actor_network_cls,
             critic_network_cls, q_network_cls)
 
+        value_network = None
+        if value_network_ctor is not None:
+            value_network = value_network_ctor(
+                input_tensor_spec=observation_spec)
+
+            if reward_spec.numel > 1:
+                value_network = value_network.make_parallel(
+                    reward_spec.numel)  # value->[B,n]
+
         self._alpha_uncertainty_ratio = alpha_uncertainty_ratio
         if alpha_uncertainty_ratio > 0:
             assert not use_entropy_reward
@@ -361,6 +371,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 (),
                 target_critics=critic_networks.state_spec
                 if critic_network_cls else ()),
+            value=value_network.state_spec if value_network else (),
             repr=repr_alg.train_state_spec if repr_alg else (),
             target_repr=target_repr_alg.predict_state_spec
             if target_repr_alg else ())
@@ -389,7 +400,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if actor_optimizer is not None and actor_network is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None and critic_networks is not None:
-            self.add_optimizer(critic_optimizer, [critic_networks])
+            nets = [critic_networks]
+            if value_network is not None:
+                nets.append(value_network)
+            self.add_optimizer(critic_optimizer, nets)
         if alpha_optimizer is not None:
             self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
 
@@ -406,6 +420,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         self._actor_network = actor_network
         self._critic_networks = critic_networks
+        self._value_network = value_network
         self._target_critic_networks = None
         # Note, q_network (discrete actions) is still needed for evaluating the algorithm.
         if critic_networks:
