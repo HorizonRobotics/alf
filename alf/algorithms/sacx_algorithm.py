@@ -40,7 +40,9 @@ from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 from alf.utils import value_ops, tensor_utils
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.schedulers import Scheduler
-from alf.algorithms.sac_algorithm import ActionType, SacAlgorithm, SacInfo, SacState, SacCriticState, SacCriticInfo
+from alf.algorithms.sac_algorithm import (ActionType, SacAlgorithm, SacInfo,
+                                          SacState, SacCriticState,
+                                          SacCriticInfo, SacActionState)
 from alf.utils.summary_utils import safe_mean_hist_summary
 
 
@@ -48,6 +50,8 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 class SacXAlgorithm(SacAlgorithm):
     def rollout_step(self, inputs: TimeStep, state: SacState):
         assert not self._is_eval
+        assert self._act_type == ActionType.Continuous
+
         observation, new_state, info = self._repr_step("rollout", inputs,
                                                        state)
         action_dist, action, _, action_state = self._predict_action(
@@ -57,29 +61,33 @@ class SacXAlgorithm(SacAlgorithm):
             eps_greedy_sampling=True,
             rollout=True)
 
-        if self._target_repr_alg is not None:
-            tgt_repr_step = self._target_repr_alg.predict_step(
-                inputs, state.target_repr)
-            target_observation = tgt_repr_step.output
-            new_state = new_state._replace(target_repr=tgt_repr_step.state)
+        if self._value_network is None:
+            if self._target_repr_alg is not None:
+                tgt_repr_step = self._target_repr_alg.predict_step(
+                    inputs, state.target_repr)
+                target_observation = tgt_repr_step.output
+                new_state = new_state._replace(target_repr=tgt_repr_step.state)
+            else:
+                target_observation = observation
+
+            value, target_critics_state = self._compute_critics(
+                self._target_critic_networks,
+                target_observation,
+                action,
+                state.critic.critics,
+                replica_min=False,
+                apply_reward_weights=False,
+                add_value=True)
+
+            critic_state = SacCriticState(target_critics=target_critics_state)
+            new_state = new_state._replace(
+                value=state.value, critic=critic_state)
         else:
-            target_observation = observation
+            value, value_state = self._value_network(observation, state.value)
+            new_state = new_state._replace(
+                critic=state.critic, value=value_state)
 
-        target_critics, target_critics_state = self._compute_critics(
-            self._target_critic_networks,
-            observation,
-            action,
-            state.critic.critics,
-            replica_min=False,
-            apply_reward_weights=False,
-            add_value=True)
-
-        assert self._act_type == ActionType.Continuous
-
-        critic_state = SacCriticState(target_critics=target_critics_state)
-
-        new_state = new_state._replace(
-            critic=critic_state, action=action_state)
+        new_state = new_state._replace(action=action_state)
         return AlgStep(
             output=action,
             state=new_state,
@@ -88,7 +96,7 @@ class SacXAlgorithm(SacAlgorithm):
                 step_type=inputs.step_type,
                 discount=inputs.discount,
                 action=action,
-                critic=SacCriticInfo(target_critic=target_critics),
+                value=value,
                 action_distribution=action_dist))
 
     def _critic_train_step(self, observation, target_observation,
@@ -146,8 +154,15 @@ class SacXAlgorithm(SacAlgorithm):
             alpha_loss = ()
         new_state = new_state._replace(
             action=action_state, actor=actor_state, critic=critic_state)
+
+        value = ()
+        if self._value_network is not None:
+            value, value_state = self._value_network(observation, state.value)
+            new_state = new_state._replace(value=value_state)
+
         info = info._replace(
             returns=rollout_info.returns,
+            value=value,
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
@@ -173,7 +188,7 @@ class SacXAlgorithm(SacAlgorithm):
         step_type = convert_device(rollout_info.step_type)
         discount = convert_device(rollout_info.discount)
         reward = convert_device(rollout_info.reward)
-        value = convert_device(rollout_info.critic.target_critic)
+        value = convert_device(rollout_info.value)
 
         if rollout_info.reward.ndim == 3:
             # [B, T, D] or [B, T, 1]
@@ -182,10 +197,11 @@ class SacXAlgorithm(SacAlgorithm):
             # [B, T]
             discounts = discount * loss.gamma
 
-        # expand the dimensions of the tensors to make them broadcastable
-        # with value
-        discounts = discounts[:, :, None, ...]
-        reward = reward[:, :, None, ...]
+        if self._value_network is None:
+            # in this case value is calculated using target_critic_networks
+            # its shape includes the replica dimension
+            discounts = discounts[:, :, None, ...]
+            reward = reward[:, :, None, ...]
 
         advantages = value_ops.generalized_advantage_estimation(
             rewards=reward,
@@ -203,6 +219,9 @@ class SacXAlgorithm(SacAlgorithm):
         assert not self._use_entropy_reward
         value = info.critic.critics
         returns = info.returns
+        if self._value_network is not None:
+            returns = returns[:, :, None, ...].expand_as(value)
+
         td_error = returns - value
 
         if self._debug_summaries and alf.summary.should_record_summaries():
@@ -213,9 +232,10 @@ class SacXAlgorithm(SacAlgorithm):
                     alf.summary.scalar(
                         "explained_variance_of_return_by_value" + suffix,
                         tensor_utils.explained_variance(v, r, mask))
-                    safe_mean_hist_summary('values' + suffix, v, mask)
+                    safe_mean_hist_summary('critics' + suffix, v, mask)
                     safe_mean_hist_summary('returns' + suffix, r, mask)
-                    safe_mean_hist_summary("td_error" + suffix, td, mask)
+                    safe_mean_hist_summary("critic_td_error" + suffix, td,
+                                           mask)
 
                 for r in range(self._num_critic_replicas):
                     if value.ndim == 3:
@@ -229,6 +249,42 @@ class SacXAlgorithm(SacAlgorithm):
 
         loss = self._critic_losses[0]._td_error_loss_fn(returns, value)
         loss = loss.reshape(*loss.shape[:2], -1).mean(-1)
-        loss = tensor_utils.tensor_extend_zero(loss)
-        td_error = tensor_utils.tensor_extend_zero(td_error)
-        return LossInfo(loss=loss, extra=td_error)
+
+        if self._value_network is not None:
+            value_loss = self._calc_value_loss(info)
+            return LossInfo(
+                loss=loss + value_loss,
+                extra={
+                    'critic': loss,
+                    'value': value_loss
+                })
+        else:
+            return LossInfo(loss=loss, extra=loss)
+
+    def _calc_value_loss(self, info: SacInfo):
+        value = info.value
+        returns = info.returns
+        td_error = returns - value
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = info.step_type != StepType.LAST
+            with alf.summary.scope(self._name):
+
+                def _summarize(v, r, td, suffix):
+                    alf.summary.scalar(
+                        "explained_variance_of_return_by_value" + suffix,
+                        tensor_utils.explained_variance(v, r, mask))
+                    safe_mean_hist_summary('values' + suffix, v, mask)
+                    safe_mean_hist_summary("value_td_error" + suffix, td, mask)
+
+                if value.ndim == 2:
+                    _summarize(value, returns, td_error, '/value')
+                else:
+                    for i in range(value.shape[2]):
+                        suffix = f'/{i}'
+                        _summarize(value[..., i], returns[..., i],
+                                   td_error[..., i], suffix)
+
+        loss = self._critic_losses[0]._td_error_loss_fn(returns, value)
+        loss = loss.reshape(*loss.shape[:2], -1).mean(-1)
+        return loss
