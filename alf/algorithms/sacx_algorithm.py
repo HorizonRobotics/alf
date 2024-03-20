@@ -44,6 +44,7 @@ from alf.algorithms.sac_algorithm import (ActionType, SacAlgorithm, SacInfo,
                                           SacState, SacCriticState,
                                           SacCriticInfo, SacActionState)
 from alf.utils.summary_utils import safe_mean_hist_summary
+from alf.algorithms.ppo_algorithm import PPOInfo, PPOLoss
 
 
 @alf.configurable
@@ -54,12 +55,11 @@ class SacXAlgorithm(SacAlgorithm):
 
         observation, new_state, info = self._repr_step("rollout", inputs,
                                                        state)
-        action_dist, action, _, action_state = self._predict_action(
-            observation,
-            state=state.action,
-            epsilon_greedy=1.0,
-            eps_greedy_sampling=True,
-            rollout=True)
+        action_dist, action_state = self._actor_network(
+            observation, state=state.action)
+
+        action, log_prob = dist_utils.sample_action_distribution(
+            action_dist, return_log_prob=True)
 
         if self._value_network is None:
             if self._target_repr_alg is not None:
@@ -97,6 +97,7 @@ class SacXAlgorithm(SacAlgorithm):
                 discount=inputs.discount,
                 action=action,
                 value=value,
+                log_pi=log_prob,
                 action_distribution=action_dist))
 
     def _critic_train_step(self, observation, target_observation,
@@ -129,50 +130,61 @@ class SacXAlgorithm(SacAlgorithm):
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
 
-        if self._act_type == ActionType.Mixed:
-            # For mixed type, add log_pi separately
-            log_pi = type(self._action_spec)((sum(nest.flatten(log_pi[0])),
-                                              sum(nest.flatten(log_pi[1]))))
-        else:
-            log_pi = sum(nest.flatten(log_pi))
+        # if self._act_type == ActionType.Mixed:
+        #     # For mixed type, add log_pi separately
+        #     log_pi = type(self._action_spec)((sum(nest.flatten(log_pi[0])),
+        #                                       sum(nest.flatten(log_pi[1]))))
+        # else:
+        #     log_pi = sum(nest.flatten(log_pi))
 
-        if self._prior_actor is not None:
-            prior_step = self._prior_actor.train_step(inputs, ())
-            log_prior = dist_utils.compute_log_probability(
-                prior_step.output, action)
-            log_pi = log_pi - log_prior
+        # if self._prior_actor is not None:
+        #     prior_step = self._prior_actor.train_step(inputs, ())
+        #     log_prior = dist_utils.compute_log_probability(
+        #         prior_step.output, action)
+        #     log_pi = log_pi - log_prior
 
-        actor_state, actor_loss, alphas = self._actor_train_step(
-            observation, state.actor, action, critics, log_pi,
-            action_distribution)
+        # actor_state, actor_loss, alphas = self._actor_train_step(
+        #     observation, state.actor, action, critics, log_pi,
+        #     action_distribution)
         critic_state, critic_info = self._critic_train_step(
             observation, observation, state.critic, rollout_info, action,
             action_distribution)
-        if self._alpha_uncertainty_ratio == 0:
-            alpha_loss = self._alpha_train_step(log_pi)
-        else:
-            alpha_loss = ()
-        new_state = new_state._replace(
-            action=action_state, actor=actor_state, critic=critic_state)
+        # if self._alpha_uncertainty_ratio == 0:
+        #     alpha_loss = self._alpha_train_step(log_pi)
+        # else:
+        #     alpha_loss = ()
+        # new_state = new_state._replace(
+        #     action=action_state, actor=actor_state, critic=critic_state)
 
         value = ()
         if self._value_network is not None:
             value, value_state = self._value_network(observation, state.value)
             new_state = new_state._replace(value=value_state)
 
-        info = info._replace(
+        if self.has_multidim_reward():
+            reward_weights = tensor_utils.tensor_extend_new_dim(
+                self.reward_weights, dim=0, n=value.shape[0])
+        else:
+            reward_weights = ()
+
+        # info = info._replace(
+        info = SacInfo(
             returns=rollout_info.returns,
+            advantages=rollout_info.advantages,
             value=value,
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
             action=rollout_info.action,
             action_distribution=action_distribution,
-            actor=actor_loss,
+            # actor=actor_loss,
             critic=critic_info,
-            alpha_loss=alpha_loss,
-            alpha=alphas,
-            log_pi=log_pi,
+            # alpha_loss=alpha_loss,
+            # alpha=alphas,
+            # log_pi=log_pi,
+            rollout_log_prob=rollout_info.log_pi,
+            rollout_action_distribution=rollout_info.action_distribution,
+            reward_weights=reward_weights,
             discounted_return=rollout_info.discounted_return)
         return AlgStep(action, new_state, info)
 
@@ -213,7 +225,8 @@ class SacXAlgorithm(SacAlgorithm):
         advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
 
         returns = value + advantages
-        return root_inputs, rollout_info._replace(returns=returns)
+        return root_inputs, rollout_info._replace(
+            returns=returns, advantages=advantages)
 
     def _calc_critic_loss(self, info: SacInfo):
         assert not self._use_entropy_reward
@@ -250,16 +263,7 @@ class SacXAlgorithm(SacAlgorithm):
         loss = self._critic_losses[0]._td_error_loss_fn(returns, value)
         loss = loss.reshape(*loss.shape[:2], -1).mean(-1)
 
-        if self._value_network is not None:
-            value_loss = self._calc_value_loss(info)
-            return LossInfo(
-                loss=loss + value_loss,
-                extra={
-                    'critic': loss,
-                    'value': value_loss
-                })
-        else:
-            return LossInfo(loss=loss, extra=loss)
+        return LossInfo(loss=loss, extra=loss)
 
     def _calc_value_loss(self, info: SacInfo):
         value = info.value
@@ -288,3 +292,19 @@ class SacXAlgorithm(SacAlgorithm):
         loss = self._critic_losses[0]._td_error_loss_fn(returns, value)
         loss = loss.reshape(*loss.shape[:2], -1).mean(-1)
         return loss
+
+    def calc_loss(self, info: SacInfo):
+        """Calculate loss."""
+        critics = info.critic.critics
+        if self.has_multidim_reward():
+            sign = self.reward_weights.sign()
+            critics = (critics * sign).min(dim=2)[0] * sign
+        else:
+            critics = critics.min(dim=2)[0]
+        advantages = critics - info.value[:, :, None, ...]
+        ppo_loss = PPOLoss(debug_summaries=True)(
+            info._replace(advantages=advantages))
+        critic_loss = self._calc_critic_loss(info)
+        extra = {'critic': critic_loss.extra}
+        extra.update(ppo_loss.extra._asdict())
+        return LossInfo(loss=ppo_loss.loss + critic_loss.loss, extra=extra)
