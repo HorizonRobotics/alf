@@ -62,7 +62,8 @@ SacInfo = namedtuple(
     "SacInfo", [
         "reward", "step_type", "discount", "action", "action_distribution",
         "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
-        "alpha_loss", "returns", "value"
+        "alpha_loss", "returns", "value", "rollout_log_prob",
+        "rollout_action_distribution", "reward_weights", "advantages"
     ],
     default_value=())
 
@@ -360,13 +361,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critic_networks.state_spec))
         train_state_spec = SacState(
             action=action_state_spec,
-            actor=(() if self._act_type != ActionType.Continuous or
-                   critic_network_cls is None else critic_networks.state_spec),
+            actor=(() if self._act_type != ActionType.Continuous
+                   or critic_networks is None else critic_networks.state_spec),
             critic=SacCriticState(
-                critics=critic_networks.state_spec if critic_network_cls else
-                (),
+                critics=critic_networks.state_spec if critic_networks else (),
                 target_critics=critic_networks.state_spec
-                if critic_network_cls else ()),
+                if critic_networks else ()),
             value=value_network.state_spec if value_network else (),
             repr=repr_alg.train_state_spec if repr_alg else (),
             target_repr=target_repr_alg.predict_state_spec
@@ -394,14 +394,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 "critic_networks must be provided for training continuous SAC")
 
         if actor_optimizer is not None and actor_network is not None:
-            self.add_optimizer(actor_optimizer, [actor_network])
-        if critic_optimizer is not None and critic_networks is not None:
-            nets = [critic_networks]
+            nets = [actor_network]
             if value_network is not None:
                 nets.append(value_network)
-            self.add_optimizer(critic_optimizer, nets)
-        if alpha_optimizer is not None:
-            self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
+            self.add_optimizer(actor_optimizer, nets)
+        if critic_optimizer is not None and critic_networks is not None:
+            self.add_optimizer(critic_optimizer, [critic_networks])
+        # if alpha_optimizer is not None:
+        #     self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
 
         if alpha_uncertainty_ratio == 0:
             self._log_alpha = log_alpha
