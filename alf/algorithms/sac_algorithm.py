@@ -55,7 +55,7 @@ SacCriticInfo = namedtuple(
     "SacCriticInfo", ["critics", "target_critic"], default_value=())
 
 SacActorInfo = namedtuple(
-    "SacActorInfo", ["actor_loss", "neg_entropy", "adv_loss"],
+    "SacActorInfo", ["actor_loss", "neg_entropy", "adv_loss", "kld"],
     default_value=())
 
 SacInfo = namedtuple(
@@ -404,8 +404,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(actor_optimizer, nets)
         if critic_optimizer is not None and critic_networks is not None:
             self.add_optimizer(critic_optimizer, [critic_networks])
-        # if alpha_optimizer is not None:
-        #     self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
+        if alpha_optimizer is not None:
+            self.add_optimizer(alpha_optimizer, nest.flatten(log_alpha))
 
         if alpha_uncertainty_ratio == 0:
             self._log_alpha = log_alpha
@@ -862,6 +862,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
         # This sum() will reduce all dims so q_value can be any rank
+        q_value = q_value / q_value.std(dim=0, keepdim=True).detach()
         dqda = nest_utils.grad(
             action,
             q_value.sum(),
