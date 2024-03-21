@@ -133,7 +133,7 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
 class TimeLimit(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
-    def __init__(self, env, duration):
+    def __init__(self, env, duration, randomizer_first_episode_length=False):
         """Create a TimeLimit ALF environment.
 
         Args:
@@ -147,6 +147,9 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
         assert self.batch_size is None or self.batch_size == 1, (
             "does not support batched environment with batch size larger than one"
         )
+        self._next_episode_length = duration
+        if randomizer_first_episode_length:
+            self._next_episode_length = random.randint(1, duration)
 
     def _reset(self):
         self._num_steps = 0
@@ -159,7 +162,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
         time_step = self._env.step(action)
 
         self._num_steps += 1
-        if self._num_steps >= self._duration:
+        if self._num_steps >= self._next_episode_length:
             if _is_numpy_array(time_step.step_type):
                 time_step = time_step._replace(step_type=StepType.LAST)
             else:
@@ -169,6 +172,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
 
         if time_step.is_last():
             self._num_steps = None
+            self._next_episode_length = self._duration
 
         return time_step
 
