@@ -546,7 +546,16 @@ class FCBatchEnsemble(FC):
                   Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML, 2019.
         """
-        nn.Module.__init__(self)
+        super().__init__(
+            input_size,
+            output_size,
+            activation=activation,
+            use_bias=False,
+            use_bn=use_bn,
+            use_ln=use_ln,
+            kernel_initializer=kernel_initializer,
+            kernel_init_gain=kernel_init_gain)
+
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
         self._ensemble_bias = nn.Parameter(
@@ -560,33 +569,27 @@ class FCBatchEnsemble(FC):
         self._ensemble_size = ensemble_size
         self._output_ensemble_ids = output_ensemble_ids
         self._bias_init_range = bias_init_range
-        super().__init__(
-            input_size,
-            output_size,
-            activation=activation,
-            use_bias=False,
-            use_bn=use_bn,
-            use_ln=use_ln,
-            kernel_initializer=kernel_initializer,
-            kernel_init_gain=kernel_init_gain)
+
+        self.reset_parameters()
 
     def reset_parameters(self):
         """Reinitialize parameters."""
         super().reset_parameters()
-        # Both r and s are initialized to +1/-1 according to Appendix B
-        torch.randint(
-            2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
-        torch.randint(
-            2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
-        self._r.data.mul_(2)
-        self._r.data.sub_(1)
-        self._s.data.mul_(2)
-        self._s.data.sub_(1)
-        if self._use_ensemble_bias:
-            nn.init.uniform_(
-                self._ensemble_bias.data,
-                a=-self._bias_init_range,
-                b=self._bias_init_range)
+        if hasattr(self, '_r') and hasattr(self, '_s'):
+            # Both r and s are initialized to +1/-1 according to Appendix B
+            torch.randint(
+                2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
+            torch.randint(
+                2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+            self._r.data.mul_(2)
+            self._r.data.sub_(1)
+            self._s.data.mul_(2)
+            self._s.data.sub_(1)
+            if self._use_ensemble_bias:
+                nn.init.uniform_(
+                    self._ensemble_bias.data,
+                    a=-self._bias_init_range,
+                    b=self._bias_init_range)
 
     def forward(self, inputs):
         """Forward computation.
@@ -1355,7 +1358,16 @@ class Conv2DBatchEnsemble(Conv2D):
                   Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML, 2019.
         """
-        nn.Module.__init__(self)
+        super().__init__(
+            in_channels,
+            out_channels,
+            kernel_size,
+            activation=activation,
+            use_bias=False,
+            use_bn=False,
+            kernel_initializer=kernel_initializer,
+            kernel_init_gain=kernel_init_gain)
+
         self._r = nn.Parameter(torch.Tensor(ensemble_size, in_channels))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, out_channels))
         self._ensemble_bias = nn.Parameter(
@@ -1369,33 +1381,27 @@ class Conv2DBatchEnsemble(Conv2D):
         self._ensemble_size = ensemble_size
         self._output_ensemble_ids = output_ensemble_ids
         self._bias_init_range = bias_init_range
-        super().__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            activation=activation,
-            use_bias=False,
-            use_bn=False,
-            kernel_initializer=kernel_initializer,
-            kernel_init_gain=kernel_init_gain)
+
+        self.reset_parameters()
 
     def reset_parameters(self):
         """Reinitialize the parameters."""
         super().reset_parameters()
-        # Both r and s are initialized to +1/-1 according to Appendix B
-        torch.randint(
-            2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
-        torch.randint(
-            2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
-        self._r.data.mul_(2)
-        self._r.data.sub_(1)
-        self._s.data.mul_(2)
-        self._s.data.sub_(1)
-        if self._use_ensemble_bias:
-            nn.init.uniform_(
-                self._ensemble_bias.data,
-                a=-self._bias_init_range,
-                b=self._bias_init_range)
+        if hasattr(self, '_r') and hasattr(self, '_s'):
+            # Both r and s are initialized to +1/-1 according to Appendix B
+            torch.randint(
+                2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
+            torch.randint(
+                2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+            self._r.data.mul_(2)
+            self._r.data.sub_(1)
+            self._s.data.mul_(2)
+            self._s.data.sub_(1)
+            if self._use_ensemble_bias:
+                nn.init.uniform_(
+                    self._ensemble_bias.data,
+                    a=-self._bias_init_range,
+                    b=self._bias_init_range)
 
     def forward(self, inputs):
         """Forward computation.
