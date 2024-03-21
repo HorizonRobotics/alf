@@ -40,15 +40,39 @@ from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 from alf.utils import value_ops, tensor_utils
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.schedulers import Scheduler
-from alf.algorithms.sac_algorithm import (ActionType, SacAlgorithm, SacInfo,
-                                          SacState, SacCriticState,
-                                          SacCriticInfo, SacActionState)
+from alf.algorithms.sac_algorithm import (
+    ActionType, SacAlgorithm, SacInfo, SacState, SacCriticState, SacActorInfo,
+    SacCriticInfo, SacActionState)
 from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.algorithms.ppo_algorithm import PPOInfo, PPOLoss
 
 
 @alf.configurable
 class SacXAlgorithm(SacAlgorithm):
+    def __init__(self,
+                 observation_spec,
+                 action_spec: BoundedTensorSpec,
+                 reward_spec=TensorSpec(()),
+                 env=None,
+                 config: TrainerConfig = None,
+                 mode='ppo',
+                 kld_weight=0.0,
+                 num_critic_steps=0,
+                 debug_summaries=True):
+        super().__init__(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            reward_spec=reward_spec,
+            env=env,
+            config=config,
+            debug_summaries=debug_summaries)
+
+        self._kld_weight = kld_weight
+        self._mode = mode
+        self._num_critic_steps = num_critic_steps
+        self._num_update_steps = 0
+        self._first_update = True
+
     def rollout_step(self, inputs: TimeStep, state: SacState):
         assert not self._is_eval
         assert self._act_type == ActionType.Continuous
@@ -143,9 +167,22 @@ class SacXAlgorithm(SacAlgorithm):
         #         prior_step.output, action)
         #     log_pi = log_pi - log_prior
 
-        # actor_state, actor_loss, alphas = self._actor_train_step(
-        #     observation, state.actor, action, critics, log_pi,
-        #     action_distribution)
+        if self._num_update_steps >= self._num_critic_steps or self._first_update:
+            actor_state, actor_loss, alphas = self._actor_train_step(
+                observation, state.actor, action, critics, log_pi,
+                action_distribution)
+            kld = td.kl_divergence(rollout_info.action_distribution,
+                                   action_distribution)
+            actor_loss = actor_loss._replace(
+                loss=actor_loss.loss + self._kld_weight * kld,
+                extra=actor_loss.extra._replace(kld=kld))
+
+        else:
+            zeros = torch.zeros_like(inputs.discount)
+            actor_loss = LossInfo(
+                loss=zeros,
+                extra=SacActorInfo(actor_loss=zeros, neg_entropy=zeros))
+
         critic_state, critic_info = self._critic_train_step(
             observation, observation, state.critic, rollout_info, action,
             action_distribution)
@@ -177,7 +214,7 @@ class SacXAlgorithm(SacAlgorithm):
             discount=inputs.discount,
             action=rollout_info.action,
             action_distribution=action_distribution,
-            # actor=actor_loss,
+            actor=actor_loss,
             critic=critic_info,
             # alpha_loss=alpha_loss,
             # alpha=alphas,
@@ -263,7 +300,7 @@ class SacXAlgorithm(SacAlgorithm):
         loss = self._critic_losses[0]._td_error_loss_fn(returns, value)
         loss = loss.reshape(*loss.shape[:2], -1).mean(-1)
 
-        return LossInfo(loss=loss, extra=loss)
+        return loss
 
     def _calc_value_loss(self, info: SacInfo):
         value = info.value
@@ -295,16 +332,36 @@ class SacXAlgorithm(SacAlgorithm):
 
     def calc_loss(self, info: SacInfo):
         """Calculate loss."""
-        critics = info.critic.critics
-        if self.has_multidim_reward():
-            sign = self.reward_weights.sign()
-            critics = (critics * sign).min(dim=2)[0] * sign
+        if self._mode == 'q_adv_pg':
+            critics = info.critic.critics
+            if self.has_multidim_reward():
+                sign = self.reward_weights.sign()
+                critics = (critics * sign).min(dim=2)[0] * sign
+            else:
+                critics = critics.min(dim=2)[0]
+            info = info._replace(advantages=(critics - info.value).detach())
+        extra = {}
+        if self._num_update_steps >= self._num_critic_steps or self._first_update:
+            if self._mode != 'dqda':
+                ppo_loss = PPOLoss(debug_summaries=True)(info)
+                loss = ppo_loss.loss
+                extra.update(ppo_loss.extra)
+            else:
+                value_loss = self._calc_value_loss(info)
+                loss = value_loss + info.actor.loss
+                extra['value'] = value_loss
+                extra['actor'] = info.actor.extra
         else:
-            critics = critics.min(dim=2)[0]
-        advantages = critics - info.value[:, :, None, ...]
-        ppo_loss = PPOLoss(debug_summaries=True)(
-            info._replace(advantages=advantages))
+            value_loss = self._calc_value_loss(info)
+            loss = value_loss
+            extra['value'] = value_loss
+
         critic_loss = self._calc_critic_loss(info)
-        extra = {'critic': critic_loss.extra}
-        extra.update(ppo_loss.extra._asdict())
-        return LossInfo(loss=ppo_loss.loss + critic_loss.loss, extra=extra)
+        extra['critic'] = critic_loss
+        self._num_update_steps += 1
+        self._first_update = False
+        return LossInfo(loss=loss + critic_loss, extra=extra)
+
+    def after_train_iter(self, inputs: TimeStep, info: SacInfo):
+        super().after_train_iter(inputs, info)
+        self._num_update_steps = 0
