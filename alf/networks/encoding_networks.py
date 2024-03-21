@@ -18,8 +18,8 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from .containers import _Sequential
-from .network import Network
+from .containers import _Sequential, Parallel
+from .network import Network, NetworkWrapper
 import alf
 import alf.layers as layers
 from alf.initializers import variance_scaling_init
@@ -38,6 +38,9 @@ class ImageEncodingNetwork(_Sequential):
                  input_channels,
                  input_size,
                  conv_layer_params,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 output_ensemble_ids=True,
                  same_padding=False,
                  activation=torch.relu_,
                  kernel_initializer=None,
@@ -69,6 +72,12 @@ class ImageEncodingNetwork(_Sequential):
             conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
+            use_batch_ensemble (bool): whether use BatchEnsemble Conv layers.
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            output_ensemble_ids (bool): If True, the forward() function will return
+                a tuple of (result, ensemble_ids). If False, the forward() function
+                will return result only. Only effective if use_batch_ensemble is True.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
                 True, the user provided paddings in `conv_layer_params` will be
                 replaced by automatically calculated ones; if False, it
@@ -86,6 +95,15 @@ class ImageEncodingNetwork(_Sequential):
         assert isinstance(conv_layer_params, tuple)
         assert len(conv_layer_params) > 0
 
+        if use_batch_ensemble:
+            assert ensemble_size > 1
+            conv_layer_ctor = functools.partial(
+                layers.Conv2DBatchEnsemble,
+                ensemble_size=ensemble_size,
+                output_ensemble_ids=output_ensemble_ids)
+        else:
+            conv_layer_ctor = layers.Conv2D
+
         nets = []
         for paras in conv_layer_params:
             filters, kernel_size, strides = paras[:3]
@@ -95,7 +113,7 @@ class ImageEncodingNetwork(_Sequential):
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             nets.append(
-                layers.Conv2D(
+                conv_layer_ctor(
                     input_channels,
                     filters,
                     kernel_size,
@@ -105,7 +123,13 @@ class ImageEncodingNetwork(_Sequential):
                     padding=padding))
             input_channels = filters
         if flatten_output:
-            nets.append(alf.layers.Reshape((-1, )))
+            if use_batch_ensemble and output_ensemble_ids:
+                nets.append(
+                    NetworkWrapper(
+                        lambda inputs: (alf.layers.Reshape((-1, ))(inputs[0]),
+                                        alf.layers.Identity()(inputs[1])), ()))
+            else:
+                nets.append(alf.layers.Reshape((-1, )))
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
@@ -610,6 +634,9 @@ class EncodingNetwork(_Sequential):
                  kernel_initializer=None,
                  use_fc_bn=False,
                  use_fc_ln=False,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 output_ensemble_ids=True,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
@@ -659,6 +686,13 @@ class EncodingNetwork(_Sequential):
                 used.
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
             use_fc_ln (bool): whether use Layer Normalization for fc layers.
+            use_batch_ensemble (bool): whether use BatchEnsemble FC and Conv
+                layers.
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            output_ensemble_ids (bool): If True, the forward() function will return
+                a tuple of (result, ensemble_ids). If False, the forward() function
+                will return result only. Only effective if use_batch_ensemble is True.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -709,11 +743,16 @@ class EncodingNetwork(_Sequential):
             net = ImageEncodingNetwork(
                 input_channels, (height, width),
                 conv_layer_params,
+                use_batch_ensemble=use_batch_ensemble,
+                ensemble_size=ensemble_size,
+                output_ensemble_ids=output_ensemble_ids,
                 activation=activation,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
             spec = net.output_spec
             nets.append(net)
+        if isinstance(spec, tuple):
+            spec = spec[0]
         if spec.ndim == 1:
             # for general input_preprocessors and ImageEncodingNetwork,
             # ndim of output_spec should be 1
@@ -733,9 +772,18 @@ class EncodingNetwork(_Sequential):
             assert isinstance(fc_layer_params, tuple)
             fc_layer_params = list(fc_layer_params)
 
+        if use_batch_ensemble:
+            assert ensemble_size > 1
+            fc_layer_ctor = functools.partial(
+                layers.FCBatchEnsemble,
+                ensemble_size=ensemble_size,
+                output_ensemble_ids=output_ensemble_ids)
+        else:
+            fc_layer_ctor = layers.FC
+
         for size in fc_layer_params:
             nets.append(
-                layers.FC(
+                fc_layer_ctor(
                     input_size,
                     size,
                     activation=activation,
@@ -755,7 +803,7 @@ class EncodingNetwork(_Sequential):
                 last_kernel_initializer = kernel_initializer
 
             nets.append(
-                layers.FC(
+                fc_layer_ctor(
                     input_size,
                     last_layer_size,
                     activation=last_activation,
@@ -773,7 +821,15 @@ class EncodingNetwork(_Sequential):
                         a=input_size, b=output_tensor_spec.numel))
             elif spec.numel == 2:
                 assert output_tensor_spec.numel % input_size == 0
-            nets.append(alf.layers.Reshape(output_tensor_spec.shape))
+            if use_batch_ensemble and output_ensemble_ids:
+                nets.append(
+                    NetworkWrapper(
+                        lambda inputs: (alf.layers.Reshape(output_tensor_spec.
+                                                           shape)(inputs[0]),
+                                        alf.layers.Identity()(inputs[1])),
+                        (output_tensor_spec, TensorSpec(()))))
+            else:
+                nets.append(alf.layers.Reshape(output_tensor_spec.shape))
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
