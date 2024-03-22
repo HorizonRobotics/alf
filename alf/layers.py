@@ -575,6 +575,9 @@ class FCBatchEnsemble(FC):
     def reset_parameters(self):
         """Reinitialize parameters."""
         super().reset_parameters()
+        # We need to the check the existence of ``_s`` and ``_r`` since
+        # ``reset_parameters()`` is also called by the init function of the parent
+        # class when both ``_s`` and ``_r`` are not initialized yet.
         if hasattr(self, '_r') and hasattr(self, '_s'):
             # Both r and s are initialized to +1/-1 according to Appendix B
             torch.randint(
@@ -1387,6 +1390,9 @@ class Conv2DBatchEnsemble(Conv2D):
     def reset_parameters(self):
         """Reinitialize the parameters."""
         super().reset_parameters()
+        # We need to the check the existence of ``_s`` and ``_r`` since
+        # ``reset_parameters()`` is also called by the init function of the parent
+        # class when both ``_s`` and ``_r`` are not initialized yet.
         if hasattr(self, '_r') and hasattr(self, '_s'):
             # Both r and s are initialized to +1/-1 according to Appendix B
             torch.randint(
