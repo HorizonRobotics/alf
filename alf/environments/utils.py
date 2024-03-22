@@ -200,6 +200,12 @@ def create_environment(env_name='CartPole-v0',
         f"num_parallel_environments ({num_parallel_environments}) cannot be"
         f"divided by batch_size_per_env ({batch_size_per_env})")
     num_envs = num_parallel_environments // batch_size_per_env
+
+    print(f"env_load_fn = {env_load_fn}")
+    print(f"batch_size_per_env = {batch_size_per_env}")
+    print(f"batched = {batched}")
+    print(f"nonparallel = {nonparallel}")
+
     if batch_size_per_env > 1:
         assert num_spare_envs == 0, "Do not support spare environments for batch_size_per_env > 1"
         assert parallel_environment_ctor == fast_parallel_environment.FastParallelEnvironment
