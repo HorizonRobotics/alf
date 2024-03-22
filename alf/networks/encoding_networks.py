@@ -125,9 +125,9 @@ class ImageEncodingNetwork(_Sequential):
         if flatten_output:
             if use_batch_ensemble and output_ensemble_ids:
                 nets.append(
-                    NetworkWrapper(
-                        lambda inputs: (alf.layers.Reshape((-1, ))(inputs[0]),
-                                        alf.layers.Identity()(inputs[1])), ()))
+                    Parallel((alf.layers.Reshape(
+                        (-1, )), alf.layers.Identity()),
+                             ((), TensorSpec((), dtype=torch.int64))))
             else:
                 nets.append(alf.layers.Reshape((-1, )))
 
@@ -823,11 +823,11 @@ class EncodingNetwork(_Sequential):
                 assert output_tensor_spec.numel % input_size == 0
             if use_batch_ensemble and output_ensemble_ids:
                 nets.append(
-                    NetworkWrapper(
-                        lambda inputs: (alf.layers.Reshape(output_tensor_spec.
-                                                           shape)(inputs[0]),
-                                        alf.layers.Identity()(inputs[1])),
-                        (output_tensor_spec, TensorSpec(()))))
+                    Parallel(
+                        (alf.layers.Reshape(output_tensor_spec.shape),
+                         alf.layers.Identity()),
+                        (output_tensor_spec, TensorSpec(
+                            (), dtype=torch.int64))))
             else:
                 nets.append(alf.layers.Reshape(output_tensor_spec.shape))
 
