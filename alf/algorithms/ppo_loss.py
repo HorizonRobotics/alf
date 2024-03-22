@@ -40,6 +40,7 @@ class PPOLoss(ActorCriticLoss):
                  td_loss_weight=1.0,
                  importance_ratio_clipping=0.2,
                  log_prob_clipping=0.0,
+                 pg_only=False,
                  check_numerics=False,
                  debug_summaries=False,
                  name='PPOLoss'):
@@ -113,6 +114,7 @@ class PPOLoss(ActorCriticLoss):
             advantage_clip=advantage_clip,
             entropy_regularization=entropy_regularization,
             td_loss_weight=td_loss_weight,
+            pg_only=pg_only,
             debug_summaries=debug_summaries,
             name=name)
 

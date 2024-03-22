@@ -40,33 +40,24 @@ alf.config("CriticNetwork", joint_fc_layer_params=(256, 256, 256))
 alf.config("ValueNetwork", fc_layer_params=(256, 256, 256))
 
 alf.config(
-    "SacAlgorithm",
-    use_entropy_reward=False,
-    actor_optimizer=alf.optimizers.AdamTF(lr=5e-4),
-    critic_optimizer=alf.optimizers.Adam(
-        lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
-    alpha_optimizer=alf.optimizers.Adam(lr=5e-4),
-    num_critic_replicas=2,
-    initial_log_alpha=math.log(1e-30),
-    value_network_ctor=alf.networks.ValueNetwork,
-    target_update_tau=0.005,
-    critic_loss_ctor=partial(TDLoss, gamma=0.99),
-)
-
-alf.config(
-    "SacXAlgorithm",
-    num_critic_steps=16,
-    kld_weight=1.0,
-    mode='dqda',
-)
-
-alf.config(
     'PPOLoss',
     entropy_regularization=1e-4,
     gamma=0.99,
     td_error_loss_fn=element_wise_huber_loss,
     advantage_clip=0.2,
     normalize_advantages=True)
+
+alf.config(
+    "SacXAlgorithm",
+    optimizer=alf.optimizers.Adam(
+        lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
+    num_critic_replicas=2,
+    value_network_ctor=alf.networks.ValueNetwork,
+    num_critic_steps=16,
+    kld_weight=1.0,
+    mode='dqda',
+    deterministic=True,
+)
 
 alf.config('Agent', rl_algorithm_cls=SacXAlgorithm)
 
