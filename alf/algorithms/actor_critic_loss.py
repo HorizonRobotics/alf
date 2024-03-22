@@ -55,6 +55,7 @@ class ActorCriticLoss(Loss):
                  advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,
+                 pg_only=False,
                  debug_summaries=False,
                  name="ActorCriticLoss"):
         """An actor-critic loss equals to
@@ -102,6 +103,7 @@ class ActorCriticLoss(Loss):
         self._advantage_clip = advantage_clip
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
+        self._pg_only = pg_only
 
     @property
     def gamma(self):
@@ -157,12 +159,16 @@ class ActorCriticLoss(Loss):
             advantages = (advantages * info.reward_weights).sum(-1)
         pg_loss = self._pg_loss(info, advantages.detach())
 
-        td_loss = self._td_error_loss_fn(returns.detach(), value)
+        if not self._pg_only:
+            td_loss = self._td_error_loss_fn(returns.detach(), value)
 
-        if td_loss.ndim == 3:
-            td_loss = td_loss.mean(dim=2)
+            if td_loss.ndim == 3:
+                td_loss = td_loss.mean(dim=2)
 
-        loss = pg_loss + self._td_loss_weight * td_loss
+            loss = pg_loss + self._td_loss_weight * td_loss
+        else:
+            loss = pg_loss
+            td_loss = ()
 
         entropy_loss = ()
         if self._entropy_regularization is not None:
