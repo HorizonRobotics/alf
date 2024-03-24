@@ -51,12 +51,14 @@ alf.config(
     "SacXAlgorithm",
     optimizer=alf.optimizers.Adam(
         lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
+    critic_optimizer=alf.optimizers.Adam(
+        lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
+    num_additional_updates_for_critic=8,
     num_critic_replicas=2,
     value_network_ctor=alf.networks.ValueNetwork,
-    num_critic_steps=16,
+    num_critic_steps=0,
     kld_weight=1.0,
     mode='dqda',
-    deterministic=True,
 )
 
 alf.config('Agent', rl_algorithm_cls=SacXAlgorithm)
@@ -68,7 +70,7 @@ alf.config(
     mini_batch_length=1,
     unroll_length=32,
     mini_batch_size=512,
-    num_updates_per_train_iter=12,
+    num_updates_per_train_iter=4,
     num_iterations=400,
     num_checkpoints=1,
     evaluate=True,
