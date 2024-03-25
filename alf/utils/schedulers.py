@@ -87,6 +87,11 @@ class Scheduler(object):
             "unless TrainerConfig.sync_progress_to_envs is set to True")
         return _progress[self._progress_type]
 
+    def final_value(self):
+        """The (limit of) final scheduled value.
+        """
+        raise NotImplementedError()
+
 
 class ConstantScheduler(object):
     def __init__(self, value):
@@ -97,6 +102,9 @@ class ConstantScheduler(object):
 
     def __repr__(self):
         return str(self._value)
+
+    def final_value(self):
+        return self._value
 
 
 @alf.configurable
@@ -144,6 +152,9 @@ class StepScheduler(Scheduler):
             self._progress_type, list(zip(self._progresses, self._values)),
             self._warm_up_period, self._start)
 
+    def final_value(self):
+        return self._values[-1]
+
 
 @alf.configurable
 class LinearScheduler(Scheduler):
@@ -188,6 +199,9 @@ class LinearScheduler(Scheduler):
         return "LinearScheduler('%s', %s)" % (
             self._progress_type, list(zip(self._progresses, self._values)))
 
+    def final_value(self):
+        return self._values[-1]
+
 
 @alf.configurable
 class ExponentialScheduler(Scheduler):
@@ -216,6 +230,9 @@ class ExponentialScheduler(Scheduler):
         return "ExponentialScheduler('%s', initial_value=%s, decay_rate=%s, decay_time=%s)" % (
             self._progress_type, self._initial_value, self._decay_rate,
             self._decay_time)
+
+    def final_value(self):
+        return 0.
 
 
 @alf.configurable
@@ -310,6 +327,10 @@ class CyclicalScheduler(Scheduler):
                 "half_cycle_size=%s, switch_mode=%s)") % (
                     self._progress_type, self._base_lr, self._bound_lr,
                     self._half_cycle_size, self._switch_mode)
+
+    def final_value(self):
+        raise RuntimeError(
+            "This scheduler is cyclical and does not have a final value.")
 
 
 def as_scheduler(value_or_scheduler):
