@@ -636,6 +636,7 @@ class EncodingNetwork(_Sequential):
                  use_fc_ln=False,
                  use_batch_ensemble=False,
                  ensemble_size=10,
+                 input_with_ensemble_ids=False,
                  output_ensemble_ids=True,
                  last_layer_size=None,
                  last_activation=None,
@@ -690,6 +691,8 @@ class EncodingNetwork(_Sequential):
                 layers.
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
+            input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
+                only effective if use_batch_ensemble is True.
             output_ensemble_ids (bool): If True, the forward() function will return
                 a tuple of (result, ensemble_ids). If False, the forward() function
                 will return result only. Only effective if use_batch_ensemble is True.
@@ -733,6 +736,14 @@ class EncodingNetwork(_Sequential):
         else:
             assert isinstance(spec, TensorSpec), \
                 "The spec must be an instance of TensorSpec!"
+
+        if input_with_ensemble_ids:
+            nets = [
+                Parallel(
+                    (_Sequential(nets, input_tensor_spec=input_tensor_spec),
+                     alf.layers.Identity()),
+                    (input_tensor_spec, TensorSpec((), dtype=torch.int64)))
+            ]
 
         if conv_layer_params:
             assert isinstance(conv_layer_params, tuple), \

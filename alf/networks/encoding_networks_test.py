@@ -220,26 +220,53 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         output_spec = img_network.output_spec
         self.assertEqual(output.shape[-1], np.prod(output_spec.shape))
 
-    def test_encoding_network_preprocessing_combiner(self):
+    @parameterized.parameters((True, ), (False, ))
+    def test_encoding_network_preprocessing_combiner(self,
+                                                     input_with_ensemble_ids):
+        batch_size = 4
         input_spec = dict(
             a=TensorSpec((3, 80, 80)),
-            b=[TensorSpec((80, 80)), TensorSpec(())])
-        imgs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
+            b=[TensorSpec((3, 80, 80)),
+               TensorSpec((1, 80, 80))])
+        imgs = common.zero_tensor_from_nested_spec(
+            input_spec, batch_size=batch_size)
+        if input_with_ensemble_ids:
+            ids = torch.randint(10, size=(batch_size, ))
+            imgs = (imgs, ids)
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             preprocessing_combiner=NestSum(average=True),
-            conv_layer_params=((1, 2, 2, 0), ))
+            conv_layer_params=((1, 2, 2, 0), ),
+            use_batch_ensemble=input_with_ensemble_ids,
+            input_with_ensemble_ids=input_with_ensemble_ids)
 
         output, _ = network(imgs)
-        self.assertTensorEqual(output, torch.zeros((40 * 40, )))
+        if input_with_ensemble_ids:
+            self.assertTensorEqual(output[0], torch.zeros((batch_size,
+                                                           40 * 40)))
+            self.assertEqual(output[1].size(), (batch_size, ))
+        else:
+            self.assertTensorEqual(output, torch.zeros((batch_size, 40 * 40)))
 
-    def test_encoding_network_input_preprocessor(self):
+    @parameterized.parameters((True, ), (False, ))
+    def test_encoding_network_input_preprocessor(self,
+                                                 input_with_ensemble_ids):
         input_spec = TensorSpec((1, ))
-        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
+        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=4)
+        if input_with_ensemble_ids:
+            ids = torch.randint(10, size=(4, ))
+            inputs = (inputs, ids)
         network = EncodingNetwork(
-            input_tensor_spec=input_spec, input_preprocessors=torch.tanh)
+            input_tensor_spec=input_spec,
+            input_preprocessors=torch.tanh,
+            use_batch_ensemble=input_with_ensemble_ids,
+            input_with_ensemble_ids=input_with_ensemble_ids)
         output, _ = network(inputs)
-        self.assertEqual(output.size()[1], 1)
+        if input_with_ensemble_ids:
+            self.assertEqual(output[0].size(), (4, 1))
+            self.assertEqual(output[1].size(), (4, ))
+        else:
+            self.assertEqual(output.size(), (4, 1))
 
     @parameterized.parameters((True, ), (False, ))
     def test_encoding_network_nested_input(self, lstm):
