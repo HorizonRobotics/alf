@@ -396,8 +396,8 @@ def _prepare_conditional_flow_inputs(
             f"{xy_batch_shape} vs. {z_batch_shape}")
 
         if z_outer_rank > 1:
-            bs = alf.utils.tensor_utils.BatchSquash(z_outer_rank)
-            z = alf.nest.map_structure(bs.flatten, z)
+            bs_ = alf.utils.tensor_utils.BatchSquash(z_outer_rank)
+            z = alf.nest.map_structure(bs_.flatten, z)
 
         B = alf.nest.get_nest_batch_size(z)
         if B < ret.shape[0]:
