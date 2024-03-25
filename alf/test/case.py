@@ -40,7 +40,7 @@ class TestCase(unittest.TestCase):
                               'First argument is not a Tensor')
         self.assertIsInstance(t2, torch.Tensor,
                               'Second argument is not a Tensor')
-
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
         if not torch.all(t1.cpu() == t2.cpu()):
             standardMsg = '%s != %s' % (t1, t2)
             self.fail(self._formatMessage(msg, standardMsg))
@@ -50,6 +50,7 @@ class TestCase(unittest.TestCase):
                               'First argument is not a Tensor')
         self.assertIsInstance(t2, torch.Tensor,
                               'Second argument is not a Tensor')
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
         diff = torch.max(torch.abs(t1 - t2))
         if not (diff <= epsilon):
             standardMsg = '%s is not close to %s. diff=%s' % (t1, t2, diff)
@@ -60,6 +61,7 @@ class TestCase(unittest.TestCase):
                               'First argument is not a Tensor')
         self.assertIsInstance(t2, torch.Tensor,
                               'Second argument is not a Tensor')
+        self.assertEqual(t1.shape, t2.shape, msg=msg)
         if torch.max(torch.abs(t1 - t2)) < epsilon:
             standardMsg = '%s is actually close to %s' % (t1, t2)
             self.fail(self._formatMessage(msg, standardMsg))

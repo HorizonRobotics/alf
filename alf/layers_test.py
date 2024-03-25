@@ -1117,14 +1117,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(y.shape, (2, 3, 11, 8))
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
-        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
+        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :3, :])
         self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
         self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
 
-        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
-        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
+        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :3, :1])
+        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :3, 4:])
         self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
         self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
 
@@ -1139,14 +1139,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
-        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
+        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :3, :])
         self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
         self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
 
-        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
-        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
+        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :3, :1])
+        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :3, 4:])
         self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
         self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
 

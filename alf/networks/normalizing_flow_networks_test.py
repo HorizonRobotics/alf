@@ -136,7 +136,8 @@ class RealNVPTransformTest(parameterized.TestCase, alf.test.TestCase):
         jacob_diag = torch.diagonal(jacob, 0)
         self.assertTrue(torch.all(jacob_diag > 0))
         j = transform.log_abs_det_jacobian(x, y)
-        self.assertTensorClose(j, jacob_diag.log().sum(-1), epsilon=1e-4)
+        self.assertTensorClose(
+            j, jacob_diag.log().sum(-1, keepdim=True), epsilon=1e-4)
 
     @parameterized.parameters(((1, ), (10, )), ((1, 2), (10, 10)),
                               ((3, 4, 5, 6), (5, 5, 5)))

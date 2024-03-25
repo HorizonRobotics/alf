@@ -214,7 +214,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             conv_layer_params=((1, 2, 2, 0), ))
 
         output, _ = network(imgs)
-        self.assertTensorEqual(output, torch.zeros((40 * 40, )))
+        self.assertTensorEqual(output, torch.zeros((1, 40 * 40)))
 
     def test_encoding_network_input_preprocessor(self):
         input_spec = TensorSpec((1, ))
