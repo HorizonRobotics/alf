@@ -75,13 +75,13 @@ class PriorActorTest(alf.test.TestCase):
         alg_step = actor.predict_step(batch, ())
         self.assertEqual(
             alg_step.output['a'].log_prob(action_spec['a'].sample()),
-            torch.tensor(0.))
+            torch.tensor((0., ) * 2))
         self.assertEqual(
             alg_step.output['b'].log_prob(action_spec['b'].sample()),
-            -torch.tensor(30.).log())
+            -torch.tensor((30., ) * 2).log())
         self.assertEqual(
             alg_step.output['c'].log_prob(action_spec['c'].sample()),
-            -torch.tensor(64.).log())
+            -torch.tensor((64., ) * 2).log())
 
 
 if __name__ == '__main__':

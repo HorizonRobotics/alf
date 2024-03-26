@@ -131,22 +131,22 @@ class TicTacToeModelTest(alf.test.TestCase):
                                      [-1,  1,  1],
                                      [-1, -1,  1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
-        self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
-        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        self.assertEqual(model_output.reward, torch.tensor([-1.]))
+        self.assertEqual(model_output.game_over, torch.tensor([True]))
 
         observation = torch.tensor([[[-1,  1,  1.],
                                      [-1, -1,  1],
                                      [-1, -1,  1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
-        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        self.assertEqual(model_output.game_over, torch.tensor([True]))
 
-        self.assertEqual(model_output.reward, torch.tensor([[1.]]))
+        self.assertEqual(model_output.reward, torch.tensor([1.]))
         observation = torch.tensor([[[0.,  0.,  1.],
                                      [0.,  1., -1.],
                                      [1., -1., -1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
-        self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
-        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        self.assertEqual(model_output.reward, torch.tensor([-1.]))
+        self.assertEqual(model_output.game_over, torch.tensor([True]))
         # calling recurrent_inference on ended game causes exception
         self.assertRaises(AssertionError, model.recurrent_inference,
                           observation, torch.tensor([3]))
@@ -156,19 +156,19 @@ class TicTacToeModelTest(alf.test.TestCase):
                                      [0., -1., -1.]]]) # yapf: disable
         model_output = model.recurrent_inference(observation,
                                                  torch.tensor([6]))
-        self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
-        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        self.assertEqual(model_output.reward, torch.tensor([-1.]))
+        self.assertEqual(model_output.game_over, torch.tensor([True]))
 
         # not a valid move for player -1
         model_output = model.recurrent_inference(observation,
                                                  torch.tensor([5]))
-        self.assertEqual(model_output.reward, torch.tensor([[1.]]))
-        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        self.assertEqual(model_output.reward, torch.tensor([1.]))
+        self.assertEqual(model_output.game_over, torch.tensor([True]))
 
         model_output = model.recurrent_inference(observation,
                                                  torch.tensor([3]))
-        self.assertEqual(model_output.reward, torch.tensor([[0.]]))
-        self.assertEqual(model_output.game_over, torch.tensor([[False]]))
+        self.assertEqual(model_output.reward, torch.tensor([0.]))
+        self.assertEqual(model_output.game_over, torch.tensor([False]))
 
 
 class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
