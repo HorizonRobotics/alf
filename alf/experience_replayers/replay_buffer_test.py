@@ -369,11 +369,13 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat1.env_id, batch1.env_id)
         self.assertEqual(
-            bat1.get_time_step_field("x"), batch1.get_time_step_field("x"))
+            bat1.get_time_step_field("x")[..., :1],
+            batch1.get_time_step_field("x"))
         self.assertEqual(bat1.step_type, batch1.step_type)
         self.assertEqual(bat2.env_id, batch2.env_id)
         self.assertEqual(
-            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
+            bat2.get_time_step_field("x")[..., :1],
+            batch2.get_time_step_field("x"))
         self.assertEqual(bat2.step_type, batch2.step_type)
 
         for t in range(1, 10):
@@ -395,10 +397,12 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         bat2 = alf.nest.map_structure(lambda bat: bat[batch2.env_id], batch)
         self.assertEqual(bat3.env_id, batch3.env_id)
         self.assertEqual(
-            bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
+            bat3.get_time_step_field("x")[..., :1],
+            batch3.get_time_step_field("x"))
         self.assertEqual(bat2.env_id, batch2.env_id)
         self.assertEqual(
-            bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
+            bat2.get_time_step_field("x")[..., :1],
+            batch2.get_time_step_field("x"))
 
         batch = replay_buffer.get_batch(8, 2)[0]
         t2 = []
@@ -412,10 +416,12 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             t2.append(bat2.step_type)
             self.assertEqual(bat3.env_id, batch3.env_id)
             self.assertEqual(
-                bat3.get_time_step_field("x"), batch3.get_time_step_field("x"))
+                bat3.get_time_step_field("x")[..., :1],
+                batch3.get_time_step_field("x"))
             self.assertEqual(bat2.env_id, batch2.env_id)
             self.assertEqual(
-                bat2.get_time_step_field("x"), batch2.get_time_step_field("x"))
+                bat2.get_time_step_field("x")[..., :1],
+                batch2.get_time_step_field("x"))
             t3.append(bat3.step_type)
 
         # Test time consistency
@@ -557,8 +563,8 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
 
         batch, batch_info = replay_buffer.get_batch(4, 2)
         self.assertEqual(batch_info.env_ids,
-                         torch.tensor([1], dtype=torch.int64))
-        self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
+                         torch.tensor([1] * 4, dtype=torch.int64))
+        self.assertEqual(batch_info.importance_weights, torch.tensor([1.] * 4))
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.] * 4))
 
         batch, batch_info = replay_buffer.get_batch(1000, 1)

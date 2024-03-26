@@ -1117,16 +1117,30 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(y.shape, (2, 3, 11, 8))
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
-        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
-        self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
+        self.assertTensorEqual(
+            y[:, :, :3, 1:6], torch.repeat_interleave(
+                x[:, :, :1, :], 3, dim=2))
+        self.assertTensorEqual(
+            y[:, :, 7:, 1:6], torch.repeat_interleave(
+                x[:, :, 3:, :], 4, dim=2))
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
-        self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
+        self.assertTensorEqual(
+            y[:, :, 3:7, 6:], torch.repeat_interleave(
+                x[:, :, :, 4:], 2, dim=-1))
 
-        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
-        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
-        self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
-        self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
+        self.assertTensorEqual(
+            y[:, :, :3, :1], torch.repeat_interleave(
+                x[:, :, :1, :1], 3, dim=2))
+        self.assertTensorEqual(
+            y[:, :, :3, 6:],
+            torch.einsum('ijkl, kl->ijkl', x[:, :, :1, 4:], torch.ones(3, 2)))
+        self.assertTensorEqual(
+            y[:, :, 7:, :1], torch.repeat_interleave(
+                x[:, :, 3:, :1], 4, dim=2))
+        self.assertTensorEqual(
+            y[:, :, 7:, 6:],
+            torch.einsum('ijkl, kl->ijkl', x[:, :, 3:, 4:], torch.ones(4, 2)))
 
     def test_random_crop(self):
         # It's hard to test the randomness. Here we just make the crop
@@ -1139,16 +1153,30 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
-        self.assertTensorEqual(y[:, :, :3, 1:6], x[:, :, :1, :])
-        self.assertTensorEqual(y[:, :, 7:, 1:6], x[:, :, 3:, :])
+        self.assertTensorEqual(
+            y[:, :, :3, 1:6], torch.repeat_interleave(
+                x[:, :, :1, :], 3, dim=2))
+        self.assertTensorEqual(
+            y[:, :, 7:, 1:6], torch.repeat_interleave(
+                x[:, :, 3:, :], 4, dim=2))
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
-        self.assertTensorEqual(y[:, :, 3:7, 6:], x[:, :, :, 4:])
+        self.assertTensorEqual(
+            y[:, :, 3:7, 6:], torch.repeat_interleave(
+                x[:, :, :, 4:], 2, dim=-1))
 
-        self.assertTensorEqual(y[:, :, :3, :1], x[:, :, :1, :1])
-        self.assertTensorEqual(y[:, :, :3, 6:], x[:, :, :1, 4:])
-        self.assertTensorEqual(y[:, :, 7:, :1], x[:, :, 3:, :1])
-        self.assertTensorEqual(y[:, :, 7:, 6:], x[:, :, 3:, 4:])
+        self.assertTensorEqual(
+            y[:, :, :3, :1], torch.repeat_interleave(
+                x[:, :, :1, :1], 3, dim=2))
+        self.assertTensorEqual(
+            y[:, :, :3, 6:],
+            torch.einsum('ijkl, kl->ijkl', x[:, :, :1, 4:], torch.ones(3, 2)))
+        self.assertTensorEqual(
+            y[:, :, 7:, :1], torch.repeat_interleave(
+                x[:, :, 3:, :1], 4, dim=2))
+        self.assertTensorEqual(
+            y[:, :, 7:, 6:],
+            torch.einsum('ijkl, kl->ijkl', x[:, :, 3:, 4:], torch.ones(4, 2)))
 
 
 if __name__ == "__main__":
