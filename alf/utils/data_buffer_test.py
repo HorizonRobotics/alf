@@ -118,13 +118,13 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         # Exception because some environments do not have data
         self.assertRaises(AssertionError, ring_buffer.dequeue)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
-        self.assertEqual(batch.step_type, torch.tensor([6] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([[6]] * 5))
         # test that RingBuffer detaches gradients of inputs
         self.assertFalse(batch.x.requires_grad)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
-        self.assertEqual(batch.step_type, torch.tensor([7] * 5))
+        self.assertEqual(batch.step_type, torch.tensor([[7]] * 5))
         batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))
-        self.assertEqual(batch.step_type, torch.tensor([8] * 2))
+        self.assertEqual(batch.step_type, torch.tensor([[8]] * 2))
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
         self.assertEqual(batch.step_type,
                          torch.tensor([[9], [9], [8], [8], [8]]))
@@ -173,7 +173,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                       alf.nest.map_structure(lambda x: x.cpu(), batch1)))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
-            self.assertEqual(batch.step_type, torch.tensor([9] * 2))
+            self.assertEqual(batch.step_type, torch.tensor([[9]] * 5))
 
             # Test block on enqueue without free space
             ring_buffer.clear()
@@ -194,7 +194,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             batch2 = get_batch(range(0, 8), self.dim, t=10, x=0.4)
             ring_buffer.enqueue(batch2, blocking=True)
             p.join()
-            self.assertEqual(ring_buffer._current_size[0], torch.tensor([3]))
+            self.assertEqual(ring_buffer._current_size[0], torch.tensor(3))
 
             # Test stop queue event
             def blocking_dequeue(ring_buffer):
