@@ -756,14 +756,15 @@ class EncodingNetwork(_Sequential):
                 conv_layer_params,
                 use_batch_ensemble=use_batch_ensemble,
                 ensemble_size=ensemble_size,
-                output_ensemble_ids=output_ensemble_ids,
+                output_ensemble_ids=True,
                 activation=activation,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
             spec = net.output_spec
+            if use_batch_ensemble:
+                spec = spec[0]
             nets.append(net)
-        if isinstance(spec, tuple):
-            spec = spec[0]
+
         if spec.ndim == 1:
             # for general input_preprocessors and ImageEncodingNetwork,
             # ndim of output_spec should be 1
@@ -788,7 +789,7 @@ class EncodingNetwork(_Sequential):
             fc_layer_ctor = functools.partial(
                 layers.FCBatchEnsemble,
                 ensemble_size=ensemble_size,
-                output_ensemble_ids=output_ensemble_ids)
+                output_ensemble_ids=True)
         else:
             fc_layer_ctor = layers.FC
 
@@ -812,6 +813,12 @@ class EncodingNetwork(_Sequential):
                     "last_kernel_initializer is not specified "
                     "for the last layer of size {}.".format(last_layer_size))
                 last_kernel_initializer = kernel_initializer
+
+            if use_batch_ensemble:
+                fc_layer_ctor = functools.partial(
+                    layers.FCBatchEnsemble,
+                    ensemble_size=ensemble_size,
+                    output_ensemble_ids=output_ensemble_ids)
 
             nets.append(
                 fc_layer_ctor(
