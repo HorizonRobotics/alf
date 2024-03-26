@@ -112,6 +112,7 @@ function test() {
         alf.networks.memory_test \
         alf.networks.network_test \
         alf.networks.networks_test \
+        alf.networks.normalizing_flow_networks_test \
         alf.networks.param_networks_test \
         alf.networks.preprocessors_test \
         alf.networks.projection_networks_test \
