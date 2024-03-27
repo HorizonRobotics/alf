@@ -71,7 +71,13 @@ class ImageEncodingNetwork(_Sequential):
             conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
-            use_batch_ensemble (bool): whether use BatchEnsemble Conv layers.
+            use_batch_ensemble (bool): whether to use Conv2DBatchEnsemble layers.
+                If True, Conv2DBatchEnsemble layers will always be created with
+                ``output_ensemble_ids=True``, and as a result, the output of the 
+                network is a tuple with ensemble_ids; input to the network can be 
+                a Tensor or a tuple, for the tuple case, it should contain two 
+                tensors, the first one is the input data tensor, the second one
+                is the ensemble_ids. 
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
@@ -682,13 +688,17 @@ class EncodingNetwork(_Sequential):
                 used.
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
             use_fc_ln (bool): whether use Layer Normalization for fc layers.
-            use_batch_ensemble (bool): whether use BatchEnsemble FC and Conv
-                layers. When True, both BatchEnsemble layers will always
-                ``output_ensemble_ids``.
+            use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
+                layers. If True, both BatchEnsemble layers will always be created
+                with ``output_ensemble_ids=True``, and as a result, the output of
+                the network is a tuple with ensemble_ids. 
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
-                only effective if use_batch_ensemble is True.
+                if True, input to the network should be a tuple of two tensors, the
+                first one is the input data tensor and the second one is the 
+                ensemble_ids. This option is only effective if use_batch_ensemble 
+                is True. 
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
