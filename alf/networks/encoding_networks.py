@@ -18,7 +18,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from .containers import _Sequential, Parallel
+from .containers import Sequential, _Sequential, Parallel
 from .network import Network, NetworkWrapper
 import alf
 import alf.layers as layers
@@ -40,7 +40,6 @@ class ImageEncodingNetwork(_Sequential):
                  conv_layer_params,
                  use_batch_ensemble=False,
                  ensemble_size=10,
-                 output_ensemble_ids=True,
                  same_padding=False,
                  activation=torch.relu_,
                  kernel_initializer=None,
@@ -75,9 +74,6 @@ class ImageEncodingNetwork(_Sequential):
             use_batch_ensemble (bool): whether use BatchEnsemble Conv layers.
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
-            output_ensemble_ids (bool): If True, the forward() function will return
-                a tuple of (result, ensemble_ids). If False, the forward() function
-                will return result only. Only effective if use_batch_ensemble is True.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
                 True, the user provided paddings in `conv_layer_params` will be
                 replaced by automatically calculated ones; if False, it
@@ -100,7 +96,7 @@ class ImageEncodingNetwork(_Sequential):
             conv_layer_ctor = functools.partial(
                 layers.Conv2DBatchEnsemble,
                 ensemble_size=ensemble_size,
-                output_ensemble_ids=output_ensemble_ids)
+                output_ensemble_ids=True)
         else:
             conv_layer_ctor = layers.Conv2D
 
@@ -123,7 +119,7 @@ class ImageEncodingNetwork(_Sequential):
                     padding=padding))
             input_channels = filters
         if flatten_output:
-            if use_batch_ensemble and output_ensemble_ids:
+            if use_batch_ensemble:
                 nets.append(
                     Parallel((alf.layers.Reshape(
                         (-1, )), alf.layers.Identity()),
@@ -637,7 +633,6 @@ class EncodingNetwork(_Sequential):
                  use_batch_ensemble=False,
                  ensemble_size=10,
                  input_with_ensemble_ids=False,
-                 output_ensemble_ids=True,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
@@ -688,14 +683,12 @@ class EncodingNetwork(_Sequential):
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
             use_fc_ln (bool): whether use Layer Normalization for fc layers.
             use_batch_ensemble (bool): whether use BatchEnsemble FC and Conv
-                layers.
+                layers. When True, both BatchEnsemble layers will always
+                ``output_ensemble_ids``.
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
                 only effective if use_batch_ensemble is True.
-            output_ensemble_ids (bool): If True, the forward() function will return
-                a tuple of (result, ensemble_ids). If False, the forward() function
-                will return result only. Only effective if use_batch_ensemble is True.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -740,7 +733,7 @@ class EncodingNetwork(_Sequential):
         if input_with_ensemble_ids:
             nets = [
                 Parallel(
-                    (_Sequential(nets, input_tensor_spec=input_tensor_spec),
+                    (Sequential(*nets, input_tensor_spec=input_tensor_spec),
                      alf.layers.Identity()),
                     (input_tensor_spec, TensorSpec((), dtype=torch.int64)))
             ]
@@ -756,7 +749,6 @@ class EncodingNetwork(_Sequential):
                 conv_layer_params,
                 use_batch_ensemble=use_batch_ensemble,
                 ensemble_size=ensemble_size,
-                output_ensemble_ids=True,
                 activation=activation,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
@@ -814,12 +806,6 @@ class EncodingNetwork(_Sequential):
                     "for the last layer of size {}.".format(last_layer_size))
                 last_kernel_initializer = kernel_initializer
 
-            if use_batch_ensemble:
-                fc_layer_ctor = functools.partial(
-                    layers.FCBatchEnsemble,
-                    ensemble_size=ensemble_size,
-                    output_ensemble_ids=output_ensemble_ids)
-
             nets.append(
                 fc_layer_ctor(
                     input_size,
@@ -839,7 +825,7 @@ class EncodingNetwork(_Sequential):
                         a=input_size, b=output_tensor_spec.numel))
             elif spec.numel == 2:
                 assert output_tensor_spec.numel % input_size == 0
-            if use_batch_ensemble and output_ensemble_ids:
+            if use_batch_ensemble:
                 nets.append(
                     Parallel(
                         (alf.layers.Reshape(output_tensor_spec.shape),
