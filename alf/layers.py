@@ -1366,6 +1366,8 @@ class Conv2DBatchEnsemble(Conv2D):
             out_channels,
             kernel_size,
             activation=activation,
+            strides=strides,
+            padding=padding,
             use_bias=False,
             use_bn=False,
             kernel_initializer=kernel_initializer,

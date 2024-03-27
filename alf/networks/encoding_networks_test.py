@@ -130,14 +130,14 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 
     @parameterized.parameters(
-        (None, None, None),
-        (200, None, None),
-        (50, torch.relu, None),
-        (None, None, TensorSpec((5, 10), torch.float32)),
-        (50, torch.relu, TensorSpec((5, 10), torch.float32)),
+        (False, None, None, None),
+        (True, 200, None, None),
+        (False, 50, torch.relu, None),
+        (True, None, None, TensorSpec((5, 10), torch.float32)),
+        (False, 50, torch.relu, TensorSpec((5, 10), torch.float32)),
     )
-    def test_encoding_network_nonimg(self, last_layer_size, last_activation,
-                                     output_tensor_spec):
+    def test_encoding_network_nonimg(self, use_batch_ensemble, last_layer_size,
+                                     last_activation, output_tensor_spec):
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
 
@@ -149,6 +149,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                     output_tensor_spec=output_tensor_spec,
                     fc_layer_params=(30, 40, 50),
                     activation=torch.tanh,
+                    use_batch_ensemble=use_batch_ensemble,
                     last_layer_size=last_layer_size,
                     last_activation=last_activation)
         else:
@@ -157,11 +158,23 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 output_tensor_spec=output_tensor_spec,
                 fc_layer_params=(30, 40, 50),
                 activation=torch.tanh,
+                use_batch_ensemble=use_batch_ensemble,
                 last_layer_size=last_layer_size,
                 last_activation=last_activation)
 
+            output, _ = network(embedding)
+
+            num_params_per_layer = 2
+            if use_batch_ensemble:
+                output = output[0]
+                output_spec = network.output_spec[0]
+                num_params_per_layer += 2
+            else:
+                output_spec = network.output_spec
+
             num_layers = 3 if last_layer_size is None else 4
-            self.assertLen(list(network.parameters()), num_layers * 2)
+            self.assertLen(
+                list(network.parameters()), num_layers * num_params_per_layer)
 
             # layer -1 is reshape if output_tensor_spec is given
             last_l = -1 if output_tensor_spec is None else -2
@@ -170,59 +183,90 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             else:
                 self.assertEqual(network[last_l]._activation, last_activation)
 
-            output, _ = network(embedding)
-
             if output_tensor_spec is None:
                 if last_layer_size is None:
                     self.assertEqual(output.size()[1], 50)
                 else:
                     self.assertEqual(output.size()[1], last_layer_size)
-                self.assertEqual(network.output_spec.shape,
-                                 tuple(output.size()[1:]))
+                self.assertEqual(output_spec.shape, tuple(output.size()[1:]))
             else:
                 self.assertEqual(
                     tuple(output.size()[1:]), output_tensor_spec.shape)
-                self.assertEqual(network.output_spec.shape,
-                                 output_tensor_spec.shape)
+                self.assertEqual(output_spec.shape, output_tensor_spec.shape)
 
-    def test_encoding_network_img(self):
+    @parameterized.parameters(False, True)
+    def test_encoding_network_img(self, use_batch_ensemble):
         input_spec = TensorSpec((3, 80, 80), torch.float32)
         img = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            conv_layer_params=((16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)))
+            conv_layer_params=((16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)),
+            use_batch_ensemble=use_batch_ensemble)
 
         img_network = ImageEncodingNetwork(
             input_channels=3,
             input_size=(80, 80),
             conv_layer_params=((16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)))
 
-        self.assertLen(list(network.parameters()), 4)
-
         output, _ = network(img)
+
+        num_params_per_layer = 2
+        if use_batch_ensemble:
+            num_params_per_layer += 2
+            output = output[0]
+
+        self.assertLen(list(network.parameters()), 2 * num_params_per_layer)
+
         output_spec = img_network.output_spec
         self.assertEqual(output.shape[-1], np.prod(output_spec.shape))
 
-    def test_encoding_network_preprocessing_combiner(self):
+    @parameterized.parameters((True, ), (False, ))
+    def test_encoding_network_preprocessing_combiner(self,
+                                                     input_with_ensemble_ids):
+        batch_size = 4
         input_spec = dict(
             a=TensorSpec((3, 80, 80)),
-            b=[TensorSpec((80, 80)), TensorSpec(())])
-        imgs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
+            b=[TensorSpec((3, 80, 80)),
+               TensorSpec((1, 80, 80))])
+        imgs = common.zero_tensor_from_nested_spec(
+            input_spec, batch_size=batch_size)
+        if input_with_ensemble_ids:
+            ids = torch.randint(10, size=(batch_size, ))
+            imgs = (imgs, ids)
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             preprocessing_combiner=NestSum(average=True),
-            conv_layer_params=((1, 2, 2, 0), ))
+            conv_layer_params=((1, 2, 2, 0), ),
+            use_batch_ensemble=input_with_ensemble_ids,
+            input_with_ensemble_ids=input_with_ensemble_ids)
 
         output, _ = network(imgs)
-        self.assertTensorEqual(output, torch.zeros((1, 40 * 40)))
+        if input_with_ensemble_ids:
+            self.assertTensorEqual(output[0], torch.zeros((batch_size,
+                                                           40 * 40)))
+            self.assertEqual(output[1].size(), (batch_size, ))
+        else:
+            self.assertTensorEqual(output, torch.zeros((batch_size, 40 * 40)))
 
-    def test_encoding_network_input_preprocessor(self):
+    @parameterized.parameters((True, ), (False, ))
+    def test_encoding_network_input_preprocessor(self,
+                                                 input_with_ensemble_ids):
         input_spec = TensorSpec((1, ))
-        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
+        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=4)
+        if input_with_ensemble_ids:
+            ids = torch.randint(10, size=(4, ))
+            inputs = (inputs, ids)
         network = EncodingNetwork(
-            input_tensor_spec=input_spec, input_preprocessors=torch.tanh)
+            input_tensor_spec=input_spec,
+            input_preprocessors=torch.tanh,
+            use_batch_ensemble=input_with_ensemble_ids,
+            input_with_ensemble_ids=input_with_ensemble_ids)
         output, _ = network(inputs)
-        self.assertEqual(output.size()[1], 1)
+        if input_with_ensemble_ids:
+            self.assertEqual(output[0].size(), (4, 1))
+            self.assertEqual(output[1].size(), (4, ))
+        else:
+            self.assertEqual(output.size(), (4, 1))
 
     @parameterized.parameters((True, ), (False, ))
     def test_encoding_network_nested_input(self, lstm):

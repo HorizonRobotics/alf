@@ -18,8 +18,8 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from .containers import _Sequential
-from .network import Network
+from .containers import Sequential, _Sequential, Parallel
+from .network import Network, NetworkWrapper
 import alf
 import alf.layers as layers
 from alf.initializers import variance_scaling_init
@@ -38,6 +38,8 @@ class ImageEncodingNetwork(_Sequential):
                  input_channels,
                  input_size,
                  conv_layer_params,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
                  same_padding=False,
                  activation=torch.relu_,
                  kernel_initializer=None,
@@ -69,6 +71,15 @@ class ImageEncodingNetwork(_Sequential):
             conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
+            use_batch_ensemble (bool): whether to use Conv2DBatchEnsemble layers.
+                If True, Conv2DBatchEnsemble layers will always be created with
+                ``output_ensemble_ids=True``, and as a result, the output of the 
+                network is a tuple with ensemble_ids; input to the network can be 
+                a Tensor or a tuple, for the tuple case, it should contain two 
+                tensors, the first one is the input data tensor, the second one
+                is the ensemble_ids. 
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
                 True, the user provided paddings in `conv_layer_params` will be
                 replaced by automatically calculated ones; if False, it
@@ -86,6 +97,15 @@ class ImageEncodingNetwork(_Sequential):
         assert isinstance(conv_layer_params, tuple)
         assert len(conv_layer_params) > 0
 
+        if use_batch_ensemble:
+            assert ensemble_size > 1
+            conv_layer_ctor = functools.partial(
+                layers.Conv2DBatchEnsemble,
+                ensemble_size=ensemble_size,
+                output_ensemble_ids=True)
+        else:
+            conv_layer_ctor = layers.Conv2D
+
         nets = []
         for paras in conv_layer_params:
             filters, kernel_size, strides = paras[:3]
@@ -95,7 +115,7 @@ class ImageEncodingNetwork(_Sequential):
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             nets.append(
-                layers.Conv2D(
+                conv_layer_ctor(
                     input_channels,
                     filters,
                     kernel_size,
@@ -105,7 +125,13 @@ class ImageEncodingNetwork(_Sequential):
                     padding=padding))
             input_channels = filters
         if flatten_output:
-            nets.append(alf.layers.Reshape((-1, )))
+            if use_batch_ensemble:
+                nets.append(
+                    Parallel((alf.layers.Reshape(
+                        (-1, )), alf.layers.Identity()),
+                             ((), TensorSpec((), dtype=torch.int64))))
+            else:
+                nets.append(alf.layers.Reshape((-1, )))
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
@@ -610,6 +636,9 @@ class EncodingNetwork(_Sequential):
                  kernel_initializer=None,
                  use_fc_bn=False,
                  use_fc_ln=False,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 input_with_ensemble_ids=False,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
@@ -659,6 +688,17 @@ class EncodingNetwork(_Sequential):
                 used.
             use_fc_bn (bool): whether use Batch Normalization for fc layers.
             use_fc_ln (bool): whether use Layer Normalization for fc layers.
+            use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
+                layers. If True, both BatchEnsemble layers will always be created
+                with ``output_ensemble_ids=True``, and as a result, the output of
+                the network is a tuple with ensemble_ids. 
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
+                if True, input to the network should be a tuple of two tensors, the
+                first one is the input data tensor and the second one is the 
+                ensemble_ids. This option is only effective if use_batch_ensemble 
+                is True. 
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -700,6 +740,14 @@ class EncodingNetwork(_Sequential):
             assert isinstance(spec, TensorSpec), \
                 "The spec must be an instance of TensorSpec!"
 
+        if input_with_ensemble_ids:
+            nets = [
+                Parallel(
+                    (Sequential(*nets, input_tensor_spec=input_tensor_spec),
+                     alf.layers.Identity()),
+                    (input_tensor_spec, TensorSpec((), dtype=torch.int64)))
+            ]
+
         if conv_layer_params:
             assert isinstance(conv_layer_params, tuple), \
                 "The input params {} should be tuple".format(conv_layer_params)
@@ -709,11 +757,16 @@ class EncodingNetwork(_Sequential):
             net = ImageEncodingNetwork(
                 input_channels, (height, width),
                 conv_layer_params,
+                use_batch_ensemble=use_batch_ensemble,
+                ensemble_size=ensemble_size,
                 activation=activation,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
             spec = net.output_spec
+            if use_batch_ensemble:
+                spec = spec[0]
             nets.append(net)
+
         if spec.ndim == 1:
             # for general input_preprocessors and ImageEncodingNetwork,
             # ndim of output_spec should be 1
@@ -733,9 +786,18 @@ class EncodingNetwork(_Sequential):
             assert isinstance(fc_layer_params, tuple)
             fc_layer_params = list(fc_layer_params)
 
+        if use_batch_ensemble:
+            assert ensemble_size > 1
+            fc_layer_ctor = functools.partial(
+                layers.FCBatchEnsemble,
+                ensemble_size=ensemble_size,
+                output_ensemble_ids=True)
+        else:
+            fc_layer_ctor = layers.FC
+
         for size in fc_layer_params:
             nets.append(
-                layers.FC(
+                fc_layer_ctor(
                     input_size,
                     size,
                     activation=activation,
@@ -755,7 +817,7 @@ class EncodingNetwork(_Sequential):
                 last_kernel_initializer = kernel_initializer
 
             nets.append(
-                layers.FC(
+                fc_layer_ctor(
                     input_size,
                     last_layer_size,
                     activation=last_activation,
@@ -773,7 +835,15 @@ class EncodingNetwork(_Sequential):
                         a=input_size, b=output_tensor_spec.numel))
             elif spec.numel == 2:
                 assert output_tensor_spec.numel % input_size == 0
-            nets.append(alf.layers.Reshape(output_tensor_spec.shape))
+            if use_batch_ensemble:
+                nets.append(
+                    Parallel(
+                        (alf.layers.Reshape(output_tensor_spec.shape),
+                         alf.layers.Identity()),
+                        (output_tensor_spec, TensorSpec(
+                            (), dtype=torch.int64))))
+            else:
+                nets.append(alf.layers.Reshape(output_tensor_spec.shape))
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
 
