@@ -74,13 +74,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
                  ou_damping=0.15,
+                 noise_clipping=None,
                  critic_loss_ctor=None,
                  num_critic_replicas=1,
                  target_update_tau=0.05,
                  target_update_period=1,
+                 actor_update_period=1,
                  rollout_random_action=0.,
                  dqda_clipping=None,
                  action_l2=0,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 input_with_ensemble_ids=False,
                  actor_optimizer=None,
                  critic_optimizer=None,
                  checkpoint=None,
@@ -124,12 +129,16 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 (OU) noise added in the default collect policy.
             ou_damping (float): Damping factor for the OU noise added in the
                 default collect policy.
+            noise_clipping (float): when computing the action noise, clips the
+                noise element-wise between ``[-noise_clipping, noise_clipping]``.
+                Does not perform clipping if ``noise_clipping == 0``.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
                 constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            actor_update_period (int): Period for update of the actor_network.
             rollout_random_action (float): the probability of taking a uniform
                 random action during a ``rollout_step()``. 0 means always directly
                 taking actions added with OU noises and 1 means always sample
@@ -139,6 +148,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
             action_l2 (float): weight of squared action l2-norm on actor loss.
+            use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
+                layers. If True, both BatchEnsemble layers will always be created
+                with ``output_ensemble_ids=True``, and as a result, the output of
+                the network is a tuple with ensemble_ids.
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
+                if True, input to the network should be a tuple of two tensors, the
+                first one is the input data tensor and the second one is the 
+                ensemble_ids. This option is only effective if use_batch_ensemble 
+                is True.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             checkpoint (None|str): a string in the format of "prefix@path",
@@ -155,9 +175,16 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec),
-            output_tensor_spec=reward_spec)
+            output_tensor_spec=reward_spec,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            input_with_ensemble_ids=input_with_ensemble_ids)
         actor_network = actor_network_ctor(
-            input_tensor_spec=observation_spec, action_spec=action_spec)
+            input_tensor_spec=observation_spec,
+            action_spec=action_spec,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            input_with_ensemble_ids=input_with_ensemble_ids)
 
         critic_networks = critic_network.make_parallel(num_critic_replicas)
 
@@ -221,7 +248,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
 
+        self._use_batch_ensemble = use_batch_ensemble
         self._noise_process = noise_process
+        self._noise_clipping = noise_clipping
+        self._actor_update_period = actor_update_period
+        self._train_step_count = 0
 
         self._update_target = common.TargetUpdater(
             models=[self._actor_network, self._critic_networks],
@@ -252,6 +283,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 return a
 
         noise, noise_state = self._noise_process(state.noise)
+        if self._noise_clipping:
+            noise = torch.clamp(noise, -self._noise_clipping,
+                                self._noise_clipping)
         noisy_action = nest.map_structure(_sample, action, noise)
         noisy_action = nest.map_structure(spec_utils.clip_to_spec,
                                           noisy_action, self._action_spec)
@@ -289,6 +323,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             inputs.observation, state=state.target_actor)
         target_q_values, target_critic_states = self._target_critic_networks(
             (inputs.observation, target_action), state=state.target_critics)
+        if self._use_batch_ensemble:
+            target_q_values = target_q_values[0]
 
         if self.has_multidim_reward():
             sign = self.reward_weights.sign()
@@ -298,6 +334,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (inputs.observation, rollout_info.action), state=state.critics)
+        if self._use_batch_ensemble:
+            q_values = q_values[0]
 
         state = DdpgCriticState(
             critics=critic_states,
@@ -315,6 +353,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (inputs.observation, action), state=state.critics)
+        if self._use_batch_ensemble:
+            q_values = q_values[0]
         if self.has_multidim_reward():
             # Multidimensional reward: [B, replicas, reward_dim]
             q_values = q_values * self.reward_weights
@@ -343,9 +383,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: DdpgState,
                    rollout_info: DdpgInfo):
+        self._train_step_count += 1
         critic_states, critic_info = self._critic_train_step(
             inputs=inputs, state=state.critics, rollout_info=rollout_info)
-        policy_step = self._actor_train_step(inputs=inputs, state=state.actor)
+        if self._train_step_count % self._actor_update_period == 0:
+            policy_step = self._actor_train_step(
+                inputs=inputs, state=state.actor)
+        else:
+            policy_step = AlgStep(state=state.actor)
         return policy_step._replace(
             state=state._replace(
                 actor=policy_step.state, critics=critic_states),

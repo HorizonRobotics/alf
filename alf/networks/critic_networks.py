@@ -210,21 +210,27 @@ class CriticNetwork(EncodingNetwork):
 
         if observation_action_combiner is None:
             if use_batch_ensemble:
-                ensemble_ids_spec = TensorSpec((), dtype=torch.int64)
-                obs_action_spec = (obs_encoder.output_spec,
-                                   action_encoder.output_spec)
-                observation_action_combiner = Sequential(
-                    *[
-                        NetworkWrapper(lambda x: nest.transpose(x),
-                                       obs_action_spec),
-                        Parallel(
-                            (alf.layers.NestConcat(dim=-1), lambda x: x[0]),
-                            ((obs_encoder.output_spec[0],
-                              action_encoder.output_spec[0]),
-                             (TensorSpec((), dtype=torch.int64),
-                              TensorSpec((), dtype=torch.int64))))
-                    ],
-                    input_tensor_spec=obs_action_spec)
+                obs_spec = obs_encoder.output_spec
+                action_spec = action_encoder.output_spec
+                obs_action_spec = (obs_spec, action_spec)
+
+                def _obs_action_combiner(inputs):
+                    obs, action = inputs
+                    ensemble_ids = None
+                    if isinstance(obs_spec, tuple):
+                        ensemble_ids = obs[1]
+                        obs = obs[0]
+                    if isinstance(action_spec, tuple):
+                        if ensemble_ids is None:
+                            ensemble_ids = action[1]
+                        action = action[0]
+                    outputs = alf.layers.NestConcat(dim=-1)((obs, action))
+                    if ensemble_ids is not None:
+                        outputs = (outputs, ensemble_ids)
+                    return outputs
+
+                observation_action_combiner = NetworkWrapper(
+                    _obs_action_combiner, obs_action_spec)
             else:
                 observation_action_combiner = alf.layers.NestConcat(dim=-1)
 
