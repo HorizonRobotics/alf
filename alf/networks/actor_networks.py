@@ -27,6 +27,7 @@ import alf.layers as layers
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.networks import Network
+from alf.networks.containers import Parallel
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
 
@@ -85,10 +86,21 @@ class ActorNetworkBase(Network):
                                     a=-0.003, b=0.003)
         self._action_layers = nn.ModuleList()
         self._squashing_func = squashing_func
+        fc_layer_ctor = layers.FC
+        encoder_output_spec = self._encoding_net.output_spec
+        self._use_batch_ensemble = encoder_kwargs.get('use_batch_ensemble',
+                                                      False)
+        if self._use_batch_ensemble:
+            encoder_output_spec = encoder_output_spec[0]
+            fc_layer_ctor = functools.partial(
+                layers.FCBatchEnsemble,
+                ensemble_size=encoder_kwargs.get('ensemble_size', 10),
+                output_ensemble_ids=True)
+
         for single_action_spec in flat_action_spec:
             self._action_layers.append(
-                layers.FC(
-                    self._encoding_net.output_spec.shape[0],
+                fc_layer_ctor(
+                    encoder_output_spec.shape[0],
                     single_action_spec.shape[0],
                     kernel_initializer=last_kernel_initializer))
 
@@ -111,6 +123,8 @@ class ActorNetworkBase(Network):
         i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
             pre_activation = layer(encoded_obs)
+            if self._use_batch_ensemble:
+                pre_activation = pre_activation[0]
             action = self._squashing_func(pre_activation)
             action = spec_utils.scale_to_spec(action, spec)
 
@@ -155,6 +169,9 @@ class ActorNetwork(ActorNetworkBase):
                  activation=torch.relu_,
                  squashing_func=torch.tanh,
                  kernel_initializer=None,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 input_with_ensemble_ids=False,
                  name="ActorNetwork"):
         """Creates an instance of ``ActorNetwork``, which maps the inputs to
         actions (single or nested) through a sequence of deterministic layers.
@@ -189,6 +206,17 @@ class ActorNetwork(ActorNetworkBase):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a ``variance_scaling_initializer``
                 with uniform distribution will be used.
+            use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
+                layers. If True, both BatchEnsemble layers will always be created
+                with ``output_ensemble_ids=True``, and as a result, the output of
+                the network is a tuple with ensemble_ids.
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
+                if True, input to the network should be a tuple of two tensors, the
+                first one is the input data tensor and the second one is the 
+                ensemble_ids. This option is only effective if use_batch_ensemble 
+                is True.
             name (str): name of the network
         """
         super(ActorNetwork, self).__init__(
@@ -202,7 +230,10 @@ class ActorNetwork(ActorNetworkBase):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer)
+            kernel_initializer=kernel_initializer,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            input_with_ensemble_ids=input_with_ensemble_ids)
 
 
 @alf.configurable

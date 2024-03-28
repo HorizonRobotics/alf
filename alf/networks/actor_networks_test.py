@@ -23,7 +23,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
 class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
-    def _init(self, lstm_hidden_size):
+    def _init(self, lstm_hidden_size, use_batch_ensemble=False):
         if lstm_hidden_size is not None:
             actor_fc_layer_params = (6, 4)
             network_ctor = functools.partial(
@@ -40,12 +40,14 @@ class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
                 ), dtype=torch.float32), ) * 2)
             state.append(())
         else:
-            network_ctor = actor_network.ActorNetwork
+            network_ctor = functools.partial(
+                actor_network.ActorNetwork,
+                use_batch_ensemble=use_batch_ensemble)
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_actor_networks(self, lstm_hidden_size):
+    @parameterized.parameters((100, ), (None, ), (None, True), ((200, 100), ))
+    def test_actor_networks(self, lstm_hidden_size, use_batch_ensemble=False):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = BoundedTensorSpec((5, ), torch.float32, 2., 3.)
         conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
@@ -53,7 +55,7 @@ class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
 
         image = obs_spec.zeros(outer_dims=(1, ))
 
-        network_ctor, state = self._init(lstm_hidden_size)
+        network_ctor, state = self._init(lstm_hidden_size, use_batch_ensemble)
 
         actor_net = network_ctor(
             obs_spec,

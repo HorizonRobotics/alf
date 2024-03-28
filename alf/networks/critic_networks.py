@@ -21,6 +21,8 @@ import torch
 import alf
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
+from alf.networks.containers import Parallel, Sequential
+from alf.networks.network import NetworkWrapper
 from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 
@@ -82,6 +84,9 @@ class CriticNetwork(EncodingNetwork):
                  kernel_initializer=None,
                  use_fc_bn=False,
                  use_fc_ln=False,
+                 use_batch_ensemble=False,
+                 ensemble_size=10,
+                 input_with_ensemble_ids=False,
                  last_use_fc_bn=False,
                  last_use_fc_ln=False,
                  last_layer_activation=math_ops.identity,
@@ -132,6 +137,23 @@ class CriticNetwork(EncodingNetwork):
                 FC layers (i.e. FC layers beside the last one).
             use_fc_ln (bool): whether use Layer Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
+            use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
+                layers. If True, both BatchEnsemble layers will always be created
+                with ``output_ensemble_ids=True``, and as a result, the output of
+                the network is a tuple with ensemble_ids.
+            ensemble_size (int): ensemble size, only effective if use_batch_ensemble
+                is True.
+            input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
+                if True, input to the network should be a tuple of two tensors, the
+                first one is the input data tensor and the second one is the 
+                ensemble_ids. This option is only effective if use_batch_ensemble 
+                is True.
+            last_use_fc_bn (bool): whether use Batch Normalization for the last
+                fc layer.
+            last_use_fc_ln (bool): whether use Layer Normalization for the last
+                fc layer.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by ``output_tensor_spec.numel``.
             use_naive_parallel_network (bool): if True, will use
                 ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
                 might be useful in cases when the ``NaiveParallelNetwork``
@@ -160,6 +182,9 @@ class CriticNetwork(EncodingNetwork):
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            input_with_ensemble_ids=input_with_ensemble_ids,
             name=name + ".obs_encoder")
 
         _check_action_specs_for_critic_networks(action_spec,
@@ -175,13 +200,33 @@ class CriticNetwork(EncodingNetwork):
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            input_with_ensemble_ids=input_with_ensemble_ids,
             name=name + ".action_encoder")
 
         last_kernel_initializer = functools.partial(
             torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         if observation_action_combiner is None:
-            observation_action_combiner = alf.layers.NestConcat(dim=-1)
+            if use_batch_ensemble:
+                ensemble_ids_spec = TensorSpec((), dtype=torch.int64)
+                obs_action_spec = (obs_encoder.output_spec,
+                                   action_encoder.output_spec)
+                observation_action_combiner = Sequential(
+                    *[
+                        NetworkWrapper(lambda x: nest.transpose(x),
+                                       obs_action_spec),
+                        Parallel(
+                            (alf.layers.NestConcat(dim=-1), lambda x: x[0]),
+                            ((obs_encoder.output_spec[0],
+                              action_encoder.output_spec[0]),
+                             (TensorSpec((), dtype=torch.int64),
+                              TensorSpec((), dtype=torch.int64))))
+                    ],
+                    input_tensor_spec=obs_action_spec)
+            else:
+                observation_action_combiner = alf.layers.NestConcat(dim=-1)
 
         super().__init__(
             input_tensor_spec=input_tensor_spec,
@@ -193,13 +238,18 @@ class CriticNetwork(EncodingNetwork):
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
+            use_batch_ensemble=use_batch_ensemble,
+            ensemble_size=ensemble_size,
+            # when use_batch_ensemble, ensemble_ids of inputs should be handled
+            # already by input_preprocessors and preprocessing_combiner
+            input_with_ensemble_ids=False,
             last_layer_size=output_tensor_spec.numel,
             last_activation=last_layer_activation,
             last_kernel_initializer=last_kernel_initializer,
             last_use_fc_bn=last_use_fc_bn,
             last_use_fc_ln=last_use_fc_ln,
             name=name)
-        self._use_naive_parallel_network = use_naive_parallel_network
+        self._use_naive_parallel_network = use_naive_parallel_network or use_batch_ensemble
 
     def make_parallel(self, n):
         """Create a parallel critic network using ``n`` replicas of ``self``.

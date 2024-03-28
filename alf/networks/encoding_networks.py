@@ -691,14 +691,14 @@ class EncodingNetwork(_Sequential):
             use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
                 layers. If True, both BatchEnsemble layers will always be created
                 with ``output_ensemble_ids=True``, and as a result, the output of
-                the network is a tuple with ensemble_ids. 
+                the network is a tuple with ensemble_ids.
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
                 if True, input to the network should be a tuple of two tensors, the
                 first one is the input data tensor and the second one is the 
                 ensemble_ids. This option is only effective if use_batch_ensemble 
-                is True. 
+                is True.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -734,13 +734,17 @@ class EncodingNetwork(_Sequential):
             assert preprocessing_combiner is not None, \
                 ("When a nested input tensor spec is provided, an input " +
                 "preprocessing combiner must also be provided!")
-            spec = preprocessing_combiner(spec)
             nets.append(preprocessing_combiner)
+            spec = preprocessing_combiner(spec)
+            if isinstance(preprocessing_combiner, (_Sequential, Network)):
+                spec = spec[0]
+            if isinstance(spec, tuple):
+                spec = spec[0]
         else:
             assert isinstance(spec, TensorSpec), \
                 "The spec must be an instance of TensorSpec!"
 
-        if input_with_ensemble_ids:
+        if nets and input_with_ensemble_ids:
             nets = [
                 Parallel(
                     (Sequential(*nets, input_tensor_spec=input_tensor_spec),

@@ -29,7 +29,7 @@ from alf.nest.utils import NestConcat
 
 
 class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
-    def _init(self, lstm_hidden_size):
+    def _init(self, lstm_hidden_size, use_batch_ensemble=False):
         if lstm_hidden_size is not None:
             post_rnn_fc_layer_params = (6, 4)
             network_ctor = functools.partial(
@@ -45,12 +45,13 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
                     size,
                 ), dtype=torch.float32), ) * 2)
         else:
-            network_ctor = CriticNetwork
+            network_ctor = functools.partial(
+                CriticNetwork, use_batch_ensemble=use_batch_ensemble)
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_critic(self, lstm_hidden_size):
+    @parameterized.parameters((100, ), (None, ), (None, True), ((200, 100), ))
+    def test_critic(self, lstm_hidden_size, use_batch_ensemble=False):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
@@ -64,7 +65,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         network_input = (image, action)
 
-        network_ctor, state = self._init(lstm_hidden_size)
+        network_ctor, state = self._init(lstm_hidden_size, use_batch_ensemble)
 
         critic_net = network_ctor(
             input_spec,
@@ -74,13 +75,19 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         test_net_copy(critic_net)
 
         value, state = critic_net._test_forward()
+        if use_batch_ensemble:
+            value = value[0]
         self.assertEqual(value.shape, (2, ))
         if lstm_hidden_size is None:
             self.assertEqual(state, ())
 
         value, state = critic_net(network_input, state)
+        output_spec = critic_net.output_spec
+        if use_batch_ensemble:
+            value = value[0]
+            output_spec = output_spec[0]
 
-        self.assertEqual(critic_net.output_spec, TensorSpec(()))
+        self.assertEqual(output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (2, ))
 
@@ -96,7 +103,11 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
             lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
 
         value, state = pnet(network_input, state)
-        self.assertEqual(pnet.output_spec, TensorSpec((6, )))
+        output_spec = pnet.output_spec
+        if use_batch_ensemble:
+            value = value[0]
+            output_spec = output_spec[0]
+        self.assertEqual(output_spec, TensorSpec((6, )))
         self.assertEqual(value.shape, (2, 6))
 
     def test_make_parallel(self):
