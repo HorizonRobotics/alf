@@ -33,12 +33,13 @@ from alf.utils.math_ops import clipped_exp
 
 
 class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((1, 1, None), (1, 1, None, True),
+    @parameterized.parameters((1, 1, None, 2), (1, 1, None, 2, True),
                               (2, 3, [1, 2, 3]))
     def test_ddpg_algorithm(self,
                             num_critic_replicas,
                             reward_dim,
                             reward_weights,
+                            actor_update_period=1,
                             use_batch_ensemble=False):
         num_env = 128
         num_eval_env = 100
@@ -96,6 +97,7 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             env=env,
             config=config,
             num_critic_replicas=num_critic_replicas,
+            actor_update_period=actor_update_period,
             use_batch_ensemble=use_batch_ensemble,
             ensemble_size=3,
             actor_optimizer=alf.optimizers.Adam(lr=init_lr),

@@ -299,9 +299,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             info=DdpgInfo(action=noisy_action, action_distribution=action))
 
     def rollout_step(self, time_step: TimeStep, state: DdpgState = None):
-        if self.need_full_rollout_state():
-            raise NotImplementedError("Storing RNN state to replay buffer "
-                                      "is not supported by DdpgAlgorithm")
+        """``rollout_step()`` basically predicts actions like what is done by
+        ``predict_step()``. Additionally, if states are to be stored a in replay
+        buffer, then this function also call ``_critic_networks``,
+        ``_target_critic_networks``, and ``_target_actor_network`` to maintain
+        their states.
+        """
 
         def _update_random_action(spec, noisy_action):
             random_action = spec_utils.scale_to_spec(
@@ -315,7 +318,30 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self._rollout_random_action > 0:
             nest.map_structure(_update_random_action, self._action_spec,
                                pred_step.output)
-        return pred_step
+
+        if self.need_full_rollout_state():
+            _, critics_state = self._critic_networks(
+                (time_step.observation, pred_step.output),
+                state.critics.critics)
+            _, target_critics_state = self._target_critic_networks(
+                (time_step.observation, pred_step.output),
+                state.critics.target_critics)
+            _, target_actor_state = self._target_actor_network(
+                time_step.observation, state=state.critics.target_actor)
+            critic_state = DdpgCriticState(
+                critics=critics_state,
+                target_actor=target_actor_state,
+                target_critics=target_critics_state)
+        else:
+            critics_state = state.critics.critics
+            critic_state = state.critics
+
+        actor_state = pred_step.state.actor._replace(critics=critics_state)
+
+        new_state = pred_step.state._replace(
+            actor=actor_state, critics=critic_state)
+
+        return pred_step._replace(state=new_state)
 
     def _critic_train_step(self, inputs: TimeStep, state: DdpgCriticState,
                            rollout_info: DdpgInfo):
@@ -389,8 +415,16 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self._train_step_count % self._actor_update_period == 0:
             policy_step = self._actor_train_step(
                 inputs=inputs, state=state.actor)
+            critic_states = critic_states._replace(
+                critics=policy_step.state.critics)
         else:
-            policy_step = AlgStep(state=state.actor)
+            batch_dims = nest_utils.get_outer_rank(inputs.prev_action,
+                                                   self._action_spec)
+            loss = torch.zeros(*inputs.prev_action.shape[:batch_dims])
+            policy_step = AlgStep(
+                output=torch.zeros_like(inputs.prev_action),
+                state=state.actor,
+                info=LossInfo(loss=loss, extra=loss))
         return policy_step._replace(
             state=state._replace(
                 actor=policy_step.state, critics=critic_states),
