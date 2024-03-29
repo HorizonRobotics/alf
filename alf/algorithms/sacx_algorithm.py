@@ -460,8 +460,11 @@ class SacXCriticTrainer(OffPolicyAlgorithm):
         return self._loss(info)
 
     def train_from_replay_buffer(self):
+        summary_enabled = alf.summary.is_summary_enabled()
+        alf.summary.enable_summary(True)
         with alf.summary.scope(self._name):
             super().train_from_replay_buffer(update_global_counter=False)
+        alf.summary.enable_summary(summary_enabled)
 
 
 def setup_ddp(algorithm):
