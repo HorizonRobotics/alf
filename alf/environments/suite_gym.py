@@ -29,7 +29,6 @@ def load(
         gym_env_wrappers=(),
         alf_env_wrappers=(),
         image_channel_first=True,
-        randomize_first_episode_length=False,
 ):
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -49,11 +48,6 @@ def load(
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
             classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
-        randomize_first_episode_length: whether to randomize the length of the
-            first episode. This is useful for on-policy algorithms to avoid that
-            all the samples are synchronized, which can lead higher variance for
-            gradients.
-
     Returns:
         An AlfEnvironment instance.
     """
@@ -73,9 +67,7 @@ def load(
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
         alf_env_wrappers=alf_env_wrappers,
-        image_channel_first=image_channel_first,
-        randomize_first_episode_length=randomize_first_episode_length,
-    )
+        image_channel_first=image_channel_first)
 
 
 @alf.configurable
@@ -89,8 +81,7 @@ def wrap_env(gym_env,
              clip_action=True,
              alf_env_wrappers=(),
              image_channel_first=True,
-             auto_reset=True,
-             randomize_first_episode_length=False):
+             auto_reset=True):
     """Wraps given gym environment with AlfGymWrapper.
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
@@ -126,10 +117,6 @@ def wrap_env(gym_env,
             PyTorch only supports channgel_first image inputs.
         auto_reset (bool): If True (default), reset the environment automatically after a
             terminal state is reached.
-        randomize_first_episode_length: whether to randomize the length of the
-            first episode. This is useful for on-policy algorithms to avoid that
-            all the samples are synchronized, which can lead higher variance for
-            gradients.
 
     Returns:
         An AlfEnvironment instance.
@@ -158,8 +145,7 @@ def wrap_env(gym_env,
     )
 
     if max_episode_steps > 0:
-        env = time_limit_wrapper(env, max_episode_steps,
-                                 randomize_first_episode_length)
+        env = time_limit_wrapper(env, max_episode_steps)
 
     for wrapper in alf_env_wrappers:
         env = wrapper(env)

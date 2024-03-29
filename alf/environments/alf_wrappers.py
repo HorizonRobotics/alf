@@ -123,17 +123,21 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
 
 
 # Used in ALF
-@alf.configurable
+@alf.configurable(whitelist=['randomize_first_episode_length'])
 class TimeLimit(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
-    def __init__(self, env, duration, randomizer_first_episode_length=False):
+    def __init__(self, env, duration, randomize_first_episode_length=False):
         """Create a TimeLimit ALF environment.
 
         Args:
             env (AlfEnvironment): An AlfEnvironment instance to wrap.
             duration (int): time limit, usually set to be the max_eposode_steps
                 of the environment.
+            randomize_first_episode_length: whether to randomize the length of the
+                first episode. This is useful for on-policy algorithms to avoid that
+                all the samples are synchronized, which can lead higher variance for
+                gradients.
         """
         super(TimeLimit, self).__init__(env)
         self._duration = duration
@@ -142,7 +146,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
             "does not support batched environment with batch size larger than one"
         )
         self._next_episode_length = duration
-        if randomizer_first_episode_length:
+        if randomize_first_episode_length:
             self._next_episode_length = random.randint(1, duration)
 
     def _reset(self):
