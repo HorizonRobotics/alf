@@ -25,14 +25,16 @@ from alf.utils.losses import element_wise_huber_loss
 
 import alf.utils.math_ops
 
-alf.config("suite_gym.load", randomize_first_episode_length=True)
+alf.config("TimeLimit", randomize_first_episode_length=True)
 
 # environment config
+alf.config('FastParallelEnvironment', start_method='spawn')
 alf.config(
     'create_environment',
-    env_load_fn=suite_gym.load,
-    env_name="Pendulum-v0",
-    num_parallel_environments=32)
+    env_load_fn=suite_dmc.load,
+    env_name="cheetah:run",
+    num_parallel_environments=96)
+alf.config('suite_dmc.load', from_pixels=False)
 
 # algorithm config
 alf.config("ActorDistributionNetwork", fc_layer_params=(256, 256, 256))
@@ -50,15 +52,15 @@ alf.config(
 alf.config(
     "SacXAlgorithm",
     optimizer=alf.optimizers.Adam(
-        lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
+        lr=3e-4, gradient_clipping=1.0, clip_by_global_norm=True),
     critic_optimizer=alf.optimizers.Adam(
-        lr=5e-4, gradient_clipping=200, clip_by_global_norm=True),
+        lr=3e-4, gradient_clipping=1.0, clip_by_global_norm=True),
     num_additional_updates_for_critic=8,
     num_critic_replicas=2,
     value_network_ctor=alf.networks.ValueNetwork,
     num_critic_steps=0,
     kld_weight=1.0,
-    mode='dqda',
+    mode='ppo',
 )
 
 alf.config('Agent', rl_algorithm_cls=SacXAlgorithm)
@@ -71,17 +73,17 @@ alf.config(
     unroll_length=32,
     mini_batch_size=512,
     num_updates_per_train_iter=4,
-    num_iterations=400,
+    num_iterations=5000,
     num_checkpoints=1,
     evaluate=True,
     whole_replay_buffer_training=True,
     clear_replay_buffer=True,
-    eval_interval=50,
+    eval_interval=500,
     random_seed=1,
     summarize_action_distributions=True,
     summarize_grads_and_vars=True,
     debug_summaries=True,
-    summary_interval=5)
+    summary_interval=50)
 
 alf.config('summarize_gradients', with_histogram=False)
 alf.config('summarize_variables', with_histogram=False)
