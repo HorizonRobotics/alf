@@ -163,6 +163,7 @@ class ActorNetwork(ActorNetworkBase):
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
                  input_preprocessors=None,
+                 input_preprocessors_ctor=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -209,7 +210,7 @@ class ActorNetwork(ActorNetworkBase):
             use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
                 layers. If True, both BatchEnsemble layers will always be created
                 with ``output_ensemble_ids=True``, however, the output of action
-                network will not contrain the ensemble_ids.
+                network will not contain the ensemble_ids.
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
