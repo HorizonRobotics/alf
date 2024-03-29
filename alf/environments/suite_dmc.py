@@ -27,9 +27,9 @@ def is_available():
 
 @alf.configurable
 def load(environment_name='cheetah:run',
+         env_id=None,
          from_pixels=True,
          image_size=100,
-         env_id=None,
          discount=1.0,
          visualize_reward=False,
          max_episode_steps=1000,
