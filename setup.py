@@ -50,6 +50,7 @@ setup(
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard==2.15.2',
+        'threadpoolctl==3.2.0',
         'torch==2.2.0',
         'torchvision==0.17.0',
         'torchtext==0.17.0',
