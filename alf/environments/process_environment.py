@@ -23,6 +23,7 @@ from enum import Enum
 from functools import partial
 import multiprocessing
 import sys
+import threadpoolctl
 import torch
 import traceback
 from typing import Dict, Any, Callable, List, Tuple
@@ -123,6 +124,7 @@ def _worker(conn: multiprocessing.connection,
         torch_num_threads_per_env: how many threads torch will use for each
             env proc. Note that if you have lots of parallel envs, it's best to
             set this number as 1. Leave this as 'None' to skip the change.
+            Note that this option also affect the thread num for numpy.
         name: name of the FastParallelEnvironment. Only used if ``fast`` is True.
 
     Raises:
@@ -132,6 +134,9 @@ def _worker(conn: multiprocessing.connection,
         alf.set_default_device("cpu")
         if torch_num_threads_per_env is not None:
             torch.set_num_threads(torch_num_threads_per_env)
+            # recommended way of changing num_threads for numpy:
+            # https://numpy.org/doc/stable/reference/global_state.html#number-of-threads-used-for-linear-algebra
+            threadpoolctl.threadpool_limits(torch_num_threads_per_env)
         if start_method == "spawn":
             _init_after_spawn(
                 SpawnedProcessContext(

@@ -82,6 +82,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         torch_num_threads_per_env (int): how many threads torch will use for each
             env proc. Note that if you have lots of parallel envs, it's best
             to set this number as 1. Leave this as 'None' to skip the change.
+            Note that this option also affect the thread num for numpy.
         start_method: either "fork" or "spawn". This specifies how the
             subprocesses for the ``ProcessEnvironment`` is created. Normally you
             should use "fork" because it is faster. There are cases when "fork"
