@@ -189,11 +189,16 @@ class BestEvalChecker(object):
     Args:
         metric_type (type): the type of the metric to be compared. Default is
             `alf.metrics.AverageReturnMetric`.
+        metric_name (None|str): if provided, the metric will be extracted from
+            the result using this name. Default is None.
     """
 
-    def __init__(self, metric_type=alf.metrics.AverageReturnMetric):
+    def __init__(self,
+                 metric_type=alf.metrics.AverageReturnMetric,
+                 metric_name=None):
         self._best_metric = -float('inf')
         self._metric_type = metric_type
+        self._metric_name = metric_name
 
     def __call__(self, metrics: List[alf.metrics.StepMetric]) -> bool:
         if self._best_metric is None:
@@ -202,6 +207,8 @@ class BestEvalChecker(object):
             for metric in metrics:
                 if isinstance(metric, self._metric_type):
                     new_metric = metric.result()
+                    if self._metric_name is not None:
+                        new_metric = new_metric[self._metric_name]
                     if alf.summary.get_global_counter() == 0:
                         # The first evaluation is from the initial random model
                         # so we don't need to save it.
