@@ -1,0 +1,49 @@
+
+include 'sac.gin'
+
+import alf.utils.math_ops
+
+# environment config
+NUM_PARALLEL_ENVIRONMENTS=1
+create_environment.env_name="Pendulum-v0"
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+
+# algorithm config
+actor/ActorDistributionNetwork.fc_layer_params=(100, 100)
+actor/ActorDistributionNetwork.continuous_projection_net_ctor=@NormalProjectionNetwork
+
+NormalProjectionNetwork.state_dependent_std=True
+NormalProjectionNetwork.scale_distribution=True
+NormalProjectionNetwork.std_transform=@clipped_exp
+
+actor/Adam.lr=5e-4
+
+critic/CriticNetwork.joint_fc_layer_params=(100, 100)
+critic/Adam.lr=5e-4
+
+alpha/Adam.lr=5e-4
+
+SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
+SacAlgorithm.critic_network_cls=@critic/CriticNetwork
+SacAlgorithm.actor_optimizer=@actor/Adam()
+SacAlgorithm.critic_optimizer=@critic/Adam()
+SacAlgorithm.alpha_optimizer=@alpha/Adam()
+SacAlgorithm.target_update_tau=0.005
+OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
+
+# training config
+TrainerConfig.initial_collect_steps=1000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=64
+TrainerConfig.num_updates_per_train_iter=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summary_interval=100
+TrainerConfig.replay_buffer_length=100000
+
+ReplayBuffer.enable_checkpoint=True
