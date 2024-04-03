@@ -64,6 +64,8 @@ class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
             fc_layer_params=fc_layer_params)
 
         action, state = actor_net(image, state)
+        if use_batch_ensemble:
+            action = action[0]
 
         # (batch_size, num_actions)
         self.assertEqual(action.shape, (1, 5))

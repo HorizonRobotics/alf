@@ -50,6 +50,7 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             mini_batch_length=2,
             mini_batch_size=128,
             initial_collect_steps=steps_per_episode,
+            use_rollout_state=use_batch_ensemble,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
         )
@@ -70,13 +71,7 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        if use_batch_ensemble:
-            n_neuron = 32
-            init_lr = 2e-3
-        else:
-            n_neuron = 16
-            init_lr = 1e-2
-        fc_layer_params = (n_neuron, n_neuron)
+        fc_layer_params = (16, 16)
 
         actor_network = functools.partial(
             ActorNetwork, fc_layer_params=fc_layer_params)
@@ -100,8 +95,8 @@ class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             actor_update_period=actor_update_period,
             use_batch_ensemble=use_batch_ensemble,
             ensemble_size=3,
-            actor_optimizer=alf.optimizers.Adam(lr=init_lr),
-            critic_optimizer=alf.optimizers.Adam(lr=init_lr),
+            actor_optimizer=alf.optimizers.Adam(lr=1e-2),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,
             name="MyDDPG")
 

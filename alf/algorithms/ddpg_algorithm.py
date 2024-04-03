@@ -42,11 +42,18 @@ DdpgCriticInfo = namedtuple(
 DdpgActorState = namedtuple(
     "DdpgActorState", ['actor', 'critics'], default_value=())
 DdpgState = namedtuple(
-    "DdpgState", ['actor', 'critics', 'noise'], default_value=())
+    "DdpgState", ['actor', 'critics', 'noise', 'ensemble_ids'],
+    default_value=())
 DdpgInfo = namedtuple(
     "DdpgInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "discounted_return"
+        "reward",
+        "step_type",
+        "discount",
+        "action",
+        "action_distribution",
+        "actor_loss",
+        "critic",
+        "discounted_return",
     ],
     default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
@@ -168,6 +175,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        if use_batch_ensemble:
+            assert config.use_rollout_state, (
+                'use_rollout_state needs to be True when use_batch_ensemble.')
+
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
@@ -203,6 +214,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         train_state_spec = DdpgState(
             noise=noise_state,
+            ensemble_ids=TensorSpec(
+                (), dtype=torch.int64) if use_batch_ensemble else (),
             actor=DdpgActorState(
                 actor=actor_network.state_spec,
                 critics=critic_networks.state_spec),
@@ -270,6 +283,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
         action, actor_state = self._actor_network(
             time_step.observation, state=state.actor.actor)
+        if self._use_batch_ensemble:
+            ensemble_ids = action[1]
+            action = action[0]
         empty_state = nest.map_structure(lambda x: (), self.rollout_state_spec)
 
         def _sample(a, noise):
@@ -291,6 +307,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                           noisy_action, self._action_spec)
         state = empty_state._replace(
             noise=noise_state,
+            ensemble_ids=ensemble_ids if self._use_batch_ensemble else (),
             actor=DdpgActorState(actor=actor_state, critics=()))
 
         return AlgStep(
@@ -314,6 +331,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 _rollout_random_action)
             noisy_action[ind[0], :] = random_action[ind[0], :]
 
+        observation = time_step.observation
+        if self._use_batch_ensemble and torch.count_nonzero(
+                state.ensemble_ids) > 0:
+            # If use_batch_ensemble, we want to use the same ensemble_ids
+            # to forward the actor_network during the rollout of an episode,
+            # except for the initial rollout_step, where the ensemble_ids
+            # in the initial rollout_state are all zeros.
+            time_step = time_step._replace(
+                observation=(observation, state.ensemble_ids))
         pred_step = self._predict_step(time_step, state, epsilon_greedy=1.0)
         if self._rollout_random_action > 0:
             nest.map_structure(_update_random_action, self._action_spec,
@@ -321,13 +347,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         if self.need_full_rollout_state():
             _, critics_state = self._critic_networks(
-                (time_step.observation, pred_step.output),
-                state.critics.critics)
+                (observation, pred_step.output), state.critics.critics)
             _, target_critics_state = self._target_critic_networks(
-                (time_step.observation, pred_step.output),
-                state.critics.target_critics)
+                (observation, pred_step.output), state.critics.target_critics)
             _, target_actor_state = self._target_actor_network(
-                time_step.observation, state=state.critics.target_actor)
+                observation, state=state.critics.target_actor)
             critic_state = DdpgCriticState(
                 critics=critics_state,
                 target_actor=target_actor_state,
@@ -347,6 +371,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                            rollout_info: DdpgInfo):
         target_action, target_actor_state = self._target_actor_network(
             inputs.observation, state=state.target_actor)
+        if self._use_batch_ensemble:
+            target_action = target_action[0]
         target_q_values, target_critic_states = self._target_critic_networks(
             (inputs.observation, target_action), state=state.target_critics)
         if self._use_batch_ensemble:
@@ -376,6 +402,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _actor_train_step(self, inputs: TimeStep, state: DdpgActorState):
         action, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
+        if self._use_batch_ensemble:
+            action = action[0]
 
         q_values, critic_states = self._critic_networks(
             (inputs.observation, action), state=state.critics)

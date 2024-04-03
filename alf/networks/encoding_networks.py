@@ -691,7 +691,7 @@ class EncodingNetwork(_Sequential):
             use_batch_ensemble (bool): whether to use BatchEnsemble FC and Conv2D
                 layers. If True, both BatchEnsemble layers will always be created
                 with ``output_ensemble_ids=True``, and as a result, the output of
-                the network is a tuple with ensemble_ids.
+                the network is a tuple of (outputs, ensemble_ids).
             ensemble_size (int): ensemble size, only effective if use_batch_ensemble
                 is True.
             input_with_ensemble_ids (bool): whether handle inputs with ensemble_ids,
