@@ -654,7 +654,7 @@ class TrainPlayTest(alf.test.TestCase):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
-        self._test(conf_file='sac_pendulum.gin', test_perf_func=_test_func)
+        self._test(conf_file='sac_pendulum_conf.py', test_perf_func=_test_func)
 
     def test_sac_pendulum_latent_actor(self):
         def _test_func(returns, lengths):

@@ -45,11 +45,13 @@ def _define_flags():
     flags.DEFINE_string(
         'root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
         'Root directory for writing logs/summaries/checkpoints.')
-    flags.DEFINE_integer(
-        'checkpoint_step', None,
+    flags.DEFINE_string(
+        'checkpoint_step', 'best',
         "the number of training steps which is used to "
-        "specify the checkpoint to be loaded. If None, the latest checkpoint under "
-        "train_dir will be used.")
+        "specify the checkpoint to be loaded. If 'latest', the latest checkpoint "
+        "under train_dir will be used. If 'best', the checkpoint with suffix "
+        "'best' will be used if it can be found, otherwise the latest one will "
+        "be used.")
     flags.DEFINE_integer('random_seed', None, "random seed")
     flags.DEFINE_bool(
         'force_torch_deterministic', True,
@@ -160,12 +162,17 @@ def play():
         config=config)
     algorithm.set_path('')
 
+    if FLAGS.checkpoint_step is not None:
+        try:
+            FLAGS.checkpoint = int(FLAGS.checkpoint_step)
+        except ValueError:
+            pass
     try:
         policy_trainer.play(
             common.abs_path(FLAGS.root_dir),
             env,
             algorithm,
-            checkpoint_step=FLAGS.checkpoint_step or "latest",
+            checkpoint_step=FLAGS.checkpoint_step,
             num_episodes=FLAGS.num_episodes,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,

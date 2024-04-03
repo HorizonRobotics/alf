@@ -18,6 +18,7 @@ import torch.multiprocessing as mp
 import os
 import sys
 import torch
+import torch.nn as nn
 from typing import Dict, List, Optional
 
 import alf
@@ -25,6 +26,7 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.environments.alf_environment import AlfEnvironment
 from alf.utils import common
+from alf.utils.checkpoint_utils import Checkpointer
 from alf.utils.summary_utils import record_time
 from alf.data_structures import StepType
 from alf.algorithms.data_transformer import create_data_transformer
@@ -164,6 +166,54 @@ class SyncEvaluator(object):
                 metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     other_steps=step_metric_values)
+            if (self._config.save_checkpoint_for_best_eval is not None
+                    and self._config.save_checkpoint_for_best_eval(metrics)):
+                logging.info("Saving the best checkpoint")
+                checkpointer = Checkpointer(
+                    ckpt_dir=os.path.join(self._config.root_dir, 'train',
+                                          'algorithm'),
+                    algorithm=algorithm,
+                    metrics=nn.ModuleList(algorithm.get_metrics()),
+                    trainer_progress=policy_trainer.Trainer.
+                    get_trainer_progress())
+
+                checkpointer.save(alf.summary.get_global_counter(), 'best')
+
+
+class BestEvalChecker(object):
+    """A checker to determine if the current evaluation is the best so far.
+
+    It can be supplied to `TrainerConfig.save_checkpoint_for_best_eval` so that
+    the best checkpoint will be saved when the evaluation is the best so far.
+
+    Args:
+        metric_type (type): the type of the metric to be compared. Default is
+            `alf.metrics.AverageReturnMetric`.
+    """
+
+    def __init__(self, metric_type=alf.metrics.AverageReturnMetric):
+        self._best_metric = -float('inf')
+        self._metric_type = metric_type
+
+    def __call__(self, metrics: List[alf.metrics.StepMetric]) -> bool:
+        if self._best_metric is None:
+            return True
+        else:
+            for metric in metrics:
+                if isinstance(metric, self._metric_type):
+                    new_metric = metric.result()
+                    if alf.summary.get_global_counter() == 0:
+                        # The first evaluation is from the initial random model
+                        # so we don't need to save it.
+                        self._best_metric = new_metric.clone()
+                        return False
+                    if new_metric > self._best_metric:
+                        self._best_metric = new_metric.clone()
+                        return True
+                    else:
+                        return False
+            raise ValueError("No metric of type %s found in the metrics" %
+                             self._metric_type)
 
 
 def _worker(job_queue: mp.Queue,
@@ -221,8 +271,9 @@ def _worker(job_queue: mp.Queue,
             reward_spec=env.reward_spec(),
             config=config)
         algorithm.set_path('')
-        policy_trainer.Trainer._trainer_progress.set_termination_criterion(
-            config.num_iterations, config.num_env_steps)
+        policy_trainer.Trainer.get_trainer_progress(
+        ).set_termination_criterion(config.num_iterations,
+                                    config.num_env_steps)
         alf.summary.enable_summary()
         evaluator = SyncEvaluator(env, config)
         logging.info("Evaluator started")
@@ -234,7 +285,7 @@ def _worker(job_queue: mp.Queue,
                 # the training process.
                 alf.summary.set_global_counter(job.global_counter)
                 env_steps = job.step_metrics["EnvironmentSteps"]
-                policy_trainer.Trainer._trainer_progress.update(
+                policy_trainer.Trainer.get_trainer_progress().update(
                     job.global_counter, env_steps)
                 algorithm.load_state_dict(job.state_dict)
                 done_queue.put(None)

@@ -48,7 +48,7 @@ class CyclicalSchedulerTest(parameterized.TestCase, unittest.TestCase):
     def test_step_switch_iterations(self, progress_type, half_cycle_size,
                                     switch_mode):
 
-        trainer_progress = Trainer._trainer_progress
+        trainer_progress = Trainer.get_trainer_progress()
         # set the trainer_progress mode
         if progress_type in {"iterations", "percent"}:
             num_iterations = 10
@@ -126,7 +126,7 @@ class CyclicalSchedulerTest(parameterized.TestCase, unittest.TestCase):
     def test_step_switch_iterations_upper_bound_as_base(
             self, progress_type, half_cycle_size, switch_mode):
 
-        trainer_progress = Trainer._trainer_progress
+        trainer_progress = Trainer.get_trainer_progress()
         # set the trainer_progress mode
         if progress_type in {"iterations", "percent"}:
             num_iterations = 10

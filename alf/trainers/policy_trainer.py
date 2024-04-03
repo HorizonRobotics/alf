@@ -52,9 +52,11 @@ from alf.utils.summary_utils import record_time
 from .evaluator import Evaluator
 
 
-class _TrainerProgress(nn.Module):
+class TrainerProgress(nn.Module):
+    """A module to keep track of the training progress."""
+
     def __init__(self):
-        super(_TrainerProgress, self).__init__()
+        super().__init__()
         self.register_buffer("_iter_num", torch.zeros((), dtype=torch.int64))
         self.register_buffer("_env_steps", torch.zeros((), dtype=torch.int64))
         self._num_iterations = None
@@ -250,7 +252,7 @@ class Trainer(object):
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
 
-    _trainer_progress = _TrainerProgress()
+    _trainer_progress = TrainerProgress()
 
     def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
         """
@@ -262,7 +264,7 @@ class Trainer(object):
                 data parallel training. A value of -1 indicates regular single
                 process training.
         """
-        Trainer._trainer_progress = _TrainerProgress()
+        Trainer._trainer_progress = TrainerProgress()
         root_dir = config.root_dir
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
@@ -358,6 +360,11 @@ class Trainer(object):
                 if ans.lower().startswith('y'):
                     self._save_checkpoint()
             self._close()
+
+    @staticmethod
+    def get_trainer_progress():
+        """Get the TrainerProgress object"""
+        return Trainer._trainer_progress
 
     @staticmethod
     def progress():
@@ -981,7 +988,7 @@ def _step(algorithm,
 def play(root_dir,
          env,
          algorithm,
-         checkpoint_step="latest",
+         checkpoint_step="best",
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -1006,7 +1013,9 @@ def play(root_dir,
         algorithm (RLAlgorithm): the training algorithm
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
-            the most recent checkpoint named 'latest' will be loaded.
+            the most recent checkpoint named 'latest' will be loaded. If
+            checkpoint_step is 'best', the checkpoint with suffix 'best' will
+            be loaded if it can be found, otherwise the latest one will be loaded.
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -1032,23 +1041,35 @@ def play(root_dir,
     checkpointer = Checkpointer(
         ckpt_dir=ckpt_dir,
         algorithm=algorithm,
-        trainer_progress=Trainer._trainer_progress)
-    recovered_global_step = checkpointer.load(
-        checkpoint_step,
-        ignored_parameter_prefixes=ignored_parameter_prefixes,
-        including_optimizer=False,
-        including_replay_buffer=False,
-        including_data_transformers=True,
-        strict=True)
+        trainer_progress=Trainer.get_trainer_progress())
+    try:
+        recovered_global_step = checkpointer.load(
+            checkpoint_step,
+            ignored_parameter_prefixes=ignored_parameter_prefixes,
+            including_optimizer=False,
+            including_replay_buffer=False,
+            including_data_transformers=True,
+            strict=True)
+    except FileNotFoundError as e:
+        if checkpoint_step == 'best':
+            recovered_global_step = checkpointer.load(
+                'latest',
+                ignored_parameter_prefixes=ignored_parameter_prefixes,
+                including_optimizer=False,
+                including_replay_buffer=False,
+                including_data_transformers=True,
+                strict=True)
+        else:
+            raise e
     # The behavior of some algorithms is based by scheduler using training
     # progress or global step. So we need to set a valid value for progress
     # and global step
     if recovered_global_step != -1:
         alf.summary.set_global_counter(recovered_global_step)
-    Trainer._trainer_progress.set_termination_criterion(
+    Trainer.get_trainer_progress().set_termination_criterion(
         alf.get_config_value('TrainerConfig.num_iterations'),
         alf.get_config_value('TrainerConfig.num_env_steps'))
-    Trainer._trainer_progress.update()
+    Trainer.get_trainer_progress().update()
     logging.info("global_step=%s TrainerProgress=%s" % (recovered_global_step,
                                                         Trainer.progress()))
 

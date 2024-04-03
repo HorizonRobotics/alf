@@ -18,6 +18,7 @@ import json
 import os
 import torch
 from torch import nn
+from typing import Optional, List
 import warnings
 
 import alf
@@ -140,6 +141,8 @@ class Checkpointer(object):
             global_step (int|str): the number of training steps which is used to
                 specify the checkpoint to be loaded. If global_step is 'latest',
                 the most recent checkpoint named 'latest' will be loaded.
+                If global_step is 'best', the checkpoint with suffix 'best' will
+                be loaded.
             ingored_parameter_prefixes (list[str]): ignore the parameters whose
                 name has one of these prefixes in the checkpoint.
             including_optimizer (bool): whether load optimizer checkpoint.
@@ -236,6 +239,8 @@ class Checkpointer(object):
 
         if global_step == "latest":
             global_step = self._get_latest_checkpoint_step()
+        elif isinstance(global_step, str):
+            assert global_step == "best", "global_step must be int, 'latest' or 'best'"
 
         if global_step is None:
             warnings.warn("There is no checkpoint in directory %s. "
@@ -331,16 +336,19 @@ class Checkpointer(object):
 
         return model_state, optimizer_state, replay_buffer_state
 
-    def save(self, global_step):
+    def save(self, global_step, suffix: Optional[str] = None):
         """Save states of all modules to checkpoint
 
         Args:
             global_step (int): the number of training steps corresponding to the
                 current state to be saved. It will be appended to the name of
-                the checkpoint as a suffix. This function will also save a copy
-                of the latest checkpoint in a file named 'latest'.
+                the checkpoint as a suffix.
+            suffix (str): the suffix to be appended to the checkpoint file name.
+                If provided, it wil be used as the suffix instead of ``global_step``.
         """
-        f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        suffix = suffix or str(global_step)
+
+        f_path = os.path.join(self._ckpt_dir, f"ckpt-{suffix}")
         state = {
             k: v.module.state_dict()
             if type(v) == torch.nn.DataParallel else v.state_dict()

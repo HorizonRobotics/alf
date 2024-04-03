@@ -183,7 +183,7 @@ def main(_):
         # need to set a valid value for progress.
         # TODO: we may want to use a different progress value based on the actual
         # progress of the checkpoint or user provided progress value.
-        policy_trainer.Trainer._trainer_progress.set_progress(0.0)
+        policy_trainer.Trainer.get_trainer_progress().set_progress(0.0)
         for i in range(FLAGS.num_train_iterations):
             # The values of some checkpointed objects (e.g. Normalizer) are
             # changed by training (i.e. not through random initialization), we

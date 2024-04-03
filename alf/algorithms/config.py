@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional, Callable
 import alf
 from alf.utils.schedulers import as_scheduler
 
@@ -52,6 +53,7 @@ class TrainerConfig(object):
                  num_eval_episodes=10,
                  num_eval_environments: int = 1,
                  async_eval: bool = True,
+                 save_checkpoint_for_best_eval: Optional[Callable] = None,
                  ddp_paras_check_interval: int = 0,
                  num_summaries=None,
                  summary_interval=50,
@@ -212,6 +214,11 @@ class TrainerConfig(object):
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
                 process. Note that this may use more memory.
+            save_checkpoint_for_best_eval: If provided, will be called with a list of
+                evaluation metrics. If it returns True, a checkpoint will be saved.
+                A possible value of this option is `alf.trainers.evaluator.BestEvalChecker()`,
+                which will save a checkpoint if the specified evaluation metric
+                are better than the previous best.
             ddp_paras_check_interval: if >0, then every so many iterations the trainer
                 will perform a consistency check of the model parameters across
                 different worker processes, if multi-gpu training is used.
@@ -354,6 +361,7 @@ class TrainerConfig(object):
         self.num_eval_episodes = num_eval_episodes
         self.num_eval_environments = num_eval_environments
         self.async_eval = async_eval
+        self.save_checkpoint_for_best_eval = save_checkpoint_for_best_eval
         self.ddp_paras_check_interval = ddp_paras_check_interval
         self.num_summaries = num_summaries
         self.summary_interval = summary_interval

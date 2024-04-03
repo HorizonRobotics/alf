@@ -149,7 +149,7 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
         # the training process.
         alf.summary.set_global_counter(job.global_counter)
         env_steps = job.step_metrics["EnvironmentSteps"]
-        policy_trainer.Trainer._trainer_progress.update(
+        policy_trainer.Trainer.get_trainer_progress().update(
             job.global_counter, env_steps)
         algorithm.load_state_dict(job.state_dict)
         done_queue.put(None)
@@ -194,8 +194,9 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             reward_spec=env.reward_spec(),
             config=config)
         algorithm.set_path('')
-        policy_trainer.Trainer._trainer_progress.set_termination_criterion(
-            config.num_iterations, config.num_env_steps)
+        policy_trainer.Trainer.get_trainer_progress(
+        ).set_termination_criterion(config.num_iterations,
+                                    config.num_env_steps)
 
         algorithm.eval()
         policy_state = algorithm.get_initial_rollout_state(env.batch_size)
