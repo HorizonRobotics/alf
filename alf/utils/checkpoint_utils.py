@@ -142,7 +142,11 @@ class Checkpointer(object):
                 specify the checkpoint to be loaded. If global_step is 'latest',
                 the most recent checkpoint named 'latest' will be loaded.
                 If global_step is 'best', the checkpoint with suffix 'best' will
-                be loaded.
+                be loaded. If `global_step` is an integer or best and the checkpoint
+                file does not exist, the function will raise `FileNotFoundError`
+                (by `torch.load`). If `global_step` is 'latest' and the checkpoint
+                file does not exist, a warning will be issued and the function
+                will return -1.
             ingored_parameter_prefixes (list[str]): ignore the parameters whose
                 name has one of these prefixes in the checkpoint.
             including_optimizer (bool): whether load optimizer checkpoint.
@@ -248,10 +252,6 @@ class Checkpointer(object):
             return self._global_step
 
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
-        if not os.path.isfile(f_path):
-            warnings.warn(
-                "Checkpoint '%s' does not exist. Train from scratch." % f_path)
-            return self._global_step
 
         # use ``cpu`` as the map location to avoid GPU RAM surge when loading a
         # model checkpoint.

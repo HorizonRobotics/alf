@@ -164,7 +164,7 @@ def play():
 
     if FLAGS.checkpoint_step is not None:
         try:
-            FLAGS.checkpoint = int(FLAGS.checkpoint_step)
+            FLAGS.checkpoint_step = int(FLAGS.checkpoint_step)
         except ValueError:
             pass
     try:
