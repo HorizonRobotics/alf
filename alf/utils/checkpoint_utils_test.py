@@ -173,7 +173,7 @@ class TestNetAndOptimizer(alf.test.TestCase):
 
             # load a non-existing ckpt won't change current values
             # but will trigger a UserWarning
-            self.assertWarns(UserWarning, ckpt_mngr.load, 2)
+            self.assertRaises(FileNotFoundError, ckpt_mngr.load, 2)
             self.assertTrue(get_learning_rate(optimizer)[0] == 0.01)
             for para in list(net.parameters()):
                 self.assertTrue((para == 1).all())
