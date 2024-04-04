@@ -455,7 +455,10 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for play or evaluate.
 
         Args:
-            experience: experience collected from ``env.step`` of play.
+            experience: experience of one step rollout in the environment during 
+            play or evaluation, this is in contrast to the experience input to 
+            ``summarize_rollout`` where a sequence of multiple rollout steps
+            are collected.
             custom_summary: when specified it is a function that will be called every
                time when this ``summarize_play`` hook is called. This provides
                a convenient way for the user to customize ``summarize_play`` from
