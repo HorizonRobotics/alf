@@ -973,8 +973,8 @@ def _step(algorithm,
         time.sleep(sleep_time_per_step)
 
     next_time_step = env.step(policy_step.output)
-    experience = make_experience(time_step, policy_step, policy_state)
-    algorithm.summarize_play(experience.cpu())
+    experience = make_experience(time_step.cpu(), policy_step, policy_state)
+    algorithm.summarize_play(experience)
 
     return next_time_step, policy_step, trans_state
 
