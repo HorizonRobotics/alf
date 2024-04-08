@@ -66,7 +66,7 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
         return data, labels.long()
 
     def plot_classification(self, i, algorithm, tag, n_classes):
-        basedir = 'plots/classification/functional_par_vi/{}'.format(tag)
+        basedir = '/data/jerry/results/alf/gtk_ensemble/4_class/{}'.format(tag)
         os.makedirs(basedir, exist_ok=True)
         x = torch.linspace(-12, 12, 100)
         y = torch.linspace(-12, 12, 100)
@@ -75,7 +75,7 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
         outputs = algorithm.predict_step(grid).output.cpu()
         if i >= 45000 and i <= 50000:
             print('saving')
-            torch.save(outputs, basedir + '/final_outputs_{}.pt'.format(i))
+            torch.save(outputs, basedir + '_final_outputs_{}.pt'.format(i))
         outputs = F.softmax(outputs, -1).detach()  # [B, D]
 
         mean_outputs = outputs.mean(1).cpu()  # [B, D]
@@ -93,7 +93,7 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
             data[:, 0].cpu(), data[:, 1].cpu(), c='black', alpha=0.1)
         cbar = plt.colorbar(p1)
         cbar.set_label("confidance (std)")
-        plt.savefig(basedir + '/conf_map-std_{}.png'.format(i))
+        plt.savefig(basedir + '_conf_map-std_{}.png'.format(i))
         plt.close('all')
 
         p1 = plt.scatter(
@@ -102,20 +102,25 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
             data[:, 0].cpu(), data[:, 1].cpu(), c='black', alpha=0.1)
         cbar = plt.colorbar(p1)
         cbar.set_label("predicted labels")
-        plt.savefig(basedir + '/conf_map-labels_{}.png'.format(i))
+        plt.savefig(basedir + '_conf_map-labels_{}.png'.format(i))
         print('saved figure: ', basedir)
         plt.close('all')
 
     @parameterized.parameters(
-        # ('svgd', False),
+        # (None, 0.1, False),
+        (None, 0.5, True),
+        (None, 0.2, True),
         # ('svgd', True),
         # ('gfsf', False),
         # ('gfsf', True),
         # ('minmax', True),
         # (None, False),
-        ('minmax', False), )
+        # ('minmax', False)
+    )
     def test_classification_func_par_vi(self,
                                         par_vi='svgd',
+                                        capacity_ratio=1.,
+                                        full_rank_update=False,
                                         function_vi=False,
                                         n_classes=4,
                                         num_particles=100):
@@ -147,9 +152,11 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
 
         algorithm = FuncParVIAlgorithm(
             input_tensor_spec=input_spec,
-            fc_layer_params=((10, True), (10, True)),
-            last_layer_param=(output_dim, True),
+            output_dim=output_dim,
+            fc_layer_params=(10, 10),
+            use_fc_bias=True,
             last_activation=math_ops.identity,
+            last_use_bias=True,
             num_particles=num_particles,
             loss_type='classification',
             par_vi=par_vi,
@@ -159,7 +166,10 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
             critic_hidden_layers=(10, 10),
             critic_iter_num=5,
             critic_optimizer=alf.optimizers.Adam(lr=1e-3),
-            optimizer=alf.optimizers.Adam(lr=1e-3))
+            optimizer=alf.optimizers.Adam(
+                lr=1e-3,
+                capacity_ratio=capacity_ratio,
+                full_rank_update=full_rank_update))
 
         def _train(i, entropy_regularization=None):
             perm = torch.randperm(batch_size)
@@ -199,23 +209,35 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
             print('mean particle acc: ', mean_acc.item())
             print('all particles acc: ', sample_acc.item())
 
-            with torch.no_grad():
-                if par_vi is None:
-                    tag = 'mle'
-                else:
-                    tag = par_vi
-                if function_vi:
-                    tag += 'f-vi'
-                tag += '/{}_cls'.format(n_classes)
-                self.plot_classification(i, algorithm, tag, n_classes)
+            # with torch.no_grad():
+            #     if par_vi is None:
+            #         tag = 'mle'
+            #     else:
+            #         tag = par_vi
+            #     if function_vi:
+            #         tag += 'f-vi'
+            #     tag += '/{}_cls'.format(n_classes)
+            #     self.plot_classification(i, algorithm, tag, n_classes)
 
-        """        
         train_iter = 50000
         for i in range(train_iter):
             _train(i)
-            if i % 1000 == 0:
+            if i % 5000 == 0:
                 _test(i)
-        """
+
+        with torch.no_grad():
+            if par_vi is None:
+                tag = 'mle'
+            else:
+                tag = par_vi
+            if function_vi:
+                tag += 'f-vi'
+            if capacity_ratio < 1:
+                tag += f'_r{capacity_ratio}'
+            if full_rank_update:
+                tag += '_fullrank'
+            # tag += '/{}_cls'.format(n_classes)
+            self.plot_classification(i, algorithm, tag, n_classes)
 
     def generate_regression_data(self, n_train, n_test):
         x_train1 = torch.linspace(-6, -2, n_train // 2).view(-1, 1)
@@ -263,72 +285,72 @@ class FuncParVIUncertaintyTest(parameterized.TestCase, alf.test.TestCase):
         plt.savefig(basedir + 'iter_{}.png'.format(i))
         plt.close('all')
 
-    @parameterized.parameters(
-        ('svgd', False),
-        # ('svgd', True),
-        # ('gfsf', False),
-        # ('gfsf', True),
-        # (None, False),
-    )
-    def test_regression_func_par_vi(self,
-                                    par_vi='svgd',
-                                    function_vi=False,
-                                    num_particles=100):
-        n_train = 80
-        n_test = 200
-        input_size = 1
-        output_dim = 1
-        input_spec = TensorSpec((input_size, ), torch.float64)
-        train_batch_size = n_train
-        batch_size = n_train
-
-        train_samples, test_samples = self.generate_regression_data(
-            n_train, n_test)
-        inputs, targets = train_samples
-        test_inputs, test_targets = test_samples
-        print('{} - {} particles'.format(par_vi, num_particles))
-        print('Functional Particle VI: Fitting Regressors')
-        print("Function VI: {}".format(function_vi))
-
-        algorithm = FuncParVIAlgorithm(
-            input_tensor_spec=input_spec,
-            fc_layer_params=((50, True), ),
-            last_layer_param=(output_dim, True),
-            last_activation=math_ops.identity,
-            num_particles=num_particles,
-            loss_type='regression',
-            par_vi=par_vi,
-            function_vi=function_vi,
-            function_bs=train_batch_size,
-            optimizer=alf.optimizers.Adam(lr=1e-2))
-
-        def _train(entropy_regularization=None):
-            train_inputs = inputs
-            train_targets = targets
-            if entropy_regularization is None:
-                entropy_regularization = train_batch_size / batch_size
-
-            alg_step = algorithm.train_step(
-                inputs=(train_inputs, train_targets),
-                entropy_regularization=entropy_regularization)
-
-            loss_info, params = algorithm.update_with_gradient(alg_step.info)
-
-        def _test(i):
-            outputs, _ = algorithm._param_net(test_inputs)
-            mse_err = (outputs.mean(1) - test_targets).pow(2).mean()
-            print('Expected MSE: {}'.format(mse_err))
-
-        for i in range(10000):
-            _train()
-            if i % 200 == 0:
-                _test(i)
-                with torch.no_grad():
-                    data = (train_samples, test_samples)
-                    tag = par_vi
-                    if function_vi:
-                        tag += '_fvi'
-                    self.plot_bnn_regression(i, algorithm, data, tag)
+    # @parameterized.parameters(
+    #     ('svgd', False),
+    #     # ('svgd', True),
+    #     # ('gfsf', False),
+    #     # ('gfsf', True),
+    #     # (None, False),
+    # )
+    # def test_regression_func_par_vi(self,
+    #                                 par_vi='svgd',
+    #                                 function_vi=False,
+    #                                 num_particles=100):
+    #     n_train = 80
+    #     n_test = 200
+    #     input_size = 1
+    #     output_dim = 1
+    #     input_spec = TensorSpec((input_size, ), torch.float64)
+    #     train_batch_size = n_train
+    #     batch_size = n_train
+    #
+    #     train_samples, test_samples = self.generate_regression_data(
+    #         n_train, n_test)
+    #     inputs, targets = train_samples
+    #     test_inputs, test_targets = test_samples
+    #     print('{} - {} particles'.format(par_vi, num_particles))
+    #     print('Functional Particle VI: Fitting Regressors')
+    #     print("Function VI: {}".format(function_vi))
+    #
+    #     algorithm = FuncParVIAlgorithm(
+    #         input_tensor_spec=input_spec,
+    #         fc_layer_params=((50, True), ),
+    #         last_layer_param=(output_dim, True),
+    #         last_activation=math_ops.identity,
+    #         num_particles=num_particles,
+    #         loss_type='regression',
+    #         par_vi=par_vi,
+    #         function_vi=function_vi,
+    #         function_bs=train_batch_size,
+    #         optimizer=alf.optimizers.Adam(lr=1e-2))
+    #
+    #     def _train(entropy_regularization=None):
+    #         train_inputs = inputs
+    #         train_targets = targets
+    #         if entropy_regularization is None:
+    #             entropy_regularization = train_batch_size / batch_size
+    #
+    #         alg_step = algorithm.train_step(
+    #             inputs=(train_inputs, train_targets),
+    #             entropy_regularization=entropy_regularization)
+    #
+    #         loss_info, params = algorithm.update_with_gradient(alg_step.info)
+    #
+    #     def _test(i):
+    #         outputs, _ = algorithm._param_net(test_inputs)
+    #         mse_err = (outputs.mean(1) - test_targets).pow(2).mean()
+    #         print('Expected MSE: {}'.format(mse_err))
+    #
+    #     for i in range(10000):
+    #         _train()
+    #         if i % 200 == 0:
+    #             _test(i)
+    #             with torch.no_grad():
+    #                 data = (train_samples, test_samples)
+    #                 tag = par_vi
+    #                 if function_vi:
+    #                     tag += '_fvi'
+    #                 self.plot_bnn_regression(i, algorithm, data, tag)
 
 
 if __name__ == "__main__":
