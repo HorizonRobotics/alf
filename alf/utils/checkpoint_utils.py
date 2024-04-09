@@ -23,6 +23,7 @@ import warnings
 
 import alf
 from alf.nest import map_structure
+from alf.utils import common
 
 
 def is_checkpoint_enabled(module):
@@ -247,8 +248,9 @@ class Checkpointer(object):
             assert global_step == "best", "global_step must be int, 'latest' or 'best'"
 
         if global_step is None:
-            warnings.warn("There is no checkpoint in directory %s. "
-                          "Train from scratch" % self._ckpt_dir)
+            common.warning("There is no checkpoint in directory %s. "
+                           "Train from scratch" % self._ckpt_dir)
+            warnings.warn("Training from scratch.")
             return self._global_step
 
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
@@ -283,7 +285,7 @@ class Checkpointer(object):
             else:
                 _load_one(self._modules[k], checkpoint[k])
 
-        logging.info(
+        common.info(
             "Checkpoint 'ckpt-{}' is loaded successfully.".format(global_step))
 
         return self._global_step
