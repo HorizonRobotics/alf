@@ -217,7 +217,7 @@ SharedDataBuffer::SharedDataBuffer(py::object data_spec,
     buffer_infos_.emplace_back(array.request());
 
     // Stores the strides and shapes (ignoring the first dimension which is a
-    // dummpy batch dimension) of each slice.
+    // dummy batch dimension) of each slice.
     auto& strides = buffer_infos_.back().strides;
     slice_strides_.emplace_back(strides.begin() + 1, strides.end());
     const std::vector<ssize_t>& shape = buffer_infos_.back().shape;
