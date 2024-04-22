@@ -96,12 +96,11 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
 
     def time_step_spec(self):
         # By default, returns a timestep spec that respect the overrides of
-        # observation, action, rewards and env_info spec.
+        # observation, action and rewards spec.
         return self._env.time_step_spec()._replace(
             observation=self.observation_spec(),
             prev_action=self.action_spec(),
             reward=self.reward_spec(),
-            env_info=self.env_info_spec(),
         )
 
     def observation_spec(self):
