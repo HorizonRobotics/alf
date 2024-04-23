@@ -265,6 +265,59 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
         expected = _get_stacked_data([22, 22, 23], 1)
         _check_equal(experience.observation, expected, (3, 1))
 
+    def test_frame_stacker_with_skip(self):
+        time_step_spec = TimestepItem(
+            step_type=alf.TensorSpec((), dtype=torch.int32),
+            observation=alf.TensorSpec((), dtype=torch.int32))
+        skip = 2
+        frame_stacker = FrameStacker(
+            time_step_spec.observation,
+            stack_size=3,
+            stack_every_n=skip,
+            stack_axis=0,
+            fields=[''])
+        new_spec = frame_stacker.transformed_observation_spec
+        self.assertEqual(new_spec.shape, (3, ))
+        state = common.zero_tensor_from_nested_spec(frame_stacker.state_spec,
+                                                    2)
+        for t in range(10):
+            time_step = TimestepItem(
+                step_type=torch.tensor([StepType.FIRST, StepType.MID]),
+                observation=torch.tensor([t, t + 1], dtype=torch.int32))
+            timestep, state = frame_stacker.transform_timestep(
+                time_step, state)
+            if t == 0:
+                self.assertEqual(
+                    timestep.observation,
+                    torch.tensor([[t, t, t], [0, 0, t + 1]],
+                                 dtype=torch.int32))
+            if t == 1:
+                self.assertEqual(
+                    timestep.observation,
+                    torch.tensor([[t, t, t], [0, 0, t + 1]],
+                                 dtype=torch.int32))
+            if t == 2:
+                self.assertEqual(
+                    timestep.observation,
+                    torch.tensor(
+                        [[t, t, t], [0, t + 1 - skip + (t % 2 == 0), t + 1]],
+                        dtype=torch.int32))
+            if t == 3:
+                self.assertEqual(
+                    timestep.observation,
+                    torch.tensor(
+                        [[t, t, t], [0, t + 1 - skip + (t % 2 == 0), t + 1]],
+                        dtype=torch.int32))
+            if t >= 4:
+                self.assertEqual(
+                    timestep.observation,
+                    torch.tensor([[t, t, t],
+                                  [
+                                      t + 1 - skip * 2 + (t % 2 == 0),
+                                      t + 1 - skip + (t % 2 == 0), t + 1
+                                  ]],
+                                 dtype=torch.int32))
+
 
 class ImageScaleTransformerTest(alf.test.TestCase):
     def test_image_scale_transformer(self):
