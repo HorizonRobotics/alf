@@ -179,6 +179,7 @@ class FrameStacker(DataTransformer):
     def __init__(self,
                  observation_spec,
                  stack_size=4,
+                 stack_every_n=1,
                  stack_axis=0,
                  fields=None):
         """Create a FrameStacker object.
@@ -186,6 +187,7 @@ class FrameStacker(DataTransformer):
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
             stack_size (int): stack so many frames
+            stack_every_n (int): stack every n frames.
             stack_axis (int): the dimension to stack the observation.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
@@ -195,6 +197,7 @@ class FrameStacker(DataTransformer):
             "or equal to 1")
         self._stack_axis = stack_axis
         self._stack_size = stack_size
+        self._stack_every_n = stack_every_n
         self._frames = dict()
         self._fields = fields if (fields is not None) else [None]
         self._exp_fields = []
@@ -270,6 +273,11 @@ class FrameStacker(DataTransformer):
         is_first = time_step.step_type == StepType.FIRST
         steps = state.steps + 1
         steps[is_first] = 0
+        if self._stack_every_n > 1:
+            # stack the stack_mask envs.
+            # If not stack_mask, then the prev_frames should not be changed.
+            # Only need to replace the top frame.
+            stack_mask = steps % self._stack_every_n == 0
         stack_axis = self._stack_axis
         if stack_axis >= 0:
             stack_axis += 1
@@ -288,8 +296,18 @@ class FrameStacker(DataTransformer):
                 stacked = torch.cat(prev_frames[i] + [obs], dim=stack_axis)
             else:
                 stacked = torch.stack(prev_frames[i] + [obs], dim=1)
-            prev_frames[i].pop(0)
-            prev_frames[i].append(obs)
+            if self._stack_every_n == 1:
+                prev_frames[i].pop(0)
+                prev_frames[i].append(obs)
+            elif stack_mask.numel() > 0:
+                mask = stack_mask
+                mask = mask.view(*mask.shape,
+                                 *(1, ) * (prev_frames[i][0].ndim - 1))
+                for t in range(self._stack_size - 2):
+                    prev_frames[i][t] = torch.where(
+                        mask, prev_frames[i][t + 1], prev_frames[i][t])
+                prev_frames[i][self._stack_size - 2] = torch.where(
+                    mask, obs, prev_frames[i][self._stack_size - 2])
             return stacked
 
         observation = time_step.observation
@@ -316,12 +334,16 @@ class FrameStacker(DataTransformer):
 
             prev_positions = torch.arange(self._stack_size -
                                           1) - self._stack_size + 1
+            prev_positions *= self._stack_every_n
 
             # [B, stack_size - 1]
             prev_positions = positions.unsqueeze(
                 -1) + prev_positions.unsqueeze(0)
             episode_begin_positions = replay_buffer.get_episode_begin_position(
                 positions, env_ids)
+            mod = (positions - episode_begin_positions) % self._stack_every_n
+            prev_positions += (
+                self._stack_every_n - mod.unsqueeze(-1)) % self._stack_every_n
             # [B, 1]
             episode_begin_positions = episode_begin_positions.unsqueeze(-1)
             # [B, stack_size - 1]
