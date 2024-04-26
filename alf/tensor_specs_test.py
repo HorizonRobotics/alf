@@ -15,9 +15,10 @@
 
 import numpy as np
 import unittest
+import alf
 from absl.testing import parameterized
 
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec, concat_specs
 from alf.tensor_specs import torch_dtype_to_str
 
 import torch
@@ -26,7 +27,7 @@ TYPE_PARAMETERS = ((torch.int32, ), (torch.int64, ), (torch.float32, ),
                    (torch.float64, ), (torch.uint8, ))
 
 
-class TensorSpecTest(parameterized.TestCase, unittest.TestCase):
+class TensorSpecTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         super().setUp()
         self._shape = (20, 30)
@@ -96,6 +97,37 @@ class TensorSpecTest(parameterized.TestCase, unittest.TestCase):
                 dtype=torch.int32,
                 minimum=np.array([-1, -1, -1, -1]),
                 maximum=np.array([1, 1, 1, 1])), new_spec)
+
+    def test_concat_specs1(self):
+        """Concat TensorSpecs"""
+
+        spec1 = TensorSpec(shape=(3, 4), dtype=torch.int32)
+        spec2 = TensorSpec(shape=(4, ), dtype=torch.float32)
+        spec3 = TensorSpec(shape=(5, 6), dtype=torch.float32)
+
+        self.assertRaises(AssertionError, concat_specs, [spec1, spec2, spec3])
+        spec = concat_specs([spec2, spec3])
+        self.assertEqual(spec.shape, (34, ))
+        self.assertEqual(spec.dtype, torch.float32)
+
+    def test_concat_specs2(self):
+        """Concat BoundedTensorSpecs"""
+        spec1 = TensorSpec(shape=(2, 3), dtype=torch.int64)
+        spec2 = BoundedTensorSpec(
+            shape=(2, 3), minimum=1, maximum=3, dtype=torch.int64)
+        spec3 = BoundedTensorSpec(
+            shape=(4, ),
+            minimum=[1, 2, 3, 4],
+            maximum=[5, 6, 7, 8],
+            dtype=torch.int64)
+        self.assertRaises(AssertionError, concat_specs, [spec1, spec2, spec3])
+        spec = concat_specs([spec2, spec3])
+        self.assertEqual(spec.shape, (10, ))
+        self.assertEqual(spec.dtype, torch.int64)
+        self.assertArrayEqual(spec.minimum,
+                              np.array([1, 1, 1, 1, 1, 1, 1, 2, 3, 4]))
+        self.assertArrayEqual(spec.maximum,
+                              np.array([3, 3, 3, 3, 3, 3, 5, 6, 7, 8]))
 
 
 if __name__ == "__main__":

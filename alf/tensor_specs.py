@@ -467,3 +467,39 @@ NestedBoundedTensorSpec = Union[
     Dict[str, 'NestedBoundedTensorSpec']
 ]
 # yapf: enable
+
+
+def concat_specs(specs: Union[NestedTensorSpec, NestedBoundedTensorSpec]):
+    """Create a new spec which is the concatenation of the flattened input specs.
+
+    Args:
+        specs: a nested structure of TensorSpec or BoundedTensorSpec.
+    Returns:
+        a new spec which is the concatenation of the flattened input specs.
+    """
+    specs = alf.nest.flatten(specs)
+    dtype = specs[0].dtype
+    spec_type = type(specs[0])
+    assert all([spec.dtype == dtype for spec in specs
+                ]), ("All action specs should have the same dtype")
+    assert all([type(spec) == spec_type for spec in specs
+                ]), ("All action specs should have the same type")
+    if spec_type == alf.BoundedTensorSpec:
+        minimum = np.concatenate([
+            np.broadcast_to(spec.minimum, spec.shape).reshape(-1)
+            for spec in specs
+        ],
+                                 axis=0)
+        maximum = np.concatenate([
+            np.broadcast_to(spec.maximum, spec.shape).reshape(-1)
+            for spec in specs
+        ],
+                                 axis=0)
+        return alf.BoundedTensorSpec(
+            shape=(sum(spec.numel for spec in specs), ),
+            minimum=minimum,
+            maximum=maximum,
+            dtype=dtype)
+    else:
+        return alf.TensorSpec(
+            shape=(sum(spec.numel for spec in specs), ), dtype=dtype)
