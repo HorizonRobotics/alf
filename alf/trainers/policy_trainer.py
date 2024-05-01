@@ -992,6 +992,7 @@ def play(root_dir,
          last_step_repeats=0,
          append_blank_frames=0,
          render=True,
+         render_every_n=1,
          selective_mode=False,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
@@ -1027,6 +1028,8 @@ def play(root_dir,
         render (bool): If False, then this function only evaluates the trained
             model without calling rendering functions. This value will be ignored
             if a ``record_file`` argument is provided.
+        render_every_n (int): render the frames every n steps. This is useful
+            for speeding up the evaluation process.
         selective_mode (bool): whether to save the selective cases discovered
             according to a ``selective_criteria_func``.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
@@ -1120,7 +1123,9 @@ def play(root_dir,
     else:
         selective_criteria_func = None
 
+    step_count = 0
     while episodes < num_episodes:
+        step_count += 1
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statistics) as it can be
         # biased. Instead, we stick to using the first episodes_per_env episodes
@@ -1135,6 +1140,7 @@ def play(root_dir,
         # at StepType.LAST. The metric computation uses cpu version of time_step.
         time_step.cpu().step_type[invalid] = StepType.FIRST
 
+        allow_render = (step_count % render_every_n == 0)
         next_time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
@@ -1142,8 +1148,8 @@ def play(root_dir,
             policy_state=policy_state,
             trans_state=trans_state,
             metrics=metrics,
-            render=render,
-            recorder=recorder,
+            render=render and allow_render,
+            recorder=recorder if allow_render else None,
             sleep_time_per_step=sleep_time_per_step,
             selective_criteria_func=selective_criteria_func)
 
