@@ -79,6 +79,9 @@ def _define_flags():
     flags.DEFINE_bool(
         'render', True,
         "Whether render ('human'|'rgb_array') the frames or not")
+    flags.DEFINE_integer(
+        'render_every_n', 1,
+        "Render every n-th frame. Only valid when render is True.")
     # use '--alg_render' to enable algorithm specific rendering
     flags.DEFINE_bool('alg_render', False,
                       "Whether enable algorithm specific rendering")
@@ -179,6 +182,7 @@ def play():
             append_blank_frames=FLAGS.append_blank_frames,
             last_step_repeats=FLAGS.last_step_repeats,
             render=FLAGS.render,
+            render_every_n=FLAGS.render_every_n,
             selective_mode=FLAGS.selective_mode,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
