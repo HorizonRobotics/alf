@@ -218,6 +218,8 @@ class RealNVPNetwork(NormalizingFlowNetwork):
                  preprocessing_combiner: alf.nest.utils.NestCombiner = None,
                  conv_layer_params: Tuple[Tuple[int]] = None,
                  fc_layer_params: Tuple[int] = None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
                  activation: Callable = torch.tanh,
                  transform_scale_nonlinear: Callable = partial(
                      clipped_exp, clip_value_min=-10, clip_value_max=2),
@@ -246,6 +248,8 @@ class RealNVPNetwork(NormalizingFlowNetwork):
                 is optional. Used by the scale and translation networks.
             fc_layer_params: a tuple of integers representing FC layer sizes of
                 the scale and translation networks.
+            use_fc_bn (bool): whether use Batch Normalization for fc layers.
+            use_fc_ln (bool): whether use Layer Normalization for fc layers.
             activation: hidden activation of the scale and translation networks
             transform_scale_nonlinear: nonlinear function applied to the
                 scale network output. Its codomain should be :math:`[0,+\infty)`. Make
@@ -307,6 +311,8 @@ class RealNVPNetwork(NormalizingFlowNetwork):
                 preprocessing_combiner=preprocessing_combiner,
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=fc_layer_params,
+                use_fc_bn=use_fc_bn,
+                use_fc_ln=use_fc_ln,
                 last_layer_size=D,
                 last_activation=alf.math.identity,
                 activation=activation)
