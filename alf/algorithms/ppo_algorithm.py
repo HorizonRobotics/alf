@@ -13,6 +13,7 @@
 # limitations under the License.
 """PPO algorithm."""
 
+import functools
 import torch
 
 import alf
@@ -24,9 +25,18 @@ from alf.nest.utils import convert_device
 
 PPOInfo = namedtuple(
     "PPOInfo", [
-        "step_type", "discount", "reward", "action", "rollout_log_prob",
-        "rollout_action_distribution", "returns", "advantages",
-        "action_distribution", "value", "reward_weights"
+        "step_type",
+        "discount",
+        "reward",
+        "action",
+        "rollout_log_prob",
+        "rollout_action_distribution",
+        "returns",
+        "advantages",
+        "action_distribution",
+        "value",
+        "reward_weights",
+        "normalized_advantages",
     ],
     default_value=())
 
@@ -40,6 +50,15 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     It works with ``ppo_loss.PPOLoss``. It should have same behavior as
     `baselines.ppo2`.
     """
+
+    @functools.wraps(ActorCriticAlgorithm.__init__)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Note that onvert_sync_batchnorm does not work with LazyBatchNorm
+        # in general. Fortunately, it works for affine=False and track_running_stats=False
+        # since no parameter needs to be created.
+        self._adv_norm = torch.nn.LazyBatchNorm1d(
+            eps=1e-8, affine=False, track_running_stats=False)
 
     @property
     def on_policy(self):
@@ -82,12 +101,24 @@ class PPOAlgorithm(ActorCriticAlgorithm):
             discounts=discounts,
             td_lambda=self._loss._lambda,
             time_major=False)
-        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
 
+        if self._loss.normalizing_advantages:
+            bt = advantages.shape[0] * advantages.shape[1]
+            normalized_advantages = self._adv_norm(advantages.reshape(bt, -1))
+            normalized_advantages = normalized_advantages.reshape_as(
+                advantages)
+            normalized_advantages = tensor_utils.tensor_extend_zero(
+                normalized_advantages, dim=1)
+        else:
+            normalized_advantages = ()
+
+        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
         returns = value + advantages
         return root_inputs, PPOInfo(
             rollout_action_distribution=rollout_info.action_distribution,
             rollout_log_prob=rollout_info.log_prob,
             returns=returns,
             action=rollout_info.action,
-            advantages=advantages)
+            advantages=advantages,
+            normalized_advantages=normalized_advantages,
+        )

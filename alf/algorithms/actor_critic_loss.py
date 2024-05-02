@@ -28,21 +28,6 @@ ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])
 
 
-def _normalize_advantages(advantages, variance_epsilon=1e-8):
-    # advantages is of shape [T, B] or [T, B, N], where N is reward dim
-    # this function normalizes over all elements in the input advantages
-    shape = advantages.shape
-    # shape: [TB, 1] or [TB, N]
-    advantages = advantages.reshape(np.prod(advantages.shape[:2]), -1)
-
-    adv_mean = advantages.mean(0)
-    adv_var = torch.var(advantages, dim=0, unbiased=False)
-
-    normalized_advantages = (
-        (advantages - adv_mean) / (torch.sqrt(adv_var) + variance_epsilon))
-    return normalized_advantages.reshape(*shape)
-
-
 @alf.configurable
 class ActorCriticLoss(Loss):
     def __init__(self,
@@ -97,6 +82,12 @@ class ActorCriticLoss(Loss):
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
         self._normalize_advantages = normalize_advantages
+        if normalize_advantages:
+            # Note that onvert_sync_batchnorm does not work with LazyBatchNorm
+            # in general. Fortunately, it works for affine=False and track_running_stats=False
+            # since no parameter needs to be created.
+            self._adv_norm = torch.nn.LazyBatchNorm1d(
+                eps=1e-8, affine=False, track_running_stats=False)
         assert advantage_clip is None or advantage_clip > 0, (
             "Clipping value should be positive!")
         self._advantage_clip = advantage_clip
@@ -106,6 +97,10 @@ class ActorCriticLoss(Loss):
     @property
     def gamma(self):
         return self._gamma.clone()
+
+    @property
+    def normalizing_advantages(self):
+        return self._normalize_advantages
 
     def forward(self, info):
         """Cacluate actor critic loss. The first dimension of all the tensors is
@@ -147,7 +142,12 @@ class ActorCriticLoss(Loss):
                                    advantages[..., i], suffix)
 
         if self._normalize_advantages:
-            advantages = _normalize_advantages(advantages)
+            if hasattr(info, "normalized_advantages"):
+                advantages = info.normalized_advantages
+            else:
+                bt = advantages.shape[0] * advantages.shape[1]
+                adv = self._adv_norm(advantages.reshape(bt, -1))
+                advantages = adv.reshape_as(advantages)
 
         if self._advantage_clip:
             advantages = torch.clamp(advantages, -self._advantage_clip,
