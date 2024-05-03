@@ -33,6 +33,7 @@ import torch.distributions as td
 
 import alf
 from alf.utils.math_ops import clipped_exp
+from alf.utils import dist_utils, math_ops
 from .network import Network
 from .encoding_networks import EncodingNetwork
 
@@ -562,3 +563,58 @@ class _RealNVPTransform(td.Transform):
             return self
         builder = self.get_builder()
         return builder(cache_size=cache_size)
+
+
+class LinearTransformNetwork(NormalizingFlowNetwork):
+    """A simple network that computes a linear transform of the inputs. This is
+    useful when we want to apply a linear transformation to the inputs, for example,
+    when we want to scale the inputs by a fixed factor.
+    """
+
+    def __init__(self,
+                 input_tensor_spec: alf.TensorSpec,
+                 conditional_input_tensor_spec: alf.NestedTensorSpec,
+                 input_preprocessors: alf.nest.Nest = None,
+                 preprocessing_combiner: alf.nest.utils.NestCombiner = None,
+                 conv_layer_params: Tuple[Tuple[int]] = None,
+                 fc_layer_params: Tuple[int] = None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
+                 activation: Callable = torch.tanh,
+                 mean_transform=None,
+                 std_transform=nn.functional.softplus,
+                 name: str = "LinearTransformNetwork"):
+        """
+        Args:
+            input_tensor_spec: input tensor spec
+            conditional_input_tensor_spec: a nested tensor spec
+            name: name of the network
+        """
+        super().__init__(
+            input_tensor_spec, conditional_input_tensor_spec, name=name)
+
+        self._std_mean_net = EncodingNetwork(
+            input_tensor_spec=conditional_input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
+            last_layer_size=2 * input_tensor_spec.numel,
+            last_activation=alf.math.identity,
+            activation=activation)
+        self._mean_transform = math_ops.identity
+        if mean_transform is not None:
+            self._mean_transform = mean_transform
+
+        self._std_transform = math_ops.identity
+        if std_transform is not None:
+            self._std_transform = std_transform
+
+    def make_invertible_transform(self, conditional_inputs):
+        std_mean = self._std_mean_net(conditional_inputs)[0]
+        std, mean = std_mean.split(std_mean.shape[-1] // 2, dim=-1)
+        mean = self._mean_transform(mean)
+        std = self._std_transform(std)
+        return dist_utils.AffineTransform(loc=mean, scale=std)
