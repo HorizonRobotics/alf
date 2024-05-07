@@ -1613,6 +1613,9 @@ class Algorithm(AlgorithmInterface):
                     mini_batch_size = np.ceil(
                         batch_size / num_batches_desired).astype(int)
 
+        if self._config.empty_cache:
+            torch.cuda.empty_cache()
+
         indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
