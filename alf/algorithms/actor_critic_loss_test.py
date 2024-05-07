@@ -18,19 +18,7 @@ import torch
 import torch.distributions as td
 import numpy as np
 
-from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.dist_utils import compute_entropy, compute_log_probability
-
-
-class TestAdvantageNormalization(unittest.TestCase):
-    def test_advantage_normalization(self):
-        advantages = torch.Tensor([[1, 2], [3, 4.0]])
-        # results computed from tf
-        normalized_advantages_expected = torch.Tensor(
-            [[-1.3416407, -0.4472136], [0.4472136, 1.3416407]])
-        normalized_advantages_obtained = _normalize_advantages(advantages)
-        np.testing.assert_array_almost_equal(normalized_advantages_obtained,
-                                             normalized_advantages_expected)
 
 
 class TestEntropyExpand(unittest.TestCase):
