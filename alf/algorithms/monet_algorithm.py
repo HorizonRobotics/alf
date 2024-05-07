@@ -51,6 +51,7 @@ class MoNetUNet(alf.networks.Network):
                  filters: Tuple[int],
                  nonskip_fc_layers: Tuple[int],
                  output_channels: int,
+                 instancenorm: bool = True,
                  name: str = "MoNetUNet"):
         """
         Args:
@@ -76,9 +77,10 @@ class MoNetUNet(alf.networks.Network):
                     3,
                     strides=1,
                     padding=1,
-                    use_bias=False,
+                    use_bias=not instancenorm,
                     activation=alf.math.identity),
-                torch.nn.InstanceNorm2d(filters[i], affine=True),
+                *([torch.nn.InstanceNorm2d(filters[i], affine=True)]
+                  if instancenorm else []),
                 torch.nn.ReLU()
             ]
             if i > 0:
@@ -115,9 +117,10 @@ class MoNetUNet(alf.networks.Network):
                     3,
                     strides=1,
                     padding=1,
-                    use_bias=False,
+                    use_bias=not instancenorm,
                     activation=alf.math.identity),
-                torch.nn.InstanceNorm2d(out_channels, affine=True),
+                *([torch.nn.InstanceNorm2d(out_channels, affine=True)]
+                  if instancenorm else []),
                 torch.nn.ReLU()
             ]
             if i < len(filters) - 1:
