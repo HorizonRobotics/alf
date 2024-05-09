@@ -115,7 +115,7 @@ class Image(object):
         """
         if width is not None and height is not None:
             self._img = cv2.resize(self._img, dsize=(width, height))
-            return
+            return self
         if width is not None:
             scale = float(width) / self._img.shape[1]
         elif height is not None:
