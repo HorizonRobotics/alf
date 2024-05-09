@@ -16,6 +16,7 @@ import functools
 import inspect
 import numpy as np
 import random
+import torch
 
 import alf
 from alf.environments import suite_gym
@@ -172,6 +173,10 @@ def create_environment(env_name='CartPole-v0',
         AlfEnvironment:
 
     """
+
+    # Use GPU before loading environments so cluster_train idle will not show
+    # the GPU
+    tmp = torch.zeros((32, ))
 
     if for_evaluation:
         # for creating an evaluation environment, use ``eval_env_load_fn`` if
