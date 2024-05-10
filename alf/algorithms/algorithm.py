@@ -1207,7 +1207,25 @@ class Algorithm(AlgorithmInterface):
             loss_info.loss * weight)
 
         loss_info = loss_info._replace(gns=gns)
-        loss_info = alf.nest.map_structure(torch.mean, loss_info)
+
+        new_fields_values = {}
+
+        def _mean_ignore_inf(path, loss):
+            inf_mask = torch.isinf(loss)
+            if inf_mask.any():
+                # populate the valid_rate field only when value can be inf.
+                new_fields_values[
+                    path + '-valid_rate'] = 1.0 - inf_mask.float().mean()
+            if inf_mask.all():
+                return torch.tensor(np.float32(np.inf), device=loss.device)
+            else:
+                return loss[~inf_mask].mean()
+
+        loss_info = alf.nest.py_map_structure_with_path(
+            _mean_ignore_inf, loss_info)
+
+        for k, v in new_fields_values.items():
+            loss_info = alf.nest.set_field(loss_info, k, v)
 
         return loss_info, all_params
 
