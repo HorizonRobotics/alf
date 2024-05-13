@@ -98,6 +98,7 @@ def _setup_logging(rank: int, log_dir: str):
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
     logging.get_absl_handler().use_absl_log_file(log_dir=log_dir)
+    logging.use_absl_handler()
 
 
 def _setup_device(rank: int = 0):
