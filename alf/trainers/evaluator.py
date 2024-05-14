@@ -105,8 +105,10 @@ class Evaluator(object):
                         step_metrics=step_metric_values,
                         global_counter=int(alf.summary.get_global_counter()),
                         state_dict=algorithm.state_dict())
+                    logging.info("Sending evaluation job...")
                     self._job_queue.put(job)
                     self._done_queue.get()
+                    logging.info("Done sending evaluation job.")
                 else:
                     self._evaluator.eval(algorithm, step_metric_values)
 
