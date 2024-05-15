@@ -77,7 +77,10 @@ def adjust_replay_buffer_length(config: TrainerConfig,
         # The actual replay buffer length should have an extra 1 added
         # to it. This is to prevent the last batch of experiences in
         # each iteration from never getting properly trained.
-        adjusted = config.unroll_length + 1
+        if config.clear_replay_buffer_but_keep_one_step:
+            adjusted = config.unroll_length + 1
+        else:
+            adjusted = config.unroll_length
 
     # The replay buffer length is exteneded by num_earliest_frames_ignored so
     # that after FrameStacker transformation the number of experiences matches
