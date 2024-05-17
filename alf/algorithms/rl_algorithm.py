@@ -455,8 +455,8 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for play or evaluate.
 
         Args:
-            experience: experience of one step rollout in the environment during 
-            play or evaluation, this is in contrast to the experience input to 
+            experience: experience of one step rollout in the environment during
+            play or evaluation, this is in contrast to the experience input to
             ``summarize_rollout`` where a sequence of multiple rollout steps
             are collected.
             custom_summary: when specified it is a function that will be called every
@@ -599,7 +599,9 @@ class RLAlgorithm(Algorithm):
                              transformed_time_step, policy_state,
                              experience_list, original_reward_list):
         self.observe_for_metrics(time_step.cpu())
-        exp = make_experience(time_step.cpu(), policy_step, policy_state)
+        exp = make_experience(time_step.cpu(),
+                              alf.layers.to_float32(policy_step),
+                              alf.layers.to_float32(policy_state))
 
         store_exp_time = 0
         if not self.on_policy:
@@ -760,7 +762,8 @@ class RLAlgorithm(Algorithm):
                      or self.get_step_metrics()[1].result() <
                      self._config.num_env_steps)):
             unrolled = True
-            with torch.set_grad_enabled(config.unroll_with_grad):
+            with (torch.set_grad_enabled(config.unroll_with_grad),
+                  torch.cuda.amp.autocast(self._config.enable_amp)):
                 with record_time("time/unroll"):
                     self.eval()
                     # The period of performing unroll may not be an integer
