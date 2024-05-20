@@ -27,7 +27,8 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.async_unroller import AsyncUnroller
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import (AlgStep, Experience, make_experience,
-                                 TimeStep, BasicRolloutInfo, BasicRLInfo)
+                                 StepType, TimeStep, BasicRolloutInfo,
+                                 BasicRLInfo)
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.distributed import data_distributed_when
@@ -509,7 +510,6 @@ class RLAlgorithm(Algorithm):
         return policy_step
 
     @common.mark_rollout
-    @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def unroll(self, unroll_length: int):
         if self._config.async_unroll:
             return self._async_unroll(unroll_length)
@@ -715,20 +715,35 @@ class RLAlgorithm(Algorithm):
         else:
             return self._train_iter_off_policy()
 
-    def _train_iter_on_policy(self):
-        """User may override this for their own training procedure."""
-        alf.summary.increment_global_counter()
-
+    @data_distributed_when(lambda algorithm: algorithm.on_policy)
+    def _compute_train_info_and_loss_info_on_policy(self, unroll_length):
         with record_time("time/unroll"):
             with torch.cuda.amp.autocast(self._config.enable_amp):
                 experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
+        train_info = experience.rollout_info
+        experience = experience._replace(rollout_info=())
+        loss_info = self.calc_loss(train_info)
+        self.summarize_rollout(experience)
+        return train_info, loss_info, experience
+
+    def _train_iter_on_policy(self):
+        """User may override this for their own training procedure."""
+        alf.summary.increment_global_counter()
+
+        train_info, loss_info, experience = self._compute_train_info_and_loss_info_on_policy(
+            self._config.unroll_length)
+
         with record_time("time/train"):
-            train_info = experience.rollout_info
-            experience = experience._replace(rollout_info=())
-            steps = self.train_from_unroll(experience, train_info)
-            self.summarize_rollout(experience)
+            valid_masks = (experience.step_type != StepType.LAST).to(
+                torch.float32)
+            loss_info, params = self.update_with_gradient(
+                loss_info, valid_masks)
+            self.after_update(experience.time_step, train_info)
+            self.summarize_train(experience, train_info, loss_info, params)
+            shape = alf.nest.get_nest_shape(experience)
+            steps = shape[0] * shape[1]
 
         with record_time("time/after_train_iter"):
             root_inputs = experience.time_step if self._config.use_root_inputs_for_after_train_iter else None

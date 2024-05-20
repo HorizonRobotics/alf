@@ -183,7 +183,8 @@ def training_worker(rank: int,
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
-        _train(root_dir, rank, world_size)
+        with torch.autograd.set_detect_anomaly(True):
+            _train(root_dir, rank, world_size)
     except KeyboardInterrupt:
         pass
     except Exception as e:
