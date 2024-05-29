@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+from typing import Optional
 import io
 import numpy as np
 import matplotlib
@@ -151,7 +152,7 @@ class Image(object):
         return cls(img)
 
     @classmethod
-    def pack_image_nest(cls, imgs):
+    def pack_image_nest(cls, imgs, max_width: Optional[int] = None):
         """Given a nest of images, pack them into a larger image so that it has
         an area as small as possible. This problem is generally known as
         "rectangle packing" and its optimal solution is
@@ -175,7 +176,7 @@ class Image(object):
         # first get all images' sizes (w,h)
         sizes = [(i.shape[1], i.shape[0]) for i in imgs]
         # call rpack for an approximate solution: [(x,y),...] positions
-        positions = rpack.pack(sizes)
+        positions = rpack.pack(sizes, max_width=max_width)
         # compute the height and width of the enclosing rectangle
         H, W = 0, 0
         for size, pos in zip(sizes, positions):
