@@ -3686,6 +3686,14 @@ def make_parallel_spec(specs, n: int):
 
 
 def to_float32(nested):
+    """Change the dtype of all the tensors in ``nested`` to torch.float32.
+
+    Args:
+        nested (nested Tensor): a nest of tensors
+    Returns:
+        nested Tensor: a nest of tensors with dtype torch.float32
+    """
+
     def _to_float32(x):
         if isinstance(x, torch.Tensor):
             if x.dtype.is_floating_point:
