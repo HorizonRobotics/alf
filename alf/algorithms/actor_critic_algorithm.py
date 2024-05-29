@@ -137,7 +137,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         if loss is None:
-            loss = loss_class(debug_summaries=debug_summaries)
+            loss = loss_class(
+                reward_dim=reward_spec.numel, debug_summaries=debug_summaries)
         self._loss = loss
 
         # The following checkpoint loading hook handles the case when value

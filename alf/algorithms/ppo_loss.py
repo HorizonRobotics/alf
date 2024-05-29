@@ -27,10 +27,13 @@ class PPOLoss(ActorCriticLoss):
     """PPO loss."""
 
     def __init__(self,
+                 reward_dim=1,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  normalize_advantages=True,
+                 normalize_scalar_advantages=False,
+                 advantage_norm_momentum=0.9,
                  compute_advantages_internally=False,
                  advantage_clip=None,
                  entropy_regularization=None,
@@ -68,6 +71,11 @@ class PPOLoss(ActorCriticLoss):
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient.
+            normalize_scalar_advantages (bool): If False, the normalization is
+                performed for each reward dimension. If True, the normalization
+                is performed for the weighted sum of advantages using reward_weights.
+            advantage_norm_momentum (float): Momentum for moving average of
+                mean and variance of advantages (same as the momentum for nn.BatchNorm1d).
             compute_advantages_internally (bool): Normally PPOLoss does not
                 compute the adavantage and it expects the info to carry the
                 already-computed advantage. If this flag is set to True, PPOLoss
@@ -90,13 +98,16 @@ class PPOLoss(ActorCriticLoss):
 
         """
 
-        super(PPOLoss, self).__init__(
+        super().__init__(
+            reward_dim=reward_dim,
             gamma=gamma,
             td_error_loss_fn=td_error_loss_fn,
             use_gae=True,
             td_lambda=td_lambda,
             use_td_lambda_return=True,
             normalize_advantages=normalize_advantages,
+            normalize_scalar_advantages=normalize_scalar_advantages,
+            advantage_norm_momentum=advantage_norm_momentum,
             advantage_clip=advantage_clip,
             entropy_regularization=entropy_regularization,
             td_loss_weight=td_loss_weight,
