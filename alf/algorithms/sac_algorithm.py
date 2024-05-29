@@ -814,18 +814,37 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 dqda = torch.clamp(dqda, -self._dqda_clipping,
                                    self._dqda_clipping)
                 
+            # if self._action_scale is not None:
+            #     means, magnitudes = spec_utils.spec_means_and_magnitudes(action_spec)
+            #     # apply the action bounding loss
+            #     action_scale = torch.tensor(self._action_scale().astype(np.float32))
+            #     action_bound_max = means + action_scale * magnitudes
+            #     action_bound_min = means - action_scale * magnitudes
+            #     positive_mask = dqda > 0
+            #     action_range = action_bound_max - action_bound_min
+            #     pos_grad_mask = (action_bound_max - action) / action_range
+            #     neg_grad_mask = (action - action_bound_min) / action_range
+            #     grad_mask = torch.where(positive_mask, pos_grad_mask, neg_grad_mask)
+            #     dqda = dqda * grad_mask
+
             if self._action_scale is not None:
                 means, magnitudes = spec_utils.spec_means_and_magnitudes(action_spec)
                 # apply the action bounding loss
                 action_scale = torch.tensor(self._action_scale().astype(np.float32))
                 action_bound_max = means + action_scale * magnitudes
                 action_bound_min = means - action_scale * magnitudes
-                positive_mask = dqda > 0
+                
+                # out of pos bound
+                M_pos = action > action_bound_max
+                M_neg = action < action_bound_min
+                M_out = M_pos | M_neg
                 action_range = action_bound_max - action_bound_min
-                pos_grad_mask = (action_bound_max - action) / action_range
-                neg_grad_mask = (action - action_bound_min) / action_range
-                grad_mask = torch.where(positive_mask, pos_grad_mask, neg_grad_mask)
-                dqda = dqda * grad_mask
+                pos_grad = (action_bound_max - action) / action_range
+                neg_grad = (action_bound_min - action) / action_range
+                dqda = dqda * ~M_out + M_pos * pos_grad + M_neg * neg_grad
+                
+                
+                
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
             return loss.sum(list(range(1, loss.ndim)))
