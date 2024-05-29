@@ -174,8 +174,8 @@ def create_environment(env_name='CartPole-v0',
 
     """
 
-    # Use GPU before loading environments so cluster_train idle will not show
-    # the GPU
+    # Some environment may take long time to load. So we use GPU before loading
+    # environments so that other people knows that this GPU is being used.
     tmp = torch.zeros((32, ))
 
     if for_evaluation:
