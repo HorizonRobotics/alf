@@ -1134,7 +1134,7 @@ def get_mode(dist):
         component_mode = get_mode(dist.component_distribution)
         if len(batch_shape) == 1:
             mode = component_mode[torch.arange(batch_shape[0]), ind]
-        elif ind.ndim == 2:
+        elif len(batch_shape) == 2:
             d0, d1 = batch_shape
             mode = component_mode[torch.arange(d0).unsqueeze(-1),
                                   torch.arange(d1), ind]

@@ -348,6 +348,8 @@ def summarize_distribution(name, distributions):
                 return
 
             if ind is not None:
+                # This is for handling mixture distribution. The component with
+                # the highest probability is selected for summary.
                 if len(ind.shape) == 1:
                     i0 = torch.arange(ind.shape[0])
                     loc = loc[i0, ind]
