@@ -104,8 +104,6 @@ class ActorCriticLoss(Loss):
         self._use_gae = use_gae
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
-        assert not use_td_lambda_return or use_gae, (
-            "use_td_lambda_return requires use_gae=True!")
         if normalize_scalar_advantages:
             self._adv_norm = torch.nn.BatchNorm1d(
                 num_features=1,
