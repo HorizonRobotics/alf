@@ -61,6 +61,7 @@ class PPOLoss(ActorCriticLoss):
         much.
 
         Args:
+            reward_dim (int): dimension of the reward.
             gamma (float|list[float]): A discount factor for future rewards. For
                 multi-dim reward, this can also be a list of discounts, each
                 discount applies to a reward dim.
@@ -69,11 +70,12 @@ class PPOLoss(ActorCriticLoss):
                 Q values and returns the loss for each element of the batch.
             td_lambda (float): Lambda parameter for TD-lambda computation.
             normalize_advantages (bool): If True, normalize advantage to zero
-                mean and unit variance within batch for caculating policy
+                mean and unit variance within batch for calculating policy
                 gradient.
             normalize_scalar_advantages (bool): If False, the normalization is
                 performed for each reward dimension. If True, the normalization
                 is performed for the weighted sum of advantages using reward_weights.
+                Note that this will take precedence over `normalize_advantages`.
             advantage_norm_momentum (float): Momentum for moving average of
                 mean and variance of advantages (same as the momentum for nn.BatchNorm1d).
             compute_advantages_internally (bool): Normally PPOLoss does not

@@ -69,6 +69,7 @@ class ActorCriticLoss(Loss):
             - entropy_regularization * entropy)
 
         Args:
+            reward_dim (int): dimension of the reward.
             gamma (float|list[float]): A discount factor for future rewards. For
                 multi-dim reward, this can also be a list of discounts, each
                 discount applies to a reward dim.
@@ -83,11 +84,12 @@ class ActorCriticLoss(Loss):
                 ``(td_lambda_return = gae_advantage + value_predictions)``.
             td_lambda (float): Lambda parameter for TD-lambda computation.
             normalize_advantages (bool): If True, normalize advantage to zero
-                mean and unit variance within batch for caculating policy
+                mean and unit variance within batch for calculating policy
                 gradient. This is commonly used for PPO.
             normalize_scalar_advantages (bool): If False, the normalization is
                 performed for each reward dimension. If True, the normalization
                 is performed for the weighted sum of advantages using reward_weights.
+                Note that this will take precedence over `normalize_advantages`.
             advantage_norm_momentum (float): Momentum for moving average of
                 mean and variance of advantages (same as the momentum for nn.BatchNorm1d).
             advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
