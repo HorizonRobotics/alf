@@ -528,9 +528,10 @@ def _make_wrapper(fn, configs, signature, has_self, config_only_args):
             signature does not contains parameter for self. This should be True
             if fn is __init__() function of a class.
         config_only_args (list[str]): list of args that should be guarded. In other
-            words, their values can only be set / changed globally via alf.config().
-            This protects against the case where local changes via partial() can
-            cause unintended side effects.
+            words, their values can only be set / changed globally via ``alf.config()``.
+            This protects against local untracked changes as a result of 1) using
+            ``partial()`` or 2) setting an argument when calling the function, which
+            can cause unintended side effects.
     Returns:
         The wrapped function
     """
@@ -563,8 +564,7 @@ def _make_wrapper(fn, configs, signature, has_self, config_only_args):
                 config.set_used()
 
         for config_only_arg in config_only_args:
-            if config_only_arg in set_positional_args or config_only_arg in kwargs.keys(
-            ):
+            if config_only_arg in set_positional_args or config_only_arg in kwargs:
                 raise ValueError(
                     f"The arg '{config_only_arg}' of {fn.__qualname__} is guarded but has been modified. "
                     f"Most likely partial() was used to change this value, which is not allowed."
@@ -590,9 +590,10 @@ def _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args):
             configurable. All other kwargs will be configurable. Only one of
             ``whitelist` or ``blacklist`` should be specified.
         config_only_args (list[str]): list of args that should be guarded. In other
-            words, their values can only be set / changed globally via alf.config().
-            This protects against the case where local changes via partial() can
-            cause unintended side effects.
+            words, their values can only be set / changed globally via ``alf.config()``.
+            This protects against local untracked changes as a result of 1) using
+            ``partial()`` or 2) setting an argument when calling the function, which
+            can cause unintended side effects.
     Returns:
         The decorated function
     """
@@ -816,12 +817,14 @@ def configurable(fn_or_name=None,
             ``blacklist`` should be specified.
         blacklist (list[str]): A blacklisted set of kwargs that should not be
             configurable. All other kwargs will be configurable. Only one of
-            ``whitelist`` or ``blacklist`` should be specified.
+            ``whitelist`` or ``blacklist`` should be specified. An entry that is in
+            ``blacklist`` cannot be in ``config_only_args``.
         config_only_args (list[str]): list of args that should be guarded. In other
-            words, their values can only be set / changed globally via alf.config().
-            This protects against the case where local changes via partial() can
-            cause unintended side effects. An entry that is in config_only_args cannot
-            be in blacklist.
+            words, their values can only be set / changed globally via ``alf.config()``.
+            This protects against local untracked changes as a result of 1) using
+            ``partial()`` or 2) setting an argument when calling the function, which
+            can cause unintended side effects. An entry that is in ``config_only_args``
+            cannot be in ``blacklist``.
     Returns:
         decorated function if fn_or_name is Callable.
         a decorator if fn is not Callable.
