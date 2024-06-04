@@ -516,10 +516,10 @@ def wrap_optimizer(cls):
             for p in param_group['params']:
                 p_state = self.state[p]
                 if 'step' not in p_state:
-                    # optimizers in higher version torch requires 1) the presence of 'step'
-                    # in state, and 2) it appears as the first key of the state dictionary.
-                    # Therefore we explicitly create it if it does not exist and make it
-                    # the key that comes first
+                    # Some of the optimizers such as Adam/AdamW/ASGD etc in higher version
+                    # torch require 1) the presence of 'step' in state, and 2) it appears
+                    # as the first key of the state dictionary. Therefore we explicitly
+                    # create it if it does not exist and make it the key that comes first
                     p_state.update({'step': 0})
                     p_state = {
                         **_move_key_as_the_first(p_state, 'step'),
