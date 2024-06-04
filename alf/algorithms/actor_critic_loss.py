@@ -32,7 +32,7 @@ def normalize(batch_norm, x):
     batch_norm.train()
     momentum = batch_norm.momentum
     if batch_norm.num_batches_tracked * momentum < 1.0:
-        # First the first few batches, we do cumulative moving average
+        # For the first few batches, we do cumulative moving average
         batch_norm.momentum = None
     batch_norm(x)
     batch_norm.momentum = momentum
