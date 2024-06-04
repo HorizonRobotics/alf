@@ -269,7 +269,20 @@ def get_env():
         #
         # The random.seed(random_seed) is temporary and will be overridden by
         # set_random_seed() below.
-        random.seed(random_seed)
+
+        # ``random_seed`` here is the *meta* random seed. We will use it to generate
+        # an actual random seed for each process.
+        if random_seed is None:
+            # If the user does not specify the meta random seed, we will generate a
+            # "random" meta random seed here.
+            random.seed(None)
+            random_seed = random.randint(0, 2**32)
+
+        # Adjust the random seed based on the DDP rank. Note that for single process,
+        # the ddp rank is -1. So single process or rank=0 won't change the random seed.
+        # This means that if a user provides a random seed shown in the tensor
+        # board, it will be used as is for single process and rank=0. This ensures
+        # that the training can be reproduced.
         for _ in range(PerProcessContext().ddp_rank):
             random_seed = random.randint(0, 2**32)
         config1("TrainerConfig.random_seed", random_seed, raise_if_used=False)
