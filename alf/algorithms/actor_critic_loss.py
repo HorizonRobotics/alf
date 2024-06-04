@@ -81,8 +81,6 @@ class ActorCriticLoss(Loss):
         self._use_gae = use_gae
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
-        assert not use_td_lambda_return or use_gae, (
-            "use_td_lambda_return requires use_gae=True!")
         self._normalize_advantages = normalize_advantages
         if normalize_advantages:
             # Note that onvert_sync_batchnorm does not work with LazyBatchNorm
