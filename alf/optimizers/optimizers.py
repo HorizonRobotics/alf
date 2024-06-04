@@ -226,7 +226,7 @@ def wrap_optimizer(cls):
 
     @common.add_method(NewCls)
     def _adjust_capacity(self, capacity_ratio: float, old_param_values: Dict):
-        """adjust the capacity of by apply reassigning old parameter values to the
+        """adjust the capacity by apply reassigning old parameter values to the
         parameter according to the capacity mask.
 
         Args:
@@ -236,7 +236,7 @@ def wrap_optimizer(cls):
                 value (e.g. from the previous iteration)  as the dictionary value.
                 These values will be used to reset the corresponding parameter values
                 after each gradient step if the corresonding capacity mask is True,
-                effectively excluding it from learning. 
+                effectively excluding it from learning.
         """
         if capacity_ratio < 1:
             common.warning_once(

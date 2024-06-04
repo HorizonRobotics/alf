@@ -1319,8 +1319,8 @@ def entropy_with_fallback(distributions, return_sum=True):
             entropy, entropy_for_gradient = _compute_entropy(dist.base_dist)
             entropy = entropy + dist._log_abs_scale
             entropy_for_gradient = entropy_for_gradient + dist._log_abs_scale
-        elif isinstance(dist,
-                        (td.TransformedDistribution, TruncatedDistribution)):
+        elif isinstance(dist, (td.TransformedDistribution,
+                               TruncatedDistribution, td.MixtureSameFamily)):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)
