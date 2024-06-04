@@ -176,6 +176,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  action_scale: Union[float, Scheduler] = None,
+                 soft_action_bound_weight: Union[float, Scheduler] = None,
                  checkpoint=None,
                  debug_summaries=False,
                  reproduce_locomotion=False,
@@ -287,6 +288,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         self._action_scale = as_scheduler(action_scale) if action_scale is not None else action_scale 
+        self._soft_action_bound_weight = as_scheduler(soft_action_bound_weight) if soft_action_bound_weight is not None else soft_action_bound_weight 
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
@@ -831,6 +833,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 means, magnitudes = spec_utils.spec_means_and_magnitudes(action_spec)
                 # apply the action bounding loss
                 action_scale = torch.tensor(self._action_scale().astype(np.float32))
+                soft_action_bound_weight = np.float32(self._soft_action_bound_weight())
                 action_bound_max = means + action_scale * magnitudes
                 action_bound_min = means - action_scale * magnitudes
                 
@@ -841,7 +844,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_range = action_bound_max - action_bound_min
                 pos_grad = (action_bound_max - action) / action_range
                 neg_grad = (action_bound_min - action) / action_range
-                dqda = dqda * ~M_out + M_pos * pos_grad + M_neg * neg_grad
+                # weight the gradient outside of action boundary
+                dqda = dqda * ~M_out + (M_pos * pos_grad + M_neg * neg_grad) * soft_action_bound_weight
                 
                 
                 
