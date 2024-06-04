@@ -239,6 +239,12 @@ def wrap_optimizer(cls):
                 effectively excluding it from learning. 
         """
         if capacity_ratio < 1:
+            common.warning_once(
+                'Capacity scheduling is used. If using DDP with world size larger than '
+                'one in training, suggest to explicitly set random_seed for training '
+                'in order to make sure the capacity scheduling work as expected \n'
+            )
+
             # To achieve this, we assign a random number for each element of
             # the parameter. An element is turned on if its assigned random number
             # is less than capacity_ratio. To save memory, we don't store the
@@ -500,6 +506,25 @@ def wrap_optimizer(cls):
                     if 'rng_state' in state:
                         state['rng_state'] = state['rng_state'].to(
                             self._rng_state_device).byte()
+
+    @common.add_method(NewCls)
+    def __setstate__(self, state):
+        def _move_key_as_the_first(d, key):
+            return {key: d.pop(key)}
+
+        for param_group in self.param_groups:
+            for p in param_group['params']:
+                state = self.state[p]
+                if 'step' not in state:
+                    # optimizers in higher version torch requires 1) the presence of 'step'
+                    # in state, and 2) it appears as the first key of the state dictionary.
+                    # Therefore we explicitly create it if it does not exist and make it
+                    # the key that comes first
+                    state.update({'step': 0})
+                    state = {**_move_key_as_the_first(state, 'step'), **state}
+                    self.state[p] = state
+
+        super(NewCls, self).__setstate__(state)
 
     return NewCls
 
