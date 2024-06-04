@@ -316,8 +316,10 @@ class Trainer(object):
                 "Use `kill -%s %s` to request checkpoint during training." %
                 (int(signal.SIGUSR2), self._pid))
 
-        self._debug_requested = False
-        if threading.current_thread() == threading.main_thread():
+        if (threading.current_thread() == threading.main_thread()
+                and PerProcessContext().ddp_rank <= 0):
+            # Debugging in subprocesses is not supported because they don't have
+            # stdin.
             # kill -10 PID
             signal.signal(signal.SIGUSR1, self._request_debug)
             logging.info("Use `kill -%s %s` to request debugging." % (int(
@@ -470,7 +472,7 @@ class Trainer(object):
         self._checkpoint_requested = True
 
     def _request_debug(self, signum, frame):
-        self._debug_requested = True
+        breakpoint()
 
     def _save_checkpoint(self):
         # Saving checkpoint is only enabled when running single process training
@@ -700,11 +702,6 @@ class RLTrainer(Trainer):
                 self._save_checkpoint()
                 self._checkpoint_requested = False
 
-            if self._debug_requested:
-                self._debug_requested = False
-                import pdb
-                pdb.set_trace()
-
     def _need_to_evaluate(self, iter_num):
         if not self._evaluate:
             return False
@@ -881,11 +878,6 @@ class SLTrainer(Trainer):
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
                 self._checkpoint_requested = False
-
-            if self._debug_requested:
-                self._debug_requested = False
-                import pdb
-                pdb.set_trace()
 
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(

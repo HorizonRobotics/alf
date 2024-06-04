@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from functools import partial
 import os
 import pprint
 import tempfile
@@ -172,6 +173,61 @@ class ConfigTest(alf.test.TestCase):
             os.path.exists(os.path.join(temp_dir, "configs", "base_conf.py"))
             os.path.exists(
                 os.path.join(temp_dir, "configs", "base", "base_conf.py"))
+
+    def test_config_only_args(self):
+        @alf.configurable(config_only_args=['y'])
+        def func_test(y=0, z=0):
+            pass
+
+        @alf.configurable(config_only_args=['y'])
+        class TestClass:
+            def __init__(self, y=0, z=0):
+                pass
+
+        @alf.configurable(config_only_args=['y'], whitelist=['y'])
+        class TestClassWhiteList:
+            def __init__(self, y=0, z=0):
+                pass
+
+        test_callables = [func_test, TestClass, TestClassWhiteList]
+
+        for test_callable in test_callables:
+            test_callable()
+            test_callable(z=1)
+            with self.assertRaises(ValueError) as context:
+                test_callable(y=1)
+            test_callable_partial1 = partial(test_callable, z=1)
+            test_callable_partial1()
+            test_callable_partial2 = partial(test_callable, y=1)
+            with self.assertRaises(ValueError) as context:
+                test_callable_partial2()
+
+        with self.assertRaises(ValueError) as context:
+
+            @alf.configurable(config_only_args=['y'], blacklist=['y'])
+            class TestClassBlackList:
+                def __init__(self, y=0, z=0):
+                    pass
+
+        @alf.configurable(config_only_args=['x'])
+        class TestPositionalArgs:
+            def __init__(self, x, y, z=0):
+                pass
+
+        with self.assertRaises(ValueError) as context:
+            TestPositionalArgs(0, 0)
+        test_partial = partial(TestPositionalArgs, x=0)
+        with self.assertRaises(ValueError) as context:
+            test_partial(y=0)
+        test_partial = partial(TestPositionalArgs, y=0)
+        with self.assertRaises(ValueError) as context:
+            test_partial(0)
+        with self.assertRaises(ValueError) as context:
+            test_partial(x=0)
+        alf.config("TestPositionalArgs", x=0)
+        TestPositionalArgs(y=0)
+        test_partial = partial(TestPositionalArgs, y=0)
+        test_partial()
 
 
 if __name__ == '__main__':

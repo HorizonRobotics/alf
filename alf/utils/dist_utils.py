@@ -1128,10 +1128,19 @@ def get_mode(dist):
         # approach to compute the mode, by using the mode of the component
         # distribution that has the highest component probability.
         # [B]
+        batch_shape = dist.batch_shape
         ind = get_mode(dist.mixture_distribution)
         # [B, num_component, d]
         component_mode = get_mode(dist.component_distribution)
-        mode = component_mode[torch.arange(component_mode.shape[0]), ind]
+        if len(batch_shape) == 1:
+            mode = component_mode[torch.arange(batch_shape[0]), ind]
+        elif len(batch_shape) == 2:
+            d0, d1 = batch_shape
+            mode = component_mode[torch.arange(d0).unsqueeze(-1),
+                                  torch.arange(d1), ind]
+        else:
+            raise NotImplementedError(
+                "Batch shape %s is not supported" % batch_shape)
     elif isinstance(dist, StableCauchy):
         mode = dist.loc
     elif isinstance(dist, td.Independent):

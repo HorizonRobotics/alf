@@ -316,7 +316,7 @@ class FrameResize(BaseObservationWrapper):
              height (int): resize height
              fields (list[str]):  fields to be resized, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is resized
-             interpolation (int): cv2 interploation type
+             interpolation (int): cv2 interpolation type
         """
         self._width = width
         self._height = height

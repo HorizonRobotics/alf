@@ -175,6 +175,7 @@ class NormalProjectionNetwork(Network):
                  std_transform=nn.functional.softplus,
                  scale_distribution=False,
                  dist_squashing_transform=dist_utils.StableTanh(),
+                 disable_amp: bool = False,
                  name="NormalProjectionNetwork"):
         """Creates an instance of NormalProjectionNetwork.
 
@@ -212,6 +213,7 @@ class NormalProjectionNetwork(Network):
                 which merely squashes the mean to fit within the spec.
             dist_squashing_transform (td.Transform):  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
+            disable_amp (bool): If True, disable automatic mixed precision.
             name (str): name of this network.
         """
         super(NormalProjectionNetwork, self).__init__(
@@ -274,6 +276,7 @@ class NormalProjectionNetwork(Network):
                 requires_grad=True)
             self._std_projection_layer = lambda x: tensor_extend_new_dim(
                 self._std, 0, x.shape[0])
+        self._disable_amp = disable_amp
 
     def _normal_dist(self, means, stds):
         normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
@@ -295,9 +298,14 @@ class NormalProjectionNetwork(Network):
             return normal_dist
 
     def forward(self, inputs, state=()):
-        means = self._mean_transform(self._means_projection_layer(inputs))
-        stds = self._std_transform(self._std_projection_layer(inputs))
-        return self._normal_dist(means, stds), state
+        amp_enabled = torch.is_autocast_enabled()
+        if self._disable_amp and amp_enabled:
+            inputs = alf.layers.to_float32(inputs)
+            amp_enabled = False
+        with torch.cuda.amp.autocast(amp_enabled):
+            means = self._mean_transform(self._means_projection_layer(inputs))
+            stds = self._std_transform(self._std_projection_layer(inputs))
+            return self._normal_dist(means, stds), state
 
     def make_parallel(self, n):
         parallel_proj_net_args = dict(**self.saved_args)

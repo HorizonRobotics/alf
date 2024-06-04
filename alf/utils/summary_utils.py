@@ -298,6 +298,8 @@ def summarize_distribution(name, distributions):
     * Normal, StableCauchy, Beta: mean and std of each dimension will be summarized
     * Above distribution wrapped by Independent and TransformedDistribution:
       the base distribution is summarized
+    * MixtureSameFamily: the mixture weights and the most likely component distribution
+        are summarized
     * Tensor: each dimenstion dist[..., a] will be summarized
 
     Note that unsupported distributions will be ignored (no error reported).
@@ -316,6 +318,24 @@ def summarize_distribution(name, distributions):
                 add_mean_hist_summary("%s_loc/%s/%s" % (name, path, a),
                                       dist[..., a])
         else:
+            ind = None
+            if isinstance(dist, td.MixtureSameFamily):
+                probs = dist.mixture_distribution.probs
+                n = probs.shape[-1]
+                if n <= 10:  # 10 is arbitrarily chosen to avoid too many summaries
+                    for i in range(n):
+                        add_mean_hist_summary(
+                            "%s_probs/%s/%s" % (name, path, i), probs[..., i])
+                else:
+                    entropy = -torch.xlogy(probs, probs).sum(-1)
+                    add_mean_hist_summary("%s_cond_entropy/%s" % (name, path),
+                                          entropy)
+                    probs = probs.reshape(-1, probs.shape[-1]).mean(0)
+                    entropy = -torch.xlogy(probs, probs).sum()
+                    alf.summary.scalar("%s_entropy/%s" % (name, path), entropy)
+
+                ind = dist_utils.get_mode(dist.mixture_distribution)
+                dist = dist.component_distribution
             dist = dist_utils.get_base_dist(dist)
             if isinstance(dist, (td.Normal, dist_utils.StableCauchy,
                                  dist_utils.TruncatedDistribution)):
@@ -326,6 +346,21 @@ def summarize_distribution(name, distributions):
                 log_scale = 0.5 * dist.variance.log()
             else:
                 return
+
+            if ind is not None:
+                # This is for handling mixture distribution. The component with
+                # the highest probability is selected for summary.
+                if len(ind.shape) == 1:
+                    i0 = torch.arange(ind.shape[0])
+                    loc = loc[i0, ind]
+                    log_scale = log_scale[i0, ind]
+                elif len(ind.shape) == 2:
+                    i0 = torch.arange(ind.shape[0]).unsqueeze(-1)
+                    i1 = torch.arange(ind.shape[1])
+                    loc = loc[i0, i1, ind]
+                    log_scale = log_scale[i0, i1, ind]
+                else:
+                    return
 
             action_dim = loc.shape[-1]
             for a in range(action_dim):

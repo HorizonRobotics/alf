@@ -87,6 +87,7 @@ class TrainerConfig(object):
                  empty_cache: bool = False,
                  normalize_importance_weights_by_max: bool = False,
                  clear_replay_buffer=True,
+                 clear_replay_buffer_but_keep_one_step=True,
                  visualize_alf_tree=False):
         """
         Args:
@@ -273,6 +274,11 @@ class TrainerConfig(object):
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean. Only used by
                 ``OffPolicyAlgorithm``.
+            clear_replay_buffer_but_keep_one_step (bool): If True, for `clear_replay_buffer=True`,
+                keep the last step of each sequence in the replay buffer. This
+                is to prevent the last batch of experiences in each iteration
+                from never getting properly trained (e.g. trained by the bootstrap
+                value from the next step). Only used by ``OffPolicyAlgorithm``.
             replay_buffer_length (int): the maximum number of steps the replay
                 buffer store for each environment. Only used by
                 ``OffPolicyAlgorithm``.
@@ -384,6 +390,7 @@ class TrainerConfig(object):
         self.mini_batch_size = mini_batch_size
         self.whole_replay_buffer_training = whole_replay_buffer_training
         self.clear_replay_buffer = clear_replay_buffer
+        self.clear_replay_buffer_but_keep_one_step = clear_replay_buffer_but_keep_one_step
         self.replay_buffer_length = replay_buffer_length
         self.priority_replay = priority_replay
         self.priority_replay_alpha = as_scheduler(priority_replay_alpha)

@@ -18,6 +18,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
+from typing import Optional
+from absl import logging
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
 # The seaborn styles shipped by Matplotlib are deprecated since 3.6,
 # as they no longer correspond to the styles shipped by seaborn.
@@ -99,7 +101,7 @@ class Image(object):
         """Return the image numpy array which is always RGB."""
         return self._img
 
-    def resize(self, height=None, width=None, interploation=cv2.INTER_NEAREST):
+    def resize(self, height=None, width=None, interpolation=cv2.INTER_NEAREST):
         """Resize the image in-place given the desired width and/or height.
 
         Args:
@@ -127,7 +129,7 @@ class Image(object):
             dsize=(0, 0),
             fx=scale,
             fy=scale,
-            interpolation=interploation)
+            interpolation=interpolation)
         return self
 
     @classmethod
@@ -151,7 +153,10 @@ class Image(object):
         return cls(img)
 
     @classmethod
-    def pack_image_nest(cls, imgs):
+    def pack_image_nest(cls,
+                        imgs,
+                        max_width: Optional[int] = None,
+                        max_height: Optional[int] = None):
         """Given a nest of images, pack them into a larger image so that it has
         an area as small as possible. This problem is generally known as
         "rectangle packing" and its optimal solution is
@@ -160,8 +165,14 @@ class Image(object):
         Here we just rely on a third-party lib `rpack <https://pypi.org/project/rectangle-packer/>`_
         that is used for building CSS sprites, for an approximate solution.
 
+        Optional arguments for width and height constraints are allowed. Given the constraints,
+        if a solution cannot be found, then the packing will be recomputed with all constraints
+        dropped.
+
         Args:
             imgs (nested Image): a nest of ``Image`` instances
+            max_width (int): the maximum width of the packed image. If None, there is no width limit.
+            max_height (int): the maximum height of the packed image. If None, there is no height limit.
 
         Returns:
             Image: the big mosaic image
@@ -175,7 +186,16 @@ class Image(object):
         # first get all images' sizes (w,h)
         sizes = [(i.shape[1], i.shape[0]) for i in imgs]
         # call rpack for an approximate solution: [(x,y),...] positions
-        positions = rpack.pack(sizes)
+        try:
+            positions = rpack.pack(
+                sizes, max_width=max_width, max_height=max_height)
+        except rpack.PackingImpossibleError:
+            # If a solution cannot be found with the given constraints, rerun with constraints dropped.
+            positions = rpack.pack(sizes)
+            logging.warning(
+                f"pack_image_nest couldn't find a solution for a constraint size of (w:{max_width}, h:{max_height}). "
+                f"Solution returned with all constraints dropped.")
+
         # compute the height and width of the enclosing rectangle
         H, W = 0, 0
         for size, pos in zip(sizes, positions):

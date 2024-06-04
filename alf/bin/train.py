@@ -146,6 +146,13 @@ def _train(root_dir, rank=0, world_size=1):
     trainer.train()
 
 
+def _training_worker_helper(rank: int, *args, **kwargs):
+    # Helper to start the training worker with the correct rank
+    # so that rank 0 is from the main process and the rest are
+    # from the spawned processes.
+    training_worker(rank + 1, *args, **kwargs)
+
+
 def training_worker(rank: int,
                     world_size: int,
                     conf_file: str,
@@ -169,9 +176,10 @@ def training_worker(rank: int,
             # Specialization for distributed mode
             dist.init_process_group('nccl', rank=rank, world_size=world_size)
             # Recover the flags when spawned as a sub process
-            _define_flags()
-            FLAGS(sys.argv, known_only=True)
-            FLAGS.mark_as_parsed()
+            if rank > 0:
+                _define_flags()
+                FLAGS(sys.argv, known_only=True)
+                FLAGS.mark_as_parsed()
             # Set the rank and total number of processes for distributed training.
             PerProcessContext().set_distributed(
                 rank=rank, num_processes=world_size)
@@ -235,12 +243,19 @@ def main(_):
                 # The other process will communicate with the authoritative
                 # process via network protocol on localhost:port.
                 os.environ['MASTER_PORT'] = str(port)
-                processes = mp.spawn(
-                    training_worker,
+                # We spawn the processes for rank-1 and above and use the main
+                # process for rank-0 so that we can request debug session
+                # for the main process. We need to do this because the debug
+                # session cannot be started in a subprocess.
+                context = mp.spawn(
+                    _training_worker_helper,
                     args=(world_size, conf_file, root_dir, paras_queue),
-                    join=True,
-                    nprocs=world_size,
+                    join=False,
+                    nprocs=world_size - 1,
                     start_method='spawn')
+                training_worker(0, world_size, conf_file, root_dir,
+                                paras_queue)
+                context.join()
         except KeyboardInterrupt:
             pass
         except Exception as e:
