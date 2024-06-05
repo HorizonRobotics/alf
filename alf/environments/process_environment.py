@@ -300,21 +300,12 @@ class ProcessEnvironment(object):
         ddp_num_procs = PerProcessContext().num_processes
         ddp_rank = PerProcessContext().ddp_rank
 
-        pre_configs = alf.get_handled_pre_configs()
-        if self._start_method == 'spawn':
-            # If we spawn an env, TrainerConfig.random_seed of the main processs
-            # won't be inherited. In case we need this info later in the env, we
-            # need to pass it explicitly, so that later we can do
-            # ``alf.get_config_value("TrainerConfig.random_seed")``.
-            pre_configs.append(
-                ('TrainerConfig.random_seed',
-                 alf.get_config_value('TrainerConfig.random_seed')))
         self._process = mp_ctx.Process(
             target=_worker,
-            args=(conn, self._env_constructor, self._start_method, pre_configs,
-                  self._env_id, self._flatten, self._fast, self._num_envs,
-                  self._torch_num_threads, ddp_num_procs, ddp_rank,
-                  self._name),
+            args=(conn, self._env_constructor, self._start_method,
+                  alf.get_handled_pre_configs(), self._env_id, self._flatten,
+                  self._fast, self._num_envs, self._torch_num_threads,
+                  ddp_num_procs, ddp_rank, self._name),
             name=f"ProcessEnvironment-{self._env_id}")
         atexit.register(self.close)
         self._process.start()
