@@ -509,9 +509,6 @@ def wrap_optimizer(cls):
 
     @common.add_method(NewCls)
     def __setstate__(self, state):
-        def _move_key_as_the_first(d, key):
-            return {key: d.pop(key)}
-
         for param_group in self.param_groups:
             for p in param_group['params']:
                 p_state = self.state[p]
@@ -520,12 +517,7 @@ def wrap_optimizer(cls):
                     # torch require 1) the presence of 'step' in state, and 2) it appears
                     # as the first key of the state dictionary. Therefore we explicitly
                     # create it if it does not exist and make it the key that comes first
-                    p_state.update({'step': 0})
-                    p_state = {
-                        **_move_key_as_the_first(p_state, 'step'),
-                        **p_state
-                    }
-                    self.state[p] = p_state
+                    self.state[p] = {'step': 0, **p_state}
 
         super(NewCls, self).__setstate__(state)
 
