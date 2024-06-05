@@ -270,8 +270,12 @@ def get_env():
         # The random.seed(random_seed) is temporary and will be overridden by
         # set_random_seed() below.
         random.seed(random_seed)
-        for _ in range(PerProcessContext().ddp_rank):
-            random_seed = random.randint(0, 2**32)
+
+        if random_seed is not None:
+            # If random seed is None, we will have None for other ranks, too.
+            # A 'None' random seed won't set a deterministic torch behavior.
+            for _ in range(PerProcessContext().ddp_rank):
+                random_seed = random.randint(0, 2**32)
         config1("TrainerConfig.random_seed", random_seed, raise_if_used=False)
 
         # We have to call set_random_seed() here because we need the actual

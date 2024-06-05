@@ -111,7 +111,15 @@ class TrainerConfig(object):
                 normalized whereas hindsight data directly pulled from the replay buffer
                 will not be normalized.  Data will be in mismatch, causing training to
                 suffer and potentially fail.
-            random_seed (None|int): random seed, a random seed is used if None
+            random_seed (None|int): random seed, a random seed is used if None.
+                For a None random seed, all DDP ranks (if multi-gpu training used)
+                will have a None random seed set to their ``TrainerConfig.random_seed``.
+                This means that the actual random seed used by each rank is purely
+                random. A None random seed won't set a deterministic torch behavior.
+                If a specific random seed is set, DDP rank>0 (if multi-gpu training
+                used) will have a random seed set to a value that is deterministically
+                "randomized" from this random seed. In this case, all ranks will
+                have a deterministic torch behavior.
             num_iterations (int): For RL trainer, indicates number of update
                 iterations (ignored if 0). Note that for off-policy algorithms, if
                 ``initial_collect_steps>0``, then the first
