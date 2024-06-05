@@ -119,7 +119,10 @@ class TrainerConfig(object):
                 If a specific random seed is set, DDP rank>0 (if multi-gpu training
                 used) will have a random seed set to a value that is deterministically
                 "randomized" from this random seed. In this case, all ranks will
-                have a deterministic torch behavior.
+                have a deterministic torch behavior. NOTE: By the current design,
+                you won't be able to reproduce a training job if its random seed
+                was set as None. For reproducible training jobs, always set the
+                random seed in the first place.
             num_iterations (int): For RL trainer, indicates number of update
                 iterations (ignored if 0). Note that for off-policy algorithms, if
                 ``initial_collect_steps>0``, then the first
