@@ -155,7 +155,7 @@ def _train(conf_file: str, root_dir, rank=0, world_size=1):
 
         wandb.init(
             project=project,
-            entity="horizon-robotics-gail",
+            entity=os.getenv("ALF_WANDB_ENTITY", "horizon-robotics-gail"),
             group=group,
             name=name,
             reinit=True,
