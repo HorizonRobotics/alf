@@ -104,7 +104,7 @@ def config(prefix_or_dict,
             previous or future calls will raise a ValueError. This is helpful
             in enforcing a singular point of initialization, thus eliminating
             any potential side effects from possible prior or future overrides.
-            This flag overrides the mutable flag.
+            This flag overrides the mutable flag if True.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -348,7 +348,7 @@ def config1(config_name,
             previous or future calls will raise a ValueError. This is helpful
             in enforcing a singular point of initialization, thus eliminating
             any potential side effects from possible prior or future overrides.
-            This flag overrides the mutable flag.
+            This flag overrides the mutable flag if True.
     """
     config_node = _get_config_node(config_name)
 
