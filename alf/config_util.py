@@ -37,6 +37,7 @@ __all__ = [
     'load_config',
     'pre_config',
     'reset_configs',
+    'sole_config',
     'validate_pre_configs',
     'repr_wrapper',
     'save_config',
@@ -44,7 +45,11 @@ __all__ = [
 
 
 @logging.skip_log_prefix
-def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
+def config(prefix_or_dict,
+           mutable=True,
+           raise_if_used=True,
+           sole_init=False,
+           **kwargs):
     """Set the values for the configs with given name as suffix.
 
     Example:
@@ -95,6 +100,11 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
             immutable value to an existing immutable value.
         raise_if_used (bool): If True, ValueError will be raised if trying to
             config a value which has already been used.
+        sole_init (bool): If True, the config value can only be set once. Any
+            previous or future calls will raise a ValueError. This is helpful
+            in enforcing a singular point of initialization, thus eliminating
+            any potential side effects from possible prior or future overrides.
+            This flag overrides the mutable flag.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -110,7 +120,24 @@ def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
         raise ValueError(
             "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict))
     for key, value in configs.items():
-        config1(key, value, mutable, raise_if_used)
+        config1(key, value, mutable, raise_if_used, sole_init)
+
+
+def sole_config(prefix_or_dict, **kwargs):
+    """Wrapper function for configuring a config with sole_init=True.
+
+    When configuring a config through sole_config, any previous or future
+    alf.config calls to that same config will raise a ValueError, thus
+    eliminating any potential side effects from possible prior or future
+    overrides.
+
+    Args:
+        prefix_or_dict (str|dict): if a dict, each (key, value) pair in it
+            specifies the value for a config with name key. If a str, it is used
+            as prefix so that each (key, value) pair in kwargs specifies the
+            value for config with name ``prefix + '.' + key``
+    """
+    config(prefix_or_dict, sole_init=True, **kwargs)
 
 
 def get_all_config_names():
@@ -172,6 +199,7 @@ class _Config(object):
         self._used = False
         self._has_default_value = False
         self._mutable = True
+        self._sole_init = False
 
     def set_default_value(self, value):
         self._default_value = value
@@ -191,6 +219,12 @@ class _Config(object):
 
     def is_mutable(self):
         return self._mutable
+
+    def set_sole_init(self, sole_init):
+        self._sole_init = sole_init
+
+    def get_sole_init(self):
+        return self._sole_init
 
     def set_value(self, value):
         self._configured = True
@@ -293,7 +327,11 @@ def _get_config_node(config_name):
 
 
 @logging.skip_log_prefix
-def config1(config_name, value, mutable=True, raise_if_used=True):
+def config1(config_name,
+            value,
+            mutable=True,
+            raise_if_used=True,
+            sole_init=False):
     """Set one configurable value.
 
     Args:
@@ -306,6 +344,11 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
             immutable value to an existing immutable value.
         raise_if_used (bool): If True, ValueError will be raised if trying to
             config a value which has already been used.
+        sole_init (bool): If True, the config value can only be set once. Any
+            previous or future calls will raise a ValueError. This is helpful
+            in enforcing a singular point of initialization, thus eliminating
+            any potential side effects from possible prior or future overrides.
+            This flag overrides the mutable flag.
     """
     config_node = _get_config_node(config_name)
 
@@ -315,6 +358,16 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
     if config_node.is_configured():
+        if config_node.get_sole_init():
+            raise ValueError(
+                "Config '%s' is protected by sole_init and cannot be reconfigured. "
+                "If you wish to set this config value, do so the location of the "
+                "previous call." % config_name)
+        if sole_init:
+            raise ValueError(
+                "Config '%s' has already been configured. If you wish to protect "
+                "this config with sole_init, the previous alf.config call must be "
+                "removed." % config_name)
         if config_node.get_value() != value:
             if config_node.is_mutable():
                 logging.warning(
@@ -331,6 +384,7 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
     else:
         config_node.set_value(value)
         config_node.set_mutable(mutable)
+        config_node.set_sole_init(sole_init)
 
 
 @logging.skip_log_prefix

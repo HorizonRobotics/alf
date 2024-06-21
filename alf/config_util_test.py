@@ -133,6 +133,33 @@ class ConfigTest(alf.test.TestCase):
                      pprint.pformat(inoperative_configs))
         self.assertTrue('A.B.C.D.test.arg' in dict(inoperative_configs))
 
+        # Test sole_init protection against future config calls
+        @alf.configurable
+        def sole_init_test_prior(x):
+            pass
+
+        with self.assertRaises(ValueError) as context:
+            alf.sole_config("sole_init_test_prior", x=0)
+            alf.config("sole_init_test_prior", x=0)
+
+        # Test sole_init protection against previous config calls
+        @alf.configurable
+        def sole_init_test_after(x):
+            pass
+
+        with self.assertRaises(ValueError) as context:
+            alf.config("sole_init_test_after", x=0)
+            alf.sole_config("sole_init_test_after", x=0)
+
+        # Test sole_init protection against other sole_init config calls
+        @alf.configurable
+        def sole_init_test_twice(x):
+            pass
+
+        with self.assertRaises(ValueError) as context:
+            alf.sole_config("sole_init_test_twice", x=0)
+            alf.sole_config("sole_init_test_twice", x=0)
+
     def test_repr_wrapper(self):
         a = MyClass(1, 2)
         self.assertEqual(repr(a), "MyClass(1, 2)")
