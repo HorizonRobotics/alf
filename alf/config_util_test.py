@@ -138,8 +138,8 @@ class ConfigTest(alf.test.TestCase):
         def sole_init_test_prior(x):
             pass
 
+        alf.config("sole_init_test_prior", x=0, sole_init=True)
         with self.assertRaises(ValueError) as context:
-            alf.sole_config("sole_init_test_prior", x=0)
             alf.config("sole_init_test_prior", x=0)
 
         # Test sole_init protection against previous config calls
@@ -147,18 +147,30 @@ class ConfigTest(alf.test.TestCase):
         def sole_init_test_after(x):
             pass
 
+        alf.config("sole_init_test_after", x=0)
         with self.assertRaises(ValueError) as context:
-            alf.config("sole_init_test_after", x=0)
-            alf.sole_config("sole_init_test_after", x=0)
+            alf.config("sole_init_test_after", x=0, sole_init=True)
 
         # Test sole_init protection against other sole_init config calls
         @alf.configurable
         def sole_init_test_twice(x):
             pass
 
+        alf.config("sole_init_test_twice", x=0, sole_init=True)
         with self.assertRaises(ValueError) as context:
-            alf.sole_config("sole_init_test_twice", x=0)
-            alf.sole_config("sole_init_test_twice", x=0)
+            alf.config("sole_init_test_twice", x=0, sole_init=True)
+
+        # Test sole_init protection works as expected when the ALF_SOLE_CONFIG
+        # env variable is properly set.
+        @alf.configurable
+        def sole_init_test_env(x):
+            pass
+
+        os.environ["ALF_SOLE_CONFIG"] = "1"
+        alf.config("sole_init_test_env", x=0)
+        with self.assertRaises(ValueError) as context:
+            alf.config("sole_init_test_env", x=0)
+        os.environ["ALF_SOLE_CONFIG"] = "0"
 
     def test_repr_wrapper(self):
         a = MyClass(1, 2)

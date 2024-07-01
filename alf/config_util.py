@@ -37,11 +37,21 @@ __all__ = [
     'load_config',
     'pre_config',
     'reset_configs',
-    'sole_config',
     'validate_pre_configs',
     'repr_wrapper',
     'save_config',
 ]
+
+
+def GET_ALF_SOLE_CONFIG():
+    """Simple getter function for the env variable ALF_SOLE_CONFIG.
+
+    This can be set to 0 or 1 to enable/disable the sole config mode.
+    More details in config(...).
+    """
+    ALF_SOLE_CONFIG = os.getenv("ALF_SOLE_CONFIG", "0")
+    assert ALF_SOLE_CONFIG in ["0", "1"]
+    return bool(int(ALF_SOLE_CONFIG))
 
 
 @logging.skip_log_prefix
@@ -104,7 +114,9 @@ def config(prefix_or_dict,
             previous or future calls will raise a ValueError. This is helpful
             in enforcing a singular point of initialization, thus eliminating
             any potential side effects from possible prior or future overrides.
-            This flag overrides the mutable flag if True.
+            This flag overrides the mutable flag if True. For users wanting this
+            to be the default behavior, the ALF_SOLE_CONFIG env variable can be
+            set to 1.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -119,25 +131,12 @@ def config(prefix_or_dict,
     else:
         raise ValueError(
             "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict))
+
+    # If ALF_SOLE_CONFIG is set to 1, sole_init is always True.
+    sole_init = sole_init or GET_ALF_SOLE_CONFIG()
+
     for key, value in configs.items():
         config1(key, value, mutable, raise_if_used, sole_init)
-
-
-def sole_config(prefix_or_dict, **kwargs):
-    """Wrapper function for configuring a config with sole_init=True.
-
-    When configuring a config through sole_config, any previous or future
-    alf.config calls to that same config will raise a ValueError, thus
-    eliminating any potential side effects from possible prior or future
-    overrides.
-
-    Args:
-        prefix_or_dict (str|dict): if a dict, each (key, value) pair in it
-            specifies the value for a config with name key. If a str, it is used
-            as prefix so that each (key, value) pair in kwargs specifies the
-            value for config with name ``prefix + '.' + key``
-    """
-    config(prefix_or_dict, sole_init=True, **kwargs)
 
 
 def get_all_config_names():
