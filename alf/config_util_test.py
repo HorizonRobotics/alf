@@ -172,6 +172,16 @@ class ConfigTest(alf.test.TestCase):
             alf.config("sole_init_test_env", x=0)
         os.environ["ALF_SOLE_CONFIG"] = "0"
 
+        # Testing alf.override_config
+        alf.override_config("sole_init_test_prior", x=1)
+        alf.override_config("sole_init_test_after", x=1)
+        alf.override_config("sole_init_test_twice", x=1)
+        alf.override_config("sole_init_test_env", x=1)
+        self.assertEqual(alf.get_config_value("sole_init_test_prior.x"), 1)
+        self.assertEqual(alf.get_config_value("sole_init_test_after.x"), 1)
+        self.assertEqual(alf.get_config_value("sole_init_test_twice.x"), 1)
+        self.assertEqual(alf.get_config_value("sole_init_test_env.x"), 1)
+
     def test_repr_wrapper(self):
         a = MyClass(1, 2)
         self.assertEqual(repr(a), "MyClass(1, 2)")
