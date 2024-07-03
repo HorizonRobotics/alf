@@ -60,7 +60,7 @@ def config(prefix_or_dict,
            mutable=True,
            raise_if_used=True,
            sole_init=False,
-           override_all=False,
+           override=False,
            **kwargs):
     """Set the values for the configs with given name as suffix.
 
@@ -119,13 +119,12 @@ def config(prefix_or_dict,
             This flag overrides the mutable flag if True. For users wanting this
             to be the default behavior, the ALF_SOLE_CONFIG env variable can be
             set to 1.
-        override_all (bool): If True, the value of the config will be set regardless
-            of any preeixsting mutable or sole_init settings. This should be used
-            only when absolutely necessary (e.g., a teacher-student training loop,
-            where the student must override certain configs inheritted from the
-            teacher). Otherwise, use ``mutable`` or ``sole_init`` instead.
-            NOTE: if override_all is True, only the value of the config will be
-            set. In other words, the mutable and sole_init flags will be ignored.
+        override (bool): If True, the value of the config will be set regardless
+            of any pre-existing ``mutable`` or ``sole_init`` settings. This should
+            be used only when absolutely necessary (e.g., a teacher-student training
+            loop, where the student must override certain configs inherited from the
+            teacher). Otherwise, use ``mutable`` or ``sole_init`` instead. If override
+            is True, the config's ``mutable`` or ``sole_init`` values are not changed.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -145,21 +144,18 @@ def config(prefix_or_dict,
     sole_init = sole_init or GET_ALF_SOLE_CONFIG()
 
     for key, value in configs.items():
-        config1(key, value, mutable, raise_if_used, sole_init, override_all)
+        config1(key, value, mutable, raise_if_used, sole_init, override)
 
 
 def override_config(prefix_or_dict, **kwargs):
-    """Wrapper function for configuring a config with override_all=True.
+    """Wrapper function for configuring a config with override=True.
 
-    This config call will ignore any previous protections placed upon a config
-    from the mutable and sole_init flags.
-
+    This call will change a config's value, ignoring any previous protections
+    placed upon a config by the ``mutable`` and ``sole_init`` flags.
     Therefore, it is highly recommended that this be used only when absolutely
     necessary (e.g., a teacher-student training loop, where the student must
-    override certain configs inheritted from the teacher). Otherwise, it is best
-    to use alf.config with the mutable and sole_init flags instead.
-
-    NOTE: this function does not modify any preexisting mutable or sole_init settings.
+    override certain configs inherited from the teacher). Otherwise, it is best
+    to use alf.config with the ``mutable`` and ``sole_init`` flags instead.
 
     Args:
         prefix_or_dict (str|dict): if a dict, each (key, value) pair in it
@@ -168,7 +164,7 @@ def override_config(prefix_or_dict, **kwargs):
             value for config with name ``prefix + '.' + key``
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
-    config(prefix_or_dict, override_all=True, **kwargs)
+    config(prefix_or_dict, override=True, **kwargs)
 
 
 def get_all_config_names():
@@ -363,7 +359,7 @@ def config1(config_name,
             mutable=True,
             raise_if_used=True,
             sole_init=False,
-            override_all=False):
+            override=False):
     """Set one configurable value.
 
     Args:
@@ -381,13 +377,12 @@ def config1(config_name,
             in enforcing a singular point of initialization, thus eliminating
             any potential side effects from possible prior or future overrides.
             This flag overrides the mutable flag if True.
-        override_all (bool): If True, the value of the config will be set regardless
-            of any preeixsting mutable or sole_init settings. This should be used
-            only when absolutely necessary (e.g., a teacher-student training loop,
-            where the student must override certain configs inheritted from the
-            teacher). Otherwise, use ``mutable`` or ``sole_init`` instead.
-            NOTE: if override_all is True, only the value of the config will be
-            set. In other words, the mutable and sole_init flags will be ignored.
+        override (bool): If True, the value of the config will be set regardless
+            of any pre-existing ``mutable`` or ``sole_init`` settings. This should
+            be used only when absolutely necessary (e.g., a teacher-student training
+            loop, where the student must override certain configs inherited from the
+            teacher). Otherwise, use ``mutable`` or ``sole_init`` instead. If override
+            is True, the config's ``mutable`` or ``sole_init`` values are not changed.
     """
     config_node = _get_config_node(config_name)
 
@@ -397,7 +392,7 @@ def config1(config_name,
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
 
-    if override_all:
+    if override:
         if config_node.get_sole_init():
             logging.warning(
                 "The value of config '%s' (%s) is protected by sole_init. "
