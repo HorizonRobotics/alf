@@ -155,6 +155,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  q_network_cls=QNetwork,
                  repr_alg_ctor: Optional[Callable] = None,
                  reward_weights=None,
+                 train_eps_greedy=1.0,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
                  normalize_entropy_reward=False,
@@ -215,6 +216,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
                 Otherwise, the sum of the q values is used.
+            train_eps_greedy (float): a floating value in [0,1], representing the
+                chance of taking sampled action during training.
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
@@ -282,6 +285,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """
         self._num_critic_replicas = num_critic_replicas
         self._calculate_priority = calculate_priority
+        self._train_eps_greedy = train_eps_greedy
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
@@ -686,7 +690,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         action_dist, action, _, action_state = self._predict_action(
             observation,
             state=state.action,
-            epsilon_greedy=1.0,
+            epsilon_greedy=self._train_eps_greedy,
             eps_greedy_sampling=True,
             rollout=True)
 
