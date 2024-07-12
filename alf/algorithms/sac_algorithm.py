@@ -690,6 +690,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             eps_greedy_sampling=True,
             rollout=True)
 
+        # By default use the old target_repr state
+        new_state = new_state._replace(target_repr=state.target_repr)
+
         if self.need_full_rollout_state():
             _, critics_state = self._compute_critics(self._critic_networks,
                                                      observation, action,
