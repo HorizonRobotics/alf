@@ -1,11 +1,11 @@
 { lib
 , buildPythonPackage
+, fetchFromGitHub
 , pythonRelaxDepsHook
 , pybind11
 , boost
-, pytorchWithCuda11
-, torchvisionWithCuda11
-, torchWithoutCuda
+, torchWithCuda
+, torchvision
 , numpy
 , einops
 , wandb
@@ -29,8 +29,7 @@
 , procgen
 , highway-env
 , metadrive-simulator
-# Options
-, useCuda ? true
+, threadpoolctl
 }:
 
 buildPythonPackage rec {
@@ -64,13 +63,10 @@ buildPythonPackage rec {
     "gym"
   ];
 
-  propagatedBuildInputs = let torch-deps = if useCuda then [
-    pytorchWithCuda11
-    torchvisionWithCuda11
-  ] else [
-    torchWithoutCuda
-  ]; in [
+  propagatedBuildInputs = [
     # Machine Learning
+    torchWithCuda
+    torchvision
     numpy
     einops
     wandb
@@ -90,6 +86,7 @@ buildPythonPackage rec {
     pybox2d
     matplotlib
     tqdm
+    threadpoolctl
 
     # Simulators
     gym
@@ -98,7 +95,7 @@ buildPythonPackage rec {
     procgen
     highway-env
     metadrive-simulator
-  ] ++ torch-deps;
+  ];
 
   doCheck = false;
 
