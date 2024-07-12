@@ -1,72 +1,20 @@
 {
   "nodes": {
-    "alf-devenv": {
-      "inputs": {
-        "ml-pkgs": "ml-pkgs",
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "tensor-splines": "tensor-splines",
-        "utils": "utils"
-      },
-      "locked": {
-        "lastModified": 1671474064,
-        "narHash": "sha256-mS6YpitjIu1/Bid8gMYwIic/BFsYcvU3WhvZF9ByJpY=",
-        "owner": "HorizonRobotics",
-        "repo": "alf-nix-devenv",
-        "rev": "3fa299ce42beec82e4e0c0adced0016e9e39cf37",
-        "type": "github"
-      },
-      "original": {
-        "owner": "HorizonRobotics",
-        "repo": "alf-nix-devenv",
-        "type": "github"
-      }
-    },
     "ml-pkgs": {
       "inputs": {
         "nixpkgs": [
-          "alf-devenv",
           "nixpkgs"
         ],
         "utils": [
-          "alf-devenv",
           "utils"
         ]
       },
       "locked": {
-        "lastModified": 1671437160,
-        "narHash": "sha256-7De5jl7od+gdBCCSfHCYW+n2K6LIgHZq2NfhNzvD/XI=",
+        "lastModified": 1720022229,
+        "narHash": "sha256-BuMgiCSPlqg8aCA0lPVTlQK6C+vfI/e2QyQr3ozB8Hw=",
         "owner": "nixvital",
         "repo": "ml-pkgs",
-        "rev": "30cd0b98732f5b79d9d2b3057d68378828abcc7f",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nixvital",
-        "repo": "ml-pkgs",
-        "type": "github"
-      }
-    },
-    "ml-pkgs_2": {
-      "inputs": {
-        "nixpkgs": [
-          "alf-devenv",
-          "tensor-splines",
-          "nixpkgs"
-        ],
-        "utils": [
-          "alf-devenv",
-          "tensor-splines",
-          "utils"
-        ]
-      },
-      "locked": {
-        "lastModified": 1670952954,
-        "narHash": "sha256-/uKVm5FRDHm0hEeglhtnscyIyn2D6XN2Q64wIrzdcJA=",
-        "owner": "nixvital",
-        "repo": "ml-pkgs",
-        "rev": "e6dbbc94f02397beb17ba935a33010cdb27c4056",
+        "rev": "8f6da3d4b06f366d9c17bf7e5e98c4d79c5849df",
         "type": "github"
       },
       "original": {
@@ -77,70 +25,28 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1671122953,
-        "narHash": "sha256-SVWmiyX2wx6BAxo4zMfRqDgFoWf4d3Vx1MgG/Vo4jL4=",
+        "lastModified": 1716542732,
+        "narHash": "sha256-0Y9fRr0CUqWT4KgBITmaGwlnNIGMYuydu2L8iLTfHU4=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "0152de25d49dc16883b65f3e29cfea8d32f68956",
+        "rev": "d12251ef6e8e6a46e05689eeccd595bdbd3c9e60",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
-        "ref": "nixos-22.11",
+        "ref": "nixos-24.05",
         "repo": "nixpkgs",
         "type": "github"
       }
     },
     "root": {
       "inputs": {
-        "alf-devenv": "alf-devenv",
+        "ml-pkgs": "ml-pkgs",
         "nixpkgs": "nixpkgs",
-        "utils": "utils_2"
-      }
-    },
-    "tensor-splines": {
-      "inputs": {
-        "ml-pkgs": "ml-pkgs_2",
-        "nixpkgs": [
-          "alf-devenv",
-          "nixpkgs"
-        ],
-        "utils": [
-          "alf-devenv",
-          "utils"
-        ]
-      },
-      "locked": {
-        "lastModified": 1670955265,
-        "narHash": "sha256-Qa6aZpFJogFXN7QJ5GT1LQem3cD9+TNoi4L5zoPt6C0=",
-        "ref": "main",
-        "rev": "e19c144d2d1906463e599e3261388c52e417924a",
-        "revCount": 32,
-        "type": "git",
-        "url": "ssh://git@github.com/HorizonRobotics/tensor-splines"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "ssh://git@github.com/HorizonRobotics/tensor-splines"
+        "utils": "utils"
       }
     },
     "utils": {
-      "locked": {
-        "lastModified": 1623875721,
-        "narHash": "sha256-A8BU7bjS5GirpAUv4QA+QnJ4CceLHkcXdRp4xITDB0s=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "f7e004a55b120c02ecb6219596820fcd32ca8772",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "type": "github"
-      }
-    },
-    "utils_2": {
       "locked": {
         "lastModified": 1623875721,
         "narHash": "sha256-A8BU7bjS5GirpAUv4QA+QnJ4CceLHkcXdRp4xITDB0s=",
