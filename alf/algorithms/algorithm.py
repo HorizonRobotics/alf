@@ -1289,6 +1289,8 @@ class Algorithm(AlgorithmInterface):
         if isinstance(loss, torch.Tensor):
             with record_time("time/backward"):
                 if self._grad_scaler is not None:
+                    alf.summary.scalar("optimizer/grad_scale",
+                                       self._grad_scaler.get_scale())
                     loss = self._grad_scaler.scale(loss)
                 loss.mean().backward()
 
