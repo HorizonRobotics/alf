@@ -305,6 +305,13 @@ class NormalProjectionNetwork(Network):
         with torch.cuda.amp.autocast(amp_enabled):
             means = self._mean_transform(self._means_projection_layer(inputs))
             stds = self._std_transform(self._std_projection_layer(inputs))
+            # x = self._std_projection_layer(inputs)
+            # stds = self._std_transform(x)
+            # if not stds.isfinite().all():
+            #     from absl import logging
+            #     flag = ~stds.isfinite()
+            #     logging.info(f"stds is not finite. x: {x[flag]}")
+            #     breakpoint()
             return self._normal_dist(means, stds), state
 
     def make_parallel(self, n):
