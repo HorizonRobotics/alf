@@ -55,7 +55,7 @@ class ActorCriticLoss(Loss):
                  normalize_advantages=False,
                  normalize_scalar_advantages=False,
                  running_stats_for_normalization=True,
-                 advantage_norm_momentum=0.9,
+                 advantage_norm_momentum=0.1,
                  advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,

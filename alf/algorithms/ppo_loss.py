@@ -33,7 +33,7 @@ class PPOLoss(ActorCriticLoss):
                  td_lambda=0.95,
                  normalize_advantages=True,
                  normalize_scalar_advantages=False,
-                 advantage_norm_momentum=0.9,
+                 advantage_norm_momentum=0.1,
                  compute_advantages_internally=False,
                  advantage_clip=None,
                  entropy_regularization=None,
