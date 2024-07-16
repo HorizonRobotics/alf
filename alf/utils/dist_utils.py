@@ -797,11 +797,6 @@ _get_builder_map = {
         _get_mixture_same_family_builder,
 }
 
-_base_dist_types = {
-    td.Normal, td.Categorical, StableCauchy, Beta, TruncatedDistribution,
-    DiagMultivariateNormal, DiagMultivariateBeta, DiagMultivariateCauchy
-}
-
 
 def _get_builder(obj):
     return _get_builder_map[type(obj)](obj)
@@ -1220,14 +1215,14 @@ def get_base_dist(dist):
         NotImplementedError: if ``dist`` or its based distribution is not
             ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    dist_type = type(dist)
-    if dist_type in _base_dist_types:
+    if isinstance(dist, (td.Normal, td.Categorical, StableCauchy, Beta,
+                         TruncatedDistribution)):
         return dist
-    elif dist_type in {td.Independent, td.TransformedDistribution}:
+    elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
         return get_base_dist(dist.base_dist)
     else:
         raise NotImplementedError(
-            "Distribution type %s is not supported" % dist_type)
+            "Distribution type %s is not supported" % type(dist))
 
 
 @alf.configurable
