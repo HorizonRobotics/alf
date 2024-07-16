@@ -75,6 +75,14 @@ class _LeanFunction(torch.autograd.Function):
         # report an error.
         if isinstance(func, Network):
             ret = tuple(flatten(ret))
+        elif isinstance(ret, tuple):
+            assert all(isinstance(t, torch.Tensor) for t in ret), (
+                "The return value of func must be a Tensor or a tuple of Tensors"
+            )
+        else:
+            assert isinstance(ret, torch.Tensor), (
+                "The return value of func must be a Tensor or a tuple of Tensors"
+            )
         return ret
 
     @staticmethod
