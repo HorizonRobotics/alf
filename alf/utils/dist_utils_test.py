@@ -228,18 +228,20 @@ class TransformationAndInversionTest(parameterized.TestCase,
                          normal_dist.entropy() + math.log(2) * 2)
         spec = dist_utils.DistributionSpec.from_distribution(dist)
 
-        params1 = {
+        params = {
             'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
             'scale': torch.tensor([[2., 4.], [2., 1.]])
         }
+        transform_params = {'loc': torch.tensor(1.), 'scale': torch.tensor(2.)}
+        params1 = {"params_": params, "transforms_params_": transform_params}
         dist1 = spec.build_distribution(params1)
         self.assertEqual(type(dist1), dist_utils.AffineTransformedDistribution)
         self.assertEqual(dist1.event_shape, dist.event_shape)
         self.assertEqual(
             type(dist1.base_dist), dist_utils.DiagMultivariateNormal)
         self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
-        self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
-        self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
+        self.assertEqual(dist1.base_dist.base_dist.mean, params['loc'])
+        self.assertEqual(dist1.base_dist.base_dist.stddev, params['scale'])
 
 
 class TestConversions(alf.test.TestCase):

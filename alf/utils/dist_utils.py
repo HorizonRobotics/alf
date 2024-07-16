@@ -74,6 +74,10 @@ class AffineTransform(get_invertible(td.AffineTransform)):
         return functools.partial(
             AffineTransform, loc=self.loc, scale=self.scale)
 
+    @property
+    def params(self):
+        return {'scale': self.scale, 'loc': self.loc}
+
 
 @alf.configurable
 class Softplus(td.Transform):
@@ -468,6 +472,8 @@ class AffineTransformedDistribution(td.TransformedDistribution):
             loc (Tensor or float): Location parameter.
             scale (Tensor or float): Scale parameter.
         """
+        loc = torch.as_tensor(loc)
+        scale = torch.as_tensor(scale)
         super().__init__(
             base_distribution=base_dist,
             transforms=AffineTransform(loc, scale))
@@ -695,16 +701,19 @@ def _get_transformed_builder(obj: td.TransformedDistribution):
     return new_builder, new_params
 
 
-def _builder_affine_transformed(base_builder, loc_, scale_, **kwargs):
-    # 'loc' and 'scale' may conflict with the names in kwargs. So we add suffix '_'.
-    return AffineTransformedDistribution(base_builder(**kwargs), loc_, scale_)
+def _builder_affine_transformed(base_builder, params_, transforms_params_):
+    return AffineTransformedDistribution(
+        base_builder(**params_), **transforms_params_)
 
 
 def _get_affine_transformed_builder(obj: AffineTransformedDistribution):
     builder, params = _get_builder(obj.base_dist)
-    new_builder = functools.partial(_builder_affine_transformed, builder,
-                                    obj.loc, obj.scale)
-    return new_builder, params
+    new_builder = functools.partial(_builder_affine_transformed, builder)
+    new_params = {
+        "params_": params,
+        "transforms_params_": obj.transforms[0].params
+    }
+    return new_builder, new_params
 
 
 def _get_mixture_same_family_builder(obj: td.MixtureSameFamily):
