@@ -18,7 +18,9 @@ import torch
 
 tf = [
     StableTanh(),
-    AffineTransform(loc=torch.zeros((4, )), scale=4 * torch.ones((4, )))
+    # AffineTransform(loc=torch.zeros((4, )), scale=4 * torch.ones((4, )))
+    # AffineTransform(loc=0., scale=2.)
+    AffineTransform(loc=torch.tensor(0.), scale=torch.tensor(2.))
 ]
 
 dist = DiagMultivariateNormal(loc=torch.zeros((4, )), scale=torch.ones((4, )))
@@ -32,13 +34,22 @@ tf_dist = TransformedDistribution(dist, tf)
 print(get_base_dist(tf_dist))
 
 params = distributions_to_params(dist)
+print("1")
 params2 = distributions_to_params(tf_dist)
+print("2")
 builder, tf_params = _get_transformed_builder(tf_dist)
+print("3")
 d = builder(**tf_params)
+print("4")
 # dist2 = type(dist)(**params)
 # dist3 = params_to_distributions(params, DiagMultivariateNormal)
 print(params)
 print(params2)
+
+print(isinstance(dist, torch.distributions.Independent))
+
+x = DistributionSpec.from_distribution(tf_dist)
+print(x)
 
 # print(tf[1].__dict__)
 # print(dist.params
