@@ -654,14 +654,14 @@ def _get_transform_builders_params(transforms):
         return transform.__class__
 
     def _get_transform_params(transform):
-        if hasattr(transforms, 'params') and transforms.params is not None:
+        if hasattr(transform, 'params') and transform.params is not None:
             # We assume that if a td.Transform has attribute 'params', then they are the
             # parameters we'll extract and store.
             assert isinstance(
-                transforms.params,
+                transform.params,
                 dict), ("Transform params must be provided as a dict! "
-                        f"Got {transforms.params}")
-            return transforms.params
+                        f"Got {transform.params}")
+            return transform.params
         return {}  # the transform doesn't have any parameter
 
     if isinstance(transforms, td.Transform):
@@ -795,6 +795,11 @@ _get_builder_map = {
             }),
     td.MixtureSameFamily:
         _get_mixture_same_family_builder,
+}
+
+_base_dist_types = {
+    td.Normal, td.Categorical, StableCauchy, Beta, TruncatedDistribution,
+    DiagMultivariateNormal, DiagMultivariateBeta, DiagMultivariateCauchy
 }
 
 
@@ -1045,7 +1050,7 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
             probability of the sampled actions, in addition to the sampled
             actions. In some cases, it is useful to compute the log probability
             immediately after the actions are sampled, as some subsequent
-            operations might makes the cache mechanism (if turned on) invalid.
+            operations might make the cache mechanism (if turned on) invalid.
             Some example scenarios include 1) additional sampling operation
             applied on ``nested_distributions``, 2) some operations applied to
             the actions sampled from ``nested_distributions`` (e.g., cloning).
@@ -1215,14 +1220,14 @@ def get_base_dist(dist):
         NotImplementedError: if ``dist`` or its based distribution is not
             ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if isinstance(dist, (td.Normal, td.Categorical, StableCauchy, Beta,
-                         TruncatedDistribution)):
+    dist_type = type(dist)
+    if dist_type in _base_dist_types:
         return dist
-    elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
+    elif dist_type in {td.Independent, td.TransformedDistribution}:
         return get_base_dist(dist.base_dist)
     else:
         raise NotImplementedError(
-            "Distribution type %s is not supported" % type(dist))
+            "Distribution type %s is not supported" % dist_type)
 
 
 @alf.configurable
@@ -1285,7 +1290,7 @@ def entropy_with_fallback(distributions, return_sum=True):
 
     There are two situations:
 
-    - ``entropy()`` is implemented  and it's same as ``entropy_for_gradient``.
+    - ``entropy()`` is implemented and the same as ``entropy_for_gradient``.
     - ``entropy()`` is not implemented. We use sampling to calculate entropy. The
       unbiased estimator for entropy is :math:`-\log(p(x))`. However, the gradient
       of :math:`-\log(p(x))` is not an unbiased estimator of the gradient of
@@ -1344,7 +1349,7 @@ def calc_default_target_entropy(spec, min_prob=0.1):
     """Calculate default target entropy.
 
     Args:
-        spec (TensorSpec): action spec
+        spec (BoundedTensorSpec): action spec
         min_prob (float): If continuous spec, we suppose the prob concentrates on
             a delta of ``min_prob * (M-m)``; if discrete spec, we uniformly
             distribute ``min_prob`` on all entries except the peak which has
@@ -1375,7 +1380,7 @@ def calc_default_target_entropy_quantized(spec,
                                           ent_per_action_dim=-1.0):
     """Calc default target entropy for quantized continuous action.
     Args:
-        spec (TensorSpec): action spec
+        spec (BoundedTensorSpec): action spec
         num_bins (int): number of quantization bins used to represent the
             continuous action
         ent_per_action_dim (int): desired entropy per action dimension
@@ -1384,10 +1389,6 @@ def calc_default_target_entropy_quantized(spec,
     Returns:
         target entropy for quantized representation
     """
-
-    zeros = np.zeros(spec.shape)
-    min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
-
     cont = spec.is_continuous
     assert cont, "only support continuous action-based computation"
 
@@ -1395,7 +1396,7 @@ def calc_default_target_entropy_quantized(spec,
     log_mp = ent_per_action_dim - log_Mn
     log_B = np.log(num_bins)
 
-    ents = [log_mp + log_B for i in range(spec.shape[0])]
+    ents = [log_mp + log_B for _ in range(spec.shape[0])]
     e = np.sum(ents)
 
     assert e > 0, "wrong target entropy for discrete distribution {}".format(e)
@@ -1405,7 +1406,7 @@ def calc_default_target_entropy_quantized(spec,
 def calc_default_max_entropy(spec, fraction=0.8):
     """Calc default max entropy.
     Args:
-        spec (TensorSpec): action spec
+        spec (BoundedTensorSpec): action spec
         fraction (float): this fraction of the theoretical entropy upper bound
             will be used as the max entropy
     Returns:
