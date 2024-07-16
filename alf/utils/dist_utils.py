@@ -70,6 +70,11 @@ class AffineTransform(get_invertible(td.AffineTransform)):
     compatible with ``DistributionSpec.build_distribution()``.
     """
 
+    def __init__(self, loc, scale, event_dim=0, cache_size=0):
+        loc = torch.as_tensor(loc)
+        scale = torch.as_tensor(scale)
+        super().__init__(loc, scale, event_dim, cache_size)
+
     def get_builder(self):
         return functools.partial(
             AffineTransform, loc=self.loc, scale=self.scale)
@@ -472,8 +477,6 @@ class AffineTransformedDistribution(td.TransformedDistribution):
             loc (Tensor or float): Location parameter.
             scale (Tensor or float): Scale parameter.
         """
-        loc = torch.as_tensor(loc)
-        scale = torch.as_tensor(scale)
         super().__init__(
             base_distribution=base_dist,
             transforms=AffineTransform(loc, scale))
