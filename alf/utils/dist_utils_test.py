@@ -242,6 +242,8 @@ class TransformationAndInversionTest(parameterized.TestCase,
         self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
         self.assertEqual(dist1.base_dist.base_dist.mean, params['loc'])
         self.assertEqual(dist1.base_dist.base_dist.stddev, params['scale'])
+        self.assertEqual(dist1.transforms[0].loc, transform_params['loc'])
+        self.assertEqual(dist1.transforms[0].scale, transform_params['scale'])
 
 
 class TestConversions(alf.test.TestCase):
