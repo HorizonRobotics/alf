@@ -695,7 +695,7 @@ def get_conf_file(root_dir=None):
     return gin_file[0]
 
 
-def parse_conf_file(conf_file):
+def parse_conf_file(conf_file, set_random_seed=True):
     """Parse config from file.
 
     It also looks for FLAGS.gin_param and FLAGS.conf_param for extra configs.
@@ -716,7 +716,7 @@ def parse_conf_file(conf_file):
             alf.get_env()
     else:
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
-        alf.parse_config(conf_file, conf_params)
+        alf.parse_config(conf_file, conf_params, set_random_seed)
 
 
 def get_epsilon_greedy(config: TrainerConfig):
