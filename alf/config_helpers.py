@@ -192,7 +192,7 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
         config1('TrainerConfig.evaluate', False, raise_if_used=False)
 
 
-def parse_config(conf_file, conf_params):
+def parse_config(conf_file, conf_params, set_random_seed=True):
     """Parse config file and config parameters
 
     Note: a global environment will be created (which can be obtained by
@@ -225,8 +225,9 @@ def parse_config(conf_file, conf_params):
     finally:
         _is_parsing = False
 
-    # Create the global environment and initialize random seed
-    get_env()
+    if set_random_seed:
+        # Create the global environment and initialize random seed
+        get_env()
 
 
 def get_env():
