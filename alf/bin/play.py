@@ -139,7 +139,7 @@ def play():
         assert FLAGS.record_file is not None, ("Should provide a valid value "
                                                "for `record_file`")
 
-    config = policy_trainer.TrainerConfig(root_dir="")
+    config = policy_trainer.TrainerConfig(root_dir=str(FLAGS.root_dir))
 
     env = alf.get_env()
     env.reset()
