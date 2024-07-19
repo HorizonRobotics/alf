@@ -70,9 +70,18 @@ class AffineTransform(get_invertible(td.AffineTransform)):
     compatible with ``DistributionSpec.build_distribution()``.
     """
 
+    def __init__(self, loc: Union[float, torch.Tensor],
+                 scale: Union[float, torch.Tensor]):
+        super().__init__(
+            loc=torch.as_tensor(loc), scale=torch.as_tensor(scale))
+
     def get_builder(self):
         return functools.partial(
             AffineTransform, loc=self.loc, scale=self.scale)
+
+    @property
+    def params(self):
+        return {"loc": self.loc, "scale": self.scale}
 
 
 @alf.configurable
@@ -95,7 +104,8 @@ class Softplus(td.Transform):
                 0 to identity.
         """
         super().__init__(cache_size=cache_size)
-        self._hinge_softness = float(hinge_softness)
+        self._hinge_softness = torch.as_tensor(
+            hinge_softness, dtype=torch.float)
         assert self._hinge_softness > 0, "Must be a positive softness number!"
 
     def __eq__(self, other):
@@ -107,6 +117,10 @@ class Softplus(td.Transform):
 
     def _inverse(self, y):
         return (y / self._hinge_softness).expm1().log() * self._hinge_softness
+
+    @property
+    def params(self):
+        return {"hinge_softness": self._hinge_softness}
 
     def log_abs_det_jacobian(self, x, y):
         return -nn.functional.softplus(-x / self._hinge_softness)
@@ -213,10 +227,11 @@ class Softclip(td.Transform):
                 ``low`` to ``high``.
         """
         super().__init__(cache_size=cache_size)
-        self._hinge_softness = float(hinge_softness)
+        self._hinge_softness = torch.as_tensor(
+            hinge_softness, dtype=torch.float)
         assert self._hinge_softness > 0, "Must be a positive softness number!"
-        self._l = float(low)
-        self._h = float(high)
+        self._l = torch.as_tensor(low, dtype=torch.float)
+        self._h = torch.as_tensor(high, dtype=torch.float)
         self.codomain = constraints.interval(self._l, self._h)
 
     def __eq__(self, other):
@@ -226,6 +241,14 @@ class Softclip(td.Transform):
 
     def get_builder(self):
         return functools.partial(Softclip, low=self._l, high=self._h)
+
+    @property
+    def params(self):
+        return {
+            "low": self._l,
+            "high": self._h,
+            "hinge_softness": self._hinge_softness
+        }
 
     def _call(self, x):
         return alf.math.softclip(x, self._l, self._h, self._hinge_softness)
