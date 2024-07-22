@@ -34,6 +34,7 @@ class PerProcessContext(object):
             cls._instance = super(PerProcessContext, cls).__new__(cls)
             cls._instance._read_only = False
             cls._instance._ddp_rank = -1
+            cls._instance._local_rank = -1
             cls._instance._num_processes = 1
         return cls._instance
 
@@ -42,7 +43,7 @@ class PerProcessContext(object):
         """
         self._read_only = True
 
-    def set_distributed(self, rank: int, num_processes: int) -> None:
+    def set_distributed(self, rank: int, local_rank: int, num_processes: int) -> None:
         """Set the distributed properties.
 
         Args:
@@ -53,6 +54,7 @@ class PerProcessContext(object):
             raise AttributeError(
                 'Cannot mutate PerProcessContext after it is finalized')
         self._ddp_rank = rank
+        self._local_rank = local_rank
         self._num_processes = num_processes
 
     def set_paras_queue(self, paras_queue: mp.Queue):
@@ -77,6 +79,10 @@ class PerProcessContext(object):
     @property
     def ddp_rank(self):
         return self._ddp_rank
+    
+    @property
+    def local_rank(self):
+        return self._local_rank
 
     @property
     def num_processes(self):

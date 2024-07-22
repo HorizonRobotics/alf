@@ -31,6 +31,7 @@ class SpawnedProcessContext(NamedTuple):
     """
     ddp_num_procs: int
     ddp_rank: int
+    local_rank: int
     env_id: int
     env_ctor: Callable[..., AlfEnvironment]
     pre_configs: List[Tuple[str, Any]]
