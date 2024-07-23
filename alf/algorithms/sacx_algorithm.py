@@ -476,7 +476,7 @@ def setup_ddp(algorithm):
         # Make sure the BN statistics of different processes are synced
         # https://pytorch.org/docs/stable/generated/torch.nn.SyncBatchNorm.html#torch.nn.SyncBatchNorm
         # This conversion needs to be performed before wrapping modules with DDP.
-        algorithm = torch.nn.SyncBatchNorm.convert_sync_batchnorm(algorithm)
+        algorithm = alf.utils.common.convert_sync_batchnorm(algorithm)
     return algorithm
 
 
