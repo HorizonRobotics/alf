@@ -513,9 +513,13 @@ class Algorithm(AlgorithmInterface):
             if len(obs) == 1:
                 summary_utils.summarize_nest("observation", obs[0])
 
-        mem = self._proc.memory_info().rss // 1e6
-        alf.summary.scalar(name='memory/cpu', data=mem)
-        if torch.cuda.is_available():
+        if alf.summary.should_record_summaries():
+            mem = self._proc.memory_info().rss
+            mem += sum(child.memory_info().rss
+                       for child in self._proc.children(recursive=True))
+            alf.summary.scalar(name='memory/cpu', data=mem // 1e6)
+
+        if torch.cuda.is_available() and alf.summary.should_record_summaries():
             mem = torch.cuda.memory_allocated() // 1e6
             alf.summary.scalar(name='memory/gpu_allocated', data=mem)
             mem = torch.cuda.memory_reserved() // 1e6
