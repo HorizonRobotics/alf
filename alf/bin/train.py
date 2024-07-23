@@ -49,6 +49,8 @@ If instead of Gin configuration file, you want to use ALF python conf file, then
 replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_param".
 
 """
+import faulthandler
+faulthandler.enable()
 
 from absl import app
 from absl import flags
