@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import os
+import platform
 import sys
 import subprocess
 
@@ -30,7 +32,15 @@ def gen_penv():
     python = f"python{sys.version_info.major}.{sys.version_info.minor}"
     cmd = (f"g++ -O3 -Wall -shared -std=c++17 -fPIC -fvisibility=hidden "
            f"`{python} -m pybind11 --includes` parallel_environment.cpp "
-           f"-o _penv`{python}-config --extension-suffix` -lrt")
+           f"-o _penv`{python}-config --extension-suffix` "
+           "-undefined dynamic_lookup")
+    if platform.machine() == "arm64":
+        boost_dir = glob.glob("/opt/homebrew/Cellar/boost/*")
+        assert boost_dir, "Fail to find boost directory in /opt/homebrew/Cellar/boost/"
+        cmd += f" -I{boost_dir[0]}/include/"
+        # Macos doesn't have rt library
+    else:
+        cmd += " -lrt"
     ret = subprocess.run(["/bin/bash", "-c", cmd])
     assert ret.returncode == 0, "Fail to execute " + cmd
 
