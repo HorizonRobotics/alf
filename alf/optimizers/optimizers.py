@@ -498,28 +498,22 @@ def wrap_optimizer(cls):
         This function first call the parent's ``load_state_dict()`` function, and
         then make sure the ``rng_state`` is in correct data type.
         """
+        state = state_dict['state'].copy()
+        for p in list(state.keys()):
+            if 'step' not in state[p]:
+                # Some of the optimizers such as Adam/AdamW/ASGD etc in higher
+                # version torch require 1) the presence of 'step' in state.
+                # Therefore we explicitly create it if it does not exist.
+                state[p] = {'step': 0, **state[p]}
+
+        state_dict = state_dict.copy()
+        state_dict['state'] = state
         super(NewCls, self).load_state_dict(state_dict)
-        if len(self.state) > 0:
-            for param_group in self.param_groups:
-                for p in param_group['params']:
-                    state = self.state[p]
-                    if 'rng_state' in state:
-                        state['rng_state'] = state['rng_state'].to(
-                            self._rng_state_device).byte()
 
-    @common.add_method(NewCls)
-    def __setstate__(self, state):
-        for param_group in self.param_groups:
-            for p in param_group['params']:
-                p_state = self.state[p]
-                if 'step' not in p_state:
-                    # Some of the optimizers such as Adam/AdamW/ASGD etc in higher version
-                    # torch require 1) the presence of 'step' in state, and 2) it appears
-                    # as the first key of the state dictionary. Therefore we explicitly
-                    # create it if it does not exist and make it the key that comes first
-                    self.state[p] = {'step': 0, **p_state}
-
-        super(NewCls, self).__setstate__(state)
+        for p_state in self.state.values():
+            if 'rng_state' in state:
+                state['rng_state'] = state['rng_state'].to(
+                    self._rng_state_device).byte()
 
     return NewCls
 

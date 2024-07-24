@@ -277,6 +277,18 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
             min_capacity=1)
         opt.add_param_group({'params': layer.parameters()})
 
+        # test load_state_dict
+        opt2 = opt_cls(
+            lr=0.1,
+            gradient_clipping=clip_norm,
+            clip_by_global_norm=True,
+            capacity_ratio=capacity_ratio,
+            masked_out_value=masked_out_value,
+            min_capacity=1)
+        opt2.add_param_group({'params': layer.parameters()})
+        state_dict = opt.state_dict()
+        opt2.load_state_dict(state_dict)
+
         def _train_step():
             x = torch.randn(2, 512)
             y = layer(x)
