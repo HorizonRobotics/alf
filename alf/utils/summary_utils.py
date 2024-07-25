@@ -512,8 +512,13 @@ def summarize_tensor_gradients(name, tensor, batch_dims=1, clone=False):
     def _hook(grad, name):
         if grad is not None:
             norm = grad.reshape(*grad.shape[0:batch_dims], -1).norm(dim=-1)
-            alf.summary.scalar(name + '/max_norm', norm.max())
-            alf.summary.scalar(name + '/avg_norm', norm.mean())
+            max = norm.max()
+            mean = norm.mean()
+            if max.dtype == torch.bfloat16:
+                max = max.cpu().float()
+                mean = mean.cpu().float()
+            alf.summary.scalar(name + '/max_norm', max)
+            alf.summary.scalar(name + '/avg_norm', mean)
 
     def _register_hook1(tensor, name):
         if tensor.requires_grad:

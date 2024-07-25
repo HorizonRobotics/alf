@@ -138,6 +138,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._mcts = mcts
         self._reward_transformer = reward_transformer
         self._enable_amp = enable_amp
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
 
     def set_path(self, path):
         super().set_path(path)
@@ -150,7 +151,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reward_transformer is not None:
             time_step = time_step._replace(
                 reward=self._reward_transformer(time_step.reward))
-        with torch.cuda.amp.autocast(self._enable_amp):
+        with torch.cuda.amp.autocast(self._enable_amp, dtype=self._amp_dtype):
             latent = self._repr_learner.predict_step(time_step, state).output
             return self._mcts.predict_step(
                 time_step._replace(observation=latent), state)

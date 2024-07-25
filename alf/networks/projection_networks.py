@@ -277,6 +277,7 @@ class NormalProjectionNetwork(Network):
             self._std_projection_layer = lambda x: tensor_extend_new_dim(
                 self._std, 0, x.shape[0])
         self._disable_amp = disable_amp
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
 
     def _normal_dist(self, means, stds):
         normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
@@ -302,7 +303,7 @@ class NormalProjectionNetwork(Network):
         if self._disable_amp and amp_enabled:
             inputs = alf.layers.to_float32(inputs)
             amp_enabled = False
-        with torch.cuda.amp.autocast(amp_enabled):
+        with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
             means = self._mean_transform(self._means_projection_layer(inputs))
             stds = self._std_transform(self._std_projection_layer(inputs))
             return self._normal_dist(means, stds), state

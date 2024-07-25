@@ -3722,11 +3722,12 @@ class AMPWrapper(nn.Module):
         super().__init__()
         self._net = net
         self._enabled = enabled
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
 
     def forward(self, input):
         if torch.is_autocast_enabled() and not self._enabled:
             input = to_float32(input)
-        with torch.cuda.amp.autocast(self._enabled):
+        with torch.cuda.amp.autocast(self._enabled, dtype=self._amp_dtype):
             return self._net(input)
 
 
