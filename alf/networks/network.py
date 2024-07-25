@@ -217,6 +217,8 @@ class Network(nn.Module):
         if self._output_spec is None:
             training = self.training
             self.eval()
+            # make sure the network is on the right device
+            self.to(alf.get_default_device())
             self._output_spec = extract_spec(
                 self._test_forward()[0], from_dim=1)
             self.train(training)

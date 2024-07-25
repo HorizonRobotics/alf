@@ -453,11 +453,13 @@ class FC(nn.Module):
             Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
         """
         if inputs.dim() == 2 and self._use_bias:
-            y = torch.addmm(self._bias, inputs, self._weight.t())
+            y = torch.addmm(
+                self._bias.to(alf.get_default_device()), inputs,
+                self._weight.t().to(alf.get_default_device()))
         else:
-            y = inputs.matmul(self._weight.t())
+            y = inputs.matmul(self._weight.t().to(alf.get_default_device()))
             if self._use_bias:
-                y += self._bias
+                y += self._bias.to(alf.get_default_device())
         if self._use_ln:
             if not self._use_bias:
                 self._ln.bias.data.zero_()
@@ -2904,8 +2906,10 @@ class TransformerBlock(nn.Module):
         assert m <= self._memory_size
 
         # [B, M, H, d_k] <= [B, M, d_model] * [d_model, d_k]
-        q = torch.matmul(query, self._q_proj).reshape(batch_size, m, num_heads,
-                                                      d_k)
+        q_proj = self._q_proj.to(alf.get_default_device())
+        k_proj = self._k_proj.to(alf.get_default_device())
+        qk_bias = self._qk_bias.to(alf.get_default_device())
+        q = torch.matmul(query, q_proj).reshape(batch_size, m, num_heads, d_k)
 
         # We select different versions of calculation based on memory consumption
         if n * d_k <= m * d_model:
@@ -2914,24 +2918,25 @@ class TransformerBlock(nn.Module):
             # a           M * H * N * d_k              M * H * N
 
             # [B, N, H, d_k] <= [B, N, d_model] * [d_model, H * d_k]
-            k = torch.matmul(memory, self._k_proj).reshape(
-                batch_size, n, num_heads, d_k)
+            k = torch.matmul(memory, k_proj).reshape(batch_size, n, num_heads,
+                                                     d_k)
             # [B, M, H, N] <= [B, M, H, d_k] * [B, N, H, d_k]
-            logits = torch.einsum('bmhd,bnhd->bmhn', q + self._qk_bias, k)
+            logits = torch.einsum('bmhd,bnhd->bmhn', q + qk_bias, k)
         else:
             #             computation                  memory
             # qk          M * H * d_k * d_model        M * H * d_model
             # a           M * H * N * d_model          M * H * N
 
             # [B, M, H, d_model] <= [B, M, H, d_k] * [d_model, H, d_k]
-            qk = torch.einsum('bmhd,ehd->bmhe', q + self._qk_bias,
-                              self._k_proj.reshape(d_model, num_heads, d_k))
+            qk = torch.einsum('bmhd,ehd->bmhe', q + qk_bias,
+                              k_proj.reshape(d_model, num_heads, d_k))
             # [B, M, H, N] <= [B, M, H, d_model] * [B, N, d_model]
             logits = torch.einsum('bmhd,bnd->bmhn', qk, memory)
 
         if self._positional_encoding is not None:
             # [N, d_k]
-            positional_encoding = self._positional_encoding
+            positional_encoding = self._positional_encoding.to(
+                alf.get_default_device())
             if n < self._memory_size:
                 d = self._memory_size - n
                 if self._relative_positional_encoding:
@@ -2944,8 +2949,9 @@ class TransformerBlock(nn.Module):
                 # [M, N, d_k]
                 positional_encoding = self._shift(positional_encoding, m)
             # [B, M, H, N] <= [B, M, H, d_k] * ([d_k, N] or [M, d_k, N])
+            qp_bias = self._qp_bias.to(alf.get_default_device())
             positional_logits = torch.matmul(
-                q + self._qp_bias, positional_encoding.transpose(-2, -1))
+                q + qp_bias, positional_encoding.transpose(-2, -1))
             # gradient can still be correctly calculated in this case even though
             # inplace add is used.
             logits.add_(positional_logits)
@@ -2956,14 +2962,15 @@ class TransformerBlock(nn.Module):
         # [B, M, H, N]
         a = _masked_softmax(logits, mask)
 
+        v_proj = self._v_proj.to(alf.get_default_device())
         if n * d_v <= m * d_model:
             #             computation                  memory
             # v           N * H * d_v * d_model        N * H * d_v
             # att_result  M * H * N * d_v              M * H * d_v
 
             # [B, N, H, d_v] <= [B, N, d_model] * [d_model, H * d_v]
-            v = torch.matmul(memory, self._v_proj).reshape(
-                batch_size, n, num_heads, d_v)
+            v = torch.matmul(memory, v_proj).reshape(batch_size, n, num_heads,
+                                                     d_v)
             # [B, M, H, d_v] <= [B, M, H, N] * [B, N, H, d_v]
             att_result = torch.einsum('bmhn,bnhd->bmhd', a, v)
         else:
@@ -2976,7 +2983,7 @@ class TransformerBlock(nn.Module):
             # [B, M, H, d_v] <= [B, M, H, d_model] * [d_model, H, d_v]
             att_result = torch.einsum(
                 'bmhd,dhe->bmhe', att_result,
-                self._v_proj.reshape(d_model, self._num_heads, d_v))
+                v_proj.reshape(d_model, self._num_heads, d_v))
 
         if self._add_positional_encoding:
             # [B, M, H, d_k] <= [B, M, H, N] * ([N, d_k] or [M, N, d_k])
@@ -2988,7 +2995,8 @@ class TransformerBlock(nn.Module):
         att_result = att_result.reshape(batch_size, m, num_heads * d_a)
         att_result = self._dropout(att_result)
         # [B, M, d_model]
-        x = original_query + torch.matmul(att_result, self._o_proj)
+        o_proj = self._o_proj.to(alf.get_default_device())
+        x = original_query + torch.matmul(att_result, o_proj)
         # [B, M, d_model]
         y = self._mlp(self._norm2(x))
         # [B, M, d_model]

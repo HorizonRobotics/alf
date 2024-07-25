@@ -36,6 +36,17 @@ _devece_ddtype_tensor_map = {
         torch.int32: torch.cuda.IntTensor,
         torch.int64: torch.cuda.LongTensor,
         torch.bool: torch.cuda.BoolTensor,
+    },
+    'mps': {
+        torch.float32: torch.FloatTensor,
+        torch.float64: torch.FloatTensor,
+        torch.float16: torch.HalfTensor,
+        torch.uint8: torch.ByteTensor,
+        torch.int8: torch.CharTensor,
+        torch.int16: torch.ShortTensor,
+        torch.int32: torch.IntTensor,
+        torch.int64: torch.LongTensor,
+        torch.bool: torch.BoolTensor,
     }
 }
 
@@ -49,12 +60,17 @@ def set_default_device(device_name):
     Args:
         device_name (str): one of ("cpu", "cuda")
     """
+    device = torch.device(device_name)
+    torch.set_default_device(device)
     torch.set_default_tensor_type(
-        _devece_ddtype_tensor_map[device_name][torch.get_default_dtype()])
+        _devece_ddtype_tensor_map[device.type][torch.get_default_dtype()])
 
 
 def get_default_device():
-    return torch._C._get_default_device()
+    if torch._GLOBAL_DEVICE_CONTEXT is None:
+        return torch._C._get_default_device()
+    else:
+        return torch._GLOBAL_DEVICE_CONTEXT.device
 
 
 class device(object):
