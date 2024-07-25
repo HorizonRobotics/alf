@@ -32,7 +32,7 @@ import alf
 import alf.nest as nest
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
-from alf.utils.schedulers import update_all_progresses, get_all_progresses, disallow_scheduler
+from alf.utils.schedulers import update_all_progresses, get_all_progresses
 from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
 from . import _penv
 
@@ -107,6 +107,7 @@ def _worker(conn: multiprocessing.connection,
             torch_num_threads_per_env: int = 1,
             ddp_num_procs: int = 1,
             ddp_rank: int = -1,
+            local_rank: int= -1,
             name: str = ''):
     """The process waits for actions and sends back environment results.
 
@@ -142,6 +143,7 @@ def _worker(conn: multiprocessing.connection,
                 SpawnedProcessContext(
                     ddp_num_procs=ddp_num_procs,
                     ddp_rank=ddp_rank,
+                    local_rank=local_rank,
                     env_id=env_id,
                     env_ctor=env_constructor,
                     pre_configs=pre_configs))
@@ -150,8 +152,9 @@ def _worker(conn: multiprocessing.connection,
             env = alf.get_env()
         else:
             env = env_constructor(env_id=env_id)
-        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
-            disallow_scheduler()
+        #TODO fix this disallow_scheduler in ddp context
+        # if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
+        #     disallow_scheduler()
         action_spec = env.action_spec()
         if fast:
             penv = _penv.ProcessEnvironment(
@@ -299,13 +302,14 @@ class ProcessEnvironment(object):
 
         ddp_num_procs = PerProcessContext().num_processes
         ddp_rank = PerProcessContext().ddp_rank
+        local_rank = PerProcessContext().local_rank
 
         self._process = mp_ctx.Process(
             target=_worker,
             args=(conn, self._env_constructor, self._start_method,
                   alf.get_handled_pre_configs(), self._env_id, self._flatten,
                   self._fast, self._num_envs, self._torch_num_threads,
-                  ddp_num_procs, ddp_rank, self._name),
+                  ddp_num_procs, ddp_rank, local_rank, self._name),
             name=f"ProcessEnvironment-{self._env_id}")
         atexit.register(self.close)
         self._process.start()
