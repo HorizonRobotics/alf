@@ -308,11 +308,12 @@ class AMPWrapper(Network):
             net.input_tensor_spec, state_spec=net.state_spec, name=net.name)
         self._net = net
         self._enabled = enabled
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
 
     def forward(self, input, state):
         if torch.is_autocast_enabled() and not self._enabled:
             input = alf.layers.to_float32(input)
-        with torch.cuda.amp.autocast(self._enabled):
+        with torch.cuda.amp.autocast(self._enabled, dtype=self._amp_dtype):
             return self._net(input, state)
 
 

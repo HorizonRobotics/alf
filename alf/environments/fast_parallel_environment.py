@@ -260,7 +260,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
             # When AMP is enabled, the action.dtype can be torch.float16. We
             # need to convert it to torch.float32 to match the dtype from
             # action_spec
-            if x.dtype == torch.float16:
+            if x.dtype in (torch.float16, torch.bfloat16):
                 x = x.float()
             x = x.cpu().numpy()
             # parallel_environment.cpp requires the arrays to be contiguous. If
