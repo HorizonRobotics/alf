@@ -120,7 +120,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     In addition to continuous actions addressed by the original paper, this
     algorithm also supports discrete actions and a mixture of discrete and
     continuous actions. The networks for computing Q values :math:`Q(s,a)` and
-    sampling acitons can be divided into 3 cases according to action types:
+    sampling actions can be divided into 3 cases according to action types:
 
     1. Discrete only: a ``QNetwork`` is used for estimating Q values. There will
        be no actor network to learn because actions can be directly sampled from
@@ -470,7 +470,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             period=parameter_reset_period)
 
         # The following checkpoint loading hook handles the case when critic
-        # network is not constructed. In this case the critic network paramters
+        # network is not constructed. In this case the critic network parameters
         # present in the checkpoint should be ignored.
         def _deployment_hook(state_dict, prefix: str, unused_loacl_metadata,
                              unused_strict, unused_missing_keys,

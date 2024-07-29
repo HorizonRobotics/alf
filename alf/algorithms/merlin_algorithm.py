@@ -51,7 +51,7 @@ MBPLossInfo = namedtuple("MBPLossInfo", ["decoder", "vae"])
 
 @alf.configurable
 class MemoryBasedPredictor(Algorithm):
-    """The Memroy Based Predictor.
+    """The Memory Based Predictor.
 
     It's described in:
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent"

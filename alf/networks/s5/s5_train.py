@@ -196,7 +196,7 @@ class LinearWarmupCosineScheduler(Scheduler):
 
     Linearly increase learning rate from 0 to base_lr until `warmup_end_step`.
     Then decrease learning rate from base_lr to final_lr using cosine annealing
-    untill `end_step`.
+    until `end_step`.
     """
 
     def __init__(self, progress_type, warmup_end_step, end_step, base_lr,

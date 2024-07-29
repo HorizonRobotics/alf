@@ -40,7 +40,7 @@ class TracAlgorithm(RLAlgorithm):
     """Trust-region actor-critic.
     It compares the action distributions after the SGD with the action
     distributions from the previous model. If the average distance is too big,
-    the new parameters are shrinked as:
+    the new parameters are shrunk as:
     .. code-block:: python
         w_new' = old_w + 0.9 * distance_clip / distance * (w_new - w_old)
     If the distribution is ``Categorical``, the distance is

@@ -72,8 +72,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
     2) Predict the next latent representation given the current latent + an action
     3) Predict various targets (e.g. reward, value)
 
-    Amont the above, 1) can be used as the representation in comibination with
-    another RL aalgorithm; 2) and 3) can be used in policy improvements that
+    Among the above, 1) can be used as the representation in combination with
+    another RL algorithm; 2) and 3) can be used in policy improvements that
     requires a predictive model (e.g. Monte Carlo Tree Search).
 
     The model is trained with supervision on target prediction in 2) and 3).
@@ -132,7 +132,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             td_steps: bootstrap so many steps into the future for calculating
                 the discounted return. -1 means to bootstrap to the end of the game.
                 Can only used for environments whose rewards are zero except for
-                the last step as the current implmentation only use the reward
+                the last step as the current implementation only use the reward
                 at the last step to calculate the return.
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
@@ -179,7 +179,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             priority_func: the function for calculating priority. If it is a str,
                 ``eval(priority_func)`` will be called first to convert it a ``Callable``.
                 It is called as ``priority_func(loss_info)``, where loss_info is
-                the temporally stacked ``LossInfo`` strucuture returned from
+                the temporally stacked ``LossInfo`` structure returned from
                 ``MCTSModel.calc_loss()``.
             data_transformer_ctor (None|Callable|list[Callable]): if provided,
                 will used to construct data transformer. Otherwise, the one
@@ -784,13 +784,13 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         This means:
         1. Re-plan the policy using MCTS for n1 = 1 + horizon to get fresh policy
         and value target.
-        2. Caluclate the value for following n2 = reanalyze_td_steps so that we have value
+        2. Calculate the value for following n2 = reanalyze_td_steps so that we have value
         for a total of 1 + horizon + reanalyze_td_steps.
-        3. Use these values and rewards from replay buffer to caculate n2-step
-        bootstraped value target for the first n1 steps.
+        3. Use these values and rewards from replay buffer to calculate n2-step
+        bootstrapped value target for the first n1 steps.
 
         In order to do 1 and 2, we need to get the observations for n1 + n2 steps
-        and processs them using data_transformer.
+        and process them using data_transformer.
         """
         batch_size = env_ids.shape[0]
         horizon = horizon or self._num_unroll_steps
@@ -862,7 +862,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 candidate_action_policy = _reshape(candidate_action_policy)
             values = policy_step.info.value.reshape(batch_size, -1)
 
-            # 2. Calulate the value of the next n2 steps so that n2-step return
+            # 2. Calculate the value of the next n2 steps so that n2-step return
             # can be computed.
             if not self._full_reanalyze:
                 with torch.cuda.amp.autocast(self._enable_amp):
@@ -966,7 +966,7 @@ class MuzeroRepresentationTrainingOptions(NamedTuple):
 
 @alf.configurable
 class MuzeroRepresentationLearner(OffPolicyAlgorithm):
-    """Learn represenation following the MuZero style.
+    """Learn representation following the MuZero style.
 
     This is a thin wrapper over the MuzeroRepresentationImpl, so as to make it
     possible to work in combination with an RL algorithm (within ``Agent``).
@@ -1055,7 +1055,7 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
     def output_spec(self):
         """Access the spec of the produced representation.
 
-        This will be used as the obervation spec for the subsequent RL
+        This will be used as the observation spec for the subsequent RL
         algorithm.
 
         """

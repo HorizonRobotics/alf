@@ -44,7 +44,7 @@ class AsyncUnroller(object):
     unroll process has its own algorithm parameters, the main process needs to call
     ``update_parameters()`` to update the parameters for the unroll process
     periodically. Once the main process finishes, it should call close() to
-    release the resouces.
+    release the resources.
 
     The following settings in ``TrainerConfig`` are related to the functionality
     of ``AsyncUnroller``: unroll_length, async_unroll, max_unroll_length,

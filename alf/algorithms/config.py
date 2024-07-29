@@ -130,7 +130,7 @@ class TrainerConfig(object):
                 won't perform any training. For SL trainer, indicates the number
                 of training epochs. If both `num_iterations` and `num_env_steps`
                 are set, `num_iterations` must be big enough to consume so many
-                environment steps. And after `num_env_steps` enviroment steps are
+                environment steps. And after `num_env_steps` environment steps are
                 generated, the training will not interact with environments
                 anymore, which means that it will only train on replay buffer.
             num_env_steps (int): number of environment steps (ignored if 0). The
@@ -172,10 +172,10 @@ class TrainerConfig(object):
                 This is useful if the interaction with the environment happens
                 in real time (e.g. real world robot or real time simulation) and
                 you want a fixed interaction frequency with the environment.
-                Note that this will not has any effect if environment step and
+                Note that this will not have any effect if environment step and
                 rollout step together spend more than unroll_step_interval.
             unroll_parameter_update_period: update the parameter for the asynchronous
-                unroll every so many interations. Only used if ``async_unroll`` is True.
+                unroll every so many iterations. Only used if ``async_unroll`` is True.
             use_rollout_state (bool): If True, when off-policy training, the RNN
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
@@ -221,7 +221,7 @@ class TrainerConfig(object):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
-            eval_uncertainty (bool): whether to evluate uncertainty after training.
+            eval_uncertainty (bool): whether to evaluate uncertainty after training.
             num_eval_episodes (int) : number of episodes for one evaluation.
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
@@ -355,7 +355,7 @@ class TrainerConfig(object):
         self.use_root_inputs_for_after_train_iter = use_root_inputs_for_after_train_iter
         self.async_unroll = async_unroll
         if async_unroll:
-            assert not unroll_with_grad, ("unroll_with_grad is not supportd "
+            assert not unroll_with_grad, ("unroll_with_grad is not supported "
                                           "for async_unroll=True")
             assert max_unroll_length > 0, ("max_unroll_length needs to be set "
                                            "for async_unroll=True")

@@ -28,7 +28,7 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
     """A base class for algorithms with handcrafted computational logic.
     Note that a concrete algorithm should subclass from this and implement the
     computational logic in ``_policy_func``. See ``SimpleCarlaAlgorithm`` for
-    an exmaple.
+    an example.
     """
 
     def __init__(self,
@@ -182,7 +182,7 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         # speed: 1.0 corresponding to maximally allowed speed
         # direction: relative to the vehicle's heading, with 0 being front,
         # -0.5 being left and 0.5 being right
-        # reverse: values greater than 0.5 corrsponding to going backward.
+        # reverse: values greater than 0.5 corresponding to going backward.
 
         action = torch.zeros(waypoints.shape[0], self._action_spec.shape[0])
 

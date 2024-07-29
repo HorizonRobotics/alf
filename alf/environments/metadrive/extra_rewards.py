@@ -49,7 +49,7 @@ class ExtraReward(abc.ABC):
 
         Returns:
 
-            A pair of dictionaries. The first dictionary is a map of invidual
+            A pair of dictionaries. The first dictionary is a map of individual
             reward names to their values. The second dictionary are extra env
             info that will be added to the environment's env info when this
             reward is turned on.

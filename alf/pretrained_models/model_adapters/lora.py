@@ -105,7 +105,7 @@ class LoRA(nn.Module):
         scaling = self._alpha
         if self._wB is not None:
             # If wB is used, wB @ wA will increase the output magnitude. LoRA
-            # compenstates this by dividing the result by ``self._r``.
+            # compensates this by dividing the result by ``self._r``.
             scaling /= self._r
         return scaling
 
@@ -277,7 +277,7 @@ class Conv2dAdapter(LoRA):
     def forward(self, input):
         m = self._m[0]
         if isinstance(m.padding, str) or m.groups > 1 or self._wB is None:
-            # Three senarios when two-stage convolution is difficult:
+            # Three scenarios when two-stage convolution is difficult:
             # 1. m.groups > 1: r has to be divisible by m.groups in order to
             #    preserve the correct input-output mapping
             # 2. m.padding is a string: torch will compute paddings on the fly,

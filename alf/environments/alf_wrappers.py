@@ -552,17 +552,17 @@ class MultitaskWrapper(AlfEnvironment):
         for env in envs:
             assert _nested_eq(
                 env.observation_spec(), self._observation_spec), (
-                    "All environement should have same observation spec. "
+                    "All environment should have same observation spec. "
                     "Got %s vs %s" % (self._observation_spec,
                                       env.observation_spec()))
             assert _nested_eq(env.action_spec(), self._action_spec), (
-                "All environement should have same action spec. "
+                "All environment should have same action spec. "
                 "Got %s vs %s" % (self._action_spec, env.action_spec()))
             assert _nested_eq(env.reward_spec(), self._reward_spec), (
-                "All environement should have same reward spec. "
+                "All environment should have same reward spec. "
                 "Got %s vs %s" % (self._reward_spec, env.reward_spec()))
             assert _nested_eq(env.env_info_spec(), self._env_info_spec), (
-                "All environement should have same env_info spec. "
+                "All environment should have same env_info spec. "
                 "Got %s vs %s" % (self._env_info_spec, env.env_info_spec()))
             env.reset()
 
@@ -750,7 +750,7 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         max_progress = progresses.max()
         progresses = progresses / (max_progress + 1e-30)
         # Gradually increase scale from 0 to self._scale so that we tend to do
-        # random smapling of the environments initially
+        # random sampling of the environments initially
         scale = self._scale * min(1, self._total_count / self._warmup_period)
         self._task_probs = F.softmax(scale * progresses, dim=0)
 
@@ -841,7 +841,7 @@ class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
 
     @staticmethod
     def _to_batched_tensor(raw):
-        """Conver the structured input into batched (batch_size = 1) tensors
+        """Convert the structured input into batched (batch_size = 1) tensors
         of the same structure.
         """
         return nest.map_structure(
@@ -873,7 +873,7 @@ class TensorWrapper(AlfEnvironmentBaseWrapper):
 
     @staticmethod
     def _to_tensor(raw):
-        """Conver the structured input into batched (batch_size = 1) tensors
+        """Convert the structured input into batched (batch_size = 1) tensors
         of the same structure.
         """
         return nest.map_structure(
@@ -970,7 +970,7 @@ class AtariTerminalOnLifeLossWrapper(AlfEnvironmentBaseWrapper):
     """Wrapper to change discount to 0 upon life loss for Atari.
 
     This can potentially make it easier for the learning agent to recognize the
-    signficance of losing a life.
+    significance of losing a life.
 
     Some papers report the results with this enabled (e.g. arXiv:2111.00210)
     """

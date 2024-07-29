@@ -208,7 +208,7 @@ class NormalProjectionNetwork(Network):
             std_transform (Callable): Transform to apply to the std, on top of
                 `activation`.
             scale_distribution (bool): Whether or not to scale the output
-                distribution to ensure that the output aciton fits within the
+                distribution to ensure that the output action fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
             dist_squashing_transform (td.Transform):  A distribution Transform
@@ -375,7 +375,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                 transformed values are further transformed according to min_std
                 and max_std.
             scale_distribution (bool): Whether or not to scale the output
-                distribution to ensure that the output aciton fits within the
+                distribution to ensure that the output action fits within the
                 `action_spec`. Note that this is different from 'mean_transform'
                 which merely squashes the mean to fit within the spec.
             init_std (float): Initial value for standard deviation.
@@ -466,7 +466,7 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
             scale_transform (Callable): Transform to apply to the scale, on top of
                 `activation`.
             scale_distribution (bool): Whether or not to scale the output
-                distribution to ensure that the output aciton fits within the
+                distribution to ensure that the output action fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
             dist_squashing_transform (td.Transform):  A distribution Transform
@@ -634,7 +634,7 @@ class TruncatedProjectionNetwork(Network):
             state_dependent_scale (bool): If True, std will be generated depending
                 on the current state (i.e. inputs); otherwise a global scale will
                 be generated regardless of the current state.
-            loc_transform (Callable): Tranform to apply to the loc, on top of
+            loc_transform (Callable): Transform to apply to the loc, on top of
                 `activation` to make it within [-1, 1].
             scale_transform (Callable): Transform to apply to the std, on top of
                 `activation` to make it positive.

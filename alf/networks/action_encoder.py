@@ -26,7 +26,7 @@ class SimpleActionEncoder(Network):
     """A simple encoder for action.
 
     It encodes discrete action to one hot representation and use the original
-    continous actions. The output is the concat of all of them after flattening.
+    continuous actions. The output is the concat of all of them after flattening.
     """
 
     def __init__(self, action_spec):

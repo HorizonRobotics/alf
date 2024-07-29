@@ -64,11 +64,11 @@ def _define_flags():
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
     flags.DEFINE_integer(
         'last_step_repeats', 0,
-        "If >0, wil repeat such number of times for the last "
+        "If >0, will repeat such number of times for the last "
         "frame of each episode in the rendered video file.")
     flags.DEFINE_integer(
         'append_blank_frames', 0,
-        "If >0, wil append such number of blank frames at the "
+        "If >0, will append such number of blank frames at the "
         "end of each episode in the rendered video file.")
     flags.DEFINE_float('sleep_time_per_step', 0.01,
                        "sleep so many seconds for each step")
@@ -88,7 +88,7 @@ def _define_flags():
     flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
     flags.DEFINE_string(
         'ignored_parameter_prefixes', "",
-        "Comma separated strings to ingore the parameters whose name has one of "
+        "Comma separated strings to ignore the parameters whose name has one of "
         "these prefixes in the checkpoint.")
     flags.DEFINE_bool(
         'use_alf_snapshot', False,

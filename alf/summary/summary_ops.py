@@ -208,7 +208,7 @@ def text(name, data, step=None, walltime=None):
 
 @_summary_wrapper
 def scalar(name, data, step=None, walltime=None):
-    """Addd scalar data to summary.
+    """Add scalar data to summary.
 
     Note that data will be changed to float value (i.e. possible loss of
     precision). See
@@ -334,7 +334,7 @@ class record_if(object):
 
 
 def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):
-    """Ceates a SummaryWriter that will write out events to the event file.
+    """Creates a SummaryWriter that will write out events to the event file.
 
     Args:
         summary_dir (str) – Save directory location.
@@ -432,7 +432,7 @@ def enter_summary_scope(method):
 class EnsureSummary(object):
     """Ensure summaries are generated in an infrequent code block.
 
-    Sometime, a code block runs infrequently or with different frequencey compared
+    Sometime, a code block runs infrequently or with different frequency compared
     to the summary_interval. This can lead to the problem that the summaries in
     this code block are not generated or generated rarely. This class is a helper
     to solve this problem.

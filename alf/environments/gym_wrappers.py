@@ -161,7 +161,7 @@ class ImageChannelFirst(BaseObservationWrapper):
         """
         Note that the extra copy() after np.transpose is crucial to pickle dump speed
         when called by subprocesses. An explanation of the non-contiguous memory caused
-        by numpy tranpose can be found in the following:
+        by numpy transpose can be found in the following:
 
         https://stackoverflow.com/questions/26998223/
         """
@@ -527,7 +527,7 @@ class FrameCrop(BaseObservationWrapper):
 
         Args:
              env (gym.Env): the gym environment
-             sx (int): start position along the horizonal direction (x-axis)
+             sx (int): start position along the horizontal direction (x-axis)
              sy (int): start position along the vertical direction (y-axis)
              width (int): crop width
              height (int): crop height
@@ -614,7 +614,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     3. A lost life doesn't result in a terminal state
 
     NOTE: Some implementations forces the time step that loses a life to have a
-    zero value (i.e., mark a 'terminal' state) to help boostrap value functions,
+    zero value (i.e., mark a 'terminal' state) to help bootstrap value functions,
     but *only resetting the env when all lives are used (`done==True`)*. In this
     case, the episodic score is still summed over all lives.
 

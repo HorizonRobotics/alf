@@ -67,7 +67,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
             min_duration (int): Number of steps at the beginning of the
                 episode during which the episode can not terminate.
             max_duration (int): Optional number of steps after which the episode
-                terminates regarless of the termination probability.
+                terminates regardless of the termination probability.
             use_tensor_time_step (bool): convert all quantities in time_step
                 to torch.tensor if True. Otherwise use numpy data types.
 

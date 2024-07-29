@@ -2,7 +2,7 @@ PyTorch Notes
 ************************************
 
 This note is used for documenting some useful PyTorch-related features,
-which can serve as a useful reference for future relevent development, either
+which can serve as a useful reference for future relevant development, either
 implementing algorithms in PyTorch or converting some eixsting code from
 TensorFlow to PyTorch, or PyTorch upgrade, from a lower to higher
 versions.
@@ -41,10 +41,10 @@ Example
 ---------
 We encountered issues related to this feature in our ``SAC`` algorithm converted
 to  PyTorch from TensorFlow.
-Our initial version of ``SAC`` has an instability issue, expecially on complex
+Our initial version of ``SAC`` has an instability issue, especially on complex
 tasks that requires longer training time. This is caused by the inversion of the
 ``Transform``  used in the actor distribution of ``SAC`` as mentioned above.
-For more details, please refer to this `PR on stablizing SAC <https://github.com/HorizonRobotics/alf/pull/486>`_.
+For more details, please refer to this `PR on stabilizing SAC <https://github.com/HorizonRobotics/alf/pull/486>`_.
 
 2. ``Distribution`` / ``Probability``
 =========================================================
@@ -55,7 +55,7 @@ generally follows the design of the
 `TensorFlow.Distribution paper <https://arxiv.org/pdf/1711.10604.pdf>`_
 which is termed as `TensorFlow.Probability <https://www.tensorflow.org/probability>`_
 in the TensorFlow package.
-One functional difference which is very relevent to ``RL`` is that there is no
+One functional difference which is very relevant to ``RL`` is that there is no
 ``mode`` function implemented in ``PyTorch.Distribution`` currently.
 This is true both for the base distribution as well as for the transformed
 distributions.
@@ -124,7 +124,7 @@ Example
 ---------
 PyTorch supports inplace computation for some commonly used
 activations such as ``ReLU``, but not all of them.
-For exmaple on implementing an inplace activation function, please refer to this
+For example on implementing an inplace activation function, please refer to this
 `PR on inplace Softsign <https://github.com/HorizonRobotics/alf/pull/544>`_.
 
 

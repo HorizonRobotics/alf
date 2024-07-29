@@ -142,8 +142,8 @@ class ActorCriticLoss(Loss):
         return self._normalize_scalar_advantages
 
     def forward(self, info):
-        """Cacluate actor critic loss. The first dimension of all the tensors is
-        time dimension and the second dimesion is the batch dimension.
+        """Calculate actor critic loss. The first dimension of all the tensors is
+        time dimension and the second dimension is the batch dimension.
 
         Args:
             info (namedtuple): information for calculating loss. All tensors are

@@ -124,7 +124,7 @@ class SensorBase(abc.ABC):
             current_frame (int): current frame no. For some sensors, they may
                 not receive any data in the most recent tick. ``current_frame``
                 will be compared against the frame no. of the last received data
-                to make sure that the data is correctly interpretted. Note that
+                to make sure that the data is correctly interpreted. Note that
                 if the sensor receives event in the most recent frame,
                 event.frame should be equal to current_frame - 1.
         Returns:
@@ -235,7 +235,7 @@ class CollisionSensor(SensorBase):
             current_frame (int): current frame no. CollisionSensor may not
                 not receive any data in the most recent tick. ``current_frame``
                 will be compared against the frame no. of the last received data
-                to make sure that the data is correctly interpretted.
+                to make sure that the data is correctly interpreted.
         Returns:
             np.ndarray: Impulses from collision during the last tick. Each
                 impulse is a 3-D vector. At most ``max_num_collisions``
@@ -552,7 +552,7 @@ class RadarSensor(SensorBase):
             current_frame (int): current frame no. RadarSensor may not receive
                 any data in the most recent tick. ``current_frame`` will be
                 compared against the frame no. of the last received data to make
-                sure that the data is correctly interpretted.
+                sure that the data is correctly interpreted.
         Returns:
             np.ndarray: A set of detected points. Each detected point is a 4-D
                 vector of [vel, altitude, azimuth, depth], where vel is the
@@ -602,7 +602,7 @@ class CameraSensor(SensorBase):
             parent_actor (carla.Actor): the parent actor of this sensor
             sensor_type (str): 'sensor.camera.rgb', 'sensor.camera.depth',
                 'sensor.camera.semantic_segmentation'
-            attachment_type (str): There are two types of attachement. 'rigid':
+            attachment_type (str): There are two types of attachment. 'rigid':
                 the object follow its parent position strictly. 'spring_arm':
                 the object expands or retracts depending on camera situation.
             xyz (tuple[float]): the attachment position (x, y, z) relative to
@@ -1017,7 +1017,7 @@ def _is_segments_intersecting(seg1, seg2):
         seg1 (tuple[ndarray]): ``seg1[0]`` and ``seg1[1]`` are [1, 3] or [n,3] arrays.
         seg2 (tuple[ndarray]): ``seg2[0]`` and ``seg2[1]`` are [1, 3] or [n,3] arrays
     Returns:
-        bool ndarray of shape [n] indicating wether each segment in ``seg1``
+        bool ndarray of shape [n] indicating whether each segment in ``seg1``
             intersects with the corresponding segment in ``seg2``
     """
     seg1 = np.copy(seg1[0]), np.copy(seg1[1])
@@ -1145,7 +1145,7 @@ class World(object):
         return self._waypoints
 
     def transform_to_geolocation(self, location: carla.Location):
-        """Transform a map coordiate to geo coordinate.
+        """Transform a map coordinate to geo coordinate.
 
         Returns:
             np.ndarray: ``[latitude, longitude, altidude]``
@@ -1312,7 +1312,7 @@ class World(object):
             actor (carla.Actor): the vehicle actor
         Returns:
             - violated red light id if running red light, None otherwise
-            - encountered red light id if encounting one, None otherwise
+            - encountered red light id if encountering one, None otherwise
             - distance to the encountered red light id if encountering one,
              ``DEFAULT_ENCOUNTERED_RED_LIGHT_DISTANCE`` otherwise
         """
@@ -1649,7 +1649,7 @@ class BEVSensor(SensorBase):
                 of the history information to be rendered for non-ego vehicles.
                 For example, we can set `history_idx=[-1]` for keep only the
                 most recent observation or `history_idx=[-11, -1]` for both the
-                lastest and also the one 10 steps earlier.
+                latest and also the one 10 steps earlier.
             max_history_len (int): max number of history length preserved
             vehicle_bbox_factor (float): a factor to scale the vehicle bounding
                 boxes
@@ -1781,7 +1781,7 @@ class BEVSensor(SensorBase):
             = self._get_history_masks(M_warp)
 
         # perform joint transformation of masks
-        # note that the shape paramter for wrapAffine is (#cols, #rows)
+        # note that the shape parameter for wrapAffine is (#cols, #rows)
         road_lane_mask = cv2.warpAffine(
             np.stack([self._road, self._lane], axis=2), M_warp,
             (self._width, self._height)).astype(np.bool)
@@ -1828,7 +1828,7 @@ class BEVSensor(SensorBase):
 
     def _generate_observation(self, render_rgb_image):
 
-        # first get all revelant information
+        # first get all relevant information
         self._get_objects_within_region()
 
         mask_dict = self.generate_observation_masks()
@@ -1910,7 +1910,7 @@ class BEVSensor(SensorBase):
         The observation is an [C, H, W] array with C=3 if self._use_rgb_image
         is True. Otherwise, it is the a multi-channel mask image including
         road_mask, route_mask, lane_mask for the first 3 channels, and
-        3 * len(self._history_idx) channles for vehicle_mask, walker_mask and
+        3 * len(self._history_idx) channels for vehicle_mask, walker_mask and
         traffic light mask.
 
         Args:
@@ -2017,7 +2017,7 @@ class BEVSensor(SensorBase):
                     bb_ext = bb_ext * scale
                     bb_ext.x = max(bb_ext.x, 0.8)
                     bb_ext.y = max(bb_ext.y, 0.8)
-                # actor info contains the tranform, bounding-box location,
+                # actor info contains the transform, bounding-box location,
                 # and bounding-box extent
                 actor_info = (transform, bb_loc, bb_ext)
                 actors.append(actor_info)
@@ -2189,7 +2189,7 @@ class DynamicObjectSensor(SensorBase):
                 of the history information to be rendered for all dynamic objects.
                 For example, we can set `history_idx=[-1]` for keep only the
                 most recent observation or `history_idx=[-11, -1]` for both the
-                lastest and also the one 10 steps earlier.
+                latest and also the one 10 steps earlier.
             object_filter (str): a string representing the type of dynamic
                 objects to be perceived, following the
                 `blueprint filter format <https://carla.readthedocs.io/en/0.9.8/core_actors/#blueprints>`_.
@@ -2197,7 +2197,7 @@ class DynamicObjectSensor(SensorBase):
             max_object_number (int): the maximum number of dynamic objects that
                 can be perceived within one time step, including ego vehicle if
                 ``with_ego_history`` is True; otherwise, the maximum number of
-                non-ego dynamic objects that can be perfriced in one time step.
+                non-ego dynamic objects that can be perceived in one time step.
                 When the number of dynamic objects is larger than
                 ``max_object_number``, those that are far from the ego agent
                 will be excluded from the observation until the condition on

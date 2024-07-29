@@ -183,7 +183,7 @@ def SequentialAlg(*modules,
 
     Example 1:
 
-    The following contructs an algorithm which predicts the future of its input:
+    The following constructs an algorithm which predicts the future of its input:
 
     .. code-block:: python
 
@@ -312,8 +312,8 @@ def SequentialAlg(*modules,
             will be used as output. Otherwise, it will be used to retrieve
             results from ``named_results`` after the results of all modules
             have been calculated.
-        is_on_policy (bool): wether this supports on-policy or off-policy training.
-            If is None, it should supports both on-policy and off-policy training.
+        is_on_policy (bool): whether this supports on-policy or off-policy training.
+            If is None, it should support both on-policy and off-policy training.
         name (str): name of this algorithm
 
     """

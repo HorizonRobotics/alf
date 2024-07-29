@@ -294,7 +294,7 @@ class GoBoard(object):
         for player in [-1, 1]:
             # After the loop finish, expanded[b, x, y] == player iff (x, y)
             # can be reached by one of stones of player in board b. This is achieved
-            # step-by-step by checking wether the neighbor of a location can
+            # step-by-step by checking whether the neighbor of a location can
             # be reached. The loop ends until no more new location can be connected.
             expanded = self._board[B]
             area = (expanded == player).sum(dim=(1, 2))

@@ -80,7 +80,7 @@ class SimpleDecoder(Algorithm):
                 scalar. It should at least keep the batch dimension in the
                 returned loss.
             loss_weight (float): weight for the loss.
-            optimizer (Optimzer|None): if provided, it will be used to optimize
+            optimizer (Optimizer|None): if provided, it will be used to optimize
                 the parameter of decoder_net
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The predicted
@@ -99,7 +99,7 @@ class SimpleDecoder(Algorithm):
         self._decoder_net = decoder_net_ctor(
             input_tensor_spec=input_tensor_spec)
         assert self._decoder_net.state_spec == (
-        ), "RNN decoder is not suppported"
+        ), "RNN decoder is not supported"
         self._summarize_each_dimension = summarize_each_dimension
         self._target_field = target_field
         self._loss = loss_ctor()
@@ -200,7 +200,7 @@ class PredictiveRepresentationLearner(Algorithm):
     * dynamics_net: it is a ``Network`` that generates the future latent states
       from the current latent state.
     * decoder: it is an ``Algorithm`` that decode the target values from the
-      latent state and calcuate the loss.
+      latent state and calculate the loss.
     """
 
     def __init__(self,
@@ -244,7 +244,7 @@ class PredictiveRepresentationLearner(Algorithm):
                 exactly same as the state_spec of the encoding net, the current
                 state of the encoding net will be used as the initial state of the
                 dynamics net. Otherwise, a linear projection will be used to
-                convert the current latent represenation to the initial state for
+                convert the current latent representation to the initial state for
                 the dynamics net.
             reward_spec: NOT USED. Only present as representation learner
                 interface to be used with ``Agent``.
@@ -294,7 +294,7 @@ class PredictiveRepresentationLearner(Algorithm):
             self._decoders.append(decoder)
 
             assert len(alf.nest.flatten(decoder.train_state_spec)) == 0, (
-                "RNN decoder is not suported")
+                "RNN decoder is not supported")
             self._target_fields.append(target_field)
 
         if len(self._target_fields) == 1:
@@ -485,7 +485,7 @@ class PredictiveRepresentationLearner(Algorithm):
         Note that the shape of experience is [B, T, ...].
 
         The target is a Tensor (or a nest of Tensors) when there is only one
-        decoder. When there are multiple decorders, the target is a list,
+        decoder. When there are multiple decoders, the target is a list,
         and each of its element is a Tensor (or a nest of Tensors), which is
         used as the target for the corresponding decoder.
 

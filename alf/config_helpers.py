@@ -128,7 +128,7 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     configuration values needs to be adjusted to achieve parity on number of
     processes.
     For example, if we run 64 environments in parallel for single process
-    settings, the value needs to be overriden with 16 if there are 4 identical
+    settings, the value needs to be overridden with 16 if there are 4 identical
     processes running DDP training to achieve parity.
 
     The adjusted configs are
@@ -247,7 +247,7 @@ def get_env():
     if _env is None:
         # When ``get_env()`` is called in a spawned process (this is almost
         # always due to a ``ProcessEnvironment`` created with "spawn" method),
-        # use the environment construtor from the context to create the
+        # use the environment constructor from the context to create the
         # environment. This is to avoid creating a parallel environment which
         # leads to infinite recursion.
         ctx = get_spawned_process_context()

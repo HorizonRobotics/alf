@@ -1,4 +1,4 @@
-ALF Knowlege Base
+ALF Knowledge Base
 =================
 
 Reading the source code of ALF
@@ -269,7 +269,7 @@ All of its inputs/outputs are ``numpy.ndarray``.
 4. Apply a series of `ALF environment wrappers <../api/alf.environments.html#module-alf.environments.alf_wrappers>`_.
 All of its inputs/outputs are ``numpy.ndarray``.
 
-5. Wrap the non-batched ALF environmnet with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
+5. Wrap the non-batched ALF environment with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
 It provides an interface using CPU torch.Tensor and interacts with the underlying
 ``AlfEnvironment`` using ``numpy.ndarray``.
 
@@ -418,7 +418,7 @@ ALF-tf:
 wrapper to clip the out-of-bound continuous actions for all gym environments
 (Note that most environments supported by ALF are gym environments, even they
 may not be named so). ``ContinuousActionClip`` can often help the algorithm to
-obtain higher rewards at the beginning of training because the evironment may
+obtain higher rewards at the beginning of training because the environment may
 calculate reward using an out-of-bound action without clipping. But sometimes,
 using this wrapper can hurt the final performance. You can disable it by setting
 the following in the config:

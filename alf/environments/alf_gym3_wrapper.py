@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Wrapper providing an AlfEnvironment adapter for Gym3 envrionments
+"""Wrapper providing an AlfEnvironment adapter for Gym3 environments
 
 Gym3 provides an unified interface for reinforcement leraning environments that
 improves upon the gym interface and includes vectorization (i.e. natively
@@ -63,7 +63,7 @@ def _gym3_space_to_tensor_spec(space, force_int64: bool = False):
 
     Returns:
 
-        A nested BoundedTensorSpec with the same sturcture.
+        A nested BoundedTensorSpec with the same structure.
 
     """
 
@@ -200,7 +200,7 @@ class AlfGym3Wrapper(AlfEnvironment):
 
         """
         assert isinstance(gym3_env, gym3.Env), \
-            f'AlfGym3Wrapper: {type(gym3_env)} is not dervied from gym3.Env'
+            f'AlfGym3Wrapper: {type(gym3_env)} is not derived from gym3.Env'
         super().__init__()
 
         # The underlying Gym3 environment
@@ -391,7 +391,7 @@ class AlfGym3Wrapper(AlfEnvironment):
 
         reward, observation, first = self._gym3_env.observe()
 
-        # Override the obervation with the previous observation if that
+        # Override the observation with the previous observation if that
         # particular environment has ``first=True``.
 
         def __override_with_prev_observation(ob_array: np.ndarray,

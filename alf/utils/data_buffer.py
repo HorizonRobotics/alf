@@ -71,7 +71,7 @@ class RingBuffer(nn.Module):
     happen afterwards will be skipped, unless the operation already started.
 
     Terminology: we use ``pos`` as in ``_current_pos`` to refer to the always
-    increasing position of an element in the infinitly long buffer, and ``idx``
+    increasing position of an element in the infinitely long buffer, and ``idx``
     as the actual index of the element in the underlying store (``_buffer``).
     That means ``idx == pos % _max_length`` is always true, and one should use
     ``_buffer[idx]`` to retrieve the stored data.

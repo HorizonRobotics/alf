@@ -21,7 +21,7 @@ from .utils import get_opt_arg
 class AdamTF(Optimizer):
     r"""Implementation of Adam algorithm following Tensorflow's convention.
 
-    This class should not be direclty used as it will be wrapped for clipping
+    This class should not be directly used as it will be wrapped for clipping
     gradients. Use the wrapped optimizer ``AdamTF`` in ``alf/optimizers/optimizers.py``
     instead.
 

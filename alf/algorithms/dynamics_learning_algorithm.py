@@ -35,7 +35,7 @@ DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"], default_value=())
 class DynamicsLearningAlgorithm(Algorithm):
     """Base Dynamics Learning Module
 
-    This module learns the dynamics of environment with a determinstic model.
+    This module learns the dynamics of environment with a deterministic model.
     """
 
     def __init__(self,
@@ -173,8 +173,8 @@ class DynamicsLearningAlgorithm(Algorithm):
 class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
     """Deterministic Dynamics Learning Module
 
-    This module trys to learn the dynamics of environment with a
-    determinstic model.
+    This module tries to learn the dynamics of environment with a
+    deterministic model.
     """
 
     def __init__(self,
@@ -236,7 +236,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
                 is already expanded, inputs will be returned without any
                 further processing.
         Returns:
-            Tensor: the expaneded inputs or the original inputs.
+            Tensor: the expanded inputs or the original inputs.
         """
         outer_rank = get_outer_rank(inputs, spec)
         if outer_rank == 1 and self._num_replicas > 1:

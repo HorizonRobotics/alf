@@ -162,7 +162,7 @@ class HyperNetwork(Algorithm):
             inverse_mvp_hidden_layers (int): number of hidden layers in inverse_mvp 
                 network. 
 
-            function_vi (bool): whether to use funciton value based par_vi, current
+            function_vi (bool): whether to use function value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
             function_bs (int): mini batch size for par_vi training.
                 Needed for critic initialization when function_vi is True.
@@ -199,7 +199,7 @@ class HyperNetwork(Algorithm):
             critic_optimizer (torch.optim.Optimizer): The optimizer for training
                 critic network
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
-            logging_network (bool): whether logging the archetectures of networks.
+            logging_network (bool): whether logging the architectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
             config (TrainerConfig): configuration for training
@@ -633,7 +633,7 @@ class HyperNetwork(Algorithm):
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
     def _classification_vote(self, output, target):
-        """Ensemble the ooutputs from sampled classifiers."""
+        """Ensemble the outputs from sampled classifiers."""
         num_particles = output.shape[1]
         probs = F.softmax(output, dim=-1)  # [B, N, D]
         if self._voting == 'soft':

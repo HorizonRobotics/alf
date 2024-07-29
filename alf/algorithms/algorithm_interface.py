@@ -26,7 +26,7 @@ class AlgorithmInterface(nn.Module):
     1. ``predict_step()``: one step of computation of action for evaluation.
     2. ``rollout_step()``: one step of computation for rollout. It is used for
        collecting experiences during training. Different from ``predict_step``,
-       ``rollout_step`` may include addtional computations for training. An
+       ``rollout_step`` may include additional computations for training. An
        algorithm could immediately use the collected experiences to update
        parameters after one rollout (multiple rollout steps) is performed; or it
        can put these collected experiences into a replay buffer.
@@ -69,7 +69,7 @@ class AlgorithmInterface(nn.Module):
 
     .. note::
         A non-RL algorithm will not directly interact with an
-        environment. The interation loop will always be driven by an
+        environment. The iteration loop will always be driven by an
         ``RLAlgorithm`` that outputs actions and gets rewards. So a
         non-RL algorithm is always attached to an ``RLAlgorithm`` and cannot
         change the timing of (when to launch) a training iteration. However, it
@@ -137,7 +137,7 @@ class AlgorithmInterface(nn.Module):
         off-policy algorithm. If an algorithm does not override this, it needs to
         support both on-policy and off-policy training, which means that ``rollout_step()``
         and ``train_step()`` need to have the correct behavior for on-policy and
-        off-policy training. It can check wether it is on-policy training by
+        off-policy training. It can check whether it is on-policy training by
         calling this function.
 
         Returns:

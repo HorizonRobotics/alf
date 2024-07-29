@@ -91,7 +91,7 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
 
 
 def create_input_preprocessor_masks():
-    # create input mask for flexibily mask out some sensors
+    # create input mask to flexibly mask out some sensors
     observation_spec = alf.get_observation_spec()
     observation_preprocessor_masks = {}
     for sensor, spec in observation_spec['observation'].items():

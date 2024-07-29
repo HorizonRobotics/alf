@@ -30,7 +30,7 @@ class TestCase(unittest.TestCase):
         # We need to reset_configs() so we can avoid the error of configuring
         # a function after it is used.
         alf.reset_configs()
-        # Some test may create a globel env. We need to close it.
+        # Some test may create a global env. We need to close it.
         alf.close_env()
         common.set_random_seed(1)
         alf.summary.reset_global_counter()

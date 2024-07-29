@@ -133,7 +133,7 @@ class VehicleController(object):
         ``__init__()``, and direction is the relative direction that the vehicle
         is facing, with 0 being front, -0.5 being left and 0.5 being right, and
         reverse is interpreted as a boolean value with values greater than 0.5
-        corrsponding to True to indicate going backward.
+        corresponding to True to indicate going backward.
 
         Returns:
             alf.BoundedTensorSpec
@@ -155,7 +155,7 @@ class VehicleController(object):
             "direction is the relative direction that the vehicle is facing, with "
             "0 being front, -0.5 being left and 0.5 being right, and reverse is "
             "interpreted as a boolean value with values greater than 0.5 "
-            "corrsponding to True to indicate going backward.")
+            "corresponding to True to indicate going backward.")
 
     def act(self, action):
         """Generate carla.VehicleControl based on ``action``

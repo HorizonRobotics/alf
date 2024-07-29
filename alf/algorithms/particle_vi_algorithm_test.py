@@ -40,7 +40,7 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 dimension of the observation, and each column a single
                 observation.
             rowvar (bool): If True, then each row represents a dimension, with
-                observations in the columns. Othewise, each column represents
+                observations in the columns. Otherwise, each column represents
                 a dimension while the rows contains observations.
 
         Returns:

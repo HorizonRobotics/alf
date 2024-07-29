@@ -354,7 +354,7 @@ Like ``gym.Wrapper``, we can also stack a sequence of :class:`~.AlfEnvironmentBa
 ----------------------------------------------------------------
 
 The outermost layer is :class:`~.ParallelAlfEnvironment` which batches several
-parallel :class:`~.AlfEnvironment` together to obtain a *batched* environemnt.
+parallel :class:`~.AlfEnvironment` together to obtain a *batched* environment.
 Each individual env in the batch is created in a separate sub-process.
 :class:`~.ParallelAlfEnvironment` is responsible to pack all time steps returned
 from individual envs, and output it to an ALF algorithm. When the algorithm returns

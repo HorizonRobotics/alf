@@ -5,7 +5,7 @@ Basically our docstrings follow the `RST syntax <https://thomas-cokelaer.info/tu
 for hypermedia and the `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/#google-vs-numpy>`_
 for documenting function arguments and returns. That means, you can write anything
 that's supported by the RST syntax in a docstring, such as tables, figures,
-math equations, hyperlinks, ect.
+math equations, hyperlinks, etc.
 
 Note that indent and line break are very important when writing RST!
 

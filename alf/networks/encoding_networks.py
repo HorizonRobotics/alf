@@ -517,7 +517,7 @@ class AutoShapeImageDeconvNetwork(_Sequential):
         """
         assert len(output_shape) == 3, "the output_shape should be (c, h, w)"
         assert output_shape[0] == transconv_layer_params[-1][0], (
-            "channel number mis-match")
+            "channel number mismatch")
 
         # compute conv shape and padding shape
         out_paddings = []
@@ -830,7 +830,7 @@ class EncodingNetwork(_Sequential):
             if spec.numel == 1:
                 assert output_tensor_spec.numel == input_size, (
                     "network output "
-                    "size {a} is inconsisent with specified out_tensor_spec "
+                    "size {a} is inconsistent with specified out_tensor_spec "
                     "of size {b}".format(
                         a=input_size, b=output_tensor_spec.numel))
             elif spec.numel == 2:
@@ -918,7 +918,7 @@ def ParallelEncodingNetwork(input_tensor_spec,
             None.
         n (int): number of parallel networks
         output_tensor_spec (None|TensorSpec): spec for the output, excluding
-            the dimension of paralle networks ``n``. If None, the output
+            the dimension of parallel networks ``n``. If None, the output
             tensor spec will be assumed as ``TensorSpec((n, output_size, ))``,
             where ``output_size`` is inferred from network output.
             Otherwise, the output tensor spec will be
@@ -1126,7 +1126,7 @@ class LSTMEncodingNetwork(_Sequential):
         if output_tensor_spec is not None:
             assert output_tensor_spec.numel == input_size, (
                 "network output "
-                "size {a} is inconsisent with specified out_tensor_spec "
+                "size {a} is inconsistent with specified out_tensor_spec "
                 "of size {b}".format(a=input_size, b=output_tensor_spec.numel))
             nets.append(alf.layers.Reshape(output_tensor_spec.shape))
 

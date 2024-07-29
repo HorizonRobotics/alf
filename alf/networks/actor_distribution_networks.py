@@ -389,7 +389,7 @@ class LatentActorDistributionNetwork(Network):
                 inputs to condition its transformations. Only valid for normalizing
                 flow nets that support this option.
             scale_distribution: Whether or not to scale the output
-                distribution to ensure that the output aciton fits within the
+                distribution to ensure that the output action fits within the
                 ``action_spec``.
             dist_squashing_transform:  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to

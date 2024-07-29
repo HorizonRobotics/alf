@@ -177,7 +177,7 @@ class SequenceDataset(DefaultCollateMixin):
     def _train_dataloader(self, dataset, **kwargs):
         if dataset is None: return
         kwargs[
-            'shuffle'] = 'sampler' not in kwargs  # shuffle cant be True if we have custom sampler
+            'shuffle'] = 'sampler' not in kwargs  # shuffle can't be True if we have custom sampler
         return self._dataloader(dataset, **kwargs)
 
     def val_dataloader(self, **kwargs):

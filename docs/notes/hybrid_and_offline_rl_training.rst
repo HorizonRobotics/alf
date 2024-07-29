@@ -12,7 +12,7 @@ have several different training modes supported in ALF:
 
 - Online training: the training involves online interaction with the environment
   and all the data required for training is obtained through interaction with
-  with the environment. Typical RL algorthms including both on-policy and
+  with the environment. Typical RL algorithms including both on-policy and
   off-policy RL methods fall into this category.
 - Offline training: there is no online interaction with the environment, and all
   the data for training is pre-collected and provided as a fixed dataset.
@@ -51,7 +51,7 @@ only initially, and only enable online RL training after this stage.
 By assigning to it a value that is larger than ``num_iterations``,
 we essentially can conduct pure offline RL training.
 
-``rl_train_every_update_steps`` can be used to contol the training frequency
+``rl_train_every_update_steps`` can be used to control the training frequency
 of the normal (non-offline) part of the RL training w.r.t. offline RL training.
 
 

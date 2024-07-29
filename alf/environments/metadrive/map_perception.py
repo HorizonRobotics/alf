@@ -182,7 +182,7 @@ class MapPolylinePerception(object):
 
             2. An integer indicating among the polyline_limit of polylines, how
                many of them are actually filled. If the feature has 128
-               polylines and oly 120 are filled, feature's [120:] will be all
+               polylines and only 120 are filled, feature's [120:] will be all
                zeros.
 
         """

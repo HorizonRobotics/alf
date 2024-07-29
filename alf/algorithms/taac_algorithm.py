@@ -120,7 +120,7 @@ class TAACTDLoss(nn.Module):
     trajectory, it compares the beta action :math:`\tilde{b}_n` sampled from the
     current policy with the historical rollout beta action :math:`b_n` step by step,
     and uses the minimum :math:`n` that has :math:`\tilde{b}_n\lor b_n=1` as the
-    target step for boostrapping.
+    target step for bootstrapping.
     """
 
     def __init__(self,
@@ -156,7 +156,7 @@ class TAACTDLoss(nn.Module):
 
     def forward(self, info, value, target_value):
         r"""Calculate the TD loss. The first dimension of all the tensors is the
-        time dimension and the second dimesion is the batch dimension.
+        time dimension and the second dimension is the batch dimension.
 
         Args:
             info (TaacInfo): TaacInfo collected from train_step().

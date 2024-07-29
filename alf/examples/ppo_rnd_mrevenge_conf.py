@@ -16,7 +16,7 @@
 NOTE: Currently this configuration only achieves around 3000 (reward) instead of
 around 6000 as it used to be.
 
-TODO: Tune the paramters to make it achieving 6000 or better reward again.
+TODO: Tune the parameters to make it achieving 6000 or better reward again.
 
 """
 import alf

@@ -129,7 +129,7 @@ class AgentPerception(object):
         self._ego = ego
 
         # We are going to use A to denote the number of agents below. Also H
-        # will be used to denote the hitory window size.
+        # will be used to denote the history window size.
         self._num_agents = len(self._engine.traffic_manager.vehicles) - 1
 
         self._agent_to_index = {}
@@ -147,12 +147,12 @@ class AgentPerception(object):
             self._agent_to_index[agent] = i
             i += 1
 
-        # Shape is [A, H]. Stores whether the agent is visible (Ture for
+        # Shape is [A, H]. Stores whether the agent is visible (True for
         # visible) for each agent, at each historical step (including the
         # current step).
         self._visible = np.zeros((self._num_agents, self._history_window_size),
                                  dtype=bool)
-        # Shape is [A, H, 2]. Stores the WORLD FRAME positon of each agent, at
+        # Shape is [A, H, 2]. Stores the WORLD FRAME position of each agent, at
         # each historical step (including the current step).
         self._history_position = Polyline(
             point=np.zeros((self._num_agents, self._history_window_size, 2),

@@ -89,7 +89,7 @@ class ICMAlgorithm(Algorithm):
 
         flat_action_spec = alf.nest.flatten(action_spec)
         assert len(
-            flat_action_spec) == 1, "ICM doesn't suport nested action_spec"
+            flat_action_spec) == 1, "ICM doesn't support nested action_spec"
 
         flat_feature_spec = alf.nest.flatten(feature_spec)
         assert len(

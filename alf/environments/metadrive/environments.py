@@ -36,7 +36,7 @@ from .renderer import Renderer, make_vectorized_observation_renderer, make_bird_
 
 class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
     """This is the counterpart of the TopDownEnv from MetaDrive with vectorized
-    input insead of raster input (BEV).
+    input instead of raster input (BEV).
 
     """
 
@@ -84,7 +84,7 @@ class VectorizedTopDownEnv(metadrive.MetaDriveEnv):
 
 class BirdEyeTopDownEnv(metadrive.MetaDriveEnv):
     """This is the counterpart of the TopDownEnv from MetaDrive with vectorized
-    input insead of raster input (BEV).
+    input instead of raster input (BEV).
 
     """
 

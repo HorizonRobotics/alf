@@ -55,7 +55,7 @@ class NormalizingFlowNetwork(Network):
             conditional_input_tensor_spec: a nested tensor spec
             use_transform_cache: whether to cache transforms. When there
                 is a conditional input, different transforms might be created
-                depending on the conditonal inputs. When there is no conditional
+                depending on the conditional inputs. When there is no conditional
                 input, the same transform will always be used.
                 Note that this only caches the transform itself; to correctly
                 cache the inverse result, you also have to set ``cache_size=1``

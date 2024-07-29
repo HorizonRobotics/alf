@@ -20,7 +20,7 @@ ago, in one of the following scenarios:
 1. the ALF repo is always a fixed version, but we tried out different ideas
    by constantly changing our own project code (e.g., algorithms) after training
    the model;
-2. we wanted to use new features of ALF and pulled the lastest ALF after training
+2. we wanted to use new features of ALF and pulled the latest ALF after training
    the model;
 3. as ALF developers, we updated the ALF repo constantly and it may be no longer
    compatible with the trained model.
@@ -32,7 +32,7 @@ can help to some extent, but the key question is, how do we reliably establish
 a one-to-one mapping between a code version and a trained model? Git clearly is
 not the most satisfying answer to this.
 
-To solve this issue, ALF uses a simple approach. Whenever lauching a training
+To solve this issue, ALF uses a simple approach. Whenever launching a training
 (:mod:`.alf.bin.train`) or grid searching (:mod:`.alf.bin.grid_search`) job, ALF
 takes a snapshot of the current repo and stores it in the job root dir. For example,
 the following command

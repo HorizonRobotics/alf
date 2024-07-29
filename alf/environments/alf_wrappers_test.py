@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Test cases adpated from tf_agents' wrappers_test.py."""
+"""Test cases adapted from tf_agents' wrappers_test.py."""
 # TODO: just test TimeLimit wrapper for now, add other tests later.
 
 from absl.testing import parameterized

@@ -72,7 +72,7 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
                 dimension of the observation, and each column a single
                 observation.
             rowvar (bool): If True, then each row represents a dimension, with
-                observations in the columns. Othewise, each column represents
+                observations in the columns. Otherwise, each column represents
                 a dimension while the rows contains observations.
 
         Returns:
@@ -174,7 +174,7 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         parameter vector and trained with ``SVGD`` or ``GFSF`` optimizer.
         The target linear regressor is :math:`y = X\beta + e`, where
         :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix,
-        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a
+        and :math:`y` is target outputs. The posterior of :math:`\beta` has a
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
         """
         input_size = 3

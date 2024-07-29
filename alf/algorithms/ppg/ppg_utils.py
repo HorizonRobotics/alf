@@ -57,7 +57,7 @@ class PPGTrainInfo(
     across calls to ``train_step()``.
 
     It is designed as a separate class (as opposite to be merged into
-    PPGRolloutInfo) becase we want to make it explicit about what are
+    PPGRolloutInfo) because we want to make it explicit about what are
     derived compared to the rollout information during training.
 
     """

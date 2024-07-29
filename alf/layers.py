@@ -359,7 +359,7 @@ class FC(nn.Module):
             bias_init_value (float): a constant for the initial bias value.
                 This is ignored if ``bias_initializer`` is provided.
             bias_initializer (Callable):  initializer for the bias parameter.
-            use_torch_init (bool): whehter to initialize in the same way as
+            use_torch_init (bool): whether to initialize in the same way as
                 ``torch.nn.Linear``. If True, when ``kernel_initializer`` is None,
                 weight will be initialized in the same way as ``torch.nn.Linear``.
                 and when ``bias_initializer`` is None and ``bias_init_value==0``,
@@ -695,7 +695,7 @@ class ParallelFC(nn.Module):
             bias_init_value (float): a constant for the initial bias value.
                 This is ignored if ``bias_initializer`` is provided.
             bias_initializer (Callable):  initializer for the bias parameter.
-            use_torch_init: whehter to initialize in the same way as
+            use_torch_init: whether to initialize in the same way as
                 ``torch.nn.Linear``. If True, when ``kernel_initializer`` is None,
                 weight will be initialized in the same way as ``torch.nn.Linear``.
                 and when ``bias_initializer`` is None and ``bias_init_value==0``,
@@ -921,7 +921,7 @@ class CompositionalFC(nn.Module):
             The first is a Tensor with the shape of ``[B, input_size]``, the
             second is a compositional weight Tensor with the shape of ``[B, n]``
             or None. If the compositional weight is not specified (i.e. when
-            inputs is not a tuple) or None, a uniform weight of one wil be used.
+            inputs is not a tuple) or None, a uniform weight of one will be used.
         Returns:
             torch.Tensor representing the final activation with shape
             ``[B, output_size]`` if ``output_comp_weight`` is False.
@@ -1201,7 +1201,7 @@ class Conv2D(nn.Module):
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
-            use_torch_init (bool): whehter to initialize in the same way as
+            use_torch_init (bool): whether to initialize in the same way as
                 ``torch.nn.Conv2d``. If True, when ``kernel_initializer`` is None,
                 weight will be initialized in the same way as ``torch.nn.Conv2d``.
                 and when ``bias_initializer`` is None and ``bias_init_value==0``,
@@ -1501,7 +1501,7 @@ class ParallelConv2D(nn.Module):
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
-            use_torch_init (bool): : whehter to initialize in the same way as
+            use_torch_init (bool): : whether to initialize in the same way as
                 ``torch.nn.Conv2d``. If True, when ``kernel_initializer`` is None,
                 weight will be initialized in the same way as ``torch.nn.Conv2d``.
                 and when ``bias_initializer`` is None and ``bias_init_value==0``,
@@ -2743,7 +2743,7 @@ class TransformerBlock(nn.Module):
             d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model // num_heads``
             d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
             dropout (float): the dropout ratio. Note the [1] uses 0.1 for dropout.
-            activation (Callable): the activiation for the hidden layer of the MLP.
+            activation (Callable): the activation for the hidden layer of the MLP.
                 relu and gelu are two popular choices.
             positional_encoding (str): One of ['none', 'abs', 'rel']. If 'none',
                 no position encoding will be used. If 'abs', use absolute positional
@@ -2855,7 +2855,7 @@ class TransformerBlock(nn.Module):
                 shape is [B, N], mask[b, n] = True indicates NOT using memory[b,
                 n] for calculating the attention result for ``query[b]``, while
                 mask[b, n] = False means using it. If the shape is [B, M, N],
-                maks[b, m, n] = True indicates NOT to use memory[b, n] for
+                mask[b, m, n] = True indicates NOT to use memory[b, n] for
                 calculating the attention result for ``query[b, m]``, while
                 mask[b, m, n] = False indicates using memory[b, n] to attend
                 ``query[b, m]``.
@@ -3604,7 +3604,7 @@ class NaiveParallelLayer(nn.Module):
     def __init__(self, module: Union[nn.Module, Callable], n: int):
         """
         A parallel network has ``n`` copies of network with the same structure but
-        different indepently initialized parameters.
+        different independently initialized parameters.
 
         ``NaiveParallelLayer`` creates ``n`` independent networks with the same
         structure as ``network`` and evaluate them separately in a loop during

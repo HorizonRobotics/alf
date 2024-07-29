@@ -460,7 +460,7 @@ class Algorithm(AlgorithmInterface):
         ``transform_timestep`` is called for all raw time_step got from
         the environment before passing to ``predict_step`` and ``rollout_step``. For
         off-policy algorithms, the replay buffer stores raw time_step. So when
-        experiences are retrieved from the replay buffer, they are tranformed by
+        experiences are retrieved from the replay buffer, they are transformed by
         ``transform_timestep`` in ``OffPolicyAlgorithm`` before passing to
         ``_update()``.
 
@@ -835,7 +835,7 @@ class Algorithm(AlgorithmInterface):
     def experience_spec(self):
         """Spec for experience."""
         assert self._experience_spec is not None, (
-            "observe() has not been called. experience_spec is not avaialble.")
+            "observe() has not been called. experience_spec is not available.")
         return self._experience_spec
 
     @property
@@ -1122,7 +1122,7 @@ class Algorithm(AlgorithmInterface):
                         'While copying the parameter named "{}", '
                         'whose dimensions in the model are {} and '
                         'whose dimensions in the checkpoint are {}, '
-                        'an exception occured : {}.'.format(
+                        'an exception occurred : {}.'.format(
                             key, param.size(), input_param.size(), ex.args))
             elif strict:
                 missing_keys.append(key)
@@ -1236,7 +1236,7 @@ class Algorithm(AlgorithmInterface):
                     or loss_info.scalar_loss != ()):
                 common.warning_once(
                     "The importance_weights of priority "
-                    "sampling cannnot be applied to LossInfo.scalar_loss or "
+                    "sampling cannot be applied to LossInfo.scalar_loss or "
                     "LossInfo.loss whose ndim is not 2.")
             masks = batch_info.importance_weights.pow(
                 -self._config.priority_replay_beta()).unsqueeze(0)
@@ -1301,7 +1301,7 @@ class Algorithm(AlgorithmInterface):
         for optimizer in optimizers:
             if self._grad_scaler is not None:
                 # For ALF optimizers, gradient clipping is performed inside
-                # optimizer.step, so we don't need to explicityly unscale grad
+                # optimizer.step, so we don't need to explicitly unscale grad
                 # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
                 self._grad_scaler.step(optimizer)
             else:
@@ -1580,7 +1580,7 @@ class Algorithm(AlgorithmInterface):
             # walking through an example.
             #
             # Suppose we gather_all() gives us env_ids = [0, 1] and positions =
-            # [7, 7] for batch_info. This means that before the exprience is
+            # [7, 7] for batch_info. This means that before the experience is
             # chopped by mini_batch_length (reshape), there are two trajectories
             # for env 0 and env 1. Assuming there are 12 steps in each of the
             # trajectories, and the mini_batch_length is 3.
@@ -1838,7 +1838,7 @@ class Algorithm(AlgorithmInterface):
         This function has data distributed support if the algorithm is
         off-policy. This means that if the Algorithm instance has DDP activated
         and is off-policy, the output will have a hook to synchronize gradients
-        across processes upon the call to the backward() that involes the output
+        across processes upon the call to the backward() that involves the output
         (i.e. train_info and loss_info).
 
         """

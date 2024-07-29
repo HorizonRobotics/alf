@@ -157,13 +157,13 @@ class ParVIAlgorithm(Algorithm):
             loss_func (Callable): loss_func(loss_inputs) returns a Tensor or
                 namedtuple of tensors with field `loss`, which is a Tensor of
                 shape [num_particles] a loss term for optimizing the generator.
-            transform_func (Callable): tranform functoin on particles. Used in
+            transform_func (Callable): transform functoin on particles. Used in
                 function value based par_vi, where each particle represents
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
 
                 * outputs: outputs of network parameterized by particles evaluated
-                  on predifined training batch.
+                  on predefined training batch.
                 * extra_outputs: outputs of network parameterized by particles
                   evaluated on additional sampled data.
             entropy_regularization (float): weight of the repulsive term in par_vi.

@@ -246,7 +246,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         for observation, action in cases:
             observation = torch.tensor([observation], dtype=torch.float32)
             state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
-            # We use varing num_simulations instead of a fixed large number such
+            # We use varying num_simulations instead of a fixed large number such
             # as 2000 to make the test faster.
             num_simulations = int((observation == 0).sum().cpu()) * 200
             mcts = _create_mcts(

@@ -70,7 +70,7 @@ def load(environment_name,
     """
     # babyai doesn't register max_episode_steps in Gym
     gym_env = gym.make(environment_name)
-    # but it does have an interal property ``max_steps`` which returns ``done=True```
+    # but it does have an internal property ``max_steps`` which returns ``done=True```
     # when reached, see
     # https://github.com/maximecb/gym-minigrid/blob/6f5fe8588d05eb13a08f971fd3c7a82c404dc1bb/gym_minigrid/minigrid.py#L1158
     if max_episode_steps is None:

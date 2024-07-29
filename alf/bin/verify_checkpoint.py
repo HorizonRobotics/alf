@@ -187,8 +187,8 @@ def main(_):
         for i in range(FLAGS.num_train_iterations):
             # The values of some checkpointed objects (e.g. Normalizer) are
             # changed by training (i.e. not through random initialization), we
-            # neeed to run the training a few iterations to change those value.
-            # Otherwise they will remain zeros.
+            # need to run the training a few iterations to change those value.
+            # Otherwise, they will remain zeros.
             logging.info("iter=%s" % i)
             algorithm1.train_iter()
         ckpt_mngr1 = ckpt_utils.Checkpointer(ckpt_dir, alg=algorithm1)
@@ -206,7 +206,7 @@ def main(_):
         seed = common.set_random_seed(FLAGS.random_seed)
         policy_steps1, time_steps = _run_steps(algorithm1, env1,
                                                FLAGS.num_test_steps)
-        # We calulate policy_steps1 again to make sure policy_steps1 and
+        # We calculate policy_steps1 again to make sure policy_steps1 and
         # policy_steps2 go through exactly same computation sequence so that
         # they can be compared with each other.
         common.set_random_seed(seed)

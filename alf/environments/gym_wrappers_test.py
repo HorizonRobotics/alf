@@ -88,7 +88,7 @@ class FrameStackTest(alf.test.TestCase):
             (7 * 4, ),
         )
         assert all_shapes == expected, "Result " + str(
-            all_shapes) + " doesn't match exptected " + str(expected)
+            all_shapes) + " doesn't match expected " + str(expected)
 
     def test_framestack_partial_fields(self):
         env = self._create_env(['image', 'dict.inner_states'])
@@ -106,7 +106,7 @@ class FrameStackTest(alf.test.TestCase):
             (7 * 4, ),  # stacking nested field referred by path
         )
         assert all_shapes == expected, "Result " + str(
-            all_shapes) + " doesn't match exptected " + str(expected)
+            all_shapes) + " doesn't match expected " + str(expected)
 
 
 class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
@@ -135,7 +135,7 @@ class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
             (7, ),
         )
         assert all_shapes == expected, "Result " + str(
-            all_shapes) + " doesn't match exptected " + str(expected)
+            all_shapes) + " doesn't match expected " + str(expected)
 
         # test observation space
         observation_space = env.observation_space
@@ -146,7 +146,7 @@ class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
             observation_space['dict']['inner_states'].shape)
         assert all_shapes_from_obs_space == expected, (
             "Observation space " + str(all_shapes_from_obs_space) +
-            " doesn't match exptected " + str(expected))
+            " doesn't match expected " + str(expected))
 
 
 class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
@@ -189,7 +189,7 @@ class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
             (7, ),
         )
         assert all_shapes == expected, "Result " + str(
-            all_shapes) + " doesn't match exptected " + str(expected)
+            all_shapes) + " doesn't match expected " + str(expected)
 
         # test observation space
         observation_space = env.observation_space
@@ -200,7 +200,7 @@ class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
             observation_space['dict']['inner_states'].shape)
         assert all_shapes_from_obs_space == expected, (
             "Observation space " + str(all_shapes_from_obs_space) +
-            " doesn't match exptected " + str(expected))
+            " doesn't match expected " + str(expected))
 
 
 class ActionWrappersTest(alf.test.TestCase):

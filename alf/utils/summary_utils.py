@@ -190,7 +190,7 @@ def summarize_per_category_loss(loss_info: LossInfo,
 
     if loss_info.batch_label != ():
         assert loss_info.batch_label.shape == loss_info.loss.shape, (
-            "shape mis-match between batch_label shape {} and loss "
+            "shape mismatch between batch_label shape {} and loss "
             "shape {}".format(loss_info.batch_label.shape,
                               loss_info.loss.shape))
 
@@ -300,7 +300,7 @@ def summarize_distribution(name, distributions):
       the base distribution is summarized
     * MixtureSameFamily: the mixture weights and the most likely component distribution
         are summarized
-    * Tensor: each dimenstion dist[..., a] will be summarized
+    * Tensor: each dimension dist[..., a] will be summarized
 
     Note that unsupported distributions will be ignored (no error reported).
 

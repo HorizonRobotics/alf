@@ -1,7 +1,7 @@
 Estimating the derivative of an expectation
 ===========================================
 
-Given a probablity distribution :math:`p(x)` and a variable :math:`f(x)`, the
+Given a probability distribution :math:`p(x)` and a variable :math:`f(x)`, the
 expectation is:
 
 .. math::

@@ -143,7 +143,7 @@ class _Sequential(Network):
             if isinstance(module, type):
                 raise ValueError(
                     "module should not be a type. Did you forget "
-                    "to include '()' after it to contruct the layer? module=%s"
+                    "to include '()' after it to construct the layer? module=%s"
                     % str(module))
             if isinstance(module, Network):
                 state_spec.append(module.state_spec)
@@ -284,7 +284,7 @@ class Parallel(Network):
                 map(lambda s: s is not None, flatten(input_tensor_spec)))
             assert specified, (
                 "input_tensor_spec needs "
-                "to be specified if it cannot be infered from elements of "
+                "to be specified if it cannot be inferred from elements of "
                 "networks")
         alf.nest.assert_same_structure_up_to(modules, input_tensor_spec)
         networks = map_structure_up_to(modules, wrap_as_network, modules,

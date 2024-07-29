@@ -85,9 +85,10 @@ class AlgorithmTest(alf.test.TestCase):
                 'pd': pd
             })
         })
-        flattend = alf.algorithms.algorithm._flatten_module(nest)
+        flattened = alf.algorithms.algorithm._flatten_module(nest)
         self.assertEqual(
-            set(map(id, flattend)), set(map(id, [a, b, c, d, pa, pb, pc, pd])))
+            set(map(id, flattened)), set(
+                map(id, [a, b, c, d, pa, pb, pc, pd])))
 
     def test_get_optimizer_info(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
@@ -250,7 +251,7 @@ class AlgorithmTest(alf.test.TestCase):
         self.assertEqual(loss_info.loss, 3.)
 
     def test_full_checkpoint_preloading(self):
-        # test the case where the checkpoint direcly matches with the algorithm
+        # test the case where the checkpoint directly matches with the algorithm
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # 1) construct the first algorithm instance and save a checkpoint
             param = nn.Parameter(torch.Tensor([1]))
@@ -368,8 +369,8 @@ class AlgorithmTest(alf.test.TestCase):
                 ckpt_dir_composed, alg=alg_composed)
             ckpt_mngr_composed.save(0)
 
-            # 3) construct a new sub-algorithm instance new_alg_1, with inital
-            # paramer value different from alg_1, with pre-loading from alg_1's
+            # 3) construct a new sub-algorithm instance new_alg_1, with initial
+            # parameter value different from alg_1, with pre-loading from alg_1's
             # checkpoint
             new_alg_1 = MyAlg(
                 params=[nn.Parameter(torch.Tensor([-200]))],

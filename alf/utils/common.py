@@ -367,7 +367,7 @@ class PeriodicReset(nn.Module):
         self._counter = 0
         self._reset_buffers = reset_buffers
         self._post_processings = post_processings
-        # record the inital values of torch.nn.Parameter instances in ``models``
+        # record the initial values of torch.nn.Parameter instances in ``models``
         self._init_param_values = {
             id(p): p.data.clone()
             for p in models if isinstance(p, torch.nn.Parameter)
@@ -435,7 +435,7 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
 
     Args:
         state (nested Tensor): the current batched states
-        initial_state (nested Tensor): batched intitial states
+        initial_state (nested Tensor): batched initial states
         reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=torch.bool``
     Returns:
         nested Tensor
@@ -527,7 +527,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         min (float): normalize minimum to this value
         max (float): normalize maximum to this value
     Returns:
-        Transfromed observation
+        Transformed observation
     """
 
     def _transform_image(obs):
@@ -967,7 +967,7 @@ def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
 
 def write_gin_configs(root_dir, gin_file):
     """
-    Write a gin configration to a file. Because the user can
+    Write a gin configuration to a file. Because the user can
 
     1) manually change the gin confs after loading a conf file into the code, or
     2) include a gin file in another gin file while only the latter might be
@@ -1003,7 +1003,7 @@ def warning_once(msg, *args):
 
     Args:
         msg: str, the message to be logged.
-        *args: The args to be substitued into the msg.
+        *args: The args to be substituted into the msg.
     """
     caller = logging.get_absl_logger().findCaller()
     count = logging._get_next_log_count_per_token(caller)
@@ -1017,7 +1017,7 @@ def warning(msg, *args):
 
     Args:
         msg: str, the message to be logged.
-        *args: The args to be substitued into the msg.
+        *args: The args to be substituted into the msg.
     """
     logging.log(logging.WARNING, "\033[1;31m" + msg + "\033[1;0m", *args)
 
@@ -1028,7 +1028,7 @@ def info(msg, *args):
 
     Args:
         msg: str, the message to be logged.
-        *args: The args to be substitued into the msg.
+        *args: The args to be substituted into the msg.
     """
     logging.log(logging.INFO, "\033[1;34m" + msg + "\033[1;0m", *args)
 
@@ -1039,7 +1039,7 @@ def info_once(msg, *args):
 
     Args:
         msg: str, the message to be logged.
-        *args: The args to be substitued into the msg.
+        *args: The args to be substituted into the msg.
     """
     caller = logging.get_absl_logger().findCaller()
     count = logging._get_next_log_count_per_token(caller)
@@ -1403,7 +1403,7 @@ def get_all_parameters(obj):
     held in a strange way, it will not be included by this function.
 
     Args:
-        obj (object): will look for paramters under this object.
+        obj (object): will look for parameters under this object.
     Returns:
         list: list of (path, Parameters)
     """
@@ -1654,7 +1654,7 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
     # this condition is exclusive with the above
     else:
         assert config.num_env_steps
-        # the rollout env is always creatd with ``nonparallel=False``
+        # the rollout env is always created with ``nonparallel=False``
         num_envs = alf.get_config_value(
             "create_environment.num_parallel_environments")
         num_iterations = config.num_env_steps / (

@@ -594,7 +594,7 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     def _adapt_mini_batch_length(self,
                                  base_expected,
                                  mini_batch_length: int):
-        """Transfrom the base case (mini_batch_length = 1) expected result to
+        """Transform the base case (mini_batch_length = 1) expected result to
         its mini_batch_length > 1 counterpart.
 
         """

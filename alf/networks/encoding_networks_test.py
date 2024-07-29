@@ -390,7 +390,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 128
         input_spec = TensorSpec((100, ), torch.float32)
 
-        # a dummy encoding network which ouputs the input
+        # a dummy encoding network which outputs the input
         network = EncodingNetwork(input_tensor_spec=input_spec)
 
         pnet = network.make_parallel(replicas, True)

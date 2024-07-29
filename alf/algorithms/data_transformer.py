@@ -117,7 +117,7 @@ class SequentialDataTransformer(DataTransformer):
                 transformer.
             observation_spec (nested TensorSpec): describing the raw observation
                 in timestep. It is the observation passed to the first data
-                transfomer.
+                transformer.
         """
         data_transformers = nn.ModuleList()
         state_spec = []
@@ -437,7 +437,7 @@ class IdentityDataTransformer(SimpleDataTransformer):
     def __init__(self, observation_spec=None):
         """
         observation_spec (nested TensorSpec): describing the observation. This
-            should be provided when ``transformed_observation_spec`` propery
+            should be provided when ``transformed_observation_spec`` property
             needs to be accessed.
         """
         super().__init__(observation_spec)
@@ -957,7 +957,7 @@ class UntransformedTimeStep(SimpleDataTransformer):
                  fields_to_keep: Optional[Iterable[str]] = None):
         """
         observation_spec (nested TensorSpec): describing the observation. This
-            should be provided when ``transformed_observation_spec`` propery
+            should be provided when ``transformed_observation_spec`` property
             needs to be accessed.
         fields_to_keep (list[str]): fields to be kept in ``untransformed``. This
             is useful if memory usage is a concern so that you only keep what

@@ -109,7 +109,7 @@ class PpoTest(parameterized.TestCase, alf.test.TestCase):
 
 
 def unroll(env, algorithm, steps):
-    """Run `steps` environment steps using algoirthm.predict_step()."""
+    """Run `steps` environment steps using algorithm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     trans_state = algorithm.get_initial_transform_state(env.batch_size)

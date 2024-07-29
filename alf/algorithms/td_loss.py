@@ -37,7 +37,7 @@ class TDLoss(nn.Module):
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
         r"""
-        Let :math:`G_{t:T}` be the bootstraped return from t to T:
+        Let :math:`G_{t:T}` be the bootstrapped return from t to T:
 
         .. math::
 
@@ -111,7 +111,7 @@ class TDLoss(nn.Module):
         """Calculate the td target.
 
         The first dimension of all the tensors is time dimension and the second
-        dimesion is the batch dimension.
+        dimension is the batch dimension.
 
         Args:
             info (namedtuple): experience collected from ``unroll()`` or
@@ -166,7 +166,7 @@ class TDLoss(nn.Module):
         """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
-        dimesion is the batch dimension.
+        dimension is the batch dimension.
 
         Args:
             info: experience collected from ``unroll()`` or
@@ -226,7 +226,7 @@ class TDLoss(nn.Module):
             # Multidimensional reward. Average over the critic loss for all dimensions
             loss = loss.mean(dim=2)
 
-        # The shape of the loss expected by Algorith.update_with_gradient is
+        # The shape of the loss expected by Algorithm.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
         loss = tensor_utils.tensor_extend_zero(loss)
         td_error = tensor_utils.tensor_extend_zero(td_error)
@@ -287,7 +287,7 @@ class TDQRLoss(TDLoss):
         """Calculate the loss.
 
         The first dimension of all the tensors is time dimension and the second
-        dimesion is the batch dimension.
+        dimension is the batch dimension.
 
         Args:
             info: experience collected from ``unroll()`` or
@@ -305,16 +305,16 @@ class TDQRLoss(TDLoss):
                 quantile function of the critics.
             delta_tau: the sampled increments of the probability for input of
                 the quantile function of the critics.
-            next_delta_tau: the sampled increments of the probility for the input 
+            next_delta_tau: the sampled increments of the probability for the input 
                 of the quantile function of the target critics.
 
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
         assert value.shape[-1] == self._num_quantiles, (
-            "The input value should have same num_quantiles as pre-defiend.")
+            "The input value should have same num_quantiles as pre-defined.")
         assert target_value.shape[-1] == self._num_quantiles, (
-            "The input target_value should have same num_quantiles as pre-defiend."
+            "The input target_value should have same num_quantiles as pre-defined."
         )
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
@@ -367,7 +367,7 @@ class TDQRLoss(TDLoss):
             # Multidimensional reward. Average over the critic loss for all dimensions
             loss = loss.mean(dim=2)
 
-        # The shape of the loss expected by Algorith.update_with_gradient is
+        # The shape of the loss expected by Algorithm.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
         loss = tensor_utils.tensor_extend_zero(loss)
         return LossInfo(

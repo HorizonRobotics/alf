@@ -69,7 +69,7 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
         self.assertEqual((4, 3, 64, 64), time_step.observation['rgb'].shape)
 
         # Now send -1 to the 1st and 3rd environments to reset them (this is
-        # valid because the envrionment is procgen).
+        # valid because the environment is procgen).
         action = torch.as_tensor([-1, 0, -1, 0])
         new_time_step = self._env.step(action)
         self.assertEqual(

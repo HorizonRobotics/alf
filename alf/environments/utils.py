@@ -162,7 +162,7 @@ def create_environment(env_name='CartPole-v0',
             env proc. Note that if you have lots of parallel envs, it's best
             to set this number as 1. Leave this as 'None' to skip the change.
             Only used if the env is not batched and ``nonparallel==False``.
-        parallel_environment_ctor (Callable): used to contruct parallel environment.
+        parallel_environment_ctor (Callable): used to construct parallel environment.
             Available constructors are: ``fast_parallel_environment.FastParallelEnvironment``
             and ``parallel_environment.ParallelAlfEnvironment``.
         seed (None|int): random number seed for environment.  A random seed is

@@ -93,7 +93,7 @@ class NeroPlus(Optimizer):
     The main enhancements compared to the original Nero optimizer include:
 
     1. Option for ADAM like update (normalizing_grad_by_norm=False)
-    2. Upper bound contraint of weight norm (fixed_norm=False)
+    2. Upper bound constraint of weight norm (fixed_norm=False)
     3. Weight decay and L2 regularization.
 
     To use this optimizer, you should first use ``NeroPlus.initialize()`` to normalize
@@ -113,11 +113,11 @@ class NeroPlus(Optimizer):
         normalizing_grad_by_norm: whether to normalize the gradient by the running
             average of its squared norm or its elementwise square. Note that
             the original Nero optimizer uses ``True`` for this. However, we found
-            the ADAM like behavoir is better.
+            the ADAM like behavior is better.
         max_norm: maximal norm of each parameter vector. A parameter vector is
             part of a parameter responsible for one output dimension.
         weight_decay: weight decay. This is same as the weight decay of AdamW,
-            which is implemented as substracting `lr * weight_deday * w` from
+            which is implemented as subtracting `lr * weight_deday * w` from
             parameter.
         l2_regularization: L2 penalty. This is same as the weight decay of Adam,
             which is implemented as adding `weight_decay * w` to gradient.

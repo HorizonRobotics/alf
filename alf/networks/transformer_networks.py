@@ -96,7 +96,7 @@ class TransformerNetwork(PreprocessorNetwork):
                 input are treated as core.
             centralized_memory (bool): if False, there will be a separate memory
                 for each memory layers. if True, there will be a single memory
-                for all the memroy layers and it is updated using the last core
+                for all the memory layers and it is updated using the last core
                 embeddings.
             input_preprocessors (nested Network|nn.Module): a nest of
                 stateless preprocessor networks, each of which will be applied to the

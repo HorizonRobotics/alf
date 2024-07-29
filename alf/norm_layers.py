@@ -211,7 +211,7 @@ class BatchNorm1d(_NormBase):
     https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html
 
     The main difference is that this implementation supports using BN for RNN.
-    The reason is that for RNN, the normalization statics can be dramatically different
+    The reason is that for RNN, the normalization statistics can be dramatically different
     for different step of RNN. Hence we need to maintain different running statistics
     for different step of RNN.
 
@@ -270,7 +270,7 @@ class BatchNorm2d(_NormBase):
     https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm2d.html
 
     The main difference is that this implementation supports using BN for RNN.
-    The reason is that for RNN, the normalization statics can be dramatically different
+    The reason is that for RNN, the normalization statistics can be dramatically different
     for different step of RNN. Hence we need to maintain different running statistics
     for different step of RNN.
 

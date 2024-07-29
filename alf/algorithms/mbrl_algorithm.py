@@ -143,7 +143,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         action_spec = flat_action_spec[0]
 
         assert action_spec.is_continuous, "only support \
-                                                    continious control"
+                                                    continuous control"
 
         num_actions = action_spec.shape[-1]
 
@@ -374,7 +374,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (BoundedTensorSpec): representing the actions.
-            planner_module_ctor: used to constrcut module for generating planned
+            planner_module_ctor: used to construct module for generating planned
                 action based on specified reward function and dynamics function
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
@@ -408,7 +408,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         action_spec = flat_action_spec[0]
 
         assert action_spec.is_continuous, "only support \
-                                                    continious control"
+                                                    continuous control"
 
         num_actions = action_spec.shape[-1]
 

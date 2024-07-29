@@ -352,7 +352,7 @@ def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
     time_step = common.get_initial_time_step(env)
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
-        # episodes to estimate the average return (or other statitics) as it can be
+        # episodes to estimate the average return (or other statistics) as it can be
         # biased towards short episodes. Instead, we stick to using the first
         # episodes_per_env episodes from each environment to calculate the
         # statistics and ignore the potentially extra episodes from each environment.

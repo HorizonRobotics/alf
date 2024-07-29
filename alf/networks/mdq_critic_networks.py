@@ -72,7 +72,7 @@ class MdqCriticNetwork(Network):
 
         Furthermore, to enable parallel computation across action dimension in
         the case of value computation, we have both parallel and individual
-        versions for the nets without parameter sharing. For exmaple, for
+        versions for the nets without parameter sharing. For example, for
         post_encoding_nets, we also have post_encoding_parallel_net, which is
         essentially the equivalent form of post_encoding_nets but supports
         parallel forwarding. The parameters of the two versions are synced.
@@ -386,7 +386,7 @@ class MdqCriticNetwork(Network):
         return Q_values, state
 
     def _net_forward_individual(self, inputs, alpha, i, state=()):
-        """Individiual forwarding for a specified action dims for value computation.
+        """Individual forwarding for a specified action dims for value computation.
         Args:
             inputs (torch.Tensor): a tensor of the shape [B, n, d]
             alpha: the temperature used for the advantage computation
@@ -542,14 +542,14 @@ class MdqCriticNetwork(Network):
 
     @staticmethod
     def _parallel_to_individual_network_sync(p_net, np_net, step):
-        """Sync parameters from parallel version to indivisual version
+        """Sync parameters from parallel version to individual version
         Args:
             p_net (ParallelNetwork): the parallel version of network
             np_net (list[Network|ParallelNetwork]): a list of the individual
                 networks. Note that each individual network can also be an
                 instance of ParallelNetwork.
             step (int): the replica contained in the individual network.
-                For exmaple:
+                For example:
                  - if the individual net is a plain network, step=1
                  - if the individual net is a parallel network, step = replica
                     of the individual net

@@ -404,7 +404,7 @@ class BoardTest(alf.test.TestCase):
                          sequences[2][-1]['board'])
 
     def test_environment2(self):
-        """Test whehter too_long is correctly handled."""
+        """Test whether too_long is correctly handled."""
         height = 4
         width = 4
         env = GoEnvironment(

@@ -45,7 +45,7 @@ class ReplayBuffer(RingBuffer):
     """Replay buffer with RingBuffer as implementation.
 
     Terminology: consistent with RingBuffer, we use ``pos`` to refer to the
-    always increasing position of an element in the infinitly long buffer,
+    always increasing position of an element in the infinitely long buffer,
     and ``idx`` as the actual index of the element in the underlying store
     (``_buffer``).  That means ``idx == pos % _max_length`` is always true,
     and one should use ``_buffer[idx]`` to retrieve the stored data.
@@ -78,7 +78,7 @@ class ReplayBuffer(RingBuffer):
             num_environments (int): total number of parallel environments
                 stored in the buffer.
             max_length (int): maximum number of time steps stored in buffer.
-            num_earliest_frames_ignored (int): ignore the earlist so many frames
+            num_earliest_frames_ignored (int): ignore the earliest so many frames
                 from the buffer when sampling. This is typically required when
                 FrameStacker is used. ``keep_episodic_info`` will be set to True
                 if ``num_earliest_frames_ignored`` > 0 as ``FrameStacker`` need
@@ -316,7 +316,7 @@ class ReplayBuffer(RingBuffer):
             if self._prioritized_sampling:
                 self._initialize_priority(env_ids)
                 if self._num_earliest_frames_ignored > 0:
-                    # Make sure the priortized sampling ignores the earliest
+                    # Make sure the prioritized sampling ignores the earliest
                     # frames by setting their priorities to 0.
                     current_pos = self._current_pos[env_ids]
                     pos = current_pos - self._current_size[env_ids]
@@ -660,7 +660,7 @@ class ReplayBuffer(RingBuffer):
         # the position of the episode's first_step from _indexed_pos.
         # (The case where current step is a ``FIRST`` step can be safely
         # ignored because the first_step_pos points to episode end which
-        # is guarranteed to be existing.)
+        # is guaranteed to be existing.)
         headless = self._current_pos[
             env_ids] > first_step_pos + self._max_length
         headless_env_ids = env_ids.expand_as(idx)[headless]

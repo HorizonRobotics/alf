@@ -38,7 +38,7 @@ class Vqvae(Algorithm):
 
     1. Discrete latent is used, instead of continuous latent as in standard VAE.
     2. Standard VAE uses Gaussian prior and posterior. VQVAE can be viewed as
-       using a determinstic form of posterior, which is a categorical
+       using a deterministic form of posterior, which is a categorical
        distribution with onehot samples computed by nearest neighbor matching
        (Eq.1 of the paper). By using a uniform prior, the KL divergence is constant.
 
@@ -67,7 +67,7 @@ class Vqvae(Algorithm):
                 as input and output the latent representation.
             decoder_ctor (Callable): called as ``decoder_ctor(latent_spec)`` to
                 construct the decoder.
-            optimizer (Optimzer|None): if provided, it will be used to optimize
+            optimizer (Optimizer|None): if provided, it will be used to optimize
                 the parameter of encoder_net, decoder_net and embedding vectors.
             commitment_loss_weight (float): the weight for commitment loss.
             checkpoint (None|str): a string in the format of "prefix@path",

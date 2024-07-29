@@ -680,11 +680,11 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             get_exp_batch(all_env_ids, self.dim, t=14, x=9.9))
 
         # After the above 6 pushes (remember replay buffer capacity is
-        # 9), t = 1 through t = 5 will be overriden in the replay
+        # 9), t = 1 through t = 5 will be overridden in the replay
         # buffer , but t = 6 through t = 8 will remain. The replay
         # buffer now effectively has t = 6 through t = 14.
 
-        # Sicne we are ignoring the earliest 2 experiences, the result
+        # Since we are ignoring the earliest 2 experiences, the result
         # of gather_all will be t = 8 through t = 14.
         experience, batch_info = replay_buffer.gather_all(
             ignore_earliest_frames=True)

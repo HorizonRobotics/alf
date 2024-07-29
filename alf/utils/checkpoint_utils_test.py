@@ -221,7 +221,7 @@ class TestMultiAlgSingleOpt(alf.test.TestCase):
             # check the recovered optimizers
             self.assertTrue(get_learning_rate(all_optimizers) == [0.1])
 
-            # check the recovered paramerter values for all modules
+            # check the recovered parameter values for all modules
             sd = alg_root.state_dict()
             self.assertTrue((list(sd.values())[0:4] == [
                 torch.tensor([1]),
@@ -451,7 +451,7 @@ class TestWithCycle(alf.test.TestCase):
 
 class TestModelMismatch(alf.test.TestCase):
     def test_model_mismatch(self):
-        # test model mis-match
+        # test model mismatch
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
             param_1 = nn.Parameter(torch.Tensor([1]))
@@ -495,7 +495,7 @@ class TestModelMismatch(alf.test.TestCase):
 
 class TestOptMismatch(alf.test.TestCase):
     def test_opt_mismatch(self):
-        # test optimizer mis-match
+        # test optimizer mismatch
         with tempfile.TemporaryDirectory() as ckpt_dir:
             param_1 = nn.Parameter(torch.Tensor([1]))
             optimizer_1 = alf.optimizers.Adam(lr=0.2)

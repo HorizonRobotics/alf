@@ -33,7 +33,7 @@ def _gammaincinv(a, y):
 
 
 class _CategoricalSeedSamplerBase(alf.nn.Network):
-    # The reason of seperate _CategoricalSeedSamplerBase from CategoricalSeedSampler
+    # The reason of separate _CategoricalSeedSamplerBase from CategoricalSeedSampler
     # is for easier unittest.
     def __init__(self, num_classes, new_noise_prob=0.01, concentration=1):
         input_tensor_spec = alf.TensorSpec((num_classes, ))

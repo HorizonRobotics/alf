@@ -183,7 +183,7 @@ class SumSegmentTree(SegmentTree):
                 Note that if thresholds[i] == root,  result[i] will be
                 the index of the non-zero value with the largest index.
         Raises:
-            ValueError:  If one or more of ``thresholds`` is greather than ``summary()``.
+            ValueError:  If one or more of ``thresholds`` is greater than ``summary()``.
         """
 
         def _step(indices, thresholds):

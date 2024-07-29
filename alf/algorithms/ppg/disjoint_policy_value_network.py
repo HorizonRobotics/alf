@@ -42,8 +42,8 @@ def _create_projection_net_based_on_action_spec(
             that outputs continuous actions.
         input_size (int): the input_size for the projection network, which usually
             comes from the output of an encoding network.
-        action_spec (nest of TensorSpec): speficifies the shape and type of the
-            output action. The type of each invidual projection network in the
+        action_spec (nest of TensorSpec): specifies the shape and type of the
+            output action. The type of each individual projection network in the
             output is derived from this.
 
     """
@@ -133,7 +133,7 @@ class DisjointPolicyValueNetwork(Network):
 
             observation_spec (nest of TesnorSpec): specifies the shape and type
                 of the input observation.
-            action_spec (nest of TensorSpec): speficifies the shape and type of
+            action_spec (nest of TensorSpec): specifies the shape and type of
                 the output action. The type of output action distribution is
                 implicitly derived from this.
             encoding_network_ctor (Callable[..., Network]): A constructor that
@@ -182,7 +182,7 @@ class DisjointPolicyValueNetwork(Network):
 
         # Note that the aux branch value head belongs to the policy component.
 
-        # Like the value head Aux head is outputing value estimation
+        # Like the value head Aux head is outputting value estimation
         self._aux_head = alf.nn.Sequential(
             alf.layers.FC(input_size=encoder_output_size, output_size=1),
             alf.layers.Reshape(()))

@@ -440,7 +440,7 @@ def lateral_shift(transform: carla.Transform, shift):
     Args:
         transform (carla.Transform): an input transform to apply the lateral
             shift to.
-        shift (float): the amout of lateral shift to apply. It has the same unit
+        shift (float): the amount of lateral shift to apply. It has the same unit
             as the transform.location.
             A positive value for lateral shift to the right and a negative value
             for lateral shift to the left.

@@ -137,7 +137,7 @@ class TensorSpec(object):
     def dtype_str(self):
         """The str representation of dtype
 
-        It can be used to contruct a numpy array.
+        It can be used to construct a numpy array.
         """
         return torch_dtype_to_str(self._dtype)
 

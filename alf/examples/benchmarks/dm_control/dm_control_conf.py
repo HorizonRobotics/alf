@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""A common configuration for DM control tasks independent of algortihms.
+"""A common configuration for DM control tasks independent of algorithms.
 This file defines some basic experiment protocol (e.g., parallel envs, hidden
-layers, learning rate, etc) to be shared by different algorithms to be evaluted.
+layers, learning rate, etc) to be shared by different algorithms to be evaluated.
 """
 import torch
 

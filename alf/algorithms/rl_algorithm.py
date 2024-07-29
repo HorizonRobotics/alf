@@ -82,7 +82,7 @@ def adjust_replay_buffer_length(config: TrainerConfig,
         else:
             adjusted = config.unroll_length
 
-    # The replay buffer length is exteneded by num_earliest_frames_ignored so
+    # The replay buffer length is extended by num_earliest_frames_ignored so
     # that after FrameStacker transformation the number of experiences matches
     # ``unroll_length``.
     adjusted += num_earliest_frames_ignored
@@ -103,7 +103,7 @@ class RLAlgorithm(Algorithm):
     1. ``predict_step()``: one step of computation of action for evaluation.
     2. ``rollout_step()``: one step of computation for rollout. It is
        used for collecting experiences during training. Different from
-       ``predict_step``, ``rollout_step`` may include addtional computations for
+       ``predict_step``, ``rollout_step`` may include additional computations for
        training. For on-policy algorithms (e.g., AC, PPO, etc), the collected
        experiences will be immediately used to update parameters after one
        rollout (multiple rollout steps) is performed; for off-policy algorithms
@@ -786,7 +786,7 @@ class RLAlgorithm(Algorithm):
                     self.eval()
                     # The period of performing unroll may not be an integer
                     # divider of config.summary_interval if config.unroll_length is not an
-                    # interger. In order to make sure the summary for unroll is
+                    # integer. In order to make sure the summary for unroll is
                     # still written out about every summary_interval steps, we
                     # need to remember whether summary has been written between
                     # two unrolls.
@@ -827,7 +827,7 @@ class RLAlgorithm(Algorithm):
 
         Args:
             untransformed_observation_spec (nested TensorSpec): spec that
-                describes the strcuture of the utransformed observations.
+                describes the structure of the utransformed observations.
         """
 
         if self._offline_buffer_dir is None or self._offline_buffer_dir == "":

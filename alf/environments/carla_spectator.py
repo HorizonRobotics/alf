@@ -131,7 +131,7 @@ def main(_):
 
     callback_id = world.on_tick(on_tick)
 
-    logging.info("Keyboard contorl:" + """
+    logging.info("Keyboard control:" + """
     ESC          : quit
     TAB          : switch vehicle
     SPACE        : switch between ego view and birdeye view

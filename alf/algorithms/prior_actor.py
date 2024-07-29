@@ -157,7 +157,7 @@ class SameActionPriorActor(Algorithm):
             reinterpreted_batch_ndims=prev_action.ndim - 1)
 
     def predict_step(self, inputs: TimeStep, state):
-        """Calculate the disribution of the next action.
+        """Calculate the distribution of the next action.
 
         Args:
             inputs (TimeStep): time step structure

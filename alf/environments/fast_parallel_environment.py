@@ -67,7 +67,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         This is achieved by calling ``call_handler`` to do communication using
         python pipe. The reason of using the original pipe mechanism for other
         types of communication is that it is not easy to handle communication of
-        unknow size using shared memory.
+        unknown size using shared memory.
 
     Args:
         env_constructors (list[Callable]): a list of callable environment creators.

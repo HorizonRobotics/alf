@@ -179,7 +179,7 @@ class Checkpointer(object):
 
         def _convert_legacy_parameter(checkpoint):
             """
-            Due to different implmentation of FC layer, the old checkpoints cannot
+            Due to different implementation of FC layer, the old checkpoints cannot
             be loaded directly. Hence we check if the checkpoint uses old FC layer
             and convert to the new FC layer format.
             _log_alpha for SacAlgorithm was changed from [1] Tensor to [] Tensor.
@@ -310,7 +310,7 @@ class Checkpointer(object):
 
         Args:
             global_step (int|str): If an int, return True if file "ckpt-{global_step}"
-                is in the checkpoint directory. If "lastest", return True if
+                is in the checkpoint directory. If "latest", return True if
                 "latest" is in the checkpoint directory.
         """
         if global_step == "latest":
@@ -344,7 +344,7 @@ class Checkpointer(object):
                 current state to be saved. It will be appended to the name of
                 the checkpoint as a suffix.
             suffix (str): the suffix to be appended to the checkpoint file name.
-                If provided, it wil be used as the suffix instead of ``global_step``.
+                If provided, it will be used as the suffix instead of ``global_step``.
         """
         suffix = suffix or str(global_step)
 

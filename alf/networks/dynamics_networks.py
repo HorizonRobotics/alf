@@ -59,7 +59,7 @@ class DynamicsNetwork(Network):
                 the last layer. If none is provided a variance_scaling_initializer
                 with uniform distribution will be used.
             prob (bool): If True, use the probabistic mode of network; otherwise,
-                use the determinstic mode of network.
+                use the deterministic mode of network.
             continuous_projection_net_ctor (ProjectionNetwork): constructor that
                 generates a continuous projection network that outputs
                 a distribution.

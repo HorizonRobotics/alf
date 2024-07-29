@@ -1,6 +1,6 @@
 # How to update third-party software?
 
-ALF depends on a lot of third party software. The folloing is the workflow for
+ALF depends on a lot of third party software. The following is the workflow for
 updating 3rd party software. We will use ALF_ROOT to represent the directory of
 ALF source root, ALF_IMAGE_TAG to represent the tag of the new docker image.
 ALF_IMAGE_TAG follows the following convention:

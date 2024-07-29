@@ -269,7 +269,7 @@ class NaiveParallelNetwork(Network):
     def __init__(self, network, n, name=None):
         """
         A parallel network has ``n`` copies of network with the same structure but
-        different indepently initialized parameters.
+        different independently initialized parameters.
 
         ``NaiveParallelNetwork`` created ``n`` independent networks with the same
         structure as ``network`` and evaluate them separately in loop during

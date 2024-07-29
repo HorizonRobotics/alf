@@ -40,7 +40,7 @@ PPGAuxOptions = namedtuple(
         'interval',
 
         # Counterpart to TrainerConfig.mini_batch_length for aux phase. When set
-        # to None, it will automatically overriden by unroll_length.
+        # to None, it will automatically overridden by unroll_length.
         'mini_batch_length',
 
         # Counterpart to TrainerConfig.mini_batch_size for aux phase
@@ -68,7 +68,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
     """
 
     # TODO(breakds): Also conduct an experiment to see whether we can just
-    # do samping from the auxiliary replay buffer to achieve similar
+    # do sampling from the auxiliary replay buffer to achieve similar
     # training performance.
 
     def __init__(self,
@@ -100,7 +100,7 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
             name (str): Name of this algorithm.
 
         """
-        # Use a config with overriden fields as auxiliary phase updates has a
+        # Use a config with overridden fields as auxiliary phase updates has a
         # bunch of its own options.
         updated_config = copy.copy(config)
         updated_config.unroll_length = config.unroll_length * aux_options.interval

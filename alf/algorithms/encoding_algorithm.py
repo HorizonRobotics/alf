@@ -53,7 +53,7 @@ class EncodingAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): not used
             encoder_cls (type): The class or function to create the encoder. It
                 can be called using ``encoder_cls(input_tensor_spec)``.
-            time_step_as_input (bool): If True, use the whole TimeStep strucuture
+            time_step_as_input (bool): If True, use the whole TimeStep structure
                 as the input to the encoder instead of the observation.
             output_fields (None | nested str): if None, all the output from the
                 encoder will be used as the output. Otherwise, ``output_fields``

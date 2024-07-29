@@ -67,7 +67,7 @@ probability $\frac{sk}{t}$ instead of $\frac{k}{t}$. Let $p_{t,i}$ be the probab
 the $i$-th sample still being in the reservoir at step $t$. It is clear that for
 $t\ge sk$, $p_{t,t} = \frac{sk}{t}$. The probability of the $i$-th item being in
 the reservoir at step $t$ is the proability that it is in reservoir
-at step $t-1$ multiplied with the probility of it not being replaced at step $t$:
+at step $t-1$ multiplied with the probability of it not being replaced at step $t$:
 $p_{t,i} = p_{t-1,i} \left(1 - \frac{sk}{t} \frac{1}{k}\right) = p_{t-1,i} \left(1-\frac{s}{t}\right)$.
 With this relationship, we get:
 $$

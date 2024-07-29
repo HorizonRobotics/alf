@@ -206,7 +206,7 @@ def get_inoperative_configs():
 def _get_all_leaves(conf_dict):
     """
     Returns:
-        list[tupe[path, _Config]]
+        list[tuple[path, _Config]]
     """
     leaves = []
     for k, v in conf_dict.items():
@@ -395,13 +395,13 @@ def config1(config_name,
         if config_node.get_sole_init():
             logging.warning(
                 "The value of config '%s' (%s) is protected by sole_init. "
-                "It is now being overriden by the overide_all flag to a new value %s. "
+                "It is now being overridden by the overide_all flag to a new value %s. "
                 "Use at your own risk." % (config_name,
                                            config_node.get_value(), value))
         if not config_node.is_mutable():
             logging.warning(
                 "The value of config '%s' (%s) is immutable. "
-                "It is now being overriden by the overide_all flag to a new value %s. "
+                "It is now being overridden by the overide_all flag to a new value %s. "
                 "Use at your own risk." % (config_name,
                                            config_node.get_value(), value))
         config_node.set_value(value)
@@ -627,7 +627,7 @@ def _make_wrapper(fn, configs, signature, has_self, config_only_args):
             ``fn``
         signature (inspect.Signature): Signature object of ``fn``. It is provided
             as an argument so that we don't need to call ``inspect.signature(fn)``
-            repeatedly, whith is expensive.
+            repeatedly, with is expensive.
         has_self (bool): whether the first argument is expected to be self but
             signature does not contains parameter for self. This should be True
             if fn is __init__() function of a class.

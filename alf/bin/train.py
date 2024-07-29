@@ -24,7 +24,7 @@ To run actor-critic on gym `CartPole`:
     --gin_param='create_environment.num_parallel_environments=8' \
     --alsologtostderr
 
-You can view various training curves using Tensorboard by running the follwoing
+You can view various training curves using Tensorboard by running the following
 command in a different terminal:
 
 .. code-block:: bash
@@ -81,7 +81,7 @@ def _define_flags():
                       'Whether store an ALF snapshot before training')
     flags.DEFINE_enum(
         'distributed', 'none', ['none', 'multi-gpu'],
-        'Set whether and how to run trainning in distributed mode.')
+        'Set whether and how to run training in distributed mode.')
     flags.mark_flag_as_required('root_dir')
 
 
@@ -93,7 +93,7 @@ def _setup_logging(rank: int, log_dir: str):
 
     Args:
         rank (int): The ID of the process among all of the DDP processes
-        log_dir (str): path to the direcotry where log files are written to
+        log_dir (str): path to the directory where log files are written to
     """
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
@@ -204,7 +204,7 @@ def training_worker(rank: int,
     finally:
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
-        # finishes ealier (e.g. when it raises an exception), it will hang
+        # finishes earlier (e.g. when it raises an exception), it will hang
         # instead of quitting unless all child processes are killed.
         alf.close_env()
 

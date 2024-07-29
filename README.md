@@ -53,7 +53,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 
 ## Installation
 
-#### OS softwares
+#### OS software
 The following installation was tested on Ubuntu22.04 with CUDA 11.8.
 
 Python3.11 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3.11-dev is installed:
@@ -104,7 +104,7 @@ You can train any `_conf.py` file under `alf/examples` as follows:
 python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR
 ```
 * CONF_FILE is the path to your conf file which follows ALF configuration file format (basically python).
-* LOG_DIR is the directory when you want to store the training results. Note that if you want to train from scratch, LOG_DIR must point to a location that doesn't exist. Othewise, it is assumed to resume the training from a previous checkpoint (if any).
+* LOG_DIR is the directory when you want to store the training results. Note that if you want to train from scratch, LOG_DIR must point to a location that doesn't exist. Otherwise, it is assumed to resume the training from a previous checkpoint (if any).
 
 During training, we use tensorboard to show the progress of training:
 ```bash

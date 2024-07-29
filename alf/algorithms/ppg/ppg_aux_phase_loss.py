@@ -62,7 +62,7 @@ class PPGAuxPhaseLoss(Loss):
                  gamma: Union[float, List[float]] = 0.999,
                  td_lambda: float = 0.95,
                  name: str = 'PPGAuxPhaseLoss'):
-        """Construct a PPGAuxPhaseLoss instnace with parameters
+        """Construct a PPGAuxPhaseLoss instance with parameters
 
         Args:
 

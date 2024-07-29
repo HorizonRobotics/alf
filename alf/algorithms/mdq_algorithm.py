@@ -359,7 +359,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         # [t, B, n, action_dim] -> [t, B]
         # note that currently the kl_wrt_prior is independent of ensembles,
         # we therefore slice over ensemble by taking the first element;
-        # for the aciton dimension, the first element is the full KL
+        # for the action dimension, the first element is the full KL
         kl_wrt_prior = kl_wrt_prior[..., 0, 0]
 
         # [t, B, n] -> [t, B]

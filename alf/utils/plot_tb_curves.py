@@ -147,7 +147,7 @@ class MeanCurveReader(object):
 
                 then the merged ``MeanCurve`` will have :math:`(1, 8)` as the
                 final :math:`x` range. Each curve's new :math:`y` values will
-                be interpolated w.r.t. this common :math:`x` range approperiately
+                be interpolated w.r.t. this common :math:`x` range appropriately
                 given their original :math:`y=f(x)` curve. The common :math:`x`
                 range will be automatically determined as in the example if this
                 argument ``x_steps==None``. Alternatively, the user can specify
@@ -189,7 +189,7 @@ class MeanCurveReader(object):
                 num_steps = max(
                     num_steps,
                     (steps[-1] - steps[0]) // (steps[-1] - steps[-2]))
-            # calcuate x_steps by evenly dividing (min_x, max_x)
+            # calculate x_steps by evenly dividing (min_x, max_x)
             assert max_x > min_x and num_steps > 1
             delta_x = (max_x - min_x) / (num_steps - 1)
             x_steps = np.arange(num_steps) * delta_x + min_x
@@ -272,7 +272,7 @@ def ema_smooth(scalars, weight=0.6, speed=64., adaptive=False, mode="forward"):
         weight (float): the weight of history. The history is updated as
             ``history * weight + scalar * (1 - weight)``. Only useful when
             ``adaptive=False``.
-        speed (int): an integer number specifying the adpative weight. Only
+        speed (int): an integer number specifying the adaptive weight. Only
             useful when ``adaptive=True``. A higher speed means a smaller
             average window.
         adaptive (bool): whether use adaptive weighting or not. If True, then
@@ -487,7 +487,7 @@ class CurvesPlotter(object):
             x_scaled_and_aligned (bool): If True, the x axes of all ``MeanCurve``
                 will be scaled and aligned so that the lower and upper :math:`x`
                 bounds of all curves will be ``x_range``, and each curve's :math:`x`
-                axix will be proportionally scaled. If False, the :math:`x` axis
+                axis will be proportionally scaled. If False, the :math:`x` axis
                 will be plotted according to :math:`x` of each ``MeanCurve`` as
                 it is. Note that this process only involves :math:`x` scaling and
                 no interpolation of :math:`y` values will ever be performed. For

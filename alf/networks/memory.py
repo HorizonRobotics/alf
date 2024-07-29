@@ -73,7 +73,7 @@ class Memory(object):
               size, k is the number of read keys, and dim is memory content
               dimension
         Returns:
-            resutl (Tensor): shape is same as keys. result[..., i] is the read
+            result (Tensor): shape is same as keys. result[..., i] is the read
               result for the corresponding key.
         """
         pass
@@ -96,9 +96,9 @@ class MemoryWithUsage(Memory):
 
     MemoryWithUsage stores memory in a matrix. During memory `write`, the memory
     slot with the smallest usage is replaced by the new memory content. The
-    memory content can be retrived thrugh attention mechanism using `read`.
+    memory content can be retrieved through attention mechanism using `read`.
 
-    This implementation follows the one decribed in arXiv:1803.10760.
+    This implementation follows the one described in arXiv:1803.10760.
     """
 
     def __init__(self,
@@ -149,7 +149,7 @@ class MemoryWithUsage(Memory):
     def build(self, batch_size):
         """Build the memory for batch_size.
 
-        User does not need to call this explictly. `read` and `write` will
+        User does not need to call this explicitly. `read` and `write` will
         automatically call this if the memory has not been built yet.
 
         Note: Subsequent `write` and `read` must match this `batch_size`
@@ -227,7 +227,7 @@ class MemoryWithUsage(Memory):
               cosine similarities are multiplied with ``scale`` before softmax
               is applied. If None, use the scale provided at constructor.
         Returns:
-            resutl Tensor: shape is same as keys. result[..., i] is the read
+            result Tensor: shape is same as keys. result[..., i] is the read
               result for the corresponding key.
 
         """
@@ -281,7 +281,7 @@ class MemoryWithUsage(Memory):
         """Write content to memory.
 
         Append the content to memory. If the memory is full, the slot with the
-        smallest usage will be overriden. The usage is calculated during read as
+        smallest usage will be overridden. The usage is calculated during read as
         the sum of past attentions.
 
         Args:
@@ -381,7 +381,7 @@ class FIFOMemory(Memory):
     def build(self, batch_size):
         """Build the memory for batch_size.
 
-        User does not need to call this explictly. `read` and `write` will
+        User does not need to call this explicitly. `read` and `write` will
         automatically call this if the memory has not been built yet.
 
         Note: Subsequent `write` and `read` must match this `batch_size`

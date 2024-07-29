@@ -69,7 +69,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         action_spec = flat_action_spec[0]
 
         assert action_spec.is_continuous, "only support \
-                                                    continious control"
+                                                    continuous control"
 
         self._num_actions = action_spec.shape[-1]
 
@@ -147,7 +147,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """Create a RandomShootingAlgorithm.
 
         Args:
-            population_size (int): the size of polulation for random shooting
+            population_size (int): the size of population for random shooting
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s).
             planning_horizon (int): planning horizon in terms of time steps
@@ -268,7 +268,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         """Create a CEMPlanAlgorithm.
 
         Args:
-            population_size (int): the size of polulation for optimization
+            population_size (int): the size of population for optimization
             planning_horizon (int): planning horizon in terms of time steps
             reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
                 the reward(s.)

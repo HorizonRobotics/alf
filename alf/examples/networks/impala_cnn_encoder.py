@@ -105,7 +105,7 @@ def _create_downsampling_cnn_stack(
 
     """
     input_channels = input_tensor_spec.shape[0]
-    # The output tensor spec is indentical to the input tesnor spec except for
+    # The output tensor spec is identical to the input tesnor spec except for
     # that the channel dimension is replaced by the output number of channels.
     output_tensor_spec = TensorSpec(
         (output_channels, *input_tensor_spec.shape[1:]),
@@ -177,7 +177,7 @@ def create(input_tensor_spec,
     # The CNN encoder expects float32 pixels between [0.0, 1.0]. If
     # the dtype of the input is uint8, we assume that the pixels are
     # within range [0, 255]. In this case we will apply "image scaling
-    # transformation" logic to covert it to float32 [0.0, 1.0].
+    # transformation" logic to convert it to float32 [0.0, 1.0].
     if input_tensor_spec.dtype is torch.uint8:
         scale_factor = 1.0 / 255.0
         stacks.append(alf.layers.Cast(dtype=torch.float32))

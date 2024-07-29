@@ -73,7 +73,7 @@ class DistributionSpecTest(parameterized.TestCase, alf.test.TestCase):
         params1 = {'logits': torch.tensor([0.5, 1.5])}
         dist1 = spec.build_distribution(params1)
         self.assertEqual(type(dist1), td.Categorical)
-        # Categorical distribution will substract logsumexp(logits) from logits.
+        # Categorical distribution will subtract logsumexp(logits) from logits.
         # So dist1.logits is not equal to the supplied logits
         d = dist1.logits - params1['logits']
         self.assertAlmostEqual(d[0], d[1])

@@ -126,7 +126,7 @@ def wrap_optimizer(cls):
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
                 to clip gradient. If False, use `tensor_utils.clip_by_norms` for
                 each grad.
-            parvi (string): if not ``None``, paramters with attribute
+            parvi (string): if not ``None``, parameters with attribute
                 ``ensemble_group`` will be updated by particle-based vi algorithm
                 specified by ``parvi``, options are [``svgd``, ``gfsf``],
 
@@ -162,7 +162,7 @@ def wrap_optimizer(cls):
                 created, where "i" is the global optimizer id.
             kwargs: arguments passed to the constructor of the underlying torch
                 optimizer. If ``lr`` is given and it is a ``Callable``, it is
-                treated as a learning rate scheduler and will be called everytime
+                treated as a learning rate scheduler and will be called every time
                 when ``step()`` is called to get the latest learning rate.
                 Available schedulers are in ``alf.utils.schedulers``.
         """
@@ -235,7 +235,7 @@ def wrap_optimizer(cls):
             old_param_values: a dictionary with the parameter as the key and the parameter
                 value (e.g. from the previous iteration)  as the dictionary value.
                 These values will be used to reset the corresponding parameter values
-                after each gradient step if the corresonding capacity mask is True,
+                after each gradient step if the corresponding capacity mask is True,
                 effectively excluding it from learning.
         """
         if capacity_ratio < 1:

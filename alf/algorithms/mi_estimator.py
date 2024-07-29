@@ -31,7 +31,7 @@ from alf.utils.dist_utils import DiagMultivariateNormal
 
 
 class MIEstimator(Algorithm):
-    r"""Mutual Infomation Estimator.
+    r"""Mutual Information Estimator.
 
     Implements several mutual information estimator from
     Belghazi et al `Mutual Information Neural Estimation
@@ -55,11 +55,11 @@ class MIEstimator(Algorithm):
 
     For *ML*, :math:`P(y)` is the margianl distribution of y, and it needs to be provided.
     The current implementation uses a normal distribution with diagonal variance
-    for :math:`q(y|x)`. So it only support continous `y`. If :math:`P(y|x)` can be reasonably
+    for :math:`q(y|x)`. So it only support continuous `y`. If :math:`P(y|x)` can be reasonably
     approximated as an diagonal normal distribution and :math:`P(y)` is known,
     then 'ML' may give better estimation for the mutual information.
 
-    Assumming the function class of T is rich enough to represent any function,
+    Assuming the function class of T is rich enough to represent any function,
     for *KLD* and *JSD*, T will converge to :math:`\log(\frac{P}{Q})` and hence
     :math:`E_P(T)` can also be used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`.
     For *DV*, :math:`T` will converge to :math:`\log(\frac{P}{Q}) + c`, where
@@ -74,7 +74,7 @@ class MIEstimator(Algorithm):
 
     * 'buffer': store :math:`y` to a buffer and randomly retrieve samples from
       the buffer.
-    * 'double_buffer': stroe both :math:`x` and :math:`y` to buffers and randomly
+    * 'double_buffer': store both :math:`x` and :math:`y` to buffers and randomly
       retrieve samples from the two buffers.
     * 'shuffle': randomly shuffle batch :math:`y`
     * 'shift': shift batch :math:`y` by one sample, i.e.
@@ -127,7 +127,7 @@ class MIEstimator(Algorithm):
                 'shuffle', 'shift']``.
             buffer_size (int): capacity of buffer for storing y for sampler
                 'buffer' and 'double_buffer'.
-            optimzer (torch.optim.Optimzer): optimizer
+            optimizer (torch.optim.Optimizer): optimizer
             estimator_type (str): one of 'DV', 'KLD' or 'JSD'
             averager (EMAverager): averager used to maintain a moving average
                 of :math:`exp(T)`. Only used for 'DV' estimator. If None,

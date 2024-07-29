@@ -84,7 +84,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 The constructed network will be called with ``forward(observation, state)``.
             value_network_ctor (None | Callable): Function to construct the value network.
                 ``value_network_ctor`` needs to accept ``input_tensor_spec`` as its
-                arguments and return a value netwrok. The contructed network will be
+                arguments and return a value network. The constructed network will be
                 called with ``forward(observation, state)`` and returns value tensor for
                 each observation given observation and network state. Note that if the
                 algorithm is constructed for evaluation or deployment only, the
@@ -142,7 +142,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._loss = loss
 
         # The following checkpoint loading hook handles the case when value
-        # network is not constructed. In this case the value network paramters
+        # network is not constructed. In this case the value network parameters
         # present in the checkpoint should be ignored.
         def _deployment_hook(state_dict, prefix: str, unused_loacl_metadata,
                              unused_strict, unused_missing_keys,

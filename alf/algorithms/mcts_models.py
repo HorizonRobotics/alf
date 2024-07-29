@@ -600,11 +600,11 @@ class SimplePredictionNet(alf.networks.Network):
             observation_spec (TensorSpec): describing the observation.
             action_spec (BoundedTensorSpec): describing the action.
             trunk_net_ctor (Callable): called as ``trunk_net_ctor(input_tensor_spec=observation_spec)``
-                to created a network which taks observation as input and output a
+                to create a network which takes observation as input and output a
                 hidden representation which will be used as input for predicting
                 value, reward, action_distribution and game_over_logit
             initial_game_over_bias (float): initial bias for predicting the.
-                logit of game_over. Sugguest to use ``log(game_over_prob/(1 - game_over_prob))``
+                logit of game_over. Suggest to use ``log(game_over_prob/(1 - game_over_prob))``
         """
         super().__init__(observation_spec, name="SimplePredictionNet")
 
@@ -711,8 +711,8 @@ class SimpleMCTSModel(MCTSModel):
                 consistency loss described in `Ye et. al. Mastering Atari Games
                 with Limited Data <https://arxiv.org/abs/2111.00210>`_. The loss
                 is ``-cosine(prediction_net(projection_net(x)), projection_net(y))``,
-                where x is the representation calcuated by dynamics_net and
-                y is the representation calcualted by representation_net
+                where x is the representation calculated by dynamics_net and
+                y is the representation calculated by representation_net
                 from the corresponding future observations.
             train_policy (bool): whether to train a policy. Note that training
                 policy is REQUIRED when the model is used in MCTS algorithm.

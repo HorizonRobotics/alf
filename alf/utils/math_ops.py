@@ -281,7 +281,7 @@ def argmin(x):
     Args:
         x (Tensor): only support rank-2 tensor
     Returns:
-        rank-1 int64 Tensor represeting the column of the first element in each
+        rank-1 int64 Tensor representing the column of the first element in each
         row equal to the minimum of the row.
     """
     assert x.ndim == 2
@@ -464,7 +464,7 @@ def binary_neg_entropy(p: torch.Tensor):
     """Negative entropy for binary outcome.
 
     Args:
-        p: the probability of one outcome and hence 1-p are the probabilites for
+        p: the probability of one outcome and hence 1-p are the probabilities for
             the other outcome
     Returns:
         Tensor with the same shape as p

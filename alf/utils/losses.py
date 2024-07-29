@@ -129,7 +129,7 @@ def iqn_huber_loss(value: torch.Tensor,
             is between this and the target.
         target: the time-major tensor for return, this is used as the target
             for computing the loss.
-        next_delta_tau: the sampled increments of the probility for the input 
+        next_delta_tau: the sampled increments of the probability for the input 
             of the quantile function of the target critics.
         fixed_tau: the fixed increments of probability, for non iqn style
             quantile regression.
@@ -141,7 +141,7 @@ def iqn_huber_loss(value: torch.Tensor,
 
     Returns:
         loss: the computed loss.
-        diff: the difference bwtween target and value, for summary purpose.
+        diff: the difference between target and value, for summary purpose.
 
     """
 
@@ -207,7 +207,7 @@ class ScalarPredictionLoss(object):
 
         For some losses (e.g. OrderedDiscreteRegresion), initializing bias to
         zero can have very bad initial predictions. So we provide an interface
-        for doing loss specific intializations. Note that the weight of the last
+        for doing loss specific initializations. Note that the weight of the last
         FC should be initialized to zero in general.
 
         Args:
@@ -268,7 +268,7 @@ def _get_indexer(shape: Tuple[int]):
     ``Y=X[B + (I,)]`` so that ``Y[i,j,k] = X[i, j, k, I[i,j,k]]``
 
     Args:
-        shape: The shape of the tensor to be accessed exclusing the last dimension.
+        shape: The shape of the tensor to be accessed excluding the last dimension.
     Returns:
         the tuple of index for accessing the tensor.
     """
@@ -345,7 +345,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
     The target is assumed to be in the range ``[-(n-1)//2, n//2]``, where ``n=logits.shape[-1]``.
     The logits are used to calculate the probabilities of being one of the ``n``
     values. If a target value y is not an integer, it is treated as having
-    prabability mass of :math:`y- \lfloor y \rfloor` at :math:`\lfloor y \rfloor + 1`
+    probability mass of :math:`y- \lfloor y \rfloor` at :math:`\lfloor y \rfloor + 1`
     and probability mass of :math:`1 + \lfloor y \rfloor - y` at :math:`\lfloor y \rfloor`.
     Then cross entropy loss is applied.
 
@@ -369,7 +369,7 @@ class DiscreteRegressionLoss(_DiscreteRegressionLossBase):
     """
 
     def __call__(self, logits: torch.Tensor, target: torch.Tensor):
-        """Caculate the loss.
+        """Calculate the loss.
 
         Args:
             logits: shape is [B, n]
@@ -430,7 +430,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
     The target is assumed to be in the range ``[-(n-1)//2, n//2]``, where ``n=logits.shape[-1]``.
     The logits are used to calculate the probabilities of being greater than or
     equal to each of these ``n`` values. If a target value y is not an integer,
-    it is treated as having prabability mass of :math:`y- \lfloor y \rfloor` at
+    it is treated as having probability mass of :math:`y- \lfloor y \rfloor` at
     :math:`\lfloor y \rfloor + 1`  and probability mass of :math:`1 + \lfloor y \rfloor - y`
     at :math:`\lfloor y \rfloor`. Then binary cross entropy loss is applied.
 
@@ -451,7 +451,7 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
     """
 
     def __call__(self, logits: torch.Tensor, target: torch.Tensor):
-        """Caculate the loss.
+        """Calculate the loss.
 
         Args:
             logits: shape is [B, n]
@@ -769,7 +769,7 @@ class BipartiteMatchingLoss(object):
 
     Mathematically, suppose there are :math:`N` objects in either set,
     :math:`L(x,y)` is the matching loss between any :math:`(x,y)` object pair,
-    and :math:`\mathcal{G}_N` is the permuation space. The forward loss to be
+    and :math:`\mathcal{G}_N` is the permutation space. The forward loss to be
     minimized is:
 
     .. math::

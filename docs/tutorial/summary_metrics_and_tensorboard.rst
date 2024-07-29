@@ -19,7 +19,7 @@ number or gradient update number. One example of using the TB's official APIs is
     train_summary_writer = tf.summary.create_file_writer("/tmp/log_dir/train")
     test_summary_writer = tf.summary.create_file_writer("/tmp/log_dir/test")
     for epoch in range(EPOCHS):
-        # ... code for computing the training loss and training accurarcy
+        # ... code for computing the training loss and training accuracy
         with train_summary_writer.as_default():
             tf.summary.scalar('accuracy', training_accuracy, step=epoch)
         # ... code for computing the testing accuracy

@@ -68,7 +68,7 @@ from alf.algorithms.data_transformer import FrameStacker
 from alf.utils.summary_utils import summarize_tensor_gradients
 from alf.utils import losses
 
-# MuzeroAlgorithm does not suppport the RewardClipping configured in atari_conf
+# MuzeroAlgorithm does not support the RewardClipping configured in atari_conf
 alf.config('TrainerConfig', data_transformer_ctor=[FrameStacker])
 
 # Since some module (i.e. repr_loss) is created in this file, we need to set

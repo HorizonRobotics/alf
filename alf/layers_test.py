@@ -647,7 +647,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         # We are going to create ``batch_size`` of batches, where each batch has
         # a sequence of ``max_len``. However, for the purpose of this unit test,
         # we are going to treat only a random ``actual_len`` elements in the
-        # sequence of each batch as actaul elements, where the rest ``max_len -
+        # sequence of each batch as actual elements, where the rest ``max_len -
         # actual_len`` elements are masked out.
         #
         # The index tuple B is created such that x[B] is a tensor of shape

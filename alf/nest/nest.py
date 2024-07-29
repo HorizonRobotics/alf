@@ -198,7 +198,7 @@ def assert_same_structure_up_to(shallow_nest, deep_nest):
 def prune_nest_like(nest, slim_nest, value_to_match=None):
     """(C++)
     Prune a nested structure referring to another slim nest. Generally, for
-    every corrsponding node, we only keep the fields that're contained in
+    every corresponding node, we only keep the fields that're contained in
     ``slim_nest``. In addition, if a field of ``slim_nest`` contains a value of
     ``value_to_match``, then the corresponding field of ``nest`` will also be
     updated to this value.
@@ -652,7 +652,7 @@ def find_field(nest, name, ignore_empty=True):
 
 def py_prune_nest_like(nest, slim_nest, value_to_match=None):
     """Prune a nested structure referring to another slim nest. Generally, for
-    every corrsponding node, we only keep the fields that're contained in
+    every corresponding node, we only keep the fields that're contained in
     ``slim_nest``. In addition, if a field of ``slim_nest`` contains a value of
     ``value_to_match``, then the corresponding field of ``nest`` will also be
     updated to this value.
@@ -733,7 +733,7 @@ def get_field(nested, field):
 
     ``field`` is a string separated by ".". ``get_field(nested, "a.b")`` is equivalent
     to ``nested.a.b`` if ``nested`` is constructed using namedtuple or ``nests['a']['b']``
-    if nested is contructed using dict. If nested is constructed using list or
+    if nested is constructed using dict. If nested is constructed using list or
     unnamed tuple, ``get_field(nested, "1.2")`` is equivalent to ``nested[1][2]``.
 
     Args:

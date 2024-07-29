@@ -58,9 +58,9 @@ class CriticAlgorithm(Algorithm):
             activation (Callable): activation used for all critic layers.
             net (Network): network for predicting outputs from inputs.
                 If None, a default one with hidden_layers will be created
-            use_relu_mlp (bool): whether use ReluMLP as default net constrctor.
+            use_relu_mlp (bool): whether to use ReluMLP as default net constructor.
                 Diagonals of Jacobian can be explicitly computed for ReluMLP.
-            use_bn (bool): whether use batch norm for each critic layers.
+            use_bn (bool): whether to use batch norm for each critic layers.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this CriticAlgorithm.
         """
@@ -360,11 +360,11 @@ class Generator(Algorithm):
                   the Stein discrepancy is solved by an inner optimization
                   procedure in the space of L2 neural networks.
             use_kernel_averager (bool): whether or not to use a running
-                average of the kernel bandwith for ParVI methods.
+                average of the kernel bandwidth for ParVI methods.
             functional_gradient (bool): whether or not to optimize the generator
                 with GPVI. When True, the dimension of the jacobian of the
                 generator function needs to be square -- therefore invertible.
-                When the generator is not sqaure, we ensure this by sampling
+                When the generator is not square, we ensure this by sampling
                 an input noise vector of the same size as the output, and only
                 forwarding the first ``noise_dim`` components. We then add the
                 full noise vector to the output, multiplied by the
@@ -1058,7 +1058,7 @@ class Generator(Algorithm):
         where :math:`v` can be :math:`\nabla_{z'^{(1:k)}}K(z', z)` or
         :math:`(\nabla_{z'^{(k:d)}}K(z', z))^T(\partial f^{(k:d)} / \partial z')^{-1}`.
         The training loss is given by
-        :math:`\|(\partical f / \partial z')^T y - v\|^2`, where :math`y`
+        :math:`\|(\partial` f / \partial z')^T y - v\|^2`, where :math`y`
         denotes the output of self._inverse_mvp, and the first term is
         computed by vector-jacobian product (vjp) between the generator
         :math:`f` and :math`y`.

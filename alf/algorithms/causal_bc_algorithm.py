@@ -67,10 +67,10 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
                 action is allowed currently. If it's a mixture, then it must be
                 a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
             reward_spec (Callable): a rank-1 or rank-0 tensor spec representing
-                the reward(s). For interface compatiblity purpose. Not actually
+                the reward(s). For interface compatibility purpose. Not actually
                 used in CausalBcAlgorithm.
             actor_network_cls (Callable): is used to construct the actor network.
-                The constructed actor network is a determinstic network and
+                The constructed actor network is a deterministic network and
                 will be used to generate continuous actions.
             discriminator_network_cls (Callable): is used to construct the
                 discriminator network. The discrimonator is trained in a way
@@ -165,7 +165,7 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
         target_prediction_differences = targets - predictions
 
         # bc_regularization is optionally used according to Appendix of the
-        # paper (Tabel 4 and 5)
+        # paper (Table 4 and 5)
         policy_loss = (
             2 * (target_prediction_differences) * pred_residuals.detach()
         ).mean(-1) + self._bc_regulatization_weight * (
@@ -176,7 +176,7 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
             2 * (target_prediction_differences).detach() * pred_residuals -
             pred_residuals * pred_residuals).mean(-1)
 
-        # f_norm_penalty is used according to Appendix of the paper (Tabel 4 and 5)
+        # f_norm_penalty is used according to Appendix of the paper (Table 4 and 5)
         discriminator_loss = (
             discriminator_loss +
             self._f_norm_penalty_weight * torch.linalg.norm(pred_residuals))

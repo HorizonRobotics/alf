@@ -66,10 +66,10 @@ class BcAlgorithm(OffPolicyAlgorithm):
                 action is allowed currently. If it's a mixture, then it must be
                 a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
             reward_spec (Callable): a rank-1 or rank-0 tensor spec representing
-                the reward(s). For interface compatiblity purpose. Not actually
+                the reward(s). For interface compatibility purpose. Not actually
                 used in BcAlgorithm.
             actor_network_cls (Callable): is used to construct the actor network.
-                The constructed actor network is a determinstic network and
+                The constructed actor network is a deterministic network and
                 will be used to generate continuous actions.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             env (Environment): The environment to interact with. ``env`` is a

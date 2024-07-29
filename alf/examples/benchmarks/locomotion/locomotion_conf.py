@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""A common Locomotion task configuration independent of algortihms. This file
+"""A common Locomotion task configuration independent of algorithms. This file
 defines some basic experiment protocol (e.g., parallel envs, hidden layers,
-learning rate, etc) to be shared by different algorithms to be evaluted.
+learning rate, etc) to be shared by different algorithms to be evaluated.
 """
 
 from functools import partial

@@ -164,7 +164,7 @@ def SoftclipTF(low, high, hinge_softness=1.):
         clipped = softupper(softlower(x, low), high)
         softclip(x) = (clipped - high) / (high - softupper(low, high)) * (high - low) + high
 
-    The second scaling step is beause we will have
+    The second scaling step is because we will have
     ``softupper(low, high) < low`` due to distortion of softplus, so we need to
     shrink the interval slightly by ``(high - low) / (high - softupper(low, high))``
     to preserve the lower bound. Due to this rescaling, the bijector can be mildly
@@ -474,7 +474,7 @@ class AffineTransformedDistribution(td.TransformedDistribution):
         self.loc = loc
         self.scale = scale
 
-        # broadcase scale to event_shape if necessary
+        # broadcast scale to event_shape if necessary
         s = torch.ones(base_dist.event_shape) * scale
         self._log_abs_scale = s.abs().log().sum()
 
@@ -846,7 +846,7 @@ class DistributionSpec(object):
         Args:
             dist (Distribution): the ``Distribution`` from which the spec is
                 extracted.
-            from_dim (int): only use the dimenions from this. The reason of
+            from_dim (int): only use the dimensions from this. The reason of
                 using ``from_dim>0`` is that ``[0, from_dim)`` might be batch
                 dimension in some scenario.
         Returns:

@@ -59,7 +59,7 @@ class SarsaAlgorithm(RLAlgorithm):
     See https://en.wikipedia.org/wiki/State-action-reward-state-action
 
     Currently, this is only implemented for continuous action problems.
-    The policy is dervied by a DDPG/SAC manner by maximizing :math:`Q(a(s_t), s_t)`,
+    The policy is derived by a DDPG/SAC manner by maximizing :math:`Q(a(s_t), s_t)`,
     where :math:`a(s_t)` is the action.
     """
 

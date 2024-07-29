@@ -159,7 +159,7 @@ class DSacAlgorithm(SacAlgorithm):
 
         self._min_critic_by_critic_mean = min_critic_by_critic_mean
         if alpha_optimizer is None:
-            # use epistemic alpha rather than the SAC alpha optmization
+            # use epistemic alpha rather than the SAC alpha optimization
             # note that self._log_alpha has been initialized as nn.Parameters
             # by SAC, so we need to delete it and reinitialize it as torch.Tensor
             self._epistemic_alpha = True

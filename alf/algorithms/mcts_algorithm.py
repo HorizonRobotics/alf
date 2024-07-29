@@ -277,24 +277,24 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     The time spent on tree search is directly related to how many times the tree
     is expanded. To make it faster, we also support expanding multiple
     leaves simulaneously. In order to do this, we maintain num_parallel_sims best
-    children for each node in the tree and use them to contruct k=num_paralilel_sims
+    children for each node in the tree and use them to construct k=num_paralilel_sims
     paths. Note the k best children may have duplicates, which is desired because
     we want to expand the most promising path more often. Depending the value of
     ``search_with_exploration_policy``, this process is slightly different:
 
     * search_with_exploration_policy=True. The k best_children of each node are
       simply chosen by independently sampling the exploration policy k times.
-      When contructing the search paths, the i-th search path is based on the
+      When constructing the search paths, the i-th search path is based on the
       i-th best child of each node.
 
     * search_with_exploration_policy=False. The best child is same the case k=1.
       The second best child is found by assuming the visit count of the best
       child and the parent are increased by 1 and applying the UCB criterion
       again. This is repeated k times to get k best children. Note that this is
-      different from directly selecting the best k childrens based on the original
+      different from directly selecting the best k children based on the original
       UCB scores. The reason of not doing that is that if the highest score is
       much bigger than the second highest score, we want to both paths to select
-      the same child. During the process of traversing from the root to contruct
+      the same child. During the process of traversing from the root to construct
       k search paths, if several (let's say k') paths are exactly same so far,
       we will use best k' children of the last node of these k' paths to extend
       the paths so that The k' children (may contains duplicates) being selected to
@@ -397,7 +397,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 different from the paper's. The paper initializes Q(s, a) for
                 root s for all the action being sampled. We expand all sampled
                 action for root s. With this option, the visit
-                count does not truly refect the quality of a node. Hence it
+                count does not truly reflect the quality of a node. Hence it
                 should be used with (act/learn)_with_exploration_policy=True.
             known_value_bounds (tuple|None): known bound of the values.
             value_min_max_delta: when normalizing the value using the the min and
@@ -415,7 +415,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 will use the mean of the value scores of the expanded siblings and
                 its parent (this is used in ELF OpenGo and EfficientZero). If 'none', when
                 exploration policy is used, will keep the policy for the unexpanded
-                children same as prior; when exporation is not used, 'none' behaves
+                children same as prior; when exploration is not used, 'none' behaves
                 same as 'min'.
             act_with_exploration_policy (bool): If True, a policy calculated using
                 reverse KL divergence will be used for generate action.
@@ -429,7 +429,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 allowed tree depth will be ``max_unroll_length``. Otherwise, the
                 maximal allowed tree depth will be ``max_unroll_length-1``
             num_parallel_sims (int): expanding so many leaves at a time for one
-                tree. ``num_simulations`` must be divisable by ``num_parallel_sims``.
+                tree. ``num_simulations`` must be divisible by ``num_parallel_sims``.
             checkpoint (None|str): a string in the format of "prefix@path",
                 where the "prefix" is the multi-step path to the contents in the
                 checkpoint to be loaded. "path" is the full path to the checkpoint
@@ -1475,7 +1475,7 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
 
     where :math:`f(\beta) = \sum_i \frac{q_i}{\beta - u_i} - 1` and :math:`f'(\beta)`
     is the derivative of :math:`f(\beta)`. Since :math:`f(\beta)` is convex,
-    starting the iteration with a :math:`\beta` s.t. :math:`f(\beta) > 0` gaurantees
+    starting the iteration with a :math:`\beta` s.t. :math:`f(\beta) > 0` guarantees
     the convergence. In practice, we find that about 10 iterations can reach
     tolerance of 1e-6. Newton's method is much faster than binary search.
 

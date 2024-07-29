@@ -46,7 +46,7 @@ const size_t addr_alignment = 16;
 
 // The size of job queue.
 // Since we always wait for job to finish before sending the next job,
-// we only need a shoft job queue.
+// we only need a short job queue.
 const size_t kJobQueueSize = 3;
 
 inline size_t align(size_t x) {
@@ -159,7 +159,7 @@ void SharedDataBuffer::WriteSlice(py::object nested_array, size_t slice_id) {
         py::str("Caught '{}' while writing an object. It is likely "
                 "that one of the "
                 "field is not converted to numpy array or numpy scalar "
-                "as requried. The object itself is {}.")
+                "as required. The object itself is {}.")
             .format(e.what(), nested_array));
   }
 }
@@ -407,7 +407,7 @@ py::object ParallelEnvironment::Step(const py::object& action) {
     int env_id;
     ready_queue_.receive(&env_id, sizeof(env_id), recvd_size, priority);
     if (env_id == -1) {
-      throw std::runtime_error("ProcessEnvironment is interruptted");
+      throw std::runtime_error("ProcessEnvironment is interrupted");
     }
     if (recvd_size != sizeof(env_id)) {
       throw std::runtime_error(py::str("Received unexpected size from "

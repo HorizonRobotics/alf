@@ -52,7 +52,7 @@ class ActionQuantizer(object):
         self._sampling_method = sampling_method
         self._rep_mode = rep_mode
 
-        # action_dim: the length of the continious control vector
+        # action_dim: the length of the continuous control vector
         # action_bins: the number of elements per action_dim
 
         self._action_dim = action_spec.shape[0]

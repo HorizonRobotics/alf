@@ -266,7 +266,7 @@ class Player(object):
         """
         Args:
             actor (carla.Actor): the carla actor object
-            alf_world (Wolrd): the world containing the player
+            alf_world (World): the world containing the player
             controller_ctor (Callable|None): if provided, will be as ``controller_ctor(vehicle, step_time)``
                 to create a vehicle controller. It will be used to process the
                 action and generate the control.
@@ -310,7 +310,7 @@ class Player(object):
                 for moving back along the route. Instead, the negative distance
                 will be accumulated to the future distance reward. This may ease
                 the learning if the right behavior is to temporarily go back along
-                the route in order, for examle, to avoid obstacle.
+                the route in order, for example, to avoid obstacle.
             min_speed (float): unit is m/s. Failure if
                 route_length / min_speed + additional_time seconds passed
             additional_time (float): additional time (unit is second) provided
@@ -595,7 +595,7 @@ class Player(object):
         throttle is in [-1.0, 1.0] (negative value is same as zero), steer is in
         [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value is same as zero),
         and reverse is interpreted as a boolean value with values greater than
-        0.5 corrsponding to True.
+        0.5 corresponding to True.
 
         Returns:
             nested BoundedTensorSpec:
@@ -626,7 +626,7 @@ class Player(object):
                 "throttle is in [-1.0, 1.0] (negative value is same as zero), "
                 "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
                 "is same as zero), and reverse is interpreted as a boolean value "
-                "with values greater than 0.5 corrsponding to True.")
+                "with values greater than 0.5 corresponding to True.")
 
     def reward_spec(self):
         """Get the reward spec."""
@@ -946,7 +946,7 @@ class Player(object):
         Returns:
             one of the following:
                 - None: if mode is 'human'
-                - np.ndarray: the image of shape [height, width, channeles] if
+                - np.ndarray: the image of shape [height, width, channels] if
                     mode is 'rgb_array'
         """
         import pygame
@@ -1229,7 +1229,7 @@ class CarlaServer(object):
                 "does not exist. Please provide correct value for `carla_root`"
                 % carla_root)
             # We do not use CarlaUE4.sh here in order to get the actual Carla
-            # server processs so that we can kill it.
+            # server process so that we can kill it.
             command = (
                 "{carla_root}/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping "
                 "CarlaUE4 "  # perhaps most system does not have vulkan support, so we use opengl
@@ -1344,7 +1344,7 @@ class CarlaEnvironment(AlfEnvironment):
                 from weather randomization and they are controlled separately
                 by ``day_length`` in a more realistic way.
             weather_transition_ratio (float): the ratio between the length of
-                the weather transtion part and the actual lasting time of the
+                the weather transition part and the actual lasting time of the
                 new weather including the transition phase. It has no effect
                 if max_weather_length is 0.
             step_time (float): how many seconds does each step of simulation represents.
@@ -1639,7 +1639,7 @@ class CarlaEnvironment(AlfEnvironment):
         # wait for a tick to ensure client receives the last transform of the walkers we have just created
         self._world.tick()
 
-        # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
+        # 5. initialize each controller and set target to walk to (list is [controller, actor, controller, actor ...])
         # set how many pedestrians can cross the road
         self._world.set_pedestrians_cross_factor(
             self._percentage_walkers_crossing)

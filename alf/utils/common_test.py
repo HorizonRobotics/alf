@@ -41,7 +41,7 @@ class WraningOnceTest(alf.test.TestCase):
         generated_warning_messages = generated_warning_messages.rstrip().split(
             '\n')
 
-        # previouly we only get one warining message here, although
+        # previously we only get one warning message here, although
         # warning once has been called multiple times at difference places
         assert len(warning_messages) == len(generated_warning_messages)
         for msg, gen_msg in zip(warning_messages, generated_warning_messages):

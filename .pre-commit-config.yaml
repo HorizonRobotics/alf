@@ -1,53 +1,58 @@
 repos:
--   repo: https://github.com/Lucas-C/pre-commit-hooks.git
+  - repo: https://github.com/Lucas-C/pre-commit-hooks.git
     rev: v1.0.1
     hooks:
-    -   id: remove-crlf
+      - id: remove-crlf
         files: (?!.*third_party)^.*$ | (?!.*book)^.*$
--   repo: https://github.com/pre-commit/mirrors-yapf.git
+  - repo: https://github.com/pre-commit/mirrors-yapf.git
     rev: v0.25.0
     hooks:
-    -   id: yapf
+      - id: yapf
         files: (.*\.(py|bzl)|BUILD|.*\.BUILD|WORKSPACE)$
--   repo: https://github.com/pre-commit/pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 5bf6c09bfa1297d3692cadd621ef95f1284e33c0
     hooks:
-    -   id: check-added-large-files
-        args: [--maxkb=10000]
-    -   id: check-merge-conflict
-    -   id: check-symlinks
-    -   id: detect-private-key
+      - id: check-added-large-files
+        args: [ --maxkb=10000 ]
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: detect-private-key
         files: (?!.*third_party)^.*$ | (?!.*book)^.*$
-    -   id: end-of-file-fixer
--   repo: local
+      - id: end-of-file-fixer
+  - repo: local
     hooks:
-    -   id: clang-format-with-version-check
+      - id: clang-format-with-version-check
         name: clang-format
         description: Format files with ClangFormat.
         entry: bash ./tools/codestyle/clang_format.hook -i
         language: system
         files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx|proto)$
--   repo: local
+  - repo: local
     hooks:
-    -   id: cpplint-cpp-source
+      - id: cpplint-cpp-source
         name: cpplint
         description: Check C++ code style using cpplint.py.
         entry: bash ./tools/codestyle/cpplint_pre_commit.hook
         language: system
         files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx)$
--   repo: local
+  - repo: local
     hooks:
-    -   id: pylint-doc-string
+      - id: pylint-doc-string
         name: pylint
         description: Check python docstring style using docstring_checker.
         entry: bash ./tools/codestyle/pylint_pre_commit.hook
         language: system
         files: \.(py)$
--   repo: local
+  - repo: local
     hooks:
-    -   id: copyright_checker
+      - id: copyright_checker
         name: copyright_checker
         entry: python ./tools/codestyle/copyright.hook
         language: system
         files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx|proto|py)$
         exclude: (?!.*third_party)^.*$ | (?!.*book)^.*$
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args: [ "--skip", "*.hook", "--ignore-words-list", "ans,nd,Bu,astroid,hart" ]

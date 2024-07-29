@@ -46,7 +46,7 @@ def _expand_to_replica(inputs, replicas, spec):
             is already expanded, inputs will be returned without any
             further processing.
     Returns:
-        Tensor: the expaneded inputs or the original inputs.
+        Tensor: the expanded inputs or the original inputs.
     """
     outer_rank = get_outer_rank(inputs, spec)
     if outer_rank == 1 and replicas > 1:
@@ -146,7 +146,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi.
 
-            function_vi (bool): whether to use funciton value based par_vi, current
+            function_vi (bool): whether to use function value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
             function_bs (int): mini batch size for par_vi training.
                 Needed for critic initialization when function_vi is True.
@@ -184,7 +184,7 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             function_vi (bool): whether to use function value based par_vi.
             num_train_classes (int): number of classes in training set.
             optimizer (torch.optim.Optimizer): The optimizer for training.
-            logging_network (bool): whether logging the archetectures of networks.
+            logging_network (bool): whether logging the architectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
             config (TrainerConfig): configuration for training

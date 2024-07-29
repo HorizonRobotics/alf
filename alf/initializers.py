@@ -105,7 +105,7 @@ def variance_scaling_init(tensor,
 
     `<https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/ops/init_ops.py#L437>`_
 
-    A potential benefit of this intializer is that we can sample from a truncated
+    A potential benefit of this initializer is that we can sample from a truncated
     normal distribution: ``scipy.stats.truncnorm(a=-2, b=2, loc=0., scale=1.)``.
 
     Also incorporates PyTorch's calculation of the recommended gains that taking
@@ -140,7 +140,7 @@ def variance_scaling_init(tensor,
             so we need to compensate for that. Only used when mode=="fan_in".
         nonlinearity (Callable): any callable activation function
         transposed (bool): a flag indicating if the weight tensor has been
-            tranposed (e.g., ``nn.ConvTranspose2d``). In that case, `fan_in` and
+            transposed (e.g., ``nn.ConvTranspose2d``). In that case, `fan_in` and
             `fan_out` should be swapped.
 
     Returns:

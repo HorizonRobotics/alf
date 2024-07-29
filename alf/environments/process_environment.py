@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Step a single env in a separate process for lock free paralellism.
+"""Step a single env in a separate process for lock free parallelism.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/parallel_py_environment.py
@@ -239,7 +239,7 @@ class ProcessEnvironment(object):
                  torch_num_threads_per_env: int = 1,
                  start_method: str = "fork",
                  name: str = ""):
-        """Step environment in a separate process for lock free paralellism.
+        """Step environment in a separate process for lock free parallelism.
 
         The environment is created in an external process by calling the provided
         callable. This can be an environment class, or a function creating the
@@ -440,7 +440,7 @@ class ProcessEnvironment(object):
 
         Raises:
             Exception: An exception was raised inside the worker process.
-            KeyError: The reveived message is of an unknown type.
+            KeyError: The received message is of an unknown type.
 
         Returns:
             Payload object of the message.

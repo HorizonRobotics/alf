@@ -117,7 +117,7 @@ class Residue(Network):
         Args:
             block (Callable):
             input_tensor_spec (nested TensorSpec): input tensor spec for ``block``
-                if it cannot be infered from ``block``
+                if it cannot be inferred from ``block``
             activation (Callable): activation function
         """
         block = wrap_as_network(block, input_tensor_spec)
@@ -319,7 +319,7 @@ class AMPWrapper(Network):
 @alf.configurable
 @alf.repr_wrapper
 class NoisyFC(Network):
-    r"""The Noisy Linear Layer discribed in
+    r"""The Noisy Linear Layer described in
 
     Fortunato et. al. `Noisy Networks for Exploration <https://arxiv.org/abs/1706.10295>`_
 

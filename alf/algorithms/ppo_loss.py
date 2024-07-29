@@ -79,7 +79,7 @@ class PPOLoss(ActorCriticLoss):
             advantage_norm_momentum (float): Momentum for moving average of
                 mean and variance of advantages (same as the momentum for nn.BatchNorm1d).
             compute_advantages_internally (bool): Normally PPOLoss does not
-                compute the adavantage and it expects the info to carry the
+                compute the advantage and it expects the info to carry the
                 already-computed advantage. If this flag is set to True, PPOLoss
                 will instead compute the advantage internally without depending
                 on the input info, because loading very large amount of

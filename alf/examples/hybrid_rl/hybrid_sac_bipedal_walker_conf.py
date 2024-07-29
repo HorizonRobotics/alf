@@ -18,7 +18,7 @@ from alf.examples import sac_bipedal_walker_conf
 # This is a minimal example of how to use the hybrid training pipeline.
 # In the simplest case where the offline replay buffer has all the necessary
 # data required for off-policy training, we only need to provide a valid replay
-# buffer path to offline_buffer_dir, which will automically invoke the offline
+# buffer path to offline_buffer_dir, which will automatically invoke the offline
 # training branch apart from the normal RL training.
 
 # training config

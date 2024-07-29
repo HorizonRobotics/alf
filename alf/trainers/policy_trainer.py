@@ -482,7 +482,7 @@ class Trainer(object):
             self._checkpointer.save(global_step=global_step)
 
     def _restore_checkpoint(self, checkpointer):
-        """Retore from saved checkpoint.
+        """Restore from saved checkpoint.
 
             Args:
                 checkpointer (Checkpointer):
@@ -538,7 +538,7 @@ class RLTrainer(Trainer):
             assert pure_train_iters >= 0, (
                 f"num_iterations={self._num_iterations} is not enough for "
                 f"num_env_steps={self._num_env_steps}")
-            logging.info("There is no environmental interation in the last"
+            logging.info("There is no environmental interaction in the last"
                          f"{pure_train_iters} iterations")
         self._trainer_progress.set_termination_criterion(
             self._num_iterations, self._num_env_steps)
@@ -899,7 +899,7 @@ def _step(algorithm,
           recorder=None,
           sleep_time_per_step=0,
           selective_criteria_func=None):
-    """Perform one step interaction using the outpupt action from ``algorithm``
+    """Perform one step interaction using the output action from ``algorithm``
     taking ``time_step`` as input. Also record the metrics.
 
     Note that this function is used both in ``play`` below and ``evaluate`` in
@@ -1016,7 +1016,7 @@ def play(root_dir,
             instead of shown on the screen.
         last_step_repeats (int): repeat such number of times for the
             last frame of each episode.
-        append_blank_frames (int): If >0, wil append such number of blank frames
+        append_blank_frames (int): If >0, will append such number of blank frames
             at the end of the episode in the rendered video file. A negative
             value has the same effects as 0 and no blank frames will be appended.
             This option has no effects when displaying the frames on the screen
@@ -1119,12 +1119,12 @@ def play(root_dir,
 
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
-        # episodes to estimate the average return (or other statitics) as it can be
+        # episodes to estimate the average return (or other statistics) as it can be
         # biased. Instead, we stick to using the first episodes_per_env episodes
         # from each environment to calculate the statistics and ignore the potentially
         # extra episodes from each environment.
         invalid = (env_episodes >= episodes_per_env)
-        # Ingore the episodes that end at the first step
+        # Ignore the episodes that end at the first step
         invalid = invalid | ((episode_length == 0) &
                              (time_step.step_type == StepType.LAST))
         # Force the step_type of the invalid episodes to be StepType.FIRST so that

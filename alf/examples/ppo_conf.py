@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""This file constains basic configurations for PPO. An entropy target is
+"""This file contains basic configurations for PPO. An entropy target is
 automatically enforced for PPO's policy.
 """
 
