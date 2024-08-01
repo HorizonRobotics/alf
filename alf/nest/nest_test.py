@@ -228,6 +228,29 @@ class TestPackSequenceAs(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(len(flat_seq), 4)  # no side effect on ``flat_seq``
         self.assertEqual(pack_sequence_as(1, [1]), 1)
 
+    def test_pack_sequence_as_order(self):
+        self.assertEqual(
+            nest.py_pack_sequence_as({
+                'b': 1,
+                'a': 2
+            }, [3, 4]),
+            # Will first sort fields before packing
+            {
+                'a': 3,
+                'b': 4
+            })
+        self.assertEqual(
+            nest.py_pack_sequence_as({
+                'b': 1,
+                'a': 2
+            }, [3, 4],
+                                     keep_fields_order=True),
+            # Keep the fields order when packing
+            {
+                'b': 3,
+                'a': 4
+            })
+
 
 class TestFindField(alf.test.TestCase):
     def test_find_field(self):

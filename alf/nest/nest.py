@@ -268,12 +268,13 @@ def is_unnamedtuple(value):
     return isinstance(value, tuple) and not is_namedtuple(value)
 
 
-def extract_fields_from_nest(nest):
+def extract_fields_from_nest(nest, keep_order=False):
     """Extract fields and the corresponding values from a nest if it's either
     a ``namedtuple`` or ``dict``.
 
     Args:
         nest (nest): a nested structure
+        keep_order: if True, do not sort the fields
 
     Returns:
         Iterable: an iterator that generates ``(field, value)`` pairs. The fields
@@ -285,7 +286,9 @@ def extract_fields_from_nest(nest):
     assert is_namedtuple(nest) or isinstance(nest, dict), \
         "Nest {} must be a dict or namedtuple!".format(nest)
     fields = nest.keys() if isinstance(nest, dict) else nest._fields
-    for field in sorted(fields):
+    if not keep_order:
+        fields = sorted(fields)
+    for field in fields:
         value = nest[field] if isinstance(nest, dict) else getattr(nest, field)
         yield field, value
 
@@ -539,8 +542,18 @@ def fast_map_structure(func, *structure):
     return pack_sequence_as(structure[0], [func(*x) for x in entries])
 
 
-def py_pack_sequence_as(nest, flat_seq):
-    """Returns a given flattened sequence packed into a given structure."""
+def py_pack_sequence_as(nest, flat_seq, keep_fields_order=False):
+    """Returns a given flattened sequence packed into a given structure.
+
+    Args:
+        nest: a nested structure
+        flat_seq: a flattened sequence to be packed into the same structure as
+            ``nest``
+        keep_fields_order: if true, do not sort the fields when packing for
+            namedtuple or dict. For example,
+            py_pack_sequence_as({'b': 1, 'a': 2}, [3, 4], False) -> {'a': 3, 'b': 4}
+            py_pack_sequence_as({'b': 1, 'a': 2}, [3, 4], True)  -> {'b': 3, 'a': 4}
+    """
     assert_same_length(py_flatten(nest), flat_seq)
     counter = [0]
 
@@ -554,7 +567,8 @@ def py_pack_sequence_as(nest, flat_seq):
             ret = type(nest)([_pack(value, flat_seq) for value in nest])
         else:
             ret = {}
-            for field, value in extract_fields_from_nest(nest):
+            for field, value in extract_fields_from_nest(
+                    nest, keep_order=keep_fields_order):
                 ret[field] = _pack(value, flat_seq)
             ret = type(nest)(**ret)
         return ret
