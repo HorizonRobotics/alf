@@ -32,7 +32,7 @@ import alf
 import alf.nest as nest
 from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
-from alf.utils.schedulers import update_all_progresses, get_all_progresses
+from alf.utils.schedulers import update_all_progresses, get_all_progresses, disallow_scheduler
 from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
 from . import _penv
 
@@ -152,9 +152,8 @@ def _worker(conn: multiprocessing.connection,
             env = alf.get_env()
         else:
             env = env_constructor(env_id=env_id)
-        #TODO fix this disallow_scheduler in ddp context
-        # if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
-        #     disallow_scheduler()
+        if not alf.get_config_value("TrainerConfig.sync_progress_to_envs"):
+            disallow_scheduler()
         action_spec = env.action_spec()
         if fast:
             penv = _penv.ProcessEnvironment(
@@ -480,3 +479,4 @@ class ProcessEnvironment(object):
             NotImplementedError: If the environment does not support rendering.
         """
         return self.call('render', mode)()
+    

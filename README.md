@@ -120,6 +120,26 @@ frames using the following command:
 python -m alf.bin.play --root_dir=LOG_DIR
 ```
 
+To launch single-node multi-gpu training, set the 'multi-gpu' argument
+```bash
+python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR --distributed multi-gpu
+```
+
+To launch multi-node multi-gpu training, we use torch distirbuted launch module. The 'local_rank' for each process can be obtained from 'PerProcessContext' class, which can be used to assign gpu for your environment if you wish. To start training, run the following command on the host machine:
+```bash
+python -m torch.distributed.launch \
+    --nproc_per_node=NGPU_ON_NODE \
+    --nnodes=NUMBER_OF_NODES \
+    --node_rank=NODE_RANK \
+    --master_addr=HOST_IP \
+    --master_port=12345 \
+    ./alf/bin/train.py \
+    --conf=CONF_FILE \
+    --root_dir=LOG_DIR \
+    --distributed multi-node-multi-gpu \
+```
+and simultaneously run the same command on each worker machine. For each worker machine, assign a NODE_RANK to it and update NGPU_ON_NODE if the number of GPUs is different from the host. Please make sure that all machines get a same copy of the codebase.
+
 #### **Deprecated**
 
 An older version of ALF used [gin](https://github.com/google/gin-config)

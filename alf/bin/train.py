@@ -78,7 +78,7 @@ def _define_flags():
     flags.DEFINE_bool(
         'force_torch_deterministic', True,
         'torch.use_deterministic_algorithms when random_seed is set')
-    flags.DEFINE_bool('store_snapshot', False,
+    flags.DEFINE_bool('store_snapshot', True,
                       'Whether store an ALF snapshot before training')
     flags.DEFINE_enum(
         'distributed', 'none', ['none', 'multi-gpu', 'multi-node-multi-gpu'],
@@ -189,6 +189,13 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
         raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
     trainer.train()
+
+
+def _training_worker_helper(rank: int, *args, **kwargs):
+    # Helper to start the training worker with the correct rank
+    # so that rank 0 is from the main process and the rest are
+    # from the spawned processes.
+    training_worker(rank + 1, *args, **kwargs)
 
 
 def training_worker(rank: int,
@@ -318,7 +325,7 @@ def main(_):
 
     conf_file = common.get_conf_file()
 
-    if FLAGS.store_snapshot:
+    if FLAGS.store_snapshot and int(os.environ['RANK']) == 0:
         common.generate_alf_snapshot(common.alf_root(), conf_file, root_dir)
 
     # FLAGS.distributed is guaranteed to be one of the possible values.
@@ -342,7 +349,7 @@ def main(_):
             # in different work processes.
             manager = mp.Manager()
             paras_queue = manager.Queue()
-            with common.get_unused_port(12360) as port:
+            with common.get_unused_port(12355) as port:
                 # The other process will communicate with the authoritative
                 # process via network protocol on localhost:port.
                 os.environ['MASTER_PORT'] = str(port)
