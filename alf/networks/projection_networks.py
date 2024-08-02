@@ -353,6 +353,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                  min_std=0.0,
                  max_std=None,
                  dist_squashing_transform=dist_utils.StableTanh(),
+                 disable_amp: bool = False,
                  name="StableNormalProjectionNetwork"):
         """Creates an instance of StableNormalProjectionNetwork.
 
@@ -392,6 +393,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                 maximum is enforced.
             dist_squashing_transform (td.Transform):  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
+            disable_amp (bool): If True, disable automatic mixed precision.
             name (str): name of this network.
         """
         self._min_std = min_std
@@ -425,20 +427,26 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             std_transform=std_transform,
             scale_distribution=scale_distribution,
             dist_squashing_transform=dist_squashing_transform,
+            disable_amp=disable_amp,
             name=name)
 
     def forward(self, inputs, state=()):
-        inv_stds = self._std_transform(self._std_projection_layer(inputs))
-        if self._max_std is not None:
-            inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
-        stds = 1. / inv_stds
-        if self._min_std > 0:
-            stds = stds + self._min_std
+        amp_enabled = torch.is_autocast_enabled()
+        if self._disable_amp and amp_enabled:
+            inputs = alf.layers.to_float32(inputs)
+            amp_enabled = False
 
-        means = self._mean_transform(
-            self._means_projection_layer(inputs) * stds)
+        with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
+            inv_stds = self._std_transform(self._std_projection_layer(inputs))
+            if self._max_std is not None:
+                inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
+            stds = 1. / inv_stds
+            if self._min_std > 0:
+                stds = stds + self._min_std
+            means = self._mean_transform(
+                self._means_projection_layer(inputs) * stds)
 
-        return self._normal_dist(means, stds), state
+            return self._normal_dist(means, stds), state
 
 
 @alf.configurable
