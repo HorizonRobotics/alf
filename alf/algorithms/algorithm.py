@@ -889,7 +889,7 @@ class Algorithm(AlgorithmInterface):
         return r
 
     @common.add_method(nn.Module)
-    def state_dict(self, destination=None, prefix='', visited=None):
+    def state_dict(self, destination=None, prefix='', visited=None, **kwargs):
         """Get state dictionary recursively, including both model state
         and optimizers' state (if any). It can handle a number of special cases:
 
