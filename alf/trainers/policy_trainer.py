@@ -470,6 +470,8 @@ class Trainer(object):
         # (rank is -1) or master process of DDP training (rank is 0).
         if self._rank <= 0:
             global_step = alf.summary.get_global_counter()
+            print("-------global_step")
+            print(global_step)
             self._checkpointer.save(global_step=global_step)
 
     def _restore_checkpoint(self, checkpointer):
@@ -939,8 +941,20 @@ def _step(algorithm,
     for metric in metrics:
         metric(time_step.cpu())
 
+
+    # print(algorithm.get_initial_predict_state(env.batch_size))
+    init_state = algorithm.get_initial_predict_state(env.batch_size)
+
+    # if time_step.is_first():
+    #     print("=====algorithm.get_initial_predict_state(env.batch_size)==================")
+    #     print(policy_state.high.action)
+    #     print('-----------------')
+    #     print(init_state.high.action)
+
+
+    # init_state.pop("moving_mask")
     policy_state = common.reset_state_if_necessary(
-        policy_state, algorithm.get_initial_predict_state(env.batch_size),
+        policy_state, init_state,
         time_step.is_first())
     transformed_time_step, trans_state = algorithm.transform_timestep(
         time_step, trans_state)

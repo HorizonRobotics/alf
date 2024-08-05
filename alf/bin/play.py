@@ -153,6 +153,15 @@ def play():
     common.set_transformed_observation_spec(observation_spec)
 
     algorithm_ctor = config.algorithm_ctor
+
+
+
+    # cached_env_specs = algorithm_ctor.keywords['high_level_alg_ctor'].keywords['cached_env_specs']
+
+    # print("====in play cached_env_specs")
+    # print(cached_env_specs)
+    
+
     algorithm = algorithm_ctor(
         observation_spec=observation_spec,
         action_spec=env.action_spec(),

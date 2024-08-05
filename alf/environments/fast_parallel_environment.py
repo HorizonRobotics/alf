@@ -25,6 +25,35 @@ import time
 from . import _penv
 
 
+# import inspect
+
+# def print_caller():
+#     # Get the current stack frame
+#     frame = inspect.currentframe()
+#     # Initialize a list to hold the stack trace
+#     stack_trace = []
+#     # Iterate through the frames up to the main call
+#     while frame:
+#         # Get the function name
+#         func_name = frame.f_code.co_name
+#         # Add the function name to the stack trace
+#         stack_trace.append(func_name)
+#         # Move to the previous frame
+#         frame = frame.f_back
+#     # Print the stack trace, starting from the caller
+#     print("Call stack (most recent call last):")
+#     for func_name in reversed(stack_trace):
+#         print(func_name)
+
+# def caller_function():
+#     print_caller()
+
+# # Example usage
+# caller_function()
+
+
+
+
 @alf.configurable
 class FastParallelEnvironment(alf_environment.AlfEnvironment):
     """Batch together environments and simulate them in external processes.

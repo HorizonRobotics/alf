@@ -135,6 +135,15 @@ class TimeStep(
             self._cpu = r
         return r
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Modify state as needed
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Restore state as needed
+        
 
 class Experience(
         namedtuple(
