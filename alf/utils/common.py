@@ -716,8 +716,6 @@ def parse_conf_file(conf_file, create_env=True):
             alf.get_env()
     else:
         # only create env for ``rl`` type
-        ml_type = alf.get_config_value('TrainerConfig.ml_type')
-        create_env = True if ml_type == 'rl'else False
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
         alf.parse_config(conf_file, conf_params, create_env=create_env)
 

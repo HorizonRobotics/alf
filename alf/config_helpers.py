@@ -225,6 +225,11 @@ def parse_config(conf_file, conf_params, create_env=True):
     finally:
         _is_parsing = False
 
+    ml_type = get_config_value('TrainerConfig.ml_type')
+
+    # only create env for ``ml_type`` with value of ``rl``
+    create_env = create_env and (ml_type == 'rl')
+
     if create_env:
         # Create the global environment and initialize random seed
         get_env()
