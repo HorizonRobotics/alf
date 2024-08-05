@@ -204,7 +204,8 @@ def parse_config(conf_file, conf_params, create_env=True):
         conf_params (list[str]): the list of config parameters. Each one has a
             format of CONFIG_NAME=VALUE.
         create_env (bool): whether to create env. If True, create the env if it is not
-            created yet.
+            created yet, and the ``ml_type`` is ``rl``.
+            For other types (e.g. ``sl``), no env is created.
 
     """
     global _is_parsing
@@ -226,6 +227,11 @@ def parse_config(conf_file, conf_params, create_env=True):
         validate_pre_configs()
     finally:
         _is_parsing = False
+
+    ml_type = get_config_value('TrainerConfig.ml_type')
+
+    # only create env for ``ml_type`` with value of ``rl``
+    create_env = create_env and (ml_type == 'rl')
 
     if create_env:
         # Create the global environment and initialize random seed
