@@ -211,11 +211,11 @@ def launch_snapshot_play():
     args = ['python', '-m', 'alf.bin.play'] + flags
     try:
         subprocess.check_call(
-            " ".join(args),
+            args,
             env=env_vars,
             stdout=sys.stdout,
             stderr=sys.stdout,
-            shell=True)
+            shell=False)
     except subprocess.CalledProcessError:
         # No need to output anything
         pass
