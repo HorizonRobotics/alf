@@ -592,8 +592,7 @@ class RLTrainer(Trainer):
             # Make sure the BN statistics of different processes are synced
             # https://pytorch.org/docs/stable/generated/torch.nn.SyncBatchNorm.html#torch.nn.SyncBatchNorm
             # This conversion needs to be performed before wrapping modules with DDP.
-            self._algorithm = torch.nn.SyncBatchNorm.convert_sync_batchnorm(
-                self._algorithm)
+            self._algorithm = common.convert_sync_batchnorm(self._algorithm)
 
         # Create a thread env to expose subprocess gin/alf configurations
         # which otherwise will be marked as "inoperative". Only created when

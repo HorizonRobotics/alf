@@ -1716,3 +1716,12 @@ def get_unused_port(start, end=65536, n=1):
         if process_locks:
             for process_lock in process_locks:
                 process_lock.release()
+
+
+try:
+    import timm
+    # timm models may contain BatchNormAct2d, which is not supported by torch.nn.SyncBatchNorm.
+    # Need to use timm's convert_sync_batchnorm.
+    convert_sync_batchnorm = timm.layers.convert_sync_batchnorm
+except ImportError:
+    convert_sync_batchnorm = torch.nn.SyncBatchNorm.convert_sync_batchnorm
