@@ -903,6 +903,8 @@ class Algorithm(AlgorithmInterface):
                 (modules, params, algorithms etc) as the key used in the
                 state dictionary.
             visited (set): a set keeping track of the visited objects.
+            kwargs: additional keyword arguments for backward compatibility (
+                e.g., 'keep_vars'). They are not used in newer pytorch versions.
 
         Returns:
             OrderedDict: the dictionary including both model state and optimizers'
