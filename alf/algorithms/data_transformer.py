@@ -273,19 +273,28 @@ class FrameStacker(DataTransformer):
         stack_axis = self._stack_axis
         if stack_axis >= 0:
             stack_axis += 1
+        # [K,1]
         first_samples = is_first.nonzero()
+        # [K]
+        first_samples = first_samples.squeeze(-1)
 
         prev_frames = copy.copy(state.prev_frames)
 
         def _stack_frame(obs, i):
             prev_frames[i] = copy.copy(prev_frames[i])
-            # repeat the first frame
-            if first_samples.numel() > 0:
-                for t in range(self._stack_size - 1):
-                    # prev_frames[i][t] might be used somewhere else, we should
-                    # not directly modify it.
-                    prev_frames[i][t] = prev_frames[i][t].clone()
-                    prev_frames[i][t][first_samples] = obs[first_samples]
+            # repeat the first frame if needed
+            for t in range(self._stack_size - 1):
+                # prev_frames[i][t] might be used somewhere else, we should
+                # not directly modify it.
+                prev_frames[i][t] = prev_frames[i][t].clone()
+                # We need to use scatter_ instead of slicing for assignment, to
+                # avoid ONNX segfault.
+                # Equivalent code: prev_frames[i][t][first_samples] = obs[first_frames]
+                o = obs[first_samples]
+                idx = alf.utils.common.expand_dims_as(first_samples, o)
+                idx = idx.expand_as(o)
+                prev_frames[i][t].scatter_(0, idx, o)
+
             if obs.ndim > 1:
                 stacked = torch.cat(prev_frames[i] + [obs], dim=stack_axis)
             else:
@@ -454,7 +463,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
             fields (list[str]): the fields to be applied with the transformation. If
-                None, then ``observation`` must be a ``Tensor`` with dtype ``uint8``.
+                None, then ``observation`` must be an int ``Tensor`` in [0,255].
                 A field str can be a multi-step path denoted by "A.B.C".
             min (float): normalize minimum to this value
             max (float): normalize maximum to this value
@@ -468,7 +477,8 @@ class ImageScaleTransformer(SimpleDataTransformer):
             assert isinstance(
                 spec,
                 alf.TensorSpec), (str(type(spec)) + "is not a TensorSpec")
-            assert spec.dtype == torch.uint8, "Image must have dtype uint8!"
+            assert ImageScaleTransformer._check_img_type(spec), (
+                "Image must have int dtype in [0, 255]!")
             return alf.BoundedTensorSpec(
                 spec.shape, dtype=torch.float32, minimum=min, maximum=max)
 
@@ -478,11 +488,22 @@ class ImageScaleTransformer(SimpleDataTransformer):
 
         super().__init__(new_observation_spec)
 
+    @staticmethod
+    def _check_img_type(img):
+        if 'int' not in alf.tensor_specs.torch_dtype_to_str(img.dtype):
+            return False
+        if isinstance(img, torch.Tensor):
+            return (img.min() >= 0 and img.max() <= 255)
+        elif isinstance(img, alf.BoundedTensorSpec):
+            return (img.minimum >= 0 and img.maximum <= 255)
+        return False
+
     def _transform(self, timestep):
         def _transform_image(obs):
             assert isinstance(obs,
                               torch.Tensor), str(type(obs)) + ' is not Tensor'
-            assert obs.dtype == torch.uint8, "Image must have dtype uint8!"
+            assert ImageScaleTransformer._check_img_type(obs), (
+                "Image must have int dtype in [0, 255]!")
             obs = self._scale * obs
             if self._min != 0:
                 obs.add_(self._min)

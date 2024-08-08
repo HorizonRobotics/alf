@@ -268,7 +268,10 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
 
 class ImageScaleTransformerTest(alf.test.TestCase):
     def test_image_scale_transformer(self):
-        spec = alf.TensorSpec((3, 16, 16), dtype=torch.uint8)
+        spec = alf.BoundedTensorSpec((3, 16, 16),
+                                     dtype=torch.uint8,
+                                     minimum=0,
+                                     maximum=255)
         transformer = ImageScaleTransformer(spec, min=0.)
         new_spec = transformer.transformed_observation_spec
         self.assertEqual(new_spec.dtype, torch.float32)
@@ -286,7 +289,10 @@ class ImageScaleTransformerTest(alf.test.TestCase):
                          timestep.observation).abs().max(), 1e-4)
 
         spec = dict(
-            img=alf.TensorSpec((3, 16, 16), dtype=torch.uint8),
+            img=alf.BoundedTensorSpec((3, 16, 16),
+                                      dtype=torch.uint8,
+                                      minimum=0,
+                                      maximum=255),
             other=alf.TensorSpec(()))
         self.assertRaises(AssertionError, ImageScaleTransformer, spec, min=0.)
         self.assertRaises(
