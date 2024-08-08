@@ -325,8 +325,16 @@ def is_nested(value):
     return isinstance(value, (list, tuple, dict))
 
 
-def py_flatten(nest):
-    """Returns a flat list from a given nested structure."""
+def py_flatten(nest, keep_fields_order=False):
+    """Returns a flat list from a given nested structure.
+
+    Args:
+        nest: a nested structure
+        keep_fields_order: if true, do not sort the fields when flattening for
+            namedtuple or dict. For example,
+            py_flatten({'b': 1, 'a': 2}, False) -> [2, 1]
+            py_flatten({'b': 1, 'a': 2}, True)  -> [1, 2]
+    """
     if not is_nested(nest):
         # any other data type will be returned as it is
         return [nest]
@@ -335,7 +343,8 @@ def py_flatten(nest):
         for value in nest:
             flattened.extend(py_flatten(value))
     else:
-        for _, value in extract_fields_from_nest(nest):
+        for _, value in extract_fields_from_nest(
+                nest, keep_order=keep_fields_order):
             flattened.extend(py_flatten(value))
     return flattened
 
