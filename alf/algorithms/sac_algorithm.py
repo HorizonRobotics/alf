@@ -37,7 +37,7 @@ from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
-from alf.utils.schedulers import Scheduler
+from alf.utils.schedulers import Scheduler, as_scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
@@ -285,7 +285,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """
         self._num_critic_replicas = num_critic_replicas
         self._calculate_priority = calculate_priority
-        self._train_eps_greedy = train_eps_greedy
+        self._train_eps_greedy = as_scheduler(train_eps_greedy)
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
@@ -690,7 +690,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         action_dist, action, _, action_state = self._predict_action(
             observation,
             state=state.action,
-            epsilon_greedy=self._train_eps_greedy,
+            epsilon_greedy=self._train_eps_greedy(),
             eps_greedy_sampling=True,
             rollout=True)
 
