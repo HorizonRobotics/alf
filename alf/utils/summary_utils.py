@@ -71,6 +71,7 @@ def histogram_continuous(name,
                          bucket_min=None,
                          bucket_max=None,
                          bucket_count=DEFAULT_BUCKET_COUNT,
+                         edge_inclusive=True,
                          step=None):
     """histogram for continuous data.
 
@@ -82,6 +83,8 @@ def histogram_continuous(name,
         bucket_max (float|None): represent bucket max value,
             if None value, ``data.max()`` will be used
         bucket_count (int):  positive ``int``. The output will have this many buckets.
+        edge_inclusive (bool): whether to include a data point that lies exactly
+            on the leftmost/rightmost edge.
         step (None|Tensor): step value for this summary. this defaults to
             ``alf.summary.get_global_counter()``
     """
@@ -98,7 +101,8 @@ def histogram_continuous(name,
         bucket_min +
         (torch.arange(bucket_count + 1, dtype=torch.float64) / bucket_count) *
         (bucket_max - bucket_min))
-    data = data.clamp(bucket_min, bucket_max)
+    eps = 1e-6 if edge_inclusive else 0
+    data = data.clamp(bucket_min + eps, bucket_max - eps)
     alf.summary.histogram(name, data, step=step, bins=bins.cpu())
 
 
