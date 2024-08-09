@@ -85,6 +85,8 @@ def histogram_continuous(name,
         step (None|Tensor): step value for this summary. this defaults to
             ``alf.summary.get_global_counter()``
     """
+    if data.numel() == 0:
+        return
     data = data.to(torch.float64)
     if bucket_min is None:
         bucket_min = data.min()
@@ -99,7 +101,10 @@ def histogram_continuous(name,
         (torch.arange(bucket_count + 1, dtype=torch.float64) / bucket_count) *
         (bucket_max - bucket_min))
     data = data.clamp(bucket_min, bucket_max)
-    alf.summary.histogram(name, data, step=step, bins=bins.cpu())
+    try:
+        alf.summary.histogram(name, data, step=step, bins=bins.cpu())
+    except ValueError:
+        return
 
 
 @_summary_wrapper
