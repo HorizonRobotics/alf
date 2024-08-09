@@ -101,7 +101,9 @@ def histogram_continuous(name,
         bucket_min +
         (torch.arange(bucket_count + 1, dtype=torch.float64) / bucket_count) *
         (bucket_max - bucket_min))
-    eps = 1e-6 if edge_inclusive else 0
+
+    bin_width = (bucket_max - bucket_min) / bucket_count
+    eps = bin_width * 0.1 if edge_inclusive else 0
     data = data.clamp(bucket_min + eps, bucket_max - eps)
     alf.summary.histogram(name, data, step=step, bins=bins.cpu())
 
