@@ -54,6 +54,7 @@ class ActorCriticLoss(Loss):
                  use_td_lambda_return=True,
                  normalize_advantages=False,
                  normalize_scalar_advantages=False,
+                 running_stats_for_normalization=True,
                  advantage_norm_momentum=0.9,
                  advantage_clip=None,
                  entropy_regularization=None,
@@ -90,6 +91,8 @@ class ActorCriticLoss(Loss):
                 performed for each reward dimension. If True, the normalization
                 is performed for the weighted sum of advantages using reward_weights.
                 Note that this will take precedence over `normalize_advantages`.
+            running_stats_for_normalization (bool): If True, use running stats
+                to normalize advantages.
             advantage_norm_momentum (float): Momentum for moving average of
                 mean and variance of advantages (same as the momentum for nn.BatchNorm1d).
             advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
@@ -112,7 +115,7 @@ class ActorCriticLoss(Loss):
                 eps=1e-8,
                 momentum=advantage_norm_momentum,
                 affine=False,
-                track_running_stats=True)
+                track_running_stats=running_stats_for_normalization)
             normalize_advantages = False
         elif normalize_advantages:
             self._adv_norm = torch.nn.BatchNorm1d(
@@ -120,7 +123,7 @@ class ActorCriticLoss(Loss):
                 eps=1e-8,
                 momentum=advantage_norm_momentum,
                 affine=False,
-                track_running_stats=True)
+                track_running_stats=running_stats_for_normalization)
         self._normalize_advantages = normalize_advantages
         self._normalize_scalar_advantages = normalize_scalar_advantages
         assert advantage_clip is None or advantage_clip > 0, (
