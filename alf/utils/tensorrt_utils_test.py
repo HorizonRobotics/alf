@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
 import unittest
 from functools import partial
 import time
 import torch
+import os
 
 import alf
 from alf.data_structures import restart
@@ -55,7 +57,7 @@ def create_sac_and_inputs():
     return sac, dummy_timestep, state
 
 
-class TensorRTUtilsTest(unittest.TestCase):
+class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if skip_test:
@@ -94,7 +96,8 @@ class TensorRTUtilsTest(unittest.TestCase):
 
         torch.testing.assert_close(trt_alg_step.output, alg_step.output)
 
-    def test_tensorrt_decorator(self):
+    @parameterized.parameters(True, False)
+    def test_tensorrt_decorator(self, tensorrt_backend):
         alg, timestep, state = create_sac_and_inputs()
         alg.eval()
 
@@ -103,12 +106,19 @@ class TensorRTUtilsTest(unittest.TestCase):
             alg_step = alg.predict_step(timestep, state)
         print("Predict step time: ", (time.time() - start_time) / 100)
 
+        if not tensorrt_backend:
+            # This will use CUDA backend to execute the onnx model
+            os.environ[
+                'ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS'] = 'TensorrtExecutionProvider'
+
         tensorrtify_method(alg, 'predict_step')
         alg.predict_step(timestep, state=state)  # build engine first
         start_time = time.time()
         for _ in range(100):
             trt_alg_step = alg.predict_step(timestep, state=state)
-        print("TensorRT predict step time: ", (time.time() - start_time) / 100)
+        backend = 'CUDA' if not tensorrt_backend else 'TensorRT'
+        print(f"{backend} predict step time: ",
+              (time.time() - start_time) / 100)
 
         torch.testing.assert_close(trt_alg_step.output, alg_step.output)
 
