@@ -21,9 +21,12 @@ import functools
 import types
 from typing import Tuple, Optional, Callable, Dict, Any
 import io
-import onnx
-from onnx import shape_inference
-import onnxruntime.backend as backend
+try:
+    import onnx
+    from onnx import shape_inference
+    import onnxruntime.backend as backend
+except ImportError:
+    onnx = None
 
 from hobot.utils import common as hobot_common
 
@@ -52,6 +55,10 @@ from alf.utils import dist_utils
 # The available provider list is:
 # ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 # The order of elements represents the default priority order of Execution Providers from highest to lowest.
+
+
+def is_available():
+    return onnx is not None
 
 
 class _OnnxWrapper(torch.nn.Module):
@@ -362,6 +369,8 @@ def tensorrtify_method(module, method_name):
         module: a torch.nn.Module
         method_name: the method name of the module
     """
+    assert is_available(), 'ONNX/TensorRT is not installed!'
+
     global _tensorrtified_methods
     key = (module, method_name)
     # Here we check if a previous ``tensorrtify_method`` has already been called

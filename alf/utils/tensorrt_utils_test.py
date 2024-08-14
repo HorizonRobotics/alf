@@ -22,13 +22,7 @@ import os
 import alf
 from alf.data_structures import restart
 from alf.algorithms.sac_algorithm import SacAlgorithm
-
-try:
-    import onnxruntime
-    from alf.utils.tensorrt_utils import TensorRTEngine, tensorrtify_method
-    skip_test = False
-except ImportError:
-    skip_test = True
+from alf.utils.tensorrt_utils import TensorRTEngine, tensorrtify_method, is_available
 
 
 def create_sac_and_inputs():
@@ -60,10 +54,11 @@ def create_sac_and_inputs():
 class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         super().setUp()
-        if skip_test:
+        if not is_available():
             self.skipTest('onnxruntime or tensorrt is not installed.')
 
     def test_tensorrt_available(self):
+        import onnxruntime
         providers = onnxruntime.get_available_providers()
         self.assertTrue('CUDAExecutionProvider' in providers,
                         "Need to install onnxruntime-gpu!")
