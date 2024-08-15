@@ -23,7 +23,6 @@ extra_compile_args = [
     '-std=c++17',
     '-fPIC',
     '-fvisibility=hidden',
-    # '-undefined dynamic_lookup'
 ]
 if platform.machine() == "arm64":
     boost_dir = glob.glob("/opt/homebrew/Cellar/boost/*")
@@ -47,12 +46,12 @@ setup(
         'gym3==0.3.3',
         'h5py==3.10.0',
         'matplotlib==3.8.2',
-        'numpy==1.26',
+        'numpy==1.26.4',
         # 'opencv-python==4.9.0.80',  # need to build from source for macos deploy
         'pathos==0.2.4',
         'pillow>=8',
         # 'procgen>=0.10.4',
-        'protobuf==3.20.1',
+        'protobuf==3.20.2',
         'psutil==5.9.8',
         # 'pybullet==2.5.0',
         'pyglet==1.3.2',  # higher version breaks classic control rendering
@@ -64,9 +63,11 @@ setup(
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard==2.15.2',
         'threadpoolctl==3.2.0',
-        'torch==2.2.2',
+        'torch==2.2.0',
         'torchvision==0.17.2',
-        'torchtext==0.17.2',
+        'torchtext',
+        'onnx==1.16.2',
+        # 'onnx_tensorrt==10.2.0',
         'cnest',
     ],  # And any other dependencies alf needs
     ext_modules=[

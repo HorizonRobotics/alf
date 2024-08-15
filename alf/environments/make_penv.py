@@ -32,8 +32,8 @@ def gen_penv():
     python = f"python{sys.version_info.major}.{sys.version_info.minor}"
     cmd = (f"g++ -O3 -Wall -shared -std=c++17 -fPIC -fvisibility=hidden "
            f"`{python} -m pybind11 --includes` parallel_environment.cpp "
-           f"-o _penv`{python}-config --extension-suffix` "
-           "-undefined dynamic_lookup")
+           f"-o _penv`{python}-config --extension-suffix`"
+           )  # Removed "-undefined dynamic_lookup"
     if platform.machine() == "arm64":
         boost_dir = glob.glob("/opt/homebrew/Cellar/boost/*")
         assert boost_dir, "Fail to find boost directory in /opt/homebrew/Cellar/boost/"
