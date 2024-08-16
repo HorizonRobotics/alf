@@ -1,4 +1,4 @@
-# Copyright (c) 2024 Horizon Robotics and Hobot Contributors. All Rights Reserved.
+# Copyright (c) 2024 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,8 +27,6 @@ try:
     import onnxruntime.backend as backend
 except ImportError:
     onnx = None
-
-from hobot.utils import common as hobot_common
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -103,7 +101,11 @@ class _OnnxWrapper(torch.nn.Module):
         """
         super().__init__()
         _OnnxWrapper._strip_optimizers(module)
-        self._module = hobot_common.freeze_model(module)
+        # freeze the module by not requiring grad and setting eval mode
+        for param in module.parameters():
+            param.requires_grad = False
+        module.eval()
+        self._module = module
         self._method = functools.partial(method, self._module)
         self._example_args = example_args
         self._example_kwargs = example_kwargs
@@ -167,7 +169,8 @@ class _OnnxWrapper(torch.nn.Module):
         ###############################
         # HACK: Sometimes we will return duplicate tensors in the output. In this case,
         # we need to convert duplicate tensors to be different nodes in the graph.
-        # Otherwise tensorRT will just deduplicate them.
+        # Otherwise ONNX will just deduplicate them, which makes the total number
+        # of output nodes different from what we've recorded in ``_output_spec``.
         # Using .clone() doesn't help as ONNX will optimize it away.
         # TODO: test whether a tensor is a duplicate. If so, remove it from output_params.
         # And record this information to self and recover at recover_module_output
@@ -339,6 +342,9 @@ def tensorrtify_method(module, method_name):
         agent.predict_step(...)  # slow: prepare tensorrt engine for the first time
         agent.predict_step(...)  # fast inference after the first call
 
+    There is also an environment variable "ALF_ENABLE_TENSORRT" to globally turn
+    on or off of this function. If off, no method will be changed by this function.
+
     .. note::
 
         If the method output contains any value that is not a direct function
@@ -365,6 +371,11 @@ def tensorrtify_method(module, method_name):
         with a different argument list such as ``args=(timestep, state)`` and
         ``kwargs={}``, a new engine will be created again.
 
+    .. note::
+        In order to use this function, there are certain limits on how the eager
+        mode code should be written. For a complete list of restrictions and solutions,
+        please see ``README.md``.
+
     Args:
         module: a torch.nn.Module
         method_name: the method name of the module
@@ -382,7 +393,7 @@ def tensorrtify_method(module, method_name):
 
     method = getattr(module, method_name)
     method = method.__func__  # convert a bound method to an unbound method
-    enable_tensorrt = os.environ.get('HOBOT_ENABLE_TENSORRT', '1') == '1'
+    enable_tensorrt = os.environ.get('ALF_ENABLE_TENSORRT', '1') == '1'
     wrapped = tensorrt_for_inference_if(enable_tensorrt)(method)
     setattr(module, method_name, types.MethodType(wrapped, module))
 
