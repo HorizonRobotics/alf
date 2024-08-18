@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from absl.testing import parameterized
-import unittest
 from functools import partial
 import time
 import torch
@@ -57,24 +56,38 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         if not is_available():
             self.skipTest('onnxruntime or tensorrt is not installed.')
 
+    @property
+    def has_gpu(self):
+        return torch.cuda.is_available()
+
+    @property
+    def has_tensorrt(self):
+        try:
+            import tensorrt
+            return True
+        except ImportError:
+            return False
+
     def test_tensorrt_available(self):
         import onnxruntime
         providers = onnxruntime.get_available_providers()
-        self.assertTrue('CUDAExecutionProvider' in providers,
-                        "Need to install onnxruntime-gpu!")
-        self.assertTrue('TensorrtExecutionProvider' in providers,
-                        "Need to install tensorrt!")
-        self.assertEqual(providers, [
-            'TensorrtExecutionProvider', 'CUDAExecutionProvider',
-            'CPUExecutionProvider'
-        ])
+        expected_providers = ['CPUExecutionProvider']
+        # On CI server, we don't have GPUs or tensorrt (GPU only)
+        if self.has_gpu:
+            self.assertTrue('CUDAExecutionProvider' in providers,
+                            "Need to install onnxruntime-gpu!")
+            expected_providers.insert(0, 'CUDAExecutionProvider')
+        if self.has_tensorrt:
+            self.assertTrue('TensorrtExecutionProvider' in providers,
+                            "tensorrt installation error!")
+            expected_providers.insert(0, 'TensorrtExecutionProvider')
+        self.assertEqual(providers, expected_providers)
 
     def test_tensorrt_engine(self):
         alg, timestep, state = create_sac_and_inputs()
         trt_engine = TensorRTEngine(
             alg,
             SacAlgorithm.predict_step,
-            device='cuda',
             example_args=(timestep, ),
             example_kwargs={'state': state})
         alg.eval()
@@ -82,12 +95,14 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         start_time = time.time()
         for _ in range(100):
             alg_step = alg.predict_step(timestep, state)
-        print("Predict step time: ", (time.time() - start_time) / 100)
+        print("Eager-mode predict step time: ",
+              (time.time() - start_time) / 100)
 
         start_time = time.time()
         for _ in range(100):
             trt_alg_step = trt_engine(timestep, state=state)
-        print("TensorRT predict step time: ", (time.time() - start_time) / 100)
+        print(f"Graph-mode predict step time: ",
+              (time.time() - start_time) / 100)
 
         torch.testing.assert_close(trt_alg_step.output, alg_step.output)
 
@@ -99,10 +114,11 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         start_time = time.time()
         for _ in range(100):
             alg_step = alg.predict_step(timestep, state)
-        print("Predict step time: ", (time.time() - start_time) / 100)
+        print("Eager-mode predict step time: ",
+              (time.time() - start_time) / 100)
 
         if not tensorrt_backend:
-            # This will use CUDA backend to execute the onnx model
+            # This will use CUDA or CPU backend to execute the onnx model
             os.environ[
                 'ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS'] = 'TensorrtExecutionProvider'
 
@@ -111,8 +127,7 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         start_time = time.time()
         for _ in range(100):
             trt_alg_step = alg.predict_step(timestep, state=state)
-        backend = 'CUDA' if not tensorrt_backend else 'TensorRT'
-        print(f"{backend} predict step time: ",
+        print(f"Gragh-mode predict step time: ",
               (time.time() - start_time) / 100)
 
         torch.testing.assert_close(trt_alg_step.output, alg_step.output)

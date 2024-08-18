@@ -51,6 +51,9 @@ RUN pip3 install torch==2.2.0+cpu torchvision==0.17.0+cpu torchtext==0.17.0+cpu 
 
 RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git
 
+RUN apt install -y protobuf-compiler
+RUN pip3 install pybind11==2.10.4
+
 # python libs requirement by alf
 COPY requirements_py3.11.txt  /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt

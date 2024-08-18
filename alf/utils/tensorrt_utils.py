@@ -190,11 +190,16 @@ class TensorRTEngine(torch.nn.Module):
                  method: Callable,
                  onnx_file: Optional[str] = None,
                  onnx_verbose: bool = False,
-                 device: str = 'CUDA',
+                 device: str = None,
                  example_args: Tuple[Any] = (),
                  example_kwargs: Dict[str, Any] = {}):
         """Class for converting a torch.nn.Module to TensorRT engine for fast
         inference, via ONNX model as the intermediate representation.
+
+        NOTE: if ``tensorrt`` lib is not installed, this backend will fall back
+        to use CUDA. If GPU is not available, this backend will fall back to CPU.
+        So the class name might not be accurate. But since its main purpose is
+        using tensorRT for inference, we keep the name as it is.
 
         This class is mainly responsible for:
 
@@ -211,8 +216,9 @@ class TensorRTEngine(torch.nn.Module):
                 be created. Instead, the onnx model will be created in memory.
             onnx_verbose: If True, the onnx model exporting process will output
                 verbose information.
-            device: The device used by TensorRT to run the onnx model. Default
-                is 'CUDA:0'. (CPU is not allowed.)
+            device: The device used by TensorRT to run the onnx model. If None,
+                will set to 'CUDA' if torch.cuda.is_available(), otherwise will be
+                set to 'CPU'.
             example_args: The example args to be used for ``method``. Should be
                 a tuple of args.
             example_kwargs: The example kwargs to be used for ``method``. Should
@@ -245,7 +251,11 @@ class TensorRTEngine(torch.nn.Module):
         # Infer shapes first to avoid the error: "Please run shape inference on the onnx model first."
         # from TensorRT
         onnx_model = shape_inference.infer_shapes(onnx_model)
-        self._engine = backend.prepare(onnx_model, device=device.upper())
+        if device is None:
+            device = 'CUDA' if torch.cuda.is_available() else 'CPU'
+        else:
+            device = device.upper()
+        self._engine = backend.prepare(onnx_model, device=device)
 
     def _dtype_conversions(
             self, flat_all_args: Tuple[torch.Tensor]) -> Tuple[torch.Tensor]:
