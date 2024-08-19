@@ -25,19 +25,19 @@ setup(
         # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'box2d-py',
         'cpplint',
-        'clang-format==9.0',
+        'clang-format',
         'fasteners==0.19',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
         'gym3==0.3.3',
         'h5py==3.10.0',
         'matplotlib==3.8.2',
-        'numpy==1.26',
-        'opencv-python==4.9.0.80',
+        'numpy==1.26.4',
+        'opencv-python==4.9.0.80',  # need to build from source for macos deploy
         'pathos==0.2.4',
         'pillow>=8',
         # 'procgen>=0.10.4',
-        'protobuf==3.20.1',
+        'protobuf==3.20.2',
         'psutil==5.9.8',
         'pybullet==2.5.0',
         'pyglet==1.3.2',  # higher version breaks classic control rendering
@@ -50,8 +50,10 @@ setup(
         'tensorboard==2.15.2',
         'threadpoolctl==3.2.0',
         'torch==2.2.0',
-        'torchvision==0.17.0',
-        'torchtext==0.17.0',
+        'torchvision==0.17.2',
+        'torchtext',
+        'onnx==1.16.2',
+        # 'onnx_tensorrt==10.2.0',
         'cnest',
     ],  # And any other dependencies alf needs
     ext_modules=[
