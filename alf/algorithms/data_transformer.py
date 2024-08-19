@@ -273,10 +273,6 @@ class FrameStacker(DataTransformer):
         stack_axis = self._stack_axis
         if stack_axis >= 0:
             stack_axis += 1
-        # [K,1]
-        first_samples = is_first.nonzero()
-        # [K]
-        first_samples = first_samples.squeeze(-1)
 
         prev_frames = copy.copy(state.prev_frames)
 
@@ -284,16 +280,9 @@ class FrameStacker(DataTransformer):
             prev_frames[i] = copy.copy(prev_frames[i])
             # repeat the first frame if needed
             for t in range(self._stack_size - 1):
-                # prev_frames[i][t] might be used somewhere else, we should
-                # not directly modify it.
-                prev_frames[i][t] = prev_frames[i][t].clone()
-                # We need to use scatter_ instead of slicing for assignment, to
-                # avoid ONNX segfault.
-                # Equivalent code: prev_frames[i][t][first_samples] = obs[first_frames]
-                o = obs[first_samples]
-                idx = alf.utils.common.expand_dims_as(first_samples, o)
-                idx = idx.expand_as(o)
-                prev_frames[i][t].scatter_(0, idx, o)
+                first_samples = alf.utils.common.expand_dims_as(is_first, obs)
+                prev_frames[i][t] = torch.where(first_samples, obs,
+                                                prev_frames[i][t])
 
             if obs.ndim > 1:
                 stacked = torch.cat(prev_frames[i] + [obs], dim=stack_axis)

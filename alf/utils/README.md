@@ -44,3 +44,30 @@ Do not use index slicing assignment such as `x[idx] = y`, as it will trigger the
 - avoid int16.
 - Convert uint8 to int32, float64 to float32 before running the TensorRT engine.
 - Avoid creating intermediate tensor nodes of dtype uint8, int16, or float64 for the deployment code branch
+
+### Dynamic data shape
+TensorRT does support dynamic intermediate data shape. For example, in one forward inference some intermediate node has a
+shape of ``[2,...]`` while in another forward the same node has a shape of ``[1,...]`` (maybe as a result of index selection).
+However, whenever it encounters a new shape for the first time, a **considerable** amount (tens of seconds) of computational
+time will be spent. So in order to avoid any unexpected surprising performance drop during inference, the code should be
+written in a way that each node has a constant shape regardless of the input.
+
+For example,
+
+```python
+# Below is unfriendly to TensorRT
+is_first = timestep.is_first() # [B]
+obs = timestep.observation[is_first] # [K]; dynamic shape
+new_obs[is_first] = torch.zeros_like(obs)
+
+# A better implementation
+new_obs = torch.where(timestep.is_first(),
+                      torch.zeros_like(timestpe.observation),
+                      timestep.observation)
+```
+
+If you have to use a dynamic shape, you can choose to use the CUDA backend by setting the environment variable
+
+```bash
+ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS=TensorrtExecutionProvider
+```
