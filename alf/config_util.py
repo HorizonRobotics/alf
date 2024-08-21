@@ -316,15 +316,23 @@ def _remove_config_node(config_name):
     """Remove the _Config object corresponding to config_name."""
     node = _CONF_TREE
     path = config_name.split('.')
+    tree_name_pairs = []
     for name in reversed(path):
         tree = node
         if not isinstance(tree, dict) or name not in tree:
             raise ValueError("Cannot find config name %s" % config_name)
         node = tree[name]
+        tree_name_pairs.append((tree, name))
 
     assert isinstance(
         node, _Config), "config_name is not a full path: %s" % config_name
     del tree[name]
+    tree_name_pairs.pop()
+    for tree, name in reversed(tree_name_pairs):
+        if len(tree[name]) == 0:
+            del tree[name]
+        else:
+            break
 
 
 def _get_config_node(config_name):
