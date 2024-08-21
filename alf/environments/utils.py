@@ -176,7 +176,9 @@ def create_environment(env_name='CartPole-v0',
 
     # Some environment may take long time to load. So we use GPU before loading
     # environments so that other people knows that this GPU is being used.
-    tmp = torch.zeros((32, ))
+    if torch.cuda.is_available():
+        tmp = torch.zeros((32, ))
+        torch.cuda.synchronize()
 
     if for_evaluation:
         # for creating an evaluation environment, use ``eval_env_load_fn`` if
