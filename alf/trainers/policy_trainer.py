@@ -702,6 +702,9 @@ class RLTrainer(Trainer):
                 self._save_checkpoint()
                 self._checkpoint_requested = False
 
+        if self._evaluate:
+            self._evaluator.wait_complete()
+
     def _need_to_evaluate(self, iter_num):
         if not self._evaluate:
             return False

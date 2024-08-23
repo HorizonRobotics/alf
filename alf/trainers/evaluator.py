@@ -113,12 +113,20 @@ class Evaluator(object):
                     self._evaluator.eval(algorithm, step_metric_values)
 
     def close(self):
+        """Stop the ongoing evaluation and close the evaluator."""
         if self._async:
             job = EvalJob(type="stop")
             self._job_queue.put(job)
             self._worker.join()
         else:
             self._env.close()
+
+    def wait_complete(self):
+        """Wait until evaluation is complete."""
+        if self._async:
+            job = EvalJob(type="wait")
+            self._job_queue.put(job)
+            self._done_queue.get()
 
 
 def _define_flags():
@@ -145,7 +153,10 @@ class SyncEvaluator(object):
         self._summary_writer = alf.summary.create_summary_writer(
             eval_dir, flush_secs=config.summaries_flush_secs)
 
-    def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
+    def eval(self,
+             algorithm: RLAlgorithm,
+             step_metric_values: Dict[str, int],
+             job_queue: Optional[mp.Queue] = None):
         """Do one round of evaluation.
 
         This function will return after finishing the evaluation.
@@ -158,11 +169,17 @@ class SyncEvaluator(object):
             step_metric_values: a dictionary of step metric values to generate
                 the evaluation summaries against. Note that it needs to contain
                 "EnvironmentSteps" at least.
+            job_queue: This is only used when `eval()` is called from a worker
+                process. If during the evaluation, the worker receives a "stop"
+                job from the main process, it will stop the evaluation and
+                return immediately.
         """
         with alf.summary.push_summary_writer(self._summary_writer):
             logging.info("Start evaluation")
             metrics = evaluate(self._env, algorithm,
-                               self._config.num_eval_episodes)
+                               self._config.num_eval_episodes, job_queue)
+            if metrics is None:
+                return
             common.log_metrics(metrics)
             for metric in metrics:
                 metric.gen_summaries(
@@ -298,9 +315,11 @@ def _worker(job_queue: mp.Queue,
                     job.global_counter, env_steps)
                 algorithm.load_state_dict(job.state_dict)
                 done_queue.put(None)
-                evaluator.eval(algorithm, job.step_metrics)
+                evaluator.eval(algorithm, job.step_metrics, job_queue)
             elif job.type == "stop":
                 break
+            elif job.type == "wait":
+                done_queue.put(None)
             else:
                 raise KeyError('Received message of unknown type {}'.format(
                     job.type))
@@ -313,15 +332,46 @@ def _worker(job_queue: mp.Queue,
         logging.exception(f'{mp.current_process().name} - {e}')
 
 
+def _peek(queue: mp.Queue):
+    """Peek the first element in the queue without removing it.
+
+    Note that if a new element is put into the queue during the peeking, the
+    order of the elements in the queue may be changed.
+
+    Args:
+        queue (mp.Queue): the queue
+    Returns:
+        The first element in the queue. None if the queue is empty.
+    """
+    elements = []
+    while not queue.empty():
+        elements.append(queue.get())
+
+    for element in elements:
+        queue.put(element)
+
+    if len(elements) > 0:
+        return elements[0]
+    else:
+        return None
+
+
 @common.mark_eval
-def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
-             num_episodes: int) -> List[alf.metrics.StepMetric]:
+def evaluate(
+        env: AlfEnvironment,
+        algorithm: RLAlgorithm,
+        num_episodes: int,
+        job_queue: Optional[mp.Queue] = None) -> List[alf.metrics.StepMetric]:
     """Perform one round of evaluation.
 
     Args:
         env: the environment
         algorithm: the training algorithm
         num_episodes: number of episodes to evaluate
+        job_queue: This is only used when `eval()` is called from a worker
+            process. If during the evaluation, the worker receives a "stop"
+            job from the main process, it will stop the evaluation and
+            return immediately.
     Returns:
         a list of metrics from the evaluation
     """
@@ -379,6 +429,11 @@ def evaluate(env: AlfEnvironment, algorithm: RLAlgorithm,
 
         policy_state = policy_step.state
         time_step = next_time_step
+        if job_queue is not None:
+            job = _peek(job_queue)
+            if job is not None and job.type == "stop":
+                logging.info("Received stop signal. Aborting evaluation.")
+                return None
 
     env.reset()
     return metrics
