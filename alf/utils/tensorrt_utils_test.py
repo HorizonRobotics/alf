@@ -16,12 +16,16 @@ from absl.testing import parameterized
 from functools import partial
 import time
 import torch
+import torchvision.models as models
+import unittest
 import os
 
 import alf
 from alf.data_structures import restart
 from alf.algorithms.sac_algorithm import SacAlgorithm
-from alf.utils.tensorrt_utils import TensorRTEngine, tensorrtify_method, is_available
+from alf.utils.tensorrt_utils import (OnnxRuntimeEngine, TensorRTEngine,
+                                      compile_method, is_onnxruntime_available,
+                                      is_tensorrt_available)
 
 
 def create_sac_and_inputs():
@@ -33,7 +37,7 @@ def create_sac_and_inputs():
         action_spec,
         actor_network_cls=partial(
             alf.networks.ActorDistributionNetwork,
-            fc_layer_params=(1024, ) * 10),
+            fc_layer_params=(1024, ) * 5),
         critic_network_cls=partial(
             alf.networks.CriticNetwork, joint_fc_layer_params=(64, 64)))
 
@@ -51,41 +55,28 @@ def create_sac_and_inputs():
 
 
 class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
-    def setUp(self):
-        super().setUp()
-        if not is_available():
-            self.skipTest('onnxruntime or tensorrt is not installed.')
-
-    @property
-    def has_gpu(self):
-        return torch.cuda.is_available()
-
-    @property
-    def has_tensorrt(self):
-        try:
-            import tensorrt
-            return True
-        except ImportError:
-            return False
-
-    def test_tensorrt_available(self):
+    @unittest.skipIf(not is_onnxruntime_available(),
+                     "onnxruntime not installed")
+    def test_onnxruntime_backends(self):
         import onnxruntime
         providers = onnxruntime.get_available_providers()
         expected_providers = ['CPUExecutionProvider']
         # On CI server, we don't have GPUs or tensorrt (GPU only)
-        if self.has_gpu:
+        if torch.cuda.is_available():
             self.assertTrue('CUDAExecutionProvider' in providers,
                             "Need to install onnxruntime-gpu!")
             expected_providers.insert(0, 'CUDAExecutionProvider')
-        if self.has_tensorrt:
+        if is_tensorrt_available():
             self.assertTrue('TensorrtExecutionProvider' in providers,
                             "tensorrt installation error!")
             expected_providers.insert(0, 'TensorrtExecutionProvider')
         self.assertEqual(providers, expected_providers)
 
-    def test_tensorrt_engine(self):
+    @unittest.skipIf(not is_onnxruntime_available(),
+                     "onnxruntime not installed")
+    def test_onnxruntime_engine(self):
         alg, timestep, state = create_sac_and_inputs()
-        trt_engine = TensorRTEngine(
+        engine = OnnxRuntimeEngine(
             alg,
             SacAlgorithm.predict_step,
             example_args=(timestep, ),
@@ -100,14 +91,16 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
 
         start_time = time.time()
         for _ in range(100):
-            trt_alg_step = trt_engine(timestep, state=state)
-        print(f"Graph-mode predict step time: ",
+            engine_alg_step = engine(timestep, state=state)
+        print(f"Onnxruntime predict step time: ",
               (time.time() - start_time) / 100)
 
-        torch.testing.assert_close(trt_alg_step.output, alg_step.output)
+        self.assertTensorClose(engine_alg_step.output, alg_step.output)
 
+    @unittest.skipIf(not is_onnxruntime_available(),
+                     "onnxruntime not installed")
     @parameterized.parameters(True, False)
-    def test_tensorrt_decorator(self, tensorrt_backend):
+    def test_compile_method(self, tensorrt_backend):
         alg, timestep, state = create_sac_and_inputs()
         alg.eval()
 
@@ -122,15 +115,73 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
             os.environ[
                 'ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS'] = 'TensorrtExecutionProvider'
 
-        tensorrtify_method(alg, 'predict_step')
+        compile_method(alg, 'predict_step', OnnxRuntimeEngine)
         alg.predict_step(timestep, state=state)  # build engine first
         start_time = time.time()
         for _ in range(100):
-            trt_alg_step = alg.predict_step(timestep, state=state)
-        print(f"Gragh-mode predict step time: ",
+            engine_alg_step = alg.predict_step(timestep, state=state)
+        print(f"Onnxruntime predict step time: ",
               (time.time() - start_time) / 100)
 
-        torch.testing.assert_close(trt_alg_step.output, alg_step.output)
+        self.assertTensorClose(engine_alg_step.output, alg_step.output)
+
+    @unittest.skipIf(not is_tensorrt_available(), "tensorrt is unavailable")
+    def test_tensorrt_engine(self):
+        alg, timestep, state = create_sac_and_inputs()
+        alg.eval()
+
+        start_time = time.time()
+        for _ in range(100):
+            alg_step = alg.predict_step(timestep, state)
+        print("Eager-mode predict step time: ",
+              (time.time() - start_time) / 100)
+
+        compile_method(alg, 'predict_step')
+        alg.predict_step(timestep, state=state)  # build engine
+        start_time = time.time()
+        for _ in range(100):
+            trt_alg_step = alg.predict_step(timestep, state=state)
+        print(f"TensorRT predict step time: ",
+              (time.time() - start_time) / 100)
+
+        self.assertTensorClose(trt_alg_step.output, alg_step.output)
+
+    @unittest.skipIf(not is_tensorrt_available()
+                     and not is_onnxruntime_available(),
+                     "tensorrt and onnxruntime are unavailable")
+    def test_tensorrt_resnet50(self):
+        model = models.resnet50(pretrained=True)
+        model.eval()
+        dummy_img = torch.randn(1, 3, 224, 224)
+
+        start_time = time.time()
+        for _ in range(100):
+            eager_output = model(dummy_img)
+        print("Eager-mode predict step time: ",
+              (time.time() - start_time) / 100)
+
+        if is_tensorrt_available():
+            compile_method(model, 'forward')
+            model(dummy_img)  # build engine
+            start_time = time.time()
+            for _ in range(100):
+                output = model(dummy_img)
+            print(f"TensorRT predict step time: ",
+                  (time.time() - start_time) / 100)
+            self.assertTensorClose(eager_output, output, epsilon=0.01)
+
+        if is_onnxruntime_available():
+            model1 = models.resnet50(pretrained=True)
+            model1.eval()
+            # Use onnxruntime API
+            compile_method(model1, 'forward', OnnxRuntimeEngine)
+            model1(dummy_img)  # build engine
+            start_time = time.time()
+            for _ in range(100):
+                output = model1(dummy_img)
+            print(f"ONNX-runtime predict step time: ",
+                  (time.time() - start_time) / 100)
+            self.assertTensorClose(eager_output, output, epsilon=0.01)
 
 
 if __name__ == "__main__":

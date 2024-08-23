@@ -26,11 +26,18 @@ try:
     from onnx import shape_inference
     import onnxruntime.backend as backend
 except ImportError:
-    onnx = None
+    backend = None
+
+try:
+    import tensorrt as trt
+    import pycuda.driver as cuda
+    import pycuda.autoinit
+except ImportError:
+    trt = None
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.utils import dist_utils
+from alf.utils import dist_utils, tensor_utils
 
 # How to install dependencies (in a virtual env) on the deployment machine:
 # ```bash
@@ -55,8 +62,25 @@ from alf.utils import dist_utils
 # The order of elements represents the default priority order of Execution Providers from highest to lowest.
 
 
-def is_available():
-    return onnx is not None
+def is_onnxruntime_available():
+    return backend is not None
+
+
+def is_tensorrt_available():
+    return trt is not None
+
+
+def _dtype_conversions(nest: alf.nest.NestedTensor) -> alf.nest.NestedTensor:
+    # Convert all uint8 tensors to int32, float64 to float32, because tensorRT
+    # does not support uint8 or float64 tensors
+    dtype_mappings = {torch.uint8: torch.int32, torch.float64: torch.float32}
+
+    def _convert_if_needed(x):
+        if x.dtype in dtype_mappings:
+            return x.to(dtype=dtype_mappings[x.dtype])
+        return x
+
+    return alf.nest.map_structure(_convert_if_needed, nest)
 
 
 class _OnnxWrapper(torch.nn.Module):
@@ -112,9 +136,17 @@ class _OnnxWrapper(torch.nn.Module):
         # Sometimes we will return Distributions in the output. In this case,
         # we need to convert them to
         example_output = self._method(*example_args, **example_kwargs)
+        self._example_output_params = dist_utils.distributions_to_params(
+            example_output)
         self._output_params_spec = dist_utils.extract_spec(
-            dist_utils.distributions_to_params(example_output))
+            self._example_output_params)
         self._output_spec = dist_utils.extract_spec(example_output)
+
+    @property
+    def example_output(self):
+        """Return an example output of ``self.forward()``.
+        """
+        return alf.nest.flatten(self._example_output_params), torch.zeros(())
 
     @staticmethod
     def _strip_optimizers(module):
@@ -184,7 +216,7 @@ class _OnnxWrapper(torch.nn.Module):
 
 
 @alf.configurable(whitelist=['device'])
-class TensorRTEngine(torch.nn.Module):
+class OnnxRuntimeEngine(object):
     def __init__(self,
                  module: torch.nn.Module,
                  method: Callable,
@@ -193,7 +225,7 @@ class TensorRTEngine(torch.nn.Module):
                  device: str = None,
                  example_args: Tuple[Any] = (),
                  example_kwargs: Dict[str, Any] = {}):
-        """Class for converting a torch.nn.Module to TensorRT engine for fast
+        """Class for converting a torch.nn.Module to an OnnxRuntime engine for fast
         inference, via ONNX model as the intermediate representation.
 
         NOTE: if ``tensorrt`` lib is not installed, this backend will fall back
@@ -216,7 +248,7 @@ class TensorRTEngine(torch.nn.Module):
                 be created. Instead, the onnx model will be created in memory.
             onnx_verbose: If True, the onnx model exporting process will output
                 verbose information.
-            device: The device used by TensorRT to run the onnx model. If None,
+            device: The device used to run the onnx model. If None,
                 will set to 'CUDA' if torch.cuda.is_available(), otherwise will be
                 set to 'CPU'.
             example_args: The example args to be used for ``method``. Should be
@@ -224,12 +256,13 @@ class TensorRTEngine(torch.nn.Module):
             example_kwargs: The example kwargs to be used for ``method``. Should
                 be a dict of kwargs.
         """
-        super().__init__()
+        example_args = _dtype_conversions(example_args)
+        example_kwargs = _dtype_conversions(example_kwargs)
+
         self._onnx_wrapper = _OnnxWrapper(module, method, example_args,
                                           example_kwargs)
 
-        flat_all_args = alf.nest.flatten([example_args, example_kwargs])
-        flat_all_args = self._dtype_conversions(flat_all_args)
+        flat_all_args = tuple(alf.nest.flatten([example_args, example_kwargs]))
 
         if onnx_file is None:
             onnx_io = io.BytesIO()
@@ -249,7 +282,6 @@ class TensorRTEngine(torch.nn.Module):
         onnx_model = onnx.load(onnx_io)
 
         # Infer shapes first to avoid the error: "Please run shape inference on the onnx model first."
-        # from TensorRT
         onnx_model = shape_inference.infer_shapes(onnx_model)
         if device is None:
             device = 'CUDA' if torch.cuda.is_available() else 'CPU'
@@ -257,25 +289,8 @@ class TensorRTEngine(torch.nn.Module):
             device = device.upper()
         self._engine = backend.prepare(onnx_model, device=device)
 
-    def _dtype_conversions(
-            self, flat_all_args: Tuple[torch.Tensor]) -> Tuple[torch.Tensor]:
-        # Convert all uint8 tensors to int32, float64 to float32, because tensorRT
-        # does not support uint8 or float64 tensors
-        dtype_mappings = {
-            torch.uint8: torch.int32,
-            torch.float64: torch.float32
-        }
-
-        def _convert_if_needed(x):
-            if x.dtype in dtype_mappings:
-                return x.to(dtype=dtype_mappings[x.dtype])
-            return x
-
-        return tuple([_convert_if_needed(a) for a in flat_all_args])
-
-    def forward(self, *args, **kwargs):
-        flat_all_args = self._dtype_conversions(
-            alf.nest.flatten([args, kwargs]))
+    def __call__(self, *args, **kwargs):
+        flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
         flat_all_args_np = [x.detach().cpu().numpy() for x in flat_all_args]
         # engine accepts a list of args, not a tuple!
         outputs_np = self._engine.run(flat_all_args_np)
@@ -286,14 +301,164 @@ class TensorRTEngine(torch.nn.Module):
         return self._onnx_wrapper.recover_module_output(outputs)
 
 
-def tensorrt_for_inference_if(cond: bool = True):
-    """A decorator to compile a method as a tensorRT engine for inference,
+@alf.configurable(whitelist=['memory_limit_gb', 'fp16'])
+class TensorRTEngine(object):
+    def __init__(self,
+                 module: torch.nn.Module,
+                 method: Callable,
+                 onnx_file: Optional[str] = None,
+                 onnx_verbose: bool = False,
+                 memory_limit_gb: float = 1.,
+                 fp16: bool = False,
+                 example_args: Tuple[Any] = (),
+                 example_kwargs: Dict[str, Any] = {}):
+        """Class for converting a torch.nn.Module to TensorRT engine for fast
+        inference, via ONNX model as the intermediate representation.
+
+        This class requires installing pip packages:
+
+        .. code-block:: bash
+
+            pip install tensorrt pycuda
+
+        Args:
+            module: The module to be converted.
+            method: A method in ``module`` to be converted.
+            onnx_file: The path to the onnx model. If None, no external file will
+                be created. Instead, the onnx model will be created in memory.
+            onnx_verbose: If True, the onnx model exporting process will output
+                verbose information.
+            memory_limit_gb: The memory limit in GBs for tensorRT for inference.
+            fp16: If True, the model will do inference in fp16.
+            example_args: The example args to be used for ``method``. Should be
+                a tuple of args.
+            example_kwargs: The example kwargs to be used for ``method``. Should
+                be a dict of kwargs.
+        """
+        assert torch.cuda.is_available(
+        ), 'This engine can only be used on GPU!'
+
+        example_args = _dtype_conversions(example_args)
+        example_kwargs = _dtype_conversions(example_kwargs)
+        self._onnx_wrapper = _OnnxWrapper(module, method, example_args,
+                                          example_kwargs)
+        flat_all_args = tuple(alf.nest.flatten([example_args, example_kwargs]))
+        self._inputs = flat_all_args
+        self._outputs = alf.nest.flatten(self._onnx_wrapper.example_output)
+
+        if onnx_file is None:
+            onnx_io = io.BytesIO()
+        else:
+            onnx_io = onnx_file
+        # 'args' must be a tuple of tensors
+        torch.onnx.export(
+            self._onnx_wrapper,
+            args=self._inputs,
+            f=onnx_io,
+            # Don't modify the version easily! Other versions might
+            # have weird errors.
+            opset_version=12,
+            verbose=onnx_verbose)
+        if isinstance(onnx_io, io.BytesIO):
+            onnx_io.seek(0)
+            model_content = onnx_io.getvalue()
+        else:
+            with open(onnx_io, 'rb') as f:
+                model_content = f.read()
+
+        # Create a TensorRT logger
+        TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+        # Create a builder and network
+        builder = trt.Builder(TRT_LOGGER)
+        network = builder.create_network(
+            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+        parser = trt.OnnxParser(network, TRT_LOGGER)
+        parser.parse(model_content)
+
+        # Create a builder configuration
+        config = builder.create_builder_config()
+        config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE,
+                                     int((1 << 30) * memory_limit_gb))
+        if fp16:
+            config.set_flag(trt.BuilderFlag.FP16)
+
+        # Build the engine
+        serialized_engine = builder.build_serialized_network(network, config)
+        # Create a runtime to deserialize the engine
+        runtime = trt.Runtime(TRT_LOGGER)
+        # Deserialize the engine
+        self._engine = runtime.deserialize_cuda_engine(serialized_engine)
+        self._prepare_io()
+
+    @staticmethod
+    def _get_bytes(tensor):
+        """Get a tensor's size in bytes.
+        """
+        return tensor.element_size() * tensor.nelement()
+
+    def _prepare_io(self):
+        self._context = self._engine.create_execution_context()
+
+        # allocate device memory (bytes)
+        self._input_mem = [
+            cuda.mem_alloc(self._get_bytes(i)) for i in self._inputs
+        ]
+        self._output_mem = [
+            cuda.mem_alloc(self._get_bytes(o)) for o in self._outputs
+        ]
+
+        # Set the IO tensor addresses
+        bindings = list(map(int, self._input_mem)) + list(
+            map(int, self._output_mem))
+        for i in range(self._engine.num_io_tensors):
+            self._context.set_tensor_address(
+                self._engine.get_tensor_name(i), bindings[i])
+
+        # create stream
+        self._stream = cuda.Stream()
+
+    def __call__(self, *args, **kwargs):
+        """Run the TensorRT engine on the given arguments.
+
+        The arguments must be GPU tensors, otherwise invalid mem addresses will
+        be reported.
+        """
+        flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
+
+        for im, i in zip(self._input_mem, flat_all_args):
+            cuda.memcpy_dtod_async(im, i.data_ptr(), self._get_bytes(i),
+                                   self._stream)
+
+        # For some reason, we have to manually synchronize the stream here before
+        # executing the engine. Otherwise the inference will be much slower. Probably
+        # a pycuda bug because in theory this synchronization is not needed.
+        self._stream.synchronize()
+
+        self._context.execute_async_v3(stream_handle=self._stream.handle)
+
+        outputs = [torch.zeros_like(o) for o in self._outputs]
+        for om, o in zip(self._output_mem, outputs):
+            cuda.memcpy_dtod_async(o.data_ptr(), om, self._get_bytes(o),
+                                   self._stream)
+
+        self._stream.synchronize()
+        return self._onnx_wrapper.recover_module_output(outputs)
+
+
+def compile_for_inference_if(cond: bool = True,
+                             engine_class: Callable = TensorRTEngine):
+    """A decorator to compile a method as a onnxruntime/tensorRT engine for inference,
     when ``cond`` is true.
 
     This decorator should be used on a torch.nn.Module member function.
 
-    If will first wrap the object's method to export to onnx, and then create a
-    tensorrt engine from the onnx model. The engine will be cached in the object.
+    If will first wrap the object's method to export to onnx, and then create an
+    inference engine from the onnx model. The engine will be cached in the object.
+
+    Args:
+        cond: Whether to apply the decorator
+        engine_class: The engine class to use. Should be either ``OnnxRuntimeEngine``
+            or ``TensorRTEngine``.
     """
 
     def _decorator(method):
@@ -308,51 +473,52 @@ def tensorrt_for_inference_if(cond: bool = True):
             # instance that the method belongs to. By accessing it we get the
             # reference of the module to wrap.
             assert isinstance(module_to_wrap, torch.nn.Module), (
-                f'Cannot apply @tensorrt_for_inference_if on {type(module_to_wrap)}'
+                f'Cannot apply @compile_for_inference_if on {type(module_to_wrap)}'
             )
 
-            if not hasattr(module_to_wrap, '_tensorrt_engine_map'):
-                module_to_wrap._tensorrt_engine_map = {}
+            if not hasattr(module_to_wrap, '_inference_engine_map'):
+                module_to_wrap._inference_engine_map = {}
             n_args = len(args)
             arg_keys = tuple(kwargs.keys())
             engine_key = (id(method), n_args, arg_keys)
 
-            tensorrt_engine = module_to_wrap._tensorrt_engine_map.get(
-                engine_key, None)
-            if tensorrt_engine is None:
-                tensorrt_engine = TensorRTEngine(
+            engine = module_to_wrap._inference_engine_map.get(engine_key, None)
+            if engine is None:
+                engine = engine_class(
                     module_to_wrap,
                     method,
                     example_args=args,
                     example_kwargs=kwargs)
-                module_to_wrap._tensorrt_engine_map[
-                    engine_key] = tensorrt_engine
+                module_to_wrap._inference_engine_map[engine_key] = engine
                 alf.utils.common.info(
-                    "Created a new TensorRT inference engine for "
+                    f"Created a new {engine_class} inference engine for "
                     f"'{module_to_wrap.__class__.__name__}.{method.__name__}' "
                     f"with key '{engine_key}'")
-            return tensorrt_engine(*args, **kwargs)
+            return engine(*args, **kwargs)
 
         return wrapped
 
     return _decorator
 
 
-_tensorrtified_methods = {}
+_compiled_methods = {}
 
 
-def tensorrtify_method(module, method_name):
-    """Convert a module method to use tensorrt inference at runtime. For example,
+def compile_method(module,
+                   method_name,
+                   engine_class: Callable = TensorRTEngine):
+    """Convert a module method to use OnnxRuntime or TensorRT inference on the fly.
+    For example,
 
     .. code-block:: python
 
         if deploy_mode:
-            tensorrtify_method(agent, 'predict_step')
+            compile_method(agent, 'predict_step')
 
-        agent.predict_step(...)  # slow: prepare tensorrt engine for the first time
+        agent.predict_step(...)  # slow: build inference engine for the first time
         agent.predict_step(...)  # fast inference after the first call
 
-    There is also an environment variable "ALF_ENABLE_TENSORRT" to globally turn
+    There is also an environment variable "ALF_ENABLE_COMPILATION" to globally turn
     on or off of this function. If off, no method will be changed by this function.
 
     .. note::
@@ -375,8 +541,8 @@ def tensorrtify_method(module, method_name):
         For example, we always call ``agent.predict_step(timestep, state=state)``,
         where ``args=(timestep, )`` and ``kwargs={'state': state}``.
 
-        The reason is that tensorrt/onnx has a strict rule for argument number and
-        order. when a tensorrt engine is created and stored in a map, we make the
+        The reason is that onnx has a strict rule for argument number and
+        order. when an inference engine is created and stored in a map, we make the
         argument list also part of the key. So if next time the same method is called
         with a different argument list such as ``args=(timestep, state)`` and
         ``kwargs={}``, a new engine will be created again.
@@ -389,23 +555,22 @@ def tensorrtify_method(module, method_name):
     Args:
         module: a torch.nn.Module
         method_name: the method name of the module
+        engine_class: should be either ``TensorRTEngine`` or ``OnnxRuntimeEngine``
     """
-    assert is_available(), 'ONNX/TensorRT is not installed!'
-
-    global _tensorrtified_methods
+    global _compiled_methods
     key = (module, method_name)
-    # Here we check if a previous ``tensorrtify_method`` has already been called
-    # for the same module and method. We do not allow tensorrtifying a method
+    # Here we check if a previous ``compile_method`` has already been called
+    # for the same module and method. We do not allow compiling a method
     # a multiple times.
-    assert key not in _tensorrtified_methods, (
-        f"Method {module}.{method_name} is already tensorrtified: "
-        f"{_tensorrtified_methods[key]}")
+    assert key not in _compiled_methods, (
+        f"Method {module}.{method_name} is already compiled: "
+        f"{_compiled_methods[key]}")
 
     method = getattr(module, method_name)
     method = method.__func__  # convert a bound method to an unbound method
-    enable_tensorrt = os.environ.get('ALF_ENABLE_TENSORRT', '1') == '1'
-    wrapped = tensorrt_for_inference_if(enable_tensorrt)(method)
+    enable_compile = os.environ.get('ALF_ENABLE_COMPILATION', '1') == '1'
+    wrapped = compile_for_inference_if(enable_compile, engine_class)(method)
     setattr(module, method_name, types.MethodType(wrapped, module))
 
-    # add the tensorrtified method to the table
-    _tensorrtified_methods[key] = wrapped
+    # add the compiled method to the table
+    _compiled_methods[key] = wrapped
