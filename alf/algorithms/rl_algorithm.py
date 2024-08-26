@@ -573,7 +573,10 @@ class RLAlgorithm(Algorithm):
                 transformed_time_step, policy_state, experience_list,
                 original_reward_list)
 
-        alf.summary.scalar("time/unroll_env_step", env_step_time)
+        alf.summary.scalar(
+            "time/unroll_env_step",
+            env_step_time,
+            average_over_summary_interval=True)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         if unroll_length == 0:
             alf.summary.scalar("async_unroll/unroll_length",
@@ -683,7 +686,10 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
-        alf.summary.scalar("time/unroll_env_step", env_step_time)
+        alf.summary.scalar(
+            "time/unroll_env_step",
+            env_step_time,
+            average_over_summary_interval=True)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         original_reward = alf.nest.utils.stack_nests(original_reward_list)
         self.summarize_reward("rollout_reward/original_reward",
