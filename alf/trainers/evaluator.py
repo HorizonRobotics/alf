@@ -139,6 +139,40 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
+class PeekableQueue(object):
+    """A queue that supports peeking the first element without removing it.
+
+    Note that this can only be used for a queue with one consumer.
+    """
+
+    def __init__(self, queue: mp.Queue):
+        self._queue = queue
+        self._elements = []
+
+    def peek(self):
+        """Peek the first element in the queue without removing it.
+
+        Returns:
+            The first element in the queue. ``None`` if the queue is empty.
+        """
+        if len(self._elements) == 0:
+            if not self._queue.empty():
+                self._elements.append(self._queue.get())
+        if len(self._elements) > 0:
+            return self._elements[0]
+        else:
+            return None
+
+    def get(self):
+        if len(self._elements) == 0:
+            return self._queue.get()
+        else:
+            return self._elements.pop(0)
+
+    def empty(self):
+        return len(self._elements) == 0 and self._queue.empty()
+
+
 class SyncEvaluator(object):
     """Evaluator for performing evaluation on the current algorithm.
 
@@ -156,7 +190,7 @@ class SyncEvaluator(object):
     def eval(self,
              algorithm: RLAlgorithm,
              step_metric_values: Dict[str, int],
-             job_queue: Optional[mp.Queue] = None):
+             job_queue: Optional[PeekableQueue] = None):
         """Do one round of evaluation.
 
         This function will return after finishing the evaluation.
@@ -302,6 +336,7 @@ def _worker(job_queue: mp.Queue,
                                     config.num_env_steps)
         alf.summary.enable_summary()
         evaluator = SyncEvaluator(env, config)
+        job_queue = PeekableQueue(job_queue)
         logging.info("Evaluator started")
         while True:
             job = job_queue.get()
@@ -357,11 +392,11 @@ def _peek(queue: mp.Queue):
 
 
 @common.mark_eval
-def evaluate(
-        env: AlfEnvironment,
-        algorithm: RLAlgorithm,
-        num_episodes: int,
-        job_queue: Optional[mp.Queue] = None) -> List[alf.metrics.StepMetric]:
+def evaluate(env: AlfEnvironment,
+             algorithm: RLAlgorithm,
+             num_episodes: int,
+             job_queue: Optional[PeekableQueue] = None
+             ) -> List[alf.metrics.StepMetric]:
     """Perform one round of evaluation.
 
     Args:
@@ -430,7 +465,7 @@ def evaluate(
         policy_state = policy_step.state
         time_step = next_time_step
         if job_queue is not None:
-            job = _peek(job_queue)
+            job = job_queue.peek()
             if job is not None and job.type == "stop":
                 logging.info("Received stop signal. Aborting evaluation.")
                 return None
