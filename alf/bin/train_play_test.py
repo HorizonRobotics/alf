@@ -44,7 +44,6 @@ def run_cmd(cmd, cwd=None):
             f'ERR: {stderr}'
 
     new_env = os.environ.copy()
-    logging.info(' '.join(cmd))
 
     ret = subprocess.run(
         cmd,
