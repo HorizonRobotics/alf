@@ -319,7 +319,7 @@ class TensorRTEngine(object):
 
         .. code-block:: bash
 
-            pip install tensorrt pycuda
+            pip install tensorrt>=10.0 pycuda
 
         Args:
             module: The module to be converted.
@@ -370,8 +370,7 @@ class TensorRTEngine(object):
         TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
         # Create a builder and network
         builder = trt.Builder(TRT_LOGGER)
-        network = builder.create_network(
-            1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+        network = builder.create_network()
         parser = trt.OnnxParser(network, TRT_LOGGER)
         parser.parse(model_content)
 
@@ -426,8 +425,9 @@ class TensorRTEngine(object):
         flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
 
         for im, i in zip(self._input_mem, flat_all_args):
-            cuda.memcpy_dtod_async(im, i.data_ptr(), self._get_bytes(i),
-                                   self._stream)
+            cuda.memcpy_dtod_async(im,
+                                   i.contiguous().data_ptr(),
+                                   self._get_bytes(i), self._stream)
 
         # For some reason, we have to manually synchronize the stream here before
         # executing the engine. Otherwise the inference will be much slower. Probably
@@ -436,7 +436,10 @@ class TensorRTEngine(object):
 
         self._context.execute_async_v3(stream_handle=self._stream.handle)
 
-        outputs = [torch.zeros_like(o) for o in self._outputs]
+        outputs = [
+            torch.empty_like(o, memory_format=torch.contiguous_format)
+            for o in self._outputs
+        ]
         for om, o in zip(self._output_mem, outputs):
             cuda.memcpy_dtod_async(o.data_ptr(), om, self._get_bytes(o),
                                    self._stream)
