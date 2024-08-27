@@ -143,18 +143,20 @@ class Network(nn.Module):
         self._singleton_instance = singleton_instance
         return self
 
-    def copy(self, **kwargs):
+    def copy(self, deepcopy=False, **kwargs):
         """Create a  copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
         ``self``; otherwise it will re-create and return a new ``Network``
         instance using the original arguments used by the constructor.
 
-        **NOTE** When re-creating ``Network``, Network layer weights are *never*
-        copied. This method recreates the ``Network`` instance with the same
-        arguments it was initialized with (excepting any new kwargs).
+        **NOTE** When re-creating ``Network``, by default (``deepcopy=False``), 
+        Network layer weights are *never* copied, instead, this method recreates the 
+        ``Network`` instance with the same arguments it was initialized with 
+        (excepting any new kwargs).
 
         Args:
+            deepcopy (bool): If True, Network layer weights are also copied.
             **kwargs: Args to override when recreating this network.  Commonly
                 overridden args include 'name'.
 
@@ -171,7 +173,8 @@ class Network(nn.Module):
                         return a.copy()
                     elif isinstance(a, torch.nn.Module):
                         b = copy.deepcopy(a)
-                        alf.layers.reset_parameters(b)
+                        if not deepcopy:
+                            alf.layers.reset_parameters(b)
                         return b
                     else:
                         return a
@@ -264,10 +267,9 @@ class Network(nn.Module):
 class NaiveParallelNetwork(Network):
     """Naive implementation of parallel network."""
 
-    def __init__(self, network, n, name=None):
+    def __init__(self, network, n, deepcopy=False, name=None):
         """
-        A parallel network has ``n`` copies of network with the same structure but
-        different indepently initialized parameters.
+        A parallel network has ``n`` copies of network with the same structure.
 
         ``NaiveParallelNetwork`` created ``n`` independent networks with the same
         structure as ``network`` and evaluate them separately in loop during
@@ -277,6 +279,9 @@ class NaiveParallelNetwork(Network):
             network (Network): the parallel network will have ``n`` copies of
                 ``network``.
             n (int): ``n`` copies of ``network``
+            deepcopy (bool): if True, the copies of network will have same
+                initialized parameters, otherwise, they will have different
+                independently initialized parameters.
             name(str): a string that will be used as the name of the created
                 NaiveParallelNetwork instance. If ``None``, ``naive_parallel_``
                 followed by the ``network.name`` will be used by default.
@@ -288,7 +293,8 @@ class NaiveParallelNetwork(Network):
         super().__init__(
             network.input_tensor_spec, state_spec=state_spec, name=name)
         self._networks = nn.ModuleList(
-            [network.copy(name=self.name + '_%d' % i) for i in range(n)])
+            [network.copy(
+                deepcopy=deepcopy, name=self.name + '_%d' % i) for i in range(n)])
         self._n = n
 
     def forward(self, inputs, state=()):

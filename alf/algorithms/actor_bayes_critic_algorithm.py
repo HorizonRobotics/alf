@@ -63,6 +63,8 @@ AbcInfo = namedtuple(
     ],
     default_value=())
 
+AbcRolloutInfo = namedtuple("AbcRolloutInfo", ["action"], default_value=())
+
 AbcLossInfo = namedtuple(
     'AbcLossInfo', ['actor', 'explore', 'critic', 'alpha', 'explore_alpha'],
     default_value=())
@@ -379,7 +381,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
             explore=state.explore,
             critic=state.critic)
         return AlgStep(
-            output=action, state=new_state, info=AbcInfo(action=action))
+            output=action, state=new_state, info=AbcRolloutInfo(action=action))
 
     def _consensus_q_for_actor_train(self, critics, explore, info=()):
         """Get q_value for _actor_train_step. 
@@ -474,8 +476,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         return critics_state, actor_info
 
     def _compute_critic_train_info(self, inputs: TimeStep,
-                                   state: AbcCriticState,
-                                   rollout_info: AbcInfo, action):
+                                   state: AbcCriticState, action):
         target_critics_dist, target_critics_state = self._target_critic_network(
             (inputs.observation, action), state.target_critics)
 
@@ -498,7 +499,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
         return sum(nest.flatten(alpha_loss))
 
     def train_step(self, inputs: TimeStep, state: AbcState,
-                   rollout_info: AbcInfo):
+                   rollout_info: AbcRolloutInfo):
 
         self._training_started = True
 
@@ -549,7 +550,7 @@ class AbcAlgorithm(OffPolicyAlgorithm):
 
         # compute train_info for critic_module, trained in calc_loss
         critic_state, critic_train_info = self._compute_critic_train_info(
-            inputs, state.critic, rollout_info, action)
+            inputs, state.critic, action)
 
         if self._deterministic_actor or self._fixed_alpha:
             alpha_loss = ()
