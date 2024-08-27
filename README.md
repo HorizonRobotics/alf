@@ -74,6 +74,7 @@ sudo apt install libboost-all-dev
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
+pip install pybind11
 pip install -e . --extra-index-url https://download.pytorch.org/whl/cu118
 ```
 
