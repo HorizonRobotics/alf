@@ -41,12 +41,9 @@ from alf.utils import dist_utils, tensor_utils
 
 # How to install dependencies (in a virtual env) on the deployment machine:
 # ```bash
-#   pip install onnx
+#   pip install onnx>=1.16.2 protobuf==3.20.2
 #
-#   pip install tensorrt
-# After this, tensorrt .so files will be installed in your virtual env: .../site-packages/tensorrt_lib/
-# You need to copy all .so files under it to /usr/local/cuda/targets/x86_64-linux/lib/
-# Or alternatively, you can install it system-wide from https://developer.nvidia.com/tensorrt-getting-started
+#   pip install tensorrt>=10.0
 
 # For cuda 11.x,
 #   pip install onnxruntime-gpu
@@ -60,6 +57,11 @@ from alf.utils import dist_utils, tensor_utils
 # The available provider list is:
 # ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 # The order of elements represents the default priority order of Execution Providers from highest to lowest.
+
+# NOTE: If onnxruntime complains about not finding libnvinfer.so or other tensorrt libs,
+# they can be found in your virtual env: .../site-packages/tensorrt_lib/
+# You need to copy all .so files under it to /usr/local/cuda/targets/x86_64-linux/lib/
+# Or alternatively, you can install it system-wide from https://developer.nvidia.com/tensorrt-getting-started
 
 
 def is_onnxruntime_available():

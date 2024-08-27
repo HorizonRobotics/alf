@@ -37,7 +37,7 @@ setup(
         'pathos==0.2.4',
         'pillow>=8',
         # 'procgen>=0.10.4',
-        'protobuf==3.20.1',
+        'protobuf==3.20.2',
         'psutil==5.9.8',
         'pybullet==2.5.0',
         'pyglet==1.3.2',  # higher version breaks classic control rendering
