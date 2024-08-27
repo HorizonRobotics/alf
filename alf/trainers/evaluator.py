@@ -367,30 +367,6 @@ def _worker(job_queue: mp.Queue,
         logging.exception(f'{mp.current_process().name} - {e}')
 
 
-def _peek(queue: mp.Queue):
-    """Peek the first element in the queue without removing it.
-
-    Note that if a new element is put into the queue during the peeking, the
-    order of the elements in the queue may be changed.
-
-    Args:
-        queue (mp.Queue): the queue
-    Returns:
-        The first element in the queue. None if the queue is empty.
-    """
-    elements = []
-    while not queue.empty():
-        elements.append(queue.get())
-
-    for element in elements:
-        queue.put(element)
-
-    if len(elements) > 0:
-        return elements[0]
-    else:
-        return None
-
-
 @common.mark_eval
 def evaluate(env: AlfEnvironment,
              algorithm: RLAlgorithm,
