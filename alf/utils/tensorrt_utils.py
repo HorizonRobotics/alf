@@ -43,6 +43,7 @@ from alf.utils import dist_utils, tensor_utils
 # ```bash
 #   pip install onnx>=1.16.2 protobuf==3.20.2
 #
+#   # https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip
 #   pip install tensorrt>=10.0
 
 # For cuda 11.x,
@@ -165,8 +166,8 @@ class _OnnxWrapper(torch.nn.Module):
     def recover_module_output(self, forward_output):
         """``forward_output`` is a direct return of ``self.forward()``.
         """
-        # remove the dummy output as the second one
-        forward_output = list(forward_output)[:-1]
+        # remove the dummy output as the last one
+        forward_output = forward_output[:-1]
         output_nest = alf.nest.py_pack_sequence_as(self._output_params_spec,
                                                    forward_output)
         output = dist_utils.params_to_distributions(output_nest,
@@ -214,7 +215,8 @@ class _OnnxWrapper(torch.nn.Module):
 
         # We want to use ALF's flatten to avoid ONNX's defined flattening order
         output_params = alf.nest.flatten(output_params)
-        return output_params, dummy_output
+        output_params.append(dummy_output)
+        return output_params
 
 
 @alf.configurable(whitelist=['device'])
@@ -232,8 +234,12 @@ class OnnxRuntimeEngine(object):
 
         NOTE: if ``tensorrt`` lib is not installed, this backend will fall back
         to use CUDA. If GPU is not available, this backend will fall back to CPU.
-        So the class name might not be accurate. But since its main purpose is
-        using tensorRT for inference, we keep the name as it is.
+        So the class name might not be accurate. To exclude certain providers,
+        set the env var ``ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS``. For example,
+
+        .. code-block:: bash
+
+            ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS='TensorrtExecutionProvider,CPUExecutionProvider'
 
         This class is mainly responsible for:
 
@@ -347,6 +353,8 @@ class TensorRTEngine(object):
         flat_all_args = tuple(alf.nest.flatten([example_args, example_kwargs]))
         self._inputs = flat_all_args
         self._outputs = alf.nest.flatten(self._onnx_wrapper.example_output)
+        input_names = [f'input-{i}' for i in range(len(self._inputs))]
+        output_names = [f'output-{i}' for i in range(len(self._outputs))]
 
         if onnx_file is None:
             onnx_io = io.BytesIO()
@@ -356,6 +364,8 @@ class TensorRTEngine(object):
         torch.onnx.export(
             self._onnx_wrapper,
             args=self._inputs,
+            input_names=input_names,
+            output_names=output_names,
             f=onnx_io,
             # Don't modify the version easily! Other versions might
             # have weird errors.
@@ -368,28 +378,29 @@ class TensorRTEngine(object):
             with open(onnx_io, 'rb') as f:
                 model_content = f.read()
 
+        engine = self._build_engine(model_content, fp16, memory_limit_gb)
+        self._prepare_io(engine)
+        self._engine = engine
+
+    def _build_engine(self, model_content, fp16, memory_limit_gb):
         # Create a TensorRT logger
         TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
-        # Create a builder and network
-        builder = trt.Builder(TRT_LOGGER)
-        network = builder.create_network()
-        parser = trt.OnnxParser(network, TRT_LOGGER)
-        parser.parse(model_content)
-
-        # Create a builder configuration
-        config = builder.create_builder_config()
-        config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE,
-                                     int((1 << 30) * memory_limit_gb))
-        if fp16:
-            config.set_flag(trt.BuilderFlag.FP16)
-
-        # Build the engine
-        serialized_engine = builder.build_serialized_network(network, config)
-        # Create a runtime to deserialize the engine
-        runtime = trt.Runtime(TRT_LOGGER)
-        # Deserialize the engine
-        self._engine = runtime.deserialize_cuda_engine(serialized_engine)
-        self._prepare_io()
+        with trt.Builder(TRT_LOGGER) as builder, \
+            builder.create_network() as network, \
+            trt.OnnxParser(network, TRT_LOGGER) as parser:
+            parser.parse(model_content)
+            config = builder.create_builder_config()
+            config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE,
+                                         int((1 << 30) * memory_limit_gb))
+            if fp16:
+                config.set_flag(trt.BuilderFlag.FP16)
+            # Build the engine
+            serialized_engine = builder.build_serialized_network(
+                network, config)
+            # Create a runtime to deserialize the engine
+            runtime = trt.Runtime(TRT_LOGGER)
+            # Deserialize the engine
+            return runtime.deserialize_cuda_engine(serialized_engine)
 
     @staticmethod
     def _get_bytes(tensor):
@@ -397,8 +408,8 @@ class TensorRTEngine(object):
         """
         return tensor.element_size() * tensor.nelement()
 
-    def _prepare_io(self):
-        self._context = self._engine.create_execution_context()
+    def _prepare_io(self, engine):
+        self._context = engine.create_execution_context()
 
         # allocate device memory (bytes)
         self._input_mem = [
@@ -411,10 +422,9 @@ class TensorRTEngine(object):
         # Set the IO tensor addresses
         bindings = list(map(int, self._input_mem)) + list(
             map(int, self._output_mem))
-        for i in range(self._engine.num_io_tensors):
+        for i in range(engine.num_io_tensors):
             self._context.set_tensor_address(
-                self._engine.get_tensor_name(i), bindings[i])
-
+                engine.get_tensor_name(i), bindings[i])
         # create stream
         self._stream = cuda.Stream()
 
@@ -444,6 +454,82 @@ class TensorRTEngine(object):
         ]
         for om, o in zip(self._output_mem, outputs):
             cuda.memcpy_dtod_async(o.data_ptr(), om, self._get_bytes(o),
+                                   self._stream)
+
+        self._stream.synchronize()
+        return self._onnx_wrapper.recover_module_output(outputs)
+
+
+class TensorRT8Engine(TensorRTEngine):
+    """A big trouble of TensorRT 8 is that its input/output args order might not be
+    consistent with that of the ONNX model! So we need to manually keep track of
+    the correspondence when memcopying between host/device.
+
+    Also there is a slight API difference when creating the engine.
+    """
+
+    def _build_engine(self, model_content, fp16, memory_limit_gb):
+        # Create a TensorRT logger
+        TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+        with trt.Builder(TRT_LOGGER) as builder, \
+            builder.create_network(1 << int(
+                trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)) as network, \
+            trt.OnnxParser(network, TRT_LOGGER) as parser:
+            # Create a builder and network
+            parser.parse(model_content)
+            config = builder.create_builder_config()
+            config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE,
+                                         int((1 << 30) * memory_limit_gb))
+            if fp16:
+                config.set_flag(trt.BuilderFlag.FP16)
+            return builder.build_engine(network, config)
+
+    def _prepare_io(self, engine):
+        self._context = engine.create_execution_context()
+        self._input_mem = []
+        self._input_idx = []
+        self._output_mem = []
+        self._output_idx = []
+        self._bindings = []
+        # TRT8: This order might be different from the order of the onnx model!!
+        for i in range(engine.num_io_tensors):
+            name = engine.get_tensor_name(i)
+            shape = tuple(engine.get_tensor_shape(name))
+            idx = int(name.split('-')[1])
+            dtype = trt.nptype(engine.get_tensor_dtype(name))
+            host_mem = cuda.pagelocked_empty(shape, dtype)
+            mem = cuda.mem_alloc(host_mem.nbytes)
+            self._bindings.append(int(mem))
+            if engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                self._input_mem.append(mem)
+                self._input_idx.append(idx)
+            else:
+                self._output_mem.append(mem)
+                self._output_idx.append(idx)
+        self._stream = cuda.Stream()
+
+    def __call__(self, *args, **kwargs):
+        flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
+
+        for i in range(len(flat_all_args)):
+            im = self._input_mem[i]
+            arg = flat_all_args[self._input_idx[i]]
+            cuda.memcpy_dtod_async(im,
+                                   arg.contiguous().data_ptr(),
+                                   self._get_bytes(arg), self._stream)
+
+        self._context.execute_async_v2(
+            bindings=self._bindings, stream_handle=self._stream.handle)
+
+        outputs = [
+            torch.empty_like(o, memory_format=torch.contiguous_format)
+            for o in self._outputs
+        ]
+
+        for i in range(len(outputs)):
+            om = self._output_mem[i]
+            out = outputs[self._output_idx[i]]
+            cuda.memcpy_dtod_async(out.data_ptr(), om, self._get_bytes(out),
                                    self._stream)
 
         self._stream.synchronize()
@@ -509,9 +595,17 @@ def compile_for_inference_if(cond: bool = True,
 _compiled_methods = {}
 
 
-def compile_method(module,
-                   method_name,
-                   engine_class: Callable = TensorRTEngine):
+def get_tensorrt_engine_class():
+    assert is_tensorrt_available()
+    trt_major_ver = trt.__version__.split('.')[0]
+    # On some edge device like Jetson, only tensorrt 8 is supported
+    if trt_major_ver == '8':
+        return TensorRT8Engine
+    assert trt_major_ver == '10'
+    return TensorRTEngine
+
+
+def compile_method(module, method_name, engine_class: Callable = None):
     """Convert a module method to use OnnxRuntime or TensorRT inference on the fly.
     For example,
 
@@ -560,8 +654,13 @@ def compile_method(module,
     Args:
         module: a torch.nn.Module
         method_name: the method name of the module
-        engine_class: should be either ``TensorRTEngine`` or ``OnnxRuntimeEngine``
+        engine_class: should be either ``TensorRTEngine``, ``TensorRT8Engine``,
+            or ``OnnxRuntimeEngine``. If None, will use ``get_tensorrt_engine_class()``
+            to choose a tensorrt engine.
     """
+    if engine_class is None:
+        engine_class = get_tensorrt_engine_class()
+
     global _compiled_methods
     key = (module, method_name)
     # Here we check if a previous ``compile_method`` has already been called
