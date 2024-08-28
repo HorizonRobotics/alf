@@ -23,10 +23,9 @@ import os
 import alf
 from alf.data_structures import restart
 from alf.algorithms.sac_algorithm import SacAlgorithm
-from alf.utils.tensorrt_utils import (OnnxRuntimeEngine, TensorRTEngine,
-                                      get_tensorrt_engine_class,
-                                      compile_method, is_onnxruntime_available,
-                                      is_tensorrt_available)
+from alf.utils.tensorrt_utils import (
+    OnnxRuntimeEngine, compile_method, get_tensorrt_engine_class,
+    is_onnxruntime_available, is_tensorrt_available)
 
 
 def create_sac_and_inputs():
