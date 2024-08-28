@@ -44,7 +44,9 @@ from alf.utils import dist_utils, tensor_utils
 #   pip install onnx>=1.16.2 protobuf==3.20.2
 #
 #   # https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip
-#   pip install tensorrt>=10.0
+#   pip install tensorrt==8.6.1
+#   # To install a different version of tensorrt, first make sure to ``rm -rf`` all dirs
+#   # under virtual env ``site-packages``` with the prefix ``tensorrt``.
 
 # For cuda 11.x,
 #   pip install onnxruntime-gpu
@@ -234,8 +236,8 @@ class OnnxRuntimeEngine(object):
 
         NOTE: if ``tensorrt`` lib is not installed, this backend will fall back
         to use CUDA. If GPU is not available, this backend will fall back to CPU.
-        So the class name might not be accurate. To exclude certain providers,
-        set the env var ``ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS``. For example,
+        To exclude certain providers, set the env var ``ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS``.
+        For example,
 
         .. code-block:: bash
 
@@ -442,8 +444,8 @@ class TensorRTEngine(object):
                                    self._get_bytes(i), self._stream)
 
         # For some reason, we have to manually synchronize the stream here before
-        # executing the engine. Otherwise the inference will be much slower. Probably
-        # a pycuda bug because in theory this synchronization is not needed.
+        # executing the engine. Otherwise the inference will be much slower sometimes.
+        # Probably a pycuda bug because in theory this synchronization is not needed.
         self._stream.synchronize()
 
         self._context.execute_async_v3(stream_handle=self._stream.handle)
@@ -494,18 +496,16 @@ class TensorRT8Engine(TensorRTEngine):
         # TRT8: This order might be different from the order of the onnx model!!
         for i in range(engine.num_io_tensors):
             name = engine.get_tensor_name(i)
-            shape = tuple(engine.get_tensor_shape(name))
             idx = int(name.split('-')[1])
-            dtype = trt.nptype(engine.get_tensor_dtype(name))
-            host_mem = cuda.pagelocked_empty(shape, dtype)
-            mem = cuda.mem_alloc(host_mem.nbytes)
-            self._bindings.append(int(mem))
             if engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                mem = cuda.mem_alloc(self._get_bytes(self._inputs[idx]))
                 self._input_mem.append(mem)
                 self._input_idx.append(idx)
             else:
+                mem = cuda.mem_alloc(self._get_bytes(self._outputs[idx]))
                 self._output_mem.append(mem)
                 self._output_idx.append(idx)
+            self._bindings.append(int(mem))
         self._stream = cuda.Stream()
 
     def __call__(self, *args, **kwargs):
@@ -518,6 +518,10 @@ class TensorRT8Engine(TensorRTEngine):
                                    arg.contiguous().data_ptr(),
                                    self._get_bytes(arg), self._stream)
 
+        # For some reason, we have to manually synchronize the stream here before
+        # executing the engine. Otherwise the inference will be much slower sometimes.
+        # Probably a pycuda bug because in theory this synchronization is not needed.
+        self._stream.synchronize()
         self._context.execute_async_v2(
             bindings=self._bindings, stream_handle=self._stream.handle)
 
