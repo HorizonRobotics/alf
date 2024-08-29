@@ -311,7 +311,6 @@ class OnnxRuntimeEngine(object):
         return self._onnx_wrapper.recover_module_output(outputs)
 
 
-@alf.configurable(whitelist=['memory_limit_gb', 'fp16'])
 class TensorRTEngine(object):
     def __init__(self,
                  module: torch.nn.Module,
@@ -321,7 +320,8 @@ class TensorRTEngine(object):
                  memory_limit_gb: float = 1.,
                  fp16: bool = False,
                  example_args: Tuple[Any] = (),
-                 example_kwargs: Dict[str, Any] = {}):
+                 example_kwargs: Dict[str, Any] = {},
+                 validate_args: bool = False):
         """Class for converting a torch.nn.Module to TensorRT engine for fast
         inference, via ONNX model as the intermediate representation.
 
@@ -344,12 +344,20 @@ class TensorRTEngine(object):
                 a tuple of args.
             example_kwargs: The example kwargs to be used for ``method``. Should
                 be a dict of kwargs.
+            validate_args: if True, every call of the engine will first check
+                if the args are consistent with the example args that were used
+                to build the engine. If None, useful debugging info will be
+                printed. Default to False. Use this flag if you have some memcpy
+                issue for an input.
         """
         assert torch.cuda.is_available(
         ), 'This engine can only be used on GPU!'
 
         example_args = _dtype_conversions(example_args)
         example_kwargs = _dtype_conversions(example_kwargs)
+        self._validate_args = validate_args
+        self._example_args = example_args
+        self._example_kwargs = example_kwargs
         self._onnx_wrapper = _OnnxWrapper(module, method, example_args,
                                           example_kwargs)
         flat_all_args = tuple(alf.nest.flatten([example_args, example_kwargs]))
@@ -410,6 +418,25 @@ class TensorRTEngine(object):
         """
         return tensor.element_size() * tensor.nelement()
 
+    def _check_args(self, args, kwargs):
+        alf.nest.assert_same_structure(args, self._example_args)
+        alf.nest.assert_same_structure(kwargs, self._example_kwargs)
+
+        def _check_tensor_shape_and_dtype(path, x, y):
+            if (not isinstance(x, torch.Tensor)
+                    or not isinstance(y, torch.Tensor)):
+                assert type(x) == type(y), (
+                    f"'{path}' has different types: {type(x)} vs {type(y)}")
+                return
+            assert x.shape == y.shape, (
+                f"'{path}' has different shapes: {x.shape} vs {y.shape}")
+            assert x.dtype == y.dtype, (
+                f"'{path}' has different dtypes: {x.dtype} vs {y.dtype}")
+
+        alf.nest.py_map_structure_with_path(
+            _check_tensor_shape_and_dtype, (args, kwargs),
+            (self._example_args, self._example_kwargs))
+
     def _prepare_io(self, engine):
         self._context = engine.create_execution_context()
 
@@ -436,6 +463,9 @@ class TensorRTEngine(object):
         The arguments must be GPU tensors, otherwise invalid mem addresses will
         be reported.
         """
+        if self._validate_args:
+            self._check_args(args, kwargs)
+
         flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
 
         for im, i in zip(self._input_mem, flat_all_args):
@@ -509,6 +539,9 @@ class TensorRT8Engine(TensorRTEngine):
         self._stream = cuda.Stream()
 
     def __call__(self, *args, **kwargs):
+        if self._validate_args:
+            self._check_args(args, kwargs)
+
         flat_all_args = _dtype_conversions(alf.nest.flatten([args, kwargs]))
 
         for i in range(len(flat_all_args)):
@@ -599,14 +632,37 @@ def compile_for_inference_if(cond: bool = True,
 _compiled_methods = {}
 
 
-def get_tensorrt_engine_class():
+@alf.configurable
+def get_tensorrt_engine_class(memory_limit_gb: float = 1.,
+                              fp16: bool = False,
+                              validate_args: bool = False):
+    """Get the proper tensorrt engine class depending on the available ``tensorrt``
+    version.
+
+    Currently we only support tensorrt 8 and 10.
+
+    Args:
+        memory_limit_gb: The memory limit in GBs for tensorRT for inference.
+        fp16: If True, the model will do inference in fp16.
+        validate_args: if True, every call of the engine will first check
+                if the args are consistent with the example args that were used
+                to build the engine. If None, useful debugging info will be
+                printed. Default to False. Use this flag if you have some memcpy
+                issue for an input.
+    """
     assert is_tensorrt_available()
     trt_major_ver = trt.__version__.split('.')[0]
     # On some edge device like Jetson, only tensorrt 8 is supported
     if trt_major_ver == '8':
-        return TensorRT8Engine
-    assert trt_major_ver == '10'
-    return TensorRTEngine
+        cls = TensorRT8Engine
+    else:
+        assert trt_major_ver == '10'
+        cls = TensorRTEngine
+    return functools.partial(
+        cls,
+        memory_limit_gb=memory_limit_gb,
+        fp16=fp16,
+        validate_args=validate_args)
 
 
 def compile_method(module, method_name, engine_class: Callable = None):

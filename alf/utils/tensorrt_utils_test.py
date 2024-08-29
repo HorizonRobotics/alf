@@ -136,7 +136,8 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         print("Eager-mode predict step time: ",
               (time.time() - start_time) / 100)
 
-        compile_method(alg, 'predict_step')
+        compile_method(alg, 'predict_step',
+                       get_tensorrt_engine_class(validate_args=True))
         alg.predict_step(timestep, state=state)  # build engine
         start_time = time.time()
         for _ in range(100):
@@ -166,8 +167,9 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
             for fp16 in [True, False]:
                 model = models.resnet50(pretrained=True)
                 model.eval()
-                compile_method(model, 'forward',
-                               partial(get_tensorrt_engine_class(), fp16=fp16))
+                compile_method(
+                    model, 'forward',
+                    get_tensorrt_engine_class(fp16=fp16, validate_args=True))
                 model(dummy_img)  # build engine
                 for _ in range(10):
                     output = model(dummy_img)
