@@ -147,7 +147,7 @@ class PeekableQueue(object):
 
     def __init__(self, queue: mp.Queue):
         self._queue = queue
-        self._elements = []
+        self._elements = []  # elements that are peeked but not removed
 
     def peek(self):
         """Peek the first element in the queue without removing it.
