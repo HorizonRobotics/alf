@@ -321,6 +321,8 @@ class TensorRTEngine(object):
                  fp16: bool = False,
                  example_args: Tuple[Any] = (),
                  example_kwargs: Dict[str, Any] = {},
+                 engine_file: Optional[str] = None,
+                 force_build_engine: bool = False,
                  validate_args: bool = False):
         """Class for converting a torch.nn.Module to TensorRT engine for fast
         inference, via ONNX model as the intermediate representation.
@@ -336,6 +338,8 @@ class TensorRTEngine(object):
             method: A method in ``module`` to be converted.
             onnx_file: The path to the onnx model. If None, no external file will
                 be created. Instead, the onnx model will be created in memory.
+                Note that an onnx model is exported only when the engine is not
+                loaded from a file.
             onnx_verbose: If True, the onnx model exporting process will output
                 verbose information.
             memory_limit_gb: The memory limit in GBs for tensorRT for inference.
@@ -344,6 +348,19 @@ class TensorRTEngine(object):
                 a tuple of args.
             example_kwargs: The example kwargs to be used for ``method``. Should
                 be a dict of kwargs.
+            engine_file: if provided, this class will first check if such a file
+                exists. If so, it will load the engine from the file and skip the
+                build process. If not, the built engine will be saved to this file.
+                When a file is provided, it is the *user's responsibility* to ensure
+                that the loaded engine will work correctly in the current context;
+                no check will be performed by this class.
+                NOTE: This option is mainly for an inter-process cache and its
+                priority is lower than the in-process engine caching mechanism.
+                Within a process when the same compiled method is called multiple
+                times with the same signature, engine file loading and ``force_build_engine``
+                won't have any effect.
+            force_build_engine: if True, the engine will always be built and
+                overwrite the engine file (if exists).
             validate_args: if True, every call of the engine will first check
                 if the args are consistent with the example args that were used
                 to build the engine. If None, useful debugging info will be
@@ -363,34 +380,56 @@ class TensorRTEngine(object):
         flat_all_args = tuple(alf.nest.flatten([example_args, example_kwargs]))
         self._inputs = flat_all_args
         self._outputs = alf.nest.flatten(self._onnx_wrapper.example_output)
-        input_names = [f'input-{i}' for i in range(len(self._inputs))]
-        output_names = [f'output-{i}' for i in range(len(self._outputs))]
 
-        if onnx_file is None:
-            onnx_io = io.BytesIO()
-        else:
-            onnx_io = onnx_file
-        # 'args' must be a tuple of tensors
-        torch.onnx.export(
-            self._onnx_wrapper,
-            args=self._inputs,
-            input_names=input_names,
-            output_names=output_names,
-            f=onnx_io,
-            # Don't modify the version easily! Other versions might
-            # have weird errors.
-            opset_version=12,
-            verbose=onnx_verbose)
-        if isinstance(onnx_io, io.BytesIO):
-            onnx_io.seek(0)
-            model_content = onnx_io.getvalue()
-        else:
-            with open(onnx_io, 'rb') as f:
-                model_content = f.read()
+        engine = self._load_or_build_engine(onnx_file, onnx_verbose,
+                                            engine_file, force_build_engine,
+                                            fp16, memory_limit_gb)
 
-        engine = self._build_engine(model_content, fp16, memory_limit_gb)
         self._prepare_io(engine)
         self._engine = engine
+
+    def _load_or_build_engine(self, onnx_file: Optional[str],
+                              onnx_verbose: bool, engine_file: Optional[str],
+                              force_build_engine: bool, fp16: bool,
+                              memory_limit_gb: float):
+        if (not force_build_engine and engine_file is not None
+                and os.path.isfile(engine_file)):
+            runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
+            with open(engine_file, "rb") as f:
+                engine_data = f.read()
+                engine = runtime.deserialize_cuda_engine(engine_data)
+        else:
+            if onnx_file is None:
+                onnx_io = io.BytesIO()
+            else:
+                onnx_io = onnx_file
+            input_names = [f'input-{i}' for i in range(len(self._inputs))]
+            output_names = [f'output-{i}' for i in range(len(self._outputs))]
+            # 'args' must be a tuple of tensors
+            torch.onnx.export(
+                self._onnx_wrapper,
+                args=self._inputs,
+                input_names=input_names,
+                output_names=output_names,
+                f=onnx_io,
+                # Don't modify the version easily! Other versions might
+                # have weird errors.
+                opset_version=12,
+                verbose=onnx_verbose)
+            if isinstance(onnx_io, io.BytesIO):
+                onnx_io.seek(0)
+                model_content = onnx_io.getvalue()
+            else:
+                with open(onnx_io, 'rb') as f:
+                    model_content = f.read()
+            engine = self._build_engine(model_content, fp16, memory_limit_gb)
+
+            if engine_file is not None:
+                # Write the engine to file
+                with open(engine_file, "wb") as f:
+                    f.write(engine.serialize())
+
+        return engine
 
     def _build_engine(self, model_content, fp16, memory_limit_gb):
         # Create a TensorRT logger
@@ -635,6 +674,8 @@ _compiled_methods = {}
 @alf.configurable
 def get_tensorrt_engine_class(memory_limit_gb: float = 1.,
                               fp16: bool = False,
+                              engine_file: Optional[str] = None,
+                              force_build_engine: bool = False,
                               validate_args: bool = False):
     """Get the proper tensorrt engine class depending on the available ``tensorrt``
     version.
@@ -644,6 +685,14 @@ def get_tensorrt_engine_class(memory_limit_gb: float = 1.,
     Args:
         memory_limit_gb: The memory limit in GBs for tensorRT for inference.
         fp16: If True, the model will do inference in fp16.
+        engine_file: if provided, this class will first check if such a file
+                exists. If so, it will load the engine from the file and skip the
+                build process. If not, the built engine will be saved to this file.
+                When a file is provided, it is the *user's responsibility* to ensure
+                that the loaded engine will work correctly in the current context.
+                No check will be performed by this class.
+        force_build_engine: if True, the engine will always be built and
+            overwrite the engine file (if exists).
         validate_args: if True, every call of the engine will first check
                 if the args are consistent with the example args that were used
                 to build the engine. If None, useful debugging info will be
@@ -662,6 +711,8 @@ def get_tensorrt_engine_class(memory_limit_gb: float = 1.,
         cls,
         memory_limit_gb=memory_limit_gb,
         fp16=fp16,
+        engine_file=engine_file,
+        force_build_engine=force_build_engine,
         validate_args=validate_args)
 
 

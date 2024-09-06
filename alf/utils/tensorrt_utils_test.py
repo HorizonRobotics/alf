@@ -15,6 +15,7 @@
 from absl.testing import parameterized
 from functools import partial
 import time
+import tempfile
 import torch
 import torchvision.models as models
 import unittest
@@ -146,6 +147,48 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
               (time.time() - start_time) / 100)
 
         self.assertTensorClose(trt_alg_step.output, alg_step.output)
+
+    @unittest.skipIf(not is_tensorrt_available(), "tensorrt is unavailable")
+    def test_tensorrt_engine_cache(self):
+        engine_file = tempfile.mktemp(suffix='.trt')
+        alg, timestep, state = create_sac_and_inputs()
+        compile_method(
+            alg, 'predict_step',
+            get_tensorrt_engine_class(
+                validate_args=True, engine_file=engine_file))
+        start_time = time.time()
+        alg.predict_step(timestep, state=state)  # build engine
+        self.assertGreater(time.time() - start_time,
+                           1)  # takes more than 1 second
+
+        alg, timestep, state = create_sac_and_inputs()
+        # Now if we compile again with engine file, the engine should be directly
+        # loaded from disk, even though the alg has been recreated
+        compile_method(
+            alg, 'predict_step',
+            get_tensorrt_engine_class(
+                validate_args=True, engine_file=engine_file))
+        start_time = time.time()
+        alg.predict_step(timestep, state=state)  # load engine
+        self.assertLess(time.time() - start_time, 0.1)
+
+        alg, timestep, state = create_sac_and_inputs()
+        # Now we compile again and force building the engine
+        compile_method(
+            alg, 'predict_step',
+            get_tensorrt_engine_class(
+                validate_args=True,
+                engine_file=engine_file,
+                force_build_engine=True))
+        start_time = time.time()
+        alg.predict_step(timestep, state=state)  # build engine
+        self.assertGreater(time.time() - start_time, 1)
+
+        alg, timestep, state = create_sac_and_inputs()
+        compile_method(alg, 'predict_step')
+        start_time = time.time()
+        alg.predict_step(timestep, state=state)  # build engine
+        self.assertGreater(time.time() - start_time, 1)
 
     @unittest.skipIf(not is_tensorrt_available()
                      and not is_onnxruntime_available(),
