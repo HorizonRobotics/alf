@@ -484,6 +484,10 @@ class ReplayBuffer(RingBuffer):
         info = BatchInfo(env_ids=env_ids, positions=pos)
         return info
 
+    def set_shrinkage_factor(self, factor: float = 1.0):
+        self._current_size = (self._current_size * factor).to(torch.int64)
+
+
     def _prioritized_sample(self, batch_size, batch_length):
         if batch_length != self._mini_batch_length:
             if self._mini_batch_length > 1:
