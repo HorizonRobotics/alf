@@ -351,16 +351,14 @@ class TensorRTEngine(object):
             engine_file: if provided, this class will first check if such a file
                 exists. If so, it will load the engine from the file and skip the
                 build process. If not, the built engine will be saved to this file.
-                When a file is provided, it is the *user's responsibility* to ensure
-                that the loaded engine will work correctly in the current context;
-                no check will be performed by this class.
-                NOTE: This option is mainly for an inter-process cache and its
-                priority is lower than the in-process engine caching mechanism.
-                Within a process when the same compiled method is called multiple
-                times with the same signature, engine file loading and ``force_build_engine``
-                won't have any effect.
+                When a valid file is provided, it is the *user's responsibility*
+                to ensure that the loaded engine will work correctly in the current
+                context; no check will be performed by this class.
+                NOTE: This option is only intended as an inter-process cache, e.g.,
+                storing the engine to disk and later loading it for reuse.
             force_build_engine: if True, the engine will always be built and
-                overwrite the engine file (if exists).
+                overwrite the engine file (if exists). This flag is only used
+                when a valid engine file is provided.
             validate_args: if True, every call of the engine will first check
                 if the args are consistent with the example args that were used
                 to build the engine. If None, useful debugging info will be
