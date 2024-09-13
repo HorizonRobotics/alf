@@ -107,7 +107,7 @@ def _worker(conn: multiprocessing.connection,
             torch_num_threads_per_env: int = 1,
             ddp_num_procs: int = 1,
             ddp_rank: int = -1,
-            local_rank: int= -1,
+            local_rank: int = -1,
             name: str = ''):
     """The process waits for actions and sends back environment results.
 
@@ -479,5 +479,3 @@ class ProcessEnvironment(object):
             NotImplementedError: If the environment does not support rendering.
         """
         return self.call('render', mode)()
-    
-    
