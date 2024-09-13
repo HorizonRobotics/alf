@@ -828,7 +828,8 @@ class SLTrainer(Trainer):
 
         self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
-        self._algorithm = config.algorithm_ctor(config=config)
+        self._algorithm = config.algorithm_ctor(
+            config=config, debug_summaries=self._debug_summaries)
         self._algorithm.set_path('')
 
     def _train(self):
