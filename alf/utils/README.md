@@ -71,3 +71,12 @@ If you have to use a dynamic shape, you can choose to use the CUDA backend by se
 ```bash
 ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS=TensorrtExecutionProvider
 ```
+
+## Common issues
+There is some known side effect on CUDA/GPU when importing ``tensorrt_utils.py``. It is crucial to make sure
+that this module is never imported during training, but only imported for inference when necessary.
+
+If imported during training, the typical issues can be:
+
+1. GPU 0 consumes an extra abnormal amount of memory, leading to CUDA out-of-mem issue.
+2. For multi-gpu training, sometimes there will be an error such as "Duplicate GPU detected : rank 1 and rank 0 both on CUDA device 17000" after actual training starts (rollout is fine).
