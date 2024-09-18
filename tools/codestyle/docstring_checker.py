@@ -13,11 +13,16 @@
 # limitations under the License.
 """DocstringChecker is used to check python doc string's style."""
 
-import six
 import astroid
 
-from pylint.checkers import BaseChecker, utils
-from pylint.interfaces import IAstroidChecker
+from pylint.checkers import BaseChecker
+# Newer versions of pylint (>= 2.5.0) do not have IAstroidChecker
+try:
+    from pylint.interfaces import IAstroidChecker
+
+    IASTROID_CHECKER_AVAILABLE = True
+except ImportError:
+    IASTROID_CHECKER_AVAILABLE = False
 
 from collections import defaultdict
 import re
@@ -112,7 +117,8 @@ class DocstringChecker(BaseChecker):
     """DosstringChecker is pylint checker to
     check docstring style.
     """
-    __implements__ = (IAstroidChecker, )
+    if IASTROID_CHECKER_AVAILABLE:
+        __implements__ = (IAstroidChecker, )
 
     POSITIONAL_MESSAGE_ID = 'str-used-on-positional-format-argument'
     KEYWORD_MESSAGE_ID = 'str-used-on-keyword-format-argument'
