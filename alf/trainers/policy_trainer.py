@@ -1120,6 +1120,8 @@ def play(root_dir,
     else:
         selective_criteria_func = None
 
+    # Sync the progress for all environments in case parallel_play > 1
+    env.sync_progress()
     while episodes < num_episodes:
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statistics) as it can be
