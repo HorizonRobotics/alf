@@ -182,7 +182,7 @@ class ConfigTest(alf.test.TestCase):
         self.assertEqual(alf.get_config_value("sole_init_test_twice.x"), 1)
         self.assertEqual(alf.get_config_value("sole_init_test_env.x"), 1)
 
-        # Test override_config doesn't doesn't overwrite for immutable values.
+        # Test override_config doesn't overwrite for immutable values.
         @alf.configurable
         def override_on_immutable(x):
             pass
