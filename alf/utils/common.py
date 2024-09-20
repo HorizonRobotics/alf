@@ -1514,41 +1514,41 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         conf_file: the alf config file
         dest_path: the path to generate a snapshot of ALF repo
     """
+    print("---skipped")
+    # def _is_subdir(path, directory):
+    #     relative = os.path.relpath(path, directory)
+    #     return not relative.startswith(os.pardir)
 
-    def _is_subdir(path, directory):
-        relative = os.path.relpath(path, directory)
-        return not relative.startswith(os.pardir)
+    # def rsync(src, target, includes, excludes=[]):
+    #     args = [
+    #         'rsync',
+    #         '-rI',
+    #     ]
+    #     args += ['--exclude=%s' % e for e in excludes]
+    #     args += ['--include=*/'] + ['--include=%s' % i for i in includes]
+    #     args += ['--exclude=*']
+    #     args += [src, target]
+    #     # shell=True preserves string arguments
+    #     subprocess.check_call(
+    #         " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
 
-    def rsync(src, target, includes, excludes=[]):
-        args = [
-            'rsync',
-            '-rI',
-        ]
-        args += ['--exclude=%s' % e for e in excludes]
-        args += ['--include=*/'] + ['--include=%s' % i for i in includes]
-        args += ['--exclude=*']
-        args += [src, target]
-        # shell=True preserves string arguments
-        subprocess.check_call(
-            " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
-
-    includes = [
-        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.cc",
-        "*.hpp", "*.h", "*.stl", "*.png", "*.txt"
-    ]
-    excludes = ['*/build/']
-    repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
-    for name, root in repo_roots.items():
-        assert not _is_subdir(dest_path, root), (
-            "Snapshot path '%s' is not allowed under any repo root '%s'! " %
-            (dest_path, root) + "Use a different one!")
-        # Only copy the module dir because the root dir might contain many
-        # other modules in the case where repo is pip installed in 'site-packages'.
-        rsync(root + f'/{name}', dest_path, includes, excludes)
-        # compress the snapshot repo into a ".tar.gz" file
-        os.system(
-            f"cd {dest_path}; tar -czf {name}.tar.gz {name}; rm -rf {name}")
-        info(f"Generated a snapshot {name}@{root}")
+    # includes = [
+    #     "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.cc",
+    #     "*.hpp", "*.h", "*.stl", "*.png", "*.txt"
+    # ]
+    # excludes = ['*/build/']
+    # repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
+    # for name, root in repo_roots.items():
+    #     assert not _is_subdir(dest_path, root), (
+    #         "Snapshot path '%s' is not allowed under any repo root '%s'! " %
+    #         (dest_path, root) + "Use a different one!")
+    #     # Only copy the module dir because the root dir might contain many
+    #     # other modules in the case where repo is pip installed in 'site-packages'.
+    #     rsync(root + f'/{name}', dest_path, includes, excludes)
+    #     # compress the snapshot repo into a ".tar.gz" file
+    #     os.system(
+    #         f"cd {dest_path}; tar -czf {name}.tar.gz {name}; rm -rf {name}")
+    #     info(f"Generated a snapshot {name}@{root}")
 
 
 def unzip_alf_snapshot(root_dir: str):

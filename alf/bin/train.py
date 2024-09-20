@@ -77,7 +77,7 @@ def _define_flags():
     flags.DEFINE_bool(
         'force_torch_deterministic', False,
         'torch.use_deterministic_algorithms when random_seed is set')
-    flags.DEFINE_bool('store_snapshot', True,
+    flags.DEFINE_bool('store_snapshot', False,
                       'Whether store an ALF snapshot before training')
     flags.DEFINE_enum(
         'distributed', 'none', ['none', 'multi-gpu'],
