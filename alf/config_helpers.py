@@ -285,7 +285,11 @@ def get_env():
             # A 'None' random seed won't set a deterministic torch behavior.
             for _ in range(PerProcessContext().ddp_rank):
                 random_seed = random.randint(0, 2**32)
-        config1("TrainerConfig.random_seed", random_seed, raise_if_used=False)
+        config1(
+            "TrainerConfig.random_seed",
+            random_seed,
+            raise_if_used=False,
+            override_sole_init=True)
 
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.
