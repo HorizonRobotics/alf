@@ -27,6 +27,7 @@ You can visualize playing of the trained model by running:
 from absl import app
 from absl import flags
 from absl import logging
+import inspect
 import copy
 import os
 import subprocess
@@ -161,12 +162,17 @@ def play():
     # print("====in play cached_env_specs")
     # print(cached_env_specs)
     
+    signature = inspect.signature(algorithm_ctor)
+    kwargs = {
+        'observation_spec': observation_spec,
+        'action_spec': env.action_spec(),
+        'config': config
+    }
+    # only RLAlgorithm need reward_spec
+    if 'reward_spec' in signature.parameters:
+        kwargs['reward_spec'] = env.reward_spec()
 
-    algorithm = algorithm_ctor(
-        observation_spec=observation_spec,
-        action_spec=env.action_spec(),
-        reward_spec=env.reward_spec(),
-        config=config)
+    algorithm = algorithm_ctor(**kwargs)
     algorithm.set_path('')
 
     try:
