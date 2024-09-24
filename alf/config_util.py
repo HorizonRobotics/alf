@@ -35,7 +35,7 @@ __all__ = [
     'get_operative_configs',
     'import_config',
     'load_config',
-    'override_config',
+    'override_sole_config',
     'pre_config',
     'reset_configs',
     'validate_pre_configs',
@@ -147,7 +147,7 @@ def config(prefix_or_dict,
                 override_sole_init)
 
 
-def override_config(prefix_or_dict, **kwargs):
+def override_sole_config(prefix_or_dict, **kwargs):
     """Wrapper function for configuring a config with override_sole_init=True.
 
     This call allows a user to attempt to overwrite a config's value even

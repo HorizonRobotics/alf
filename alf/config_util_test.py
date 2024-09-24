@@ -172,26 +172,26 @@ class ConfigTest(alf.test.TestCase):
             alf.config("sole_init_test_env", x=0)
         os.environ["ALF_SOLE_CONFIG"] = "0"
 
-        # Testing alf.override_config
-        alf.override_config("sole_init_test_prior", x=1)
-        alf.override_config("sole_init_test_after", x=1)
-        alf.override_config("sole_init_test_twice", x=1)
-        alf.override_config("sole_init_test_env", x=1)
+        # Testing alf.override_sole_config
+        alf.override_sole_config("sole_init_test_prior", x=1)
+        alf.override_sole_config("sole_init_test_after", x=1)
+        alf.override_sole_config("sole_init_test_twice", x=1)
+        alf.override_sole_config("sole_init_test_env", x=1)
         self.assertEqual(alf.get_config_value("sole_init_test_prior.x"), 1)
         self.assertEqual(alf.get_config_value("sole_init_test_after.x"), 1)
         self.assertEqual(alf.get_config_value("sole_init_test_twice.x"), 1)
         self.assertEqual(alf.get_config_value("sole_init_test_env.x"), 1)
 
-        # Test override_config doesn't overwrite for immutable values.
+        # Test override_sole_config doesn't overwrite for immutable values.
         @alf.configurable
         def override_on_immutable(x):
             pass
 
         alf.config("override_on_immutable", x=0, mutable=False)
-        alf.override_config("override_on_immutable", x=1)
+        alf.override_sole_config("override_on_immutable", x=1)
         self.assertEqual(alf.get_config_value("override_on_immutable.x"), 0)
 
-        # Test override_config doesn't doesn't overwrite for immutable values.
+        # Test override_sole_config doesn't doesn't overwrite for immutable values.
         @alf.configurable
         def override_on_immutable_and_sole_init(x):
             pass
@@ -201,7 +201,7 @@ class ConfigTest(alf.test.TestCase):
             x=0,
             sole_init=True,
             mutable=False)
-        alf.override_config("override_on_immutable_and_sole_init", x=1)
+        alf.override_sole_config("override_on_immutable_and_sole_init", x=1)
         self.assertEqual(
             alf.get_config_value("override_on_immutable_and_sole_init.x"), 0)
 
@@ -212,7 +212,7 @@ class ConfigTest(alf.test.TestCase):
 
         alf.pre_config({"pre_config_before.x": 0})
         alf.config("pre_config_before", x=1)
-        alf.override_config("pre_config_before", x=1)
+        alf.override_sole_config("pre_config_before", x=1)
         # sole_init starts to take effect for all calls AFTER the first call.
         alf.config("pre_config_before", x=1, sole_init=True)
         with self.assertRaises(RuntimeError) as context:
@@ -229,15 +229,17 @@ class ConfigTest(alf.test.TestCase):
         with self.assertRaises(RuntimeError) as context:
             alf.pre_config({"pre_config_after.x": 0})
 
-        # Test that calling override_config doesn't affect previous sole_init calls.
+        # Test that calling override_sole_config doesn't affect previous sole_init calls.
         @alf.configurable
         def override_no_affect_sole_init(x):
             pass
 
         alf.config("override_no_affect_sole_init", x=1, sole_init=True)
-        alf.override_config("override_no_affect_sole_init", x=2)
+        alf.override_sole_config("override_no_affect_sole_init", x=2)
         with self.assertRaises(RuntimeError) as context:
             alf.config("override_no_affect_sole_init", x=3)
+        self.assertEqual(
+            alf.get_config_value("override_no_affect_sole_init.x"), 2)
 
     def test_repr_wrapper(self):
         a = MyClass(1, 2)
