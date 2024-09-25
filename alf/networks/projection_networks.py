@@ -175,6 +175,8 @@ class NormalProjectionNetwork(Network):
                  std_transform=nn.functional.softplus,
                  scale_distribution=False,
                  dist_squashing_transform=dist_utils.StableTanh(),
+                 seed_sampling_alpha: float = 1,
+                 seed_sampling_beta: float = 1,
                  disable_amp: bool = False,
                  name="NormalProjectionNetwork"):
         """Creates an instance of NormalProjectionNetwork.
@@ -216,11 +218,17 @@ class NormalProjectionNetwork(Network):
             disable_amp (bool): If True, disable automatic mixed precision.
             name (str): name of this network.
         """
-        super(NormalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
-
         assert isinstance(action_spec, TensorSpec)
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
+
+        state_spec = ()
+        if seed_sampling_alpha < 1 and seed_sampling_beta < 1:
+            state_spec = TensorSpec(action_spec.shape, dtype=action_spec.dtype)
+
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )),
+            state_spec=state_spec,
+            name=name)
 
         self._action_spec = action_spec
         self._mean_transform = math_ops.identity
@@ -278,8 +286,12 @@ class NormalProjectionNetwork(Network):
                 self._std, 0, x.shape[0])
         self._disable_amp = disable_amp
         self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
+        self._alpha = seed_sampling_alpha
+        self._beta = seed_sampling_beta
+        self._betac = (1 - self._beta**2)**0.5
+        self._alphac = (1 - self._alpha**2)**0.5
 
-    def _normal_dist(self, means, stds):
+    def _normal_dist(self, means, stds, state):
         normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
         if self._scale_distribution:
             # The transformed distribution can also do reparameterized sampling
@@ -296,7 +308,7 @@ class NormalProjectionNetwork(Network):
                 base_distribution=normal_dist, transforms=self._transforms)
             return squashed_dist
         else:
-            return normal_dist
+            return normal_dist, state
 
     def forward(self, inputs, state=()):
         amp_enabled = torch.is_autocast_enabled()
@@ -313,7 +325,7 @@ class NormalProjectionNetwork(Network):
             #     flag = ~stds.isfinite()
             #     logging.info(f"stds is not finite. x: {x[flag]}")
             #     breakpoint()
-            return self._normal_dist(means, stds), state
+            return self._normal_dist(means, stds, state)
 
     def make_parallel(self, n):
         parallel_proj_net_args = dict(**self.saved_args)
@@ -446,7 +458,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             means = self._mean_transform(
                 self._means_projection_layer(inputs) * stds)
 
-            return self._normal_dist(means, stds), state
+            return self._normal_dist(means, stds, state)
 
 
 @alf.configurable

@@ -14,6 +14,7 @@
 """Actor critic algorithm."""
 
 import torch
+from typing import Tuple
 
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -26,7 +27,7 @@ from .config import TrainerConfig
 from alf.utils.model_averager import create_averaged_model
 
 ActorCriticState = namedtuple(
-    "ActorCriticState", ["actor", "value"], default_value=())
+    "ActorCriticState", ["actor", "value", "adapter"], default_value=())
 
 ActorCriticInfo = namedtuple(
     "ActorCriticInfo", [
@@ -47,6 +48,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_weights=None,
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
+                 distribution_adapter_ctor=None,
                  epsilon_greedy=None,
                  env=None,
                  config: TrainerConfig = None,
@@ -119,16 +121,23 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 value_network = value_network.make_parallel(
                     reward_spec.numel)  # value->[B,n]
 
+        if distribution_adapter_ctor is not None:
+            distribution_adapter = distribution_adapter_ctor(action_spec)
+            adapter_state_spec = distribution_adapter.state_spec
+        else:
+            distribution_adapter = None
+            adapter_state_spec = ()
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
             reward_weights=reward_weights,
             predict_state_spec=ActorCriticState(
-                actor=actor_network.state_spec),
+                actor=actor_network.state_spec, adapter=adapter_state_spec),
             train_state_spec=ActorCriticState(
                 actor=actor_network.state_spec,
-                value=value_network.state_spec if value_network else ()),
+                value=value_network.state_spec if value_network else (),
+                adapter=adapter_state_spec),
             env=env,
             config=config,
             optimizer=optimizer,
@@ -138,6 +147,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._actor_network = actor_network
         self._value_network = value_network
+        self._distribution_adapter = distribution_adapter
         if loss is None:
             loss = loss_class(
                 reward_dim=reward_spec.numel, debug_summaries=debug_summaries)
@@ -179,11 +189,17 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         action_dist, actor_state = self._predict_model(
             inputs.observation, state=state.actor)
 
+        if self._distribution_adapter is not None:
+            action_dist, adapter_state = self._distribution_adapter(
+                (action_dist, inputs.prev_action), state.adapter)
+        else:
+            adapter_state = ()
+
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
         return AlgStep(
             output=action,
-            state=ActorCriticState(actor=actor_state),
+            state=ActorCriticState(actor=actor_state, adapter=adapter_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
@@ -193,6 +209,12 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         action_distribution, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
+
+        if self._distribution_adapter is not None:
+            action_distribution, adapter_state = self._distribution_adapter(
+                (action_distribution, inputs.prev_action), state.adapter)
+        else:
+            adapter_state = ()
 
         action, log_prob = dist_utils.sample_action_distribution(
             action_distribution, return_log_prob=True)
@@ -204,7 +226,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             reward_weights = ()
         return AlgStep(
             output=action,
-            state=ActorCriticState(actor=actor_state, value=value_state),
+            state=ActorCriticState(
+                actor=actor_state, value=value_state, adapter=adapter_state),
             info=ActorCriticInfo(
                 action=common.detach(action),
                 log_prob=common.detach(log_prob),
@@ -218,3 +241,75 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def calc_loss(self, info: ActorCriticInfo):
         """Calculate loss."""
         return self._loss(info)
+
+
+class CorrelatedDistributionAdpater(alf.nn.Network):
+    r"""Adapt the action distribution to be correlated with the previous action.
+
+    Sampling using the adapted distribution is equivalent to the following sampling
+    process:
+
+    .. math::
+
+        \episilon_t \leftarrow \beta_c \epsilon + \beta N(0, 1)
+        x \leftarrow \mu + \sigma (\alpha_c \epsilon + \alpha N(0, 1))
+
+    where :math:`\epsilon` is the state, :math:`\mu` is the mean, :math:`\sigma`,
+    :math:`\beta_c = \sqrt{1 - \beta^2}`, :math:`\alpha_c = \sqrt{1 - \alpha^2}`.
+
+    :param dim: the dimension of the normal distribution
+    :param alpha: the alpha parameter in the above equation
+    :param beta: the beta parameter in the above equation
+    """
+
+    def __init__(self, dim: int, alpha: float, beta: float):
+        assert alpha == 0, "Only support alpha=0"
+        dist = dist_utils.DiagMultivariateNormal(
+            loc=torch.zeros((1, dim)), scale=torch.ones((1, dim)))
+        dist_spec = dist_utils.extract_spec(dist)
+        super().__init__(
+            input_tensor_spec=dist_spec,
+            state_spec=(alf.TensorSpec((dim, )), alf.TensorSpec((dim, ))))
+        self._beta = beta
+        self._betac = (1 - beta**2)**0.5
+
+    def forward(self,
+                input: Tuple[dist_utils.DiagMultivariateNormal, torch.Tensor],
+                state: torch.Tensor):
+        dist, prev_action = input
+        assert type(dist) == dist_utils.DiagMultivariateNormal
+        prev_mean, prev_stddev = state
+        is_first = (prev_mean == 0).all(dim=1)[..., None]
+        new_mean = dist.mean + self._betac * (prev_action - prev_mean) / (
+            prev_stddev + 1e-30) * dist.stddev
+        loc = torch.where(is_first, dist.mean, new_mean)
+        scale = torch.where(is_first, dist.stddev, dist.stddev * self._beta)
+
+        return dist_utils.DiagMultivariateNormal(loc, scale), (dist.mean,
+                                                               dist.stddev)
+
+
+def create_distribution_adapter(action_spec, alpha, beta):
+    """Create a seed sampler for nested `action_spec`.
+
+    :param action_spec: a nest of `BoundedTensorSpec`
+    :param beta: see doc of `SeedSampler`
+    :return: a `Network` for sampling from the nested action distribution
+    """
+
+    def _get_dist_spec(action_spec):
+        assert action_spec.ndim == 1
+        dim = action_spec.shape[0]
+        dist = dist_utils.DiagMultivariateNormal(
+            loc=torch.zeros((1, dim)), scale=torch.ones((1, dim)))
+        return dist_utils.extract_spec(dist)
+
+    return alf.nn.Sequential(
+        lambda dist_and_prev_action: alf.nest.map_structure(
+            lambda d, a: (d, a), *dist_and_prev_action),
+        alf.nn.Parallel(
+            alf.nest.map_structure(
+                lambda spec: CorrelatedDistributionAdpater(
+                    spec.shape[0], alpha, beta), action_spec)),
+        input_tensor_spec=(alf.nest.map_structure(_get_dist_spec, action_spec),
+                           action_spec))
