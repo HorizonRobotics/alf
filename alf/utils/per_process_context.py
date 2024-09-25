@@ -43,7 +43,8 @@ class PerProcessContext(object):
         """
         self._read_only = True
 
-    def set_distributed(self, rank: int, local_rank: int, num_processes: int) -> None:
+    def set_distributed(self, rank: int, local_rank: int,
+                        num_processes: int) -> None:
         """Set the distributed properties.
 
         Args:
@@ -79,7 +80,7 @@ class PerProcessContext(object):
     @property
     def ddp_rank(self):
         return self._ddp_rank
-    
+
     @property
     def local_rank(self):
         return self._local_rank
