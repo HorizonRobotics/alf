@@ -28,6 +28,7 @@ from absl import app
 from absl import flags
 from absl import logging
 import copy
+import inspect
 import os
 import subprocess
 import sys
@@ -155,11 +156,19 @@ def play():
     common.set_transformed_observation_spec(observation_spec)
 
     algorithm_ctor = config.algorithm_ctor
-    algorithm = algorithm_ctor(
-        observation_spec=observation_spec,
-        action_spec=env.action_spec(),
-        reward_spec=env.reward_spec(),
-        config=config)
+    signature = inspect.signature(algorithm_ctor)
+    kwargs = {
+        'observation_spec': observation_spec,
+        'action_spec': env.action_spec(),
+        'config': config
+    }
+    # only the algorithms derived from ``RLAlgorithm`` need reward_spec
+    if 'reward_spec' in signature.parameters:
+        kwargs['reward_spec'] = env.reward_spec()
+
+    algorithm = algorithm_ctor(**kwargs)
+    algorithm.set_path('')
+
     algorithm.set_path('')
 
     if FLAGS.checkpoint_step is not None:
