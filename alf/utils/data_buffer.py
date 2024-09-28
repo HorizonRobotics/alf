@@ -103,8 +103,8 @@ class RingBuffer(nn.Module):
         self._device = device
         self._allow_multiprocess = allow_multiprocess
         # allows outside to stop enqueue and dequeue processes from waiting
-        self._stop = Event()
         if allow_multiprocess:
+            self._stop = Event()
             self._lock = RLock()  # re-entrant lock
             # notify a finished dequeue event, so blocked enqueues may start
             self._dequeued = Event()
@@ -113,6 +113,7 @@ class RingBuffer(nn.Module):
             self._enqueued = Event()
             self._enqueued.clear()
         else:
+            self._stop = None
             self._lock = None
             self._dequeued = None
             self._enqueued = None
@@ -392,14 +393,16 @@ class RingBuffer(nn.Module):
         be skipped (return ``None`` for dequeue or ``False`` for enqueue),
         unless the operation already started.
         """
-        self._stop.set()
+        if self._stop is not None:
+            self._stop.set()
 
     def revive(self):
         """Clears the stop Event so blocking mode will start working again.
 
         Only checked in blocking mode of dequeue and enqueue.
         """
-        self._stop.clear()
+        if self._stop is not None:
+            self._stop.clear()
 
     @property
     def num_environments(self):
