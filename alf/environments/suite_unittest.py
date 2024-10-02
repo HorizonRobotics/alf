@@ -41,6 +41,7 @@ class UnittestEnv(AlfEnvironment):
                  episode_length,
                  obs_dim=1,
                  action_type=ActionType.Discrete,
+                 action_dim=1,
                  nested_observation=False,
                  reward_dim=1):
         """Initializes the environment.
@@ -50,6 +51,7 @@ class UnittestEnv(AlfEnvironment):
                 observations.
             episode_length (int): length of each episode
             action_type (nest): ActionType
+            action_dim (int): dimension of action
             nested_observation (bool): whether observation is a tensor
         """
         self._steps = 0
@@ -59,11 +61,15 @@ class UnittestEnv(AlfEnvironment):
 
         def _create_action_spec(act_type):
             if act_type == ActionType.Discrete:
+                assert action_dim == 1
                 return BoundedTensorSpec(
                     shape=(), dtype=torch.int64, minimum=0, maximum=1)
             else:
                 return BoundedTensorSpec(
-                    shape=(1, ), dtype=torch.float32, minimum=[0], maximum=[1])
+                    shape=(action_dim, ),
+                    dtype=torch.float32,
+                    minimum=[0],
+                    maximum=[1])
 
         self._action_spec = alf.nest.map_structure(_create_action_spec,
                                                    action_type)
@@ -191,8 +197,9 @@ class PolicyUnittestEnv(UnittestEnv):
             prev_observation = self._current_time_step.observation
             if self._nested_observation:
                 prev_observation = prev_observation[0]
+            action_value = action.reshape(action.shape[0], -1).float().mean(-1)
             reward = 1.0 - torch.abs(prev_observation -
-                                     action.reshape(prev_observation.shape))
+                                     action_value.reshape_as(prev_observation))
             reward = reward.reshape(self.batch_size)
 
         if self._reward_dim != 1:
