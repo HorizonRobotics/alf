@@ -25,6 +25,7 @@ from alf.utils import common, dist_utils, tensor_utils
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 from alf.utils.model_averager import create_averaged_model
+from alf.utils import summary_utils
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value", "adapter"], default_value=())
@@ -280,10 +281,15 @@ class CorrelatedDistributionAdpater(alf.nn.Network):
         assert type(dist) == dist_utils.DiagMultivariateNormal
         prev_mean, prev_stddev = state
         is_first = (prev_mean == 0).all(dim=1)[..., None]
-        new_mean = dist.mean + self._betac * (prev_action - prev_mean) / (
-            prev_stddev + 1e-30) * dist.stddev
+        mu_bar = self._betac * (prev_action - prev_mean) / (
+            prev_stddev + 1e-30)
+        new_mean = dist.mean + mu_bar * dist.stddev
         loc = torch.where(is_first, dist.mean, new_mean)
         scale = torch.where(is_first, dist.stddev, dist.stddev * self._beta)
+
+        if common.is_replay() and alf.summary.should_record_summaries():
+            summary_utils.add_mean_hist_summary(
+                "/CorrelatedDistributionAdpater/mu_bar", mu_bar)
 
         return dist_utils.DiagMultivariateNormal(loc, scale), (dist.mean,
                                                                dist.stddev)
