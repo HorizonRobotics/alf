@@ -144,9 +144,12 @@ class PPOLoss(ActorCriticLoss):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with scope:
-                alf.summary.histogram('pg_objective', pg_objective)
-                alf.summary.histogram('pg_objective_clipped',
-                                      pg_objective_clipped)
+                alf.summary.scalar('pg_objective', pg_objective.mean())
+                alf.summary.scalar('pg_objective_clipped',
+                                   pg_objective_clipped.mean())
+                alf.summary.scalar(
+                    'objective_clip_fraction',
+                    (pg_objective_clipped > pg_objective).float().mean())
 
         if self._check_numerics:
             assert torch.all(torch.isfinite(policy_gradient_loss))
