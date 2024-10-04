@@ -722,6 +722,19 @@ def _get_mixture_same_family_builder(obj: td.MixtureSameFamily):
     }
 
 
+def _run_under_context(context, func, *args, **kwargs):
+    """Run a function under a context.
+
+    Args:
+        context: a context manager
+        func: the function to run
+        *args: positional arguments to pass to ``func``
+        **kwargs: keyword arguments to pass to ``func``
+    """
+    with context:
+        return func(*args, **kwargs)
+
+
 _get_builder_map = {
     td.Categorical:
         _get_categorical_builder,
@@ -738,6 +751,15 @@ _get_builder_map = {
             'loc': obj.mean,
             'scale': obj.stddev
         }),
+    td.LowRankMultivariateNormal:  # td.LowRankMultivariateNormal does not support fp16, so we need to
+        # turn off autocast here
+        lambda obj: (functools.partial(_run_under_context,
+                                       torch.cuda.amp.autocast(False), td.
+                                       LowRankMultivariateNormal), {
+                                           'loc': obj.mean,
+                                           'cov_factor': obj.cov_factor,
+                                           'cov_diag': obj.cov_diag
+                                       }),
     StableCauchy:
         lambda obj: (StableCauchy, {
             'loc': obj.loc,
@@ -1121,7 +1143,7 @@ def get_mode(dist):
             dist, (td.OneHotCategorical, td.OneHotCategoricalStraightThrough)):
         mode = torch.nn.functional.one_hot(
             torch.argmax(dist.logits, -1), num_classes=dist.logits.shape[-1])
-    elif isinstance(dist, td.normal.Normal):
+    elif isinstance(dist, (td.normal.Normal, td.LowRankMultivariateNormal)):
         mode = dist.mean
     elif isinstance(dist, td.MixtureSameFamily):
         # Note that this just computes an approximate mode. We use an approximate
@@ -1176,7 +1198,7 @@ def get_rmode(dist):
             ``td.Normal``, ``StableCauchy``, ``Beta``, ``TruncatedDistribution``,
             ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if isinstance(dist, td.normal.Normal):
+    if isinstance(dist, (td.Normal, td.LowRankMultivariateNormal)):
         mode = dist.mean
     elif isinstance(dist, td.MixtureSameFamily):
         # note that for the mixture distribution, there is no gradient back-propagation
@@ -1216,7 +1238,7 @@ def get_base_dist(dist):
             ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
     if isinstance(dist, (td.Normal, td.Categorical, StableCauchy, Beta,
-                         TruncatedDistribution)):
+                         TruncatedDistribution, td.LowRankMultivariateNormal)):
         return dist
     elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
         return get_base_dist(dist.base_dist)

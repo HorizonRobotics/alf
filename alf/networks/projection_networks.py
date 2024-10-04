@@ -306,7 +306,7 @@ class NormalProjectionNetwork(Network):
             # ````
             squashed_dist = td.TransformedDistribution(
                 base_distribution=normal_dist, transforms=self._transforms)
-            return squashed_dist
+            return squashed_dist, state
         else:
             return normal_dist, state
 
@@ -895,3 +895,180 @@ class MixtureProjectionNetwork(Network):
             "mixture": state_mixture,
             "components": state_components,
         }
+
+
+@alf.configurable
+class LowRankNormalProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 parallelism: Optional[int] = None,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=0.3,
+                 std_bias_initializer_value=0.0,
+                 rank=1,
+                 squash_mean=True,
+                 mean_transform=None,
+                 state_dependent_std=False,
+                 std_transform=nn.functional.softplus,
+                 scale_distribution=False,
+                 dist_squashing_transform=dist_utils.StableTanh(),
+                 seed_sampling_alpha: float = 1,
+                 seed_sampling_beta: float = 1,
+                 disable_amp: bool = False,
+                 name="LowRankNormalProjectionNetwork"):
+        """Creates an instance of LowRankNormalProjectionNetwork.
+
+        The distribution is represented as ``td.LowRankMultivariateNormal``.
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            parallelism: when specified, this network will be parallelized. As
+                a result, a batch dimension of ``parallelism`` will be appended
+                to the batch shape of the output distribution, while the event
+                shape remains the same. This is useful when you are creating
+                a mixture of policies.
+            activation (Callable): activation function to use in
+                dense layers.
+            projection_output_init_gain (float): Output gain for initializing
+                action means and std weights.
+            std_bias_initializer_value (float): Initial value for the bias of the
+                ``std_projection_layer``.
+            rank (int): The rank of the covariance factor of the low-rank
+                multivariate normal distribution.
+            squash_mean (bool): If True, squash the output mean to fit the
+                action spec. If ``scale_distribution`` is also True, this value
+                will be ignored.
+            mean_transform (Callable): Transform to apply to the mean, on top of
+                `activation`.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
+            std_transform (Callable): Transform to apply to the std, on top of
+                `activation`.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output action fits within the
+                `action_spec`. Note that this is different from `mean_transform`
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
+            disable_amp (bool): If True, disable automatic mixed precision.
+            name (str): name of this network.
+        """
+        assert isinstance(action_spec, TensorSpec)
+        assert action_spec.ndim == 1, "Only support 1D action spec!"
+        action_dim = action_spec.shape[0]
+
+        state_spec = ()
+        if seed_sampling_alpha < 1 and seed_sampling_beta < 1:
+            state_spec = TensorSpec(action_spec.shape, dtype=action_spec.dtype)
+
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )),
+            state_spec=state_spec,
+            name=name)
+
+        self._action_spec = action_spec
+        self._mean_transform = math_ops.identity
+        self._scale_distribution = scale_distribution
+
+        if squash_mean or scale_distribution:
+            assert isinstance(action_spec, BoundedTensorSpec), \
+                ("When squashing the mean or scaling the distribution, bounds "
+                 + "are required for the action spec!")
+
+            action_high = torch.tensor(action_spec.maximum)
+            action_low = torch.tensor(action_spec.minimum)
+            self._action_means = (action_high + action_low) / 2
+            self._action_magnitudes = (action_high - action_low) / 2
+            # Do not transform mean if scaling distribution
+            if not scale_distribution:
+                self._mean_transform = (
+                    lambda inputs: self._action_means + self._action_magnitudes
+                    * inputs.tanh())
+            else:
+                self._transforms = [
+                    dist_squashing_transform,
+                    dist_utils.AffineTransform(
+                        loc=self._action_means, scale=self._action_magnitudes)
+                ]
+        if mean_transform is not None:
+            self._mean_transform = mean_transform
+
+        self._std_transform = math_ops.identity
+        if std_transform is not None:
+            self._std_transform = std_transform
+
+        fc_ctor = layers.FC if parallelism is None else partial(
+            layers.ParallelFC, n=parallelism)
+        self._means_projection_layer = fc_ctor(
+            input_size,
+            action_dim,
+            activation=activation,
+            kernel_init_gain=projection_output_init_gain)
+
+        if state_dependent_std:
+            self._std_projection_layer = fc_ctor(
+                input_size,
+                action_dim,
+                activation=activation,
+                kernel_init_gain=projection_output_init_gain,
+                bias_init_value=std_bias_initializer_value)
+            self._cov_factor_projection_layer = fc_ctor(
+                input_size,
+                action_dim * rank,
+                activation=activation,
+                kernel_init_gain=projection_output_init_gain)
+        else:
+            outer_dims = () if parallelism is None else (parallelism, )
+            self._std = nn.Parameter(
+                action_spec.constant(
+                    std_bias_initializer_value, outer_dims=outer_dims),
+                requires_grad=True)
+            self._std_projection_layer = lambda x: tensor_extend_new_dim(
+                self._std, 0, x.shape[0])
+            self._cov_factor = nn.Parameter(
+                torch.randn(outer_dims + (action_dim * rank, )) * 0.001)
+            self._cov_factor_projection_layer = lambda x: tensor_extend_new_dim(
+                self._cov_factor, 0, x.shape[0])
+
+        self._disable_amp = disable_amp
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
+        self._rank = rank
+
+    def _normal_dist(self, means, stds, cov_factors):
+        normal_dist = td.LowRankMultivariateNormal(
+            loc=means, cov_factor=cov_factors, cov_diag=stds)
+        if self._scale_distribution:
+            squashed_dist = td.TransformedDistribution(
+                base_distribution=normal_dist, transforms=self._transforms)
+            return squashed_dist
+        else:
+            return normal_dist
+
+    def forward(self, inputs, state=()):
+        amp_enabled = torch.is_autocast_enabled()
+        if self._disable_amp and amp_enabled:
+            inputs = alf.layers.to_float32(inputs)
+            amp_enabled = False
+        with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
+            means = self._mean_transform(self._means_projection_layer(inputs))
+            stds = self._std_transform(self._std_projection_layer(inputs))
+            cov_factors = self._cov_factor_projection_layer(inputs)
+            cov_factors = cov_factors.reshape(*cov_factors.shape[:-1],
+                                              self._action_spec.shape[0],
+                                              self._rank)
+            return self._normal_dist(means, stds, cov_factors), state
+
+    def make_parallel(self, n):
+        parallel_proj_net_args = dict(**self.saved_args)
+        original_parallelism = parallel_proj_net_args.get("parallelism", None)
+        assert original_parallelism is None, (
+            "Calling make_parallel on a network that is already parallelized")
+        parallel_proj_net_args.update(
+            parallelism=n, name="parallel_" + self.name)
+        return type(self)(**parallel_proj_net_args)
