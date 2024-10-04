@@ -57,6 +57,7 @@ class PartialValueNetwork(alf.nn.Network):
                  observation_preprocessor=None,
                  fc_layer_params=(),
                  activation=torch.relu_,
+                 cumsum=False,
                  use_fc_bn=False,
                  use_fc_ln=False):
         super().__init__(
@@ -69,10 +70,14 @@ class PartialValueNetwork(alf.nn.Network):
             obs_preprocessor, input_tensor_spec=self._input_tensor_spec[0])
         assert self._obs_preprocessor.output_spec.ndim == 1
         obs_dim = self._obs_preprocessor.output_spec.numel
-        # the input will be concatenation of input, masked action, and mask
-        dim = obs_dim + (action_factor_dim + 1) * num_action_factors
+        n = num_action_factors * reward_dim
+        dim = fc_layer_params[0]
+        self._fc_obs = alf.layers.FC(obs_dim, dim).make_parallel(n)
+        self._fc_action = alf.layers.FC(action_factor_dim * num_action_factors,
+                                        dim).make_parallel(n)
+        self._fc_mask = alf.layers.FC(num_action_factors, dim).make_parallel(n)
         fcs = []
-        for i in range(len(fc_layer_params)):
+        for i in range(1, len(fc_layer_params)):
             fc = alf.layers.FC(
                 dim,
                 fc_layer_params[i],
@@ -81,7 +86,7 @@ class PartialValueNetwork(alf.nn.Network):
                 use_ln=use_fc_ln)
             fcs.append(fc.make_parallel(num_action_factors * reward_dim))
             dim = fc_layer_params[i]
-        fc = alf.layers.FC(dim, 1)
+        fc = alf.layers.FC(dim, 1, kernel_init_gain=0.0)
         fcs.append(fc.make_parallel(num_action_factors * reward_dim))
         self._fcs = torch.nn.Sequential(*fcs)
         self._mask = torch.ones(
@@ -89,6 +94,8 @@ class PartialValueNetwork(alf.nn.Network):
             num_action_factors).tril_(diagonal=-1).unsqueeze(-1)
         self._num_action_factors = num_action_factors
         self._reward_dim = reward_dim
+        self._cumsum = cumsum
+        self._activation = activation
 
     def forward(self, inputs, state):
         obs, action = inputs
@@ -99,13 +106,17 @@ class PartialValueNetwork(alf.nn.Network):
         action = action.reshape(B, -1, L).transpose(1, 2)
         action = action[:, None, :, :]  # [B, 1, L, D]
         action = action * self._mask  # [B, L, L, D]
-        action = action.reshape(B, L, -1)  # [B, L, L*D]
-        mask = self._mask.reshape(1, L, L).expand(B, -1, -1)  # [B, L, L]
-        obs = obs[:, None, :].expand(-1, L, -1)
-        x = torch.cat([obs, action, mask], dim=-1)
-        x = x[:, :, None, :].expand(-1, -1, R, -1).reshape(B, L * R, -1)
+        action = action.reshape(B, L, 1, -1).expand(B, L, R, -1).reshape(
+            B, L * R, -1)
+        mask = self._mask.reshape(1, L, 1, L).expand(B, L, R, L).reshape(
+            B, L * R, L)
+        obs = obs[:, None, :].expand(B, L * R, -1)
+        x = self._fc_obs(obs) + self._fc_action(action) + self._fc_mask(mask)
+        x = self._activation(x)
         out = self._fcs(x)
         out = out.reshape(B, L, R)
+        if self._cumsum:
+            out = out.cumsum(dim=1)
         return out, state
 
 

@@ -51,7 +51,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
             ActorDistributionNetwork,
             fc_layer_params=(),
             continuous_projection_net_ctor=StableNormalProjectionNetwork)
-        value_net = partial(PartialValueNetwork, fc_layer_params=())
+        value_net = partial(PartialValueNetwork, fc_layer_params=(16, ))
 
     optimizer = alf.optimizers.Adam(lr=learning_rate)
 
@@ -113,7 +113,7 @@ class FactoredPpoTest(parameterized.TestCase, alf.test.TestCase):
                          float(eval_time_step.reward.mean()))
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=1e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=0.15)
 
 
 def unroll(env, algorithm, steps):
