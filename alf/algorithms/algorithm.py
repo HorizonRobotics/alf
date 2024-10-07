@@ -1303,6 +1303,10 @@ class Algorithm(AlgorithmInterface):
 
         for optimizer in optimizers:
             if self._grad_scaler is not None:
+                # If no grad, grad_scaller.step() will crash with error:
+                # No inf checks were recorded for this optimizer.
+                if not _has_grad(optimizer):
+                    continue
                 # For ALF optimizers, gradient clipping is performed inside
                 # optimizer.step, so we don't need to explicitly unscale grad
                 # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
@@ -2186,3 +2190,11 @@ class Loss(Algorithm):
 
     def calc_loss(self, info):
         return LossInfo(loss=self._loss_weight * info, extra=info)
+
+
+def _has_grad(optimizer):
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            if p.grad is not None:
+                return True
+    return False
