@@ -907,6 +907,8 @@ class LowRankNormalProjectionNetwork(Network):
                  projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
                  rank=1,
+                 cov_factor_projection_init_gain=0.3,
+                 cov_factor_scale=1.0,
                  squash_mean=True,
                  mean_transform=None,
                  state_dependent_std=False,
@@ -1022,7 +1024,7 @@ class LowRankNormalProjectionNetwork(Network):
                 input_size,
                 action_dim * rank,
                 activation=activation,
-                kernel_init_gain=projection_output_init_gain)
+                kernel_init_gain=cov_factor_projection_init_gain)
         else:
             outer_dims = () if parallelism is None else (parallelism, )
             self._std = nn.Parameter(
@@ -1035,6 +1037,7 @@ class LowRankNormalProjectionNetwork(Network):
                 torch.randn(outer_dims + (action_dim * rank, )) * 0.001)
             self._cov_factor_projection_layer = lambda x: tensor_extend_new_dim(
                 self._cov_factor, 0, x.shape[0])
+        self._cov_factor_scale = cov_factor_scale
 
         self._disable_amp = disable_amp
         self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
@@ -1058,7 +1061,8 @@ class LowRankNormalProjectionNetwork(Network):
         with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
             means = self._mean_transform(self._means_projection_layer(inputs))
             stds = self._std_transform(self._std_projection_layer(inputs))
-            cov_factors = self._cov_factor_projection_layer(inputs)
+            cov_factors = self._cov_factor_scale * self._cov_factor_projection_layer(
+                inputs)
             cov_factors = cov_factors.reshape(*cov_factors.shape[:-1],
                                               self._action_spec.shape[0],
                                               self._rank)
