@@ -392,6 +392,10 @@ class TensorRTEngine(object):
                               memory_limit_gb: float):
         if (not force_build_engine and engine_file is not None
                 and os.path.isfile(engine_file)):
+            # According to https://github.com/onnx/onnx-tensorrt/issues/597,
+            # this line solves the issue of "getPluginCreator could not find plugin InstanceNormalization_TRT version 1"
+            # when loading a saved TRT engine.
+            trt.init_libnvinfer_plugins(None, "")
             runtime = trt.Runtime(trt.Logger(trt.Logger.WARNING))
             with open(engine_file, "rb") as f:
                 engine_data = f.read()
