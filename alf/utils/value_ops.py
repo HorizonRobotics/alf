@@ -181,6 +181,74 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     return rets.detach()
 
 
+def lower_bound_discounted_return(rewards,
+                                  values,
+                                  step_types,
+                                  discounts,
+                                  td_lambda,
+                                  time_major=True):
+    r"""Computes discounted return for the first T-1 steps.
+
+    Let :math:`Q_t` be the discounted return at time :math:`t` computed by
+    ``discounted_return()``. This function computes the lower bound of discounted
+    return at time :math:`t` as:
+
+    .. math::
+
+        Qlb_t = \max_{t: t\le t' \le T}^T Q_t
+
+    Define abbreviations:
+
+    - B: batch size representing number of trajectories
+    - T: number of steps per trajectory
+
+    Args:
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T, B] (or [T]) when representing values,
+            [T, B, n_quantiles] or [T, n_quantiles] when representing quantiles
+            of value distributions.
+        step_types (Tensor): shape is [T, B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+        time_major (bool): Whether input tensors are time major.
+            False means input tensors have shape [B, T].
+
+    Returns:
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns. Shape is [B, T-1] when time_major is false.
+    """
+    if not time_major:
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
+
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
+
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    is_lasts = common.expand_dims_as(is_lasts, values)
+    discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
+
+    rets = torch.zeros_like(values)
+    rets[-1] = values[-1]
+
+    with torch.no_grad():
+        for t in reversed(range(rewards.shape[0] - 1)):
+            lb = values[t + 1].lerp(rets[t + 1].maximum(values[t + 1]),
+                                    td_lambda)
+            acc_value = lb * discounts[t + 1] + rewards[t + 1]
+            rets[t] = torch.lerp(acc_value, values[t], is_lasts[t])
+
+    rets = rets[:-1]
+
+    if not time_major:
+        rets = rets.transpose(0, 1)
+
+    return rets.detach()
+
+
 def one_step_discounted_return(rewards, values, step_types, discounts):
     """Calculate the one step discounted return  for the first T-1 steps.
 

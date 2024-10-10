@@ -33,6 +33,7 @@ class TDLoss(nn.Module):
                  gamma: Union[float, List[float]] = 0.99,
                  td_error_loss_fn: Callable = element_wise_squared_loss,
                  td_lambda: float = 0.95,
+                 lower_bound_target: bool = False,
                  normalize_target: bool = False,
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
@@ -97,6 +98,7 @@ class TDLoss(nn.Module):
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
+        self._lower_bound_target = lower_bound_target
 
     @property
     def gamma(self):
@@ -126,7 +128,14 @@ class TDLoss(nn.Module):
         Returns:
             td_target
         """
-        if self._lambda == 1.0:
+        if self._lower_bound_target:
+            returns = value_ops.lower_bound_discounted_return(
+                rewards=info.reward,
+                values=target_value,
+                step_types=info.step_type,
+                discounts=info.discount * self._gamma,
+                td_lambda=self._lambda)
+        elif self._lambda == 1.0:
             returns = value_ops.discounted_return(
                 rewards=info.reward,
                 values=target_value,
