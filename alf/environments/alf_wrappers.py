@@ -1211,3 +1211,48 @@ class BatchEnvironmentWrapper(AlfEnvironment):
         time_step = alf.nest.map_structure(lambda *arrays: np.stack(arrays),
                                            *time_steps)
         return time_step
+
+
+class TrajectoryActionWrapper(AlfEnvironmentBaseWrapper):
+    """Wrapper that adds the action to the observation.
+
+    The new action shape is [action_dim * trajectory_length,] and can be reshaped
+    as [action_dim, trajectory_length]
+    """
+
+    def __init__(self, env, trajectory_length):
+        super().__init__(env)
+        action_spec = env.action_spec()
+        assert isinstance(action_spec, alf.BoundedTensorSpec)
+        assert action_spec.ndim == 1
+
+        def _f(bound):
+            bound = np.broadcast_to(bound, action_spec.shape)[:, None]
+            bound = np.broadcast_to(bound,
+                                    (action_spec.numel, trajectory_length))
+            return np.reshape(bound, (-1, ))
+
+        action_spec = alf.BoundedTensorSpec(
+            (action_spec.numel * trajectory_length, ),
+            minimum=_f(action_spec.minimum),
+            maximum=_f(action_spec.maximum),
+            dtype=action_spec.dtype,
+        )
+        self._action_spec = action_spec
+        self._trajectory_length = trajectory_length
+
+    def action_spec(self):
+        return self._action_spec
+
+    def _step(self, action):
+        l = self._trajectory_length
+        time_step = self._env.step(action[:, l - 1::l])
+        action[time_step.step_type == StepType.FIRST] = 0
+        return time_step._replace(prev_action=action)
+
+    def _reset(self):
+        time_step = self._env.reset()
+        time_step = time_step._replace(
+            prev_action=self._action_spec.zeros(
+                outer_dims=time_step.prev_action.shape[:1]))
+        return time_step

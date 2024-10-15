@@ -305,13 +305,8 @@ def _worker(job_queue: mp.Queue,
             for_evaluation=True,
             num_parallel_environments=num_parallel_envs,
             mutable=False)
-        result_file = os.path.join(root_dir, 'eval_results.csv')
         try:
             alf.pre_config(pre_configs)
-            alf.pre_config({
-                'LogSimEnvironment.result_file': result_file,
-                'LogSimEnvironment.max_num_result_episodes_per_env': 100,
-            })
             common.parse_conf_file(conf_file)
         except Exception as e:
             alf.close_env()
@@ -356,11 +351,6 @@ def _worker(job_queue: mp.Queue,
                 algorithm.load_state_dict(job.state_dict)
                 done_queue.put(None)
                 evaluator.eval(algorithm, job.step_metrics, job_queue)
-                with open(result_file, "a") as f:
-                    print(
-                        "--------------------------------------",
-                        job.global_counter,
-                        file=f)
             elif job.type == "stop":
                 break
             elif job.type == "wait":

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import inspect
 import numbers
 import numpy as np
 import math
@@ -821,7 +822,10 @@ _get_builder_map = {
 
 
 def _get_builder(obj):
-    return _get_builder_map[type(obj)](obj)
+    if hasattr(obj, 'get_builder'):
+        return obj.get_builder()
+    else:
+        return _get_builder_map[type(obj)](obj)
 
 
 def extract_distribution_parameters(dist: td.Distribution):
@@ -1176,8 +1180,7 @@ def get_mode(dist):
     elif isinstance(dist, (Beta, TruncatedDistribution)):
         return dist.mode
     else:
-        raise NotImplementedError(
-            "Distribution type %s is not supported" % type(dist))
+        return dist.mode
 
     return mode
 
@@ -1198,7 +1201,9 @@ def get_rmode(dist):
             ``td.Normal``, ``StableCauchy``, ``Beta``, ``TruncatedDistribution``,
             ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if isinstance(dist, (td.Normal, td.LowRankMultivariateNormal)):
+    if hasattr(dist, 'rmode'):
+        return dist.rmode
+    elif isinstance(dist, (td.Normal, td.LowRankMultivariateNormal)):
         mode = dist.mean
     elif isinstance(dist, td.MixtureSameFamily):
         # note that for the mixture distribution, there is no gradient back-propagation
@@ -1237,14 +1242,10 @@ def get_base_dist(dist):
         NotImplementedError: if ``dist`` or its based distribution is not
             ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
-    if isinstance(dist, (td.Normal, td.Categorical, StableCauchy, Beta,
-                         TruncatedDistribution, td.LowRankMultivariateNormal)):
-        return dist
-    elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
+    if hasattr(dist, 'base_dist'):
         return get_base_dist(dist.base_dist)
     else:
-        raise NotImplementedError(
-            "Distribution type %s is not supported" % type(dist))
+        return dist
 
 
 @alf.configurable
@@ -1255,7 +1256,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     :math:`-\log(p(x))` where :math:`x` is an unbiased sample of :math:`p`.
     However, the gradient of :math:`-\log(p(x))` is not an unbiased estimator
     of the gradient of entropy. So we also calculate a value whose gradient is
-    an unbiased estimator of the gradient of entropy. See ``notes/subtleties_of_estimating_entropy.py``
+    an unbiased estimator of the gradient of entropy. See ``notes/estimating_derivative_of_expectation.rst``
     for detail.
 
     Args:
@@ -1269,17 +1270,27 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     """
     sample_shape = (num_samples, )
     if dist.has_rsample:
-        single_action = dist.rsample(sample_shape=sample_shape)
+        if 'return_log_prob' in inspect.signature(dist.rsample).parameters:
+            single_action, log_prob = dist.rsample(
+                sample_shape=sample_shape, return_log_prob=True)
+        else:
+            single_action = dist.rsample(sample_shape=sample_shape)
+            log_prob = dist.log_prob(single_action)
     else:
-        single_action = dist.sample(sample_shape=sample_shape)
+        if 'return_log_prob' in inspect.signature(dist.sample).parameters:
+            single_action, log_prob = dist.sample(
+                sample_shape=sample_shape, return_log_prob=True)
+        else:
+            single_action = dist.sample(sample_shape=sample_shape)
+            log_prob = dist.log_prob(single_action)
     if single_action.dtype.is_floating_point and dist.has_rsample:
-        entropy = -dist.log_prob(single_action)
+        entropy = -log_prob
         if check_numerics:
             assert torch.all(torch.isfinite(entropy))
         entropy = entropy.mean(dim=0)
         entropy_for_gradient = entropy
     else:
-        entropy = -dist.log_prob(single_action.detach())
+        entropy = -log_prob.detach()
         if check_numerics:
             assert torch.all(torch.isfinite(entropy))
         entropy_for_gradient = -0.5 * entropy**2
@@ -1347,8 +1358,11 @@ def entropy_with_fallback(distributions, return_sum=True):
             # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)
         else:
-            entropy = dist.entropy()
-            entropy_for_gradient = entropy
+            try:
+                entropy = dist.entropy()
+                entropy_for_gradient = entropy
+            except NotImplementedError:
+                entropy, entropy_for_gradient = estimated_entropy(dist)
         return entropy, entropy_for_gradient
 
     entropies = list(map(_compute_entropy, nest.flatten(distributions)))
