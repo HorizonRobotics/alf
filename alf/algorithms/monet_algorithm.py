@@ -51,6 +51,7 @@ class MoNetUNet(alf.networks.Network):
                  filters: Tuple[int],
                  nonskip_fc_layers: Tuple[int],
                  output_channels: int,
+                 use_instance_norm: bool = True,
                  name: str = "MoNetUNet"):
         """
         Args:
@@ -63,6 +64,8 @@ class MoNetUNet(alf.networks.Network):
                 its output to a proper dimension (the output size of the downsampling
                 path) before being reshaped for the upsampling path.
             output_channels: final output channels. The output features are non-activated.
+            use_instance_norm: whether to insert an instance normalization layer
+                after each conv/deconv layer.
         """
         super().__init__(input_tensor_spec=input_tensor_spec, name=name)
 
@@ -76,9 +79,10 @@ class MoNetUNet(alf.networks.Network):
                     3,
                     strides=1,
                     padding=1,
-                    use_bias=False,
+                    use_bias=not use_instance_norm,
                     activation=alf.math.identity),
-                torch.nn.InstanceNorm2d(filters[i], affine=True),
+                *([torch.nn.InstanceNorm2d(filters[i], affine=True)]
+                  if use_instance_norm else []),
                 torch.nn.ReLU()
             ]
             if i > 0:
@@ -115,9 +119,10 @@ class MoNetUNet(alf.networks.Network):
                     3,
                     strides=1,
                     padding=1,
-                    use_bias=False,
+                    use_bias=not use_instance_norm,
                     activation=alf.math.identity),
-                torch.nn.InstanceNorm2d(out_channels, affine=True),
+                *([torch.nn.InstanceNorm2d(out_channels, affine=True)]
+                  if use_instance_norm else []),
                 torch.nn.ReLU()
             ]
             if i < len(filters) - 1:
