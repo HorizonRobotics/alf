@@ -18,7 +18,7 @@ from functools import partial
 import numpy as np
 import torch
 from torch import nn
-from typing import Iterable, Optional
+from typing import Dict, List, Iterable, Optional, Union, Tuple
 
 import alf
 from alf.data_structures import AlgStep, Experience, namedtuple, StepType, TimeStep
@@ -175,6 +175,235 @@ class SequentialDataTransformer(DataTransformer):
 
 
 @alf.configurable
+class NonUniformFrameStacker(DataTransformer):
+    def __init__(self,
+                 observation_spec,
+                 stack_config: Dict[str, List[Tuple[int, int]]]={
+                                'observation': [(4, 1), (2, 2)]
+                                },
+                 stack_axis=0):
+        """Create a FrameStacker object.
+
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in timestep
+            stack_size: [(field_name, stack_size, step_size)], meaning stack ``stack_size`` number of
+                frames for the field ``field_name`` every ``step_size`` number of steps. 
+                Subsequent tuples indicate stacking after the previous tuple configurations.
+            stack_axis (int): the dimension to stack the observation.
+            fields (list[str]): fields to be stacked, A field str is a multi-level
+                path denoted by "A.B.C". If None, then non-nested observation is stacked.
+        """
+
+        self._stack_axis = stack_axis
+        self._stack_config = stack_config
+        self._frames = dict()
+        self._fields = list(stack_config.keys())
+        self._exp_fields = []
+        prev_frames_spec = {} # use a dictionary to make the correspondance clear
+        stacked_observation_spec = observation_spec
+
+        print("----stack_config")
+        print(stack_config)
+
+        for field in self._fields:
+            s_conf = stack_config[field]
+            # each field may have different stack conf, which is a list of (stack_size, stack_step) tuples
+            assert isinstance(s_conf, List), "Expect List type"
+
+            if field is not None:
+                exp_field = 'observation.' + field
+            else:
+                exp_field = 'observation'
+            self._exp_fields.append(exp_field)
+
+            spec = alf.nest.get_field(observation_spec, field)
+
+            print("----s_conf")
+            print(s_conf)
+            for conf in s_conf:
+                stack_size = conf[0]
+                stack_step = conf[1]
+                print("-------")
+                print(stack_size)
+                print(stack_step)
+
+            prev_frames_spec.append([spec] * (stack_size - 1))
+            # prev_frames_spec[field] = 
+            stacked_observation_spec = alf.nest.transform_nest(
+                stacked_observation_spec, field, partial(self._make_stacked_spec, stack_size=stack_size))
+
+        super().__init__(
+            transformed_observation_spec=stacked_observation_spec,
+            state_spec=FrameStackState(
+                steps=alf.TensorSpec((), dtype=torch.int64),
+                prev_frames=prev_frames_spec))
+
+    # 
+    # @property
+    # def stack_size(self):
+    #     """Get stack_size."""
+    #     return self._stack_size
+
+    def _make_stacked_spec(self, spec, stack_size):
+        assert isinstance(
+            spec, alf.TensorSpec), (str(type(spec)) + "is not a TensorSpec")
+        if spec.ndim > 0:
+            stacked_shape = list(copy.copy(spec.shape))
+            stacked_shape[self._stack_axis] = stacked_shape[
+                self._stack_axis] * stack_size
+            stacked_shape = tuple(stacked_shape)
+        else:
+            stacked_shape = (stack_size, )
+        if not spec.is_bounded():
+            return alf.TensorSpec(stacked_shape, spec.dtype)
+        else:
+            if spec.minimum.shape != ():
+                assert spec.minimum.shape == spec.shape
+                rep = [1] * spec.minimum.ndim
+                rep[self._stack_axis] = stack_size
+                minimum = np.tile(spec.minimum, rep)
+            else:
+                minimum = spec.minimum
+            if spec.maximum.shape != ():
+                assert spec.maximum.shape == spec.shape
+                rep = [1] * spec.maximum.ndim
+                rep[self._stack_axis] = stack_size
+                maximum = np.tile(spec.maximum, rep)
+            else:
+                maximum = spec.maximum
+            return alf.BoundedTensorSpec(
+                stacked_shape,
+                minimum=minimum,
+                maximum=maximum,
+                dtype=spec.dtype)
+
+    def _make_state(self, spec, stack_size):
+        stacked_shape = list(copy.copy(spec.shape))
+        stacked_shape[self._stack_axis] = stacked_shape[self._stack_axis] * (
+            stack_size - 1)
+        stacked_shape = tuple(stacked_shape)
+        return alf.TensorSpec(stacked_shape, spec.dtype)
+
+    def transform_timestep(self, time_step, state):
+        is_first = time_step.step_type == StepType.FIRST
+        steps = state.steps + 1
+        steps[is_first] = 0
+        stack_axis = self._stack_axis
+        if stack_axis >= 0:
+            stack_axis += 1
+        first_samples = is_first.nonzero()
+
+        prev_frames = copy.copy(state.prev_frames)
+
+        def _stack_frame(obs, i, stack_size):
+            prev_frames[i] = copy.copy(prev_frames[i])
+            # repeat the first frame
+            if first_samples.numel() > 0:
+                for t in range(stack_size - 1):
+                    # prev_frames[i][t] might be used somewhere else, we should
+                    # not directly modify it.
+                    prev_frames[i][t] = prev_frames[i][t].clone()
+                    prev_frames[i][t][first_samples] = obs[first_samples]
+            if obs.ndim > 1:
+                stacked = torch.cat(prev_frames[i] + [obs], dim=stack_axis)
+            else:
+                stacked = torch.stack(prev_frames[i] + [obs], dim=1)
+            prev_frames[i].pop(0)
+            prev_frames[i].append(obs)
+            return stacked
+
+        observation = time_step.observation
+        for i, field in enumerate(self._fields):
+            s_conf = self._stack_config[field]
+            # each field may have different stack sizes
+            stack_size = s_conf[0]
+            stack_step = s_conf[1]
+
+            observation = alf.nest.transform_nest(observation, field,
+                                                  partial(_stack_frame, i=i, stack_size=stack_size))
+        return (time_step._replace(observation=observation),
+                FrameStackState(steps=steps, prev_frames=prev_frames))
+
+    def transform_experience(self, experience: Experience):
+        if self._stack_size == 1:
+            return experience
+
+        assert experience.batch_info != ()
+        batch_info: BatchInfo = experience.batch_info
+        replay_buffer: ReplayBuffer = experience.replay_buffer
+
+        with alf.device(replay_buffer.device):
+            # [B]
+            env_ids = convert_device(batch_info.env_ids)
+            # [B]
+            positions = convert_device(batch_info.positions)
+
+            prev_positions = torch.arange(self._stack_size -
+                                          1) - self._stack_size + 1
+
+            # [B, stack_size - 1]
+            prev_positions = positions.unsqueeze(
+                -1) + prev_positions.unsqueeze(0)
+            episode_begin_positions = replay_buffer.get_episode_begin_position(
+                positions, env_ids)
+            # [B, 1]
+            episode_begin_positions = episode_begin_positions.unsqueeze(-1)
+            # [B, stack_size - 1]
+            prev_positions = torch.max(prev_positions, episode_begin_positions)
+            # [B]
+            valid_prev = prev_positions[:,
+                                        0] >= replay_buffer.get_earliest_position(
+                                            env_ids)
+            assert torch.all(valid_prev), (
+                "Some previous posisions are no longer in the replay buffer: "
+                f"{prev_positions[:, 0][~valid_prev]}, "
+                f"{replay_buffer.get_earliest_position(env_ids)[~valid_prev]}")
+            # [B, 1]
+            env_ids = env_ids.unsqueeze(-1)
+
+        batch_size, mini_batch_length = experience.step_type.shape
+
+        # [[0, 1, ..., stack_size-1],
+        #  [1, 2, ..., stack_size],
+        #  ...
+        #  [mini_batch_length - 1, ...]]
+        #
+        # [mini_batch_length, stack_size]
+        obs_index = (torch.arange(self._stack_size).unsqueeze(0) +
+                     torch.arange(mini_batch_length).unsqueeze(1))
+        B = torch.arange(batch_size)
+        obs_index = (B.unsqueeze(-1).unsqueeze(-1), obs_index.unsqueeze(0))
+
+        def _stack_frame(obs, i):
+            prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
+                                               prev_positions)
+            stacked_shape = alf.nest.get_field(
+                self._transformed_observation_spec, self._fields[i]).shape
+            # [batch_size, mini_batch_length + stack_size - 1, ...]
+            stacked_obs = torch.cat((prev_obs, obs), dim=1)
+            # [batch_size, mini_batch_length, stack_size, ...]
+            stacked_obs = stacked_obs[obs_index]
+            if self._stack_axis != 0 and obs.ndim > 3:
+                stack_axis = self._stack_axis
+                if stack_axis < 0:
+                    stack_axis += stacked_obs.ndim
+                else:
+                    stack_axis += 3
+                stacked_obs = stacked_obs.unsqueeze(stack_axis)
+                stacked_obs = stacked_obs.transpose(2, stack_axis)
+                stacked_obs = stacked_obs.squeeze(2)
+            stacked_obs = stacked_obs.reshape(batch_size, mini_batch_length,
+                                              *stacked_shape)
+            return stacked_obs
+
+        observation = experience.observation
+        for i, field in enumerate(self._fields):
+            observation = alf.nest.transform_nest(observation, field,
+                                                  partial(_stack_frame, i=i))
+        return experience._replace(
+            time_step=experience.time_step._replace(observation=observation))
+    
+@alf.configurable
 class FrameStacker(DataTransformer):
     def __init__(self,
                  observation_spec,
@@ -298,7 +527,6 @@ class FrameStacker(DataTransformer):
         for i, field in enumerate(self._fields):
             observation = alf.nest.transform_nest(observation, field,
                                                   partial(_stack_frame, i=i))
-
         return (time_step._replace(observation=observation),
                 FrameStackState(steps=steps, prev_frames=prev_frames))
 

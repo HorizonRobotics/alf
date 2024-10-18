@@ -1113,7 +1113,8 @@ def play(root_dir,
     if selective_mode:
         # Below is an example selective criteria based on return.
         # This should be adjusted according to the particular task.
-        selective_criteria_func = lambda return_value, env_info: return_value < 7
+        selective_criteria_func = lambda return_value, env_info: return_value < 10
+        print('---selective')
     else:
         selective_criteria_func = None
 

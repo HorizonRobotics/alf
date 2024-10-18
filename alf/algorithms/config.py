@@ -353,7 +353,7 @@ class TrainerConfig(object):
         self.eval_uncertainty = eval_uncertainty
         self.num_eval_episodes = num_eval_episodes
         self.num_eval_environments = num_eval_environments
-        self.async_eval = async_eval
+        self.async_eval = False
         self.ddp_paras_check_interval = ddp_paras_check_interval
         self.num_summaries = num_summaries
         self.summary_interval = summary_interval
