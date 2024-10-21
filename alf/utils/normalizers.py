@@ -99,6 +99,27 @@ class Normalizer(nn.Module):
         self._debug_summaries = debug_summaries
         self._max_dims_to_summarize = max_dims_to_summarize
 
+    @property
+    def mean(self):
+        """Get the historic mean."""
+        if self._mean_averager:
+            return self._mean_averager.get()
+        else:
+            return None
+
+    @property
+    def variance(self):
+        """Get the historic variance."""
+
+        def _var(m2, m):
+            return (m2 - m**2).relu()
+
+        if self._m2_averager:
+            return alf.nest.map_structure(_var, self._m2_averager.get(),
+                                          self._mean_averager.get())
+        else:
+            return None
+
     @abstractmethod
     def _create_averager(self):
         """
