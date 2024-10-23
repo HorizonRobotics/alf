@@ -54,7 +54,41 @@ OaecLossInfo = namedtuple('OaecLossInfo', ('actor', 'critic'))
 
 @alf.configurable
 class OaecAlgorithm(OffPolicyAlgorithm):
-    r"""Optimistic Actor and Epistemic Critic Algorithm. """
+    r"""Optimistic Actor and Epistemic Critic Algorithm.
+
+        There is one default critic, paired with an auxiliary critic for 
+        estimating its optimization variability.
+        There are also n (>=1) bootstrapped critics.
+        If ``correct_optimization_noise``, each bootstrapped critic is also 
+        paired with an auxiliary critic.
+        If ``align_optimization_noise``, each critic (original, bootstrapped,
+        and their auxiliaries) will have an extra auxiliary critic trained with
+        perturbed stochastic gradient steps, in order to estimate the optimization
+        variability of each critic training, so that the optimization noise
+        correction term can be align with the optimization of the original and
+        bootstrapped critics.
+
+        Options for critics initialization are as follows,
+
+        1. The default setting, i.e., not ``correct_optimization_noise`` and not 
+           ``align_optimization_noise``, (2n + 1) critics with the following order
+
+            - a default critic
+            - n optimization perturbed critics
+            - n bootstrapped critics
+
+        2. ``correct_optimization_noise`` but not ``align_optimization_noise``, 
+           n more auxiliary critics, (2n + 2) in total
+
+            - an auxiliary critic for the default critic and n auxiliary critics
+              for the n bootstrapped critics
+
+        3. ``align_optimization_noise`` and ``align_optimization_noise``, another 
+           2n + 2 critics, (4n + 4) in total
+
+            - (2n + 2) optimization perturbed critics for all critics in 2, 
+              one for each.
+    """
 
     def __init__(self,
                  observation_spec,
@@ -63,7 +97,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_ctor=CriticNetwork,
                  reward_weights=None,
-                 reward_noise_scale=0.1,
+                 reward_noise_scale=None,
                  epsilon_greedy=None,
                  calculate_priority=False,
                  env=None,
@@ -73,6 +107,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  num_bootstrapped_critics=1,
                  critic_replicas_deepcopy=False,
                  bootstrap_mask_prob=0.8,
+                 # correct_optimization_noise=False,
+                 # align_optimization_noise=False,
                  beta_ub=1.0,
                  beta_lb=0.5,
                  target_update_tau=0.05,
@@ -102,8 +138,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             reward_weights (list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
-            reward_noise_scale (float): scale of the gaussian noise added to the
-                bootstrapped critic values.
+            reward_noise_scale (None|float): If not None, randomized rewards will be
+                used for bootstrapped critic training. Denotes the scale of the 
+                gaussian noise added to the rollout rewards.
             epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
@@ -121,6 +158,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 will have different independently instantiated parameters.
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
                 for independently masking out a transition to simulate bootstrapping.
+            correct_optimization_noise (bool): whether to correct the optimization
+                variability of critic training by using auxiliary critics.
+            align_optimization_noise (bool): whether to align the optimization noise
+                correction with the estimated optimization variability.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. ``env`` only needs to be provided to the root
@@ -165,18 +206,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
 
-        # There is one default critic, plus a number of bootstrapped critics,
-        # each critic is paired with an auxiliary critic for optimization
-        # variability correction.
-        # The order of critic_networks: 
-        # - the default critic
-        # - bootstrapped critics
-        # - auxiliary critic for the default critic
-        # - auxiliary critics for bootstrapped critics
         self._num_bootstrapped_critics = num_bootstrapped_critics
-        self._num_aux_critics = num_bootstrapped_critics + 1
+        self._num_opt_ptb_critics = num_bootstrapped_critics
+        self._total_num_critics = 1 + self._num_bootstrapped_critics \
+            + self._num_opt_ptb_critics
         critic_networks = critic_network.make_parallel(
-            self._num_aux_critics * 2, deepcopy=critic_replicas_deepcopy)
+            self._total_num_critics, deepcopy=critic_replicas_deepcopy)
 
         self._action_l2 = action_l2
         self._reward_noise_scale = reward_noise_scale
@@ -184,6 +219,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._beta_lb = beta_lb
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
+        self._opt_ptb_dist = torch.distributions.Exponential(1.0)
+        self._device = alf.get_default_device()
+        # self._correct_optimization_noise = correct_optimization_noise
+        # self._align_optimization_noise = align_optimization_noise
 
         train_state_spec = OaecState(
             actor=OaecActorState(
@@ -250,41 +289,64 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         critic_states = state.critics
 
         if explore:
-            if self._training_started:
-                ## use Q_value + epistemic_std to select action for exploration
-                # [n_sampled, B, ...]
-                actions = action_dist.sample(
-                    sample_shape=(self._num_rollout_sampled_actions))  
-                # [n_sampled * B, ...]
-                critic_observations = observation.repeat(
-                    [self._num_rollout_sampled_actions,] + [1] * observation_spec.ndim)
-                # [n_sampled * B, ...]
-                critic_actions = actions.reshape(
-                    actions.shape[0] * actions.shape[1], *actions.shape[2:])
-                # [n_sampled * B, n, ...]
-                q_values, critic_states = self._critic_networks(
-                    (critic_observations, critic_actions), state=state.critics)
-                # compute epistemic std
-                n_aux = self._num_aux_critics
-                q_values_corrected = q_values[:, :n_aux, ...] - q_values[:, n_aux:, ...]
-                q_values_corrected_bootstrap = q_values_corrected[:, 2:, ...] - q_values_corrected[:, 0, ...]
-                # [n_sampled, B, n_aux, ...]
-                q_values_corrected_bootstrap = q_values_corrected_bootstrap.reshape(
-                    actions.shape[0], -1, *q_values_corrected_bootstrap.shape[1:])
-                # [n_sampled, B, ...]
-                q_epi_std = (q_values_corrected_bootstrap ** 2).mean(dim=2).sqrt()
-                q_values_ub = q_values[:, 0, ...].reshape(
-                    actions.shape[0], actions.shape[1], -1) + self._beta_ub * q_epi_std
-                action_idx = q_values_ub.squeeze(-1)max(dim=0)[1]  # [B, ...]
-                batch_idx = torch.arange(
-                    action.shape[0]).type_as(action_idx)
-                action = actions[action_idx, batch_idx, ...]
-            else:
-                # This uniform sampling during initial collect stage is
-                # important since current explore_network is deterministic
-                action = alf.nest.map_structure(
-                    lambda spec: spec.sample(outer_dims=observation.shape[:1]),
-                    self._action_spec)
+            # if self._training_started:
+
+            ## Step 1: sample multiple candidate actions from action_dist
+            # [n_sampled, n_env, ...]
+            actions = action_dist.sample(
+                sample_shape=(self._num_rollout_sampled_actions))  
+            # [n_sampled * n_env, ...]
+            critic_actions = actions.reshape(
+                actions.shape[0] * actions.shape[1], *actions.shape[2:])
+            # [n_sampled * n_env, ...]
+            critic_observations = observation.repeat(
+                [self._num_rollout_sampled_actions,] + [1] * observation_spec.ndim)
+
+            ## Step 2: forward critic_network to get the Q_values
+            # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
+            q_values, critic_states = self._critic_networks(
+                (critic_observations, critic_actions), state=state.critics)
+            # [n_sampled * n_env, n_opt_ptb]
+            q_opt_ptb = q_values[:, 1:1 + self._num_opt_ptb_critics]
+            # [n_sampled * n_env, n_bootstrap]
+            q_bootstrap = q_values[:, -self._num_bootstrapped_critics:]
+
+            ## Step 3: compute epistemic_std for each (s, a)
+            # [n_sampled * n_env, n_bootstrap]
+            q_bootstrap_diff = q_bootstrap - q_values[:, 0]
+            # [n_sampled, n_env, n_bootstrap]
+            q_bootstrap_diff = q_bootstrap_diff.reshape(
+                actions.shape[0], -1, *q_bootstrap_diff.shape[1:])
+            # [n_sampled, n_env]
+            q_tot_std = (q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+
+            # [n_sampled * n_env, n_bootstrap]
+            q_opt_ptb_diff = q_opt_ptb - q_values[:, 0]
+            # [n_sampled, n_env, n_bootstrap]
+            q_opt_ptb_diff = q_opt_ptb_diff.reshape(
+                actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
+            # [n_sampled, n_env]
+            q_opt_std = (q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
+
+            # get a lower bound of the epistemic_std
+            q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
+
+            ## Step 4: use Q_value + epistemic_std to select action for exploration
+            # [n_sampled, n_env]
+            q_values_ub = q_values[:, 0].reshape(
+                actions.shape[0], -1) + self._beta_ub * q_epi_std
+            action_idx = q_values_ub.max(dim=0)[1]  # [n_env]
+            batch_idx = torch.arange(
+                actions.shape[1]).type_as(action_idx)
+            # [n_env, ...]
+            action = actions[action_idx, batch_idx, ...]
+
+            # else:
+            #     # This uniform sampling during initial collect stage is
+            #     # important since current explore_network is deterministic
+            #     action = alf.nest.map_structure(
+            #         lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+            #         self._action_spec)
         else:
             if eps_greedy_sampling:
                 action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
@@ -314,8 +376,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             inputs.observation, 
             state.actor, 
             explore=True)
-        reward_noise = torch.randn(
-            inputs.reward.shape + (self._num_bootstrapped_critics,)) * self._reward_noise_scale
+        # [n_env, n_bootstrap]
         prob_t = torch.full((inputs.reward.shape[0], self._num_bootstrapped_critics), 
                             self._bootstrap_mask_prob)
         mask = torch.bernoulli(prob_t)
@@ -324,8 +385,11 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             actor=actor_state,
             critics=critic_states)
         info = OaecRolloutInfo(action=action,
-                               mask=mask,
-                               reward_noise=reward_noise)
+                               mask=mask)
+        if self._reward_noise_scale:
+            reward_noise = self._reward_noise_scale * torch.randn(
+                inputs.reward.shape + (self._num_bootstrapped_critics,))
+            info._replace(reward_noise=reward_noise)
         return AlgStep(
             output=action, state=new_state, info=info)
 
@@ -397,38 +461,38 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 actor_loss=policy_step.info))
 
     def calc_loss(self, info: OaecInfo):
-        n_aux = self._num_aux_critics
+        critic_losses = [None] * self._total_num_critics
+
         # compute total std of the target critic for estimation of overestimation
-        target_values = info.critic.target_q_values[:, :, 1:n_aux, ...] - info.critic.target_q_values[:, :, 0, ...]
-        target_std = (target_values ** 2).mean(dim=2).sqrt()  # [T, B, ...]
+        target_q = info.critic.target_q_values[:, :, 0, ...]
+        target_q_bootstrap = info.critic.target_q_values[
+            :, :, -self._num_bootstrapped_critics:, ...]
+        target_q_bootstrap_diff = target_q_bootstrap - target_q
+        target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()  # [T, B, ...]
 
-        critic_losses = [None] * (n_aux * 2)
-        # original critic
-        critic_losses[0] = self._critic_losses[0](
-            info=info,
-            value=info.critic.q_values[:, :, 0, ...],
-            target_value=info.critic.target_q_values[:, :, 0, ...] - self._beta_lb * target_std).loss
-        # original critic's aux critic
-        critic_losses[n_aux] = self._critic_losses[n_aux](
-            info=info._replace(
-                # reward=torch.zeros_like(info.reward)),
-                reward=torch.randn_like(info.reward) * self._reward_noise_scale),
-            value=info.critic.q_values[:, :, n_aux, ...],
-            target_value=info.critic.target_q_values[:, :, n_aux, ...]).loss
-        # bootstrapped critics and their aux critics
-        for i in range(1, n_aux):
-            mask = info.mask[:, :, i - 1] / self._bootstrap_mask_prob
-            critic_losses[i] = mask * self._critic_losses[i](
-                info=info._replace(reward=info.reward + info.reward_noise[:, :, :, i - 1]),
+        # original critic and optimization perturbed critics
+        weights = self._opt_ptb_dist.sample(
+            (self._num_opt_ptb_critics, )).to(self._device)
+        weights = torch.cat((torch.tensor(1.0), weights))
+        for i in range(1 + self._num_opt_ptb_critics):
+            critic_losses[i] = weights[i] * self._critic_losses[i](
+                info=info,
                 value=info.critic.q_values[:, :, i, ...],
-                target_value=info.critic.target_q_values[:, :, i, ...] - self._beta_lb * target_std).loss
+                target_value=info.critic.target_q_values[:, :, i, ...]
+                - self._beta_lb * target_q_std).loss
 
-            critic_losses[i + n_aux] = mask * info.mask[:, :, i - 1] * self._critic_losses[i + n_aux](
-                info=info._replace(
-                    # reward=torch.zeros_like(info.reward)),
-                    reward=torch.randn_like(info.reward) * self._reward_noise_scale),
-                value=info.critic.q_values[:, :, i + n_aux, ...],
-                target_value=info.critic.target_q_values[:, :, i + n_aux, ...] - self._beta_lb * target_std).loss
+        # bootstrapped critics
+        n_start = 1 + self._num_opt_ptb_critics
+        for i in range(self._num_bootstrapped_critics):
+            mask = info.mask[:, :, i] / self._bootstrap_mask_prob
+            reward = info.reward
+            if self._reward_noise_scale:
+                reward += info.reward_noise[:, :, :, i]
+            critic_losses[n_start + i] = mask * self._critic_losses[n_start + i](
+                info=info._replace(reward=reward),
+                value=info.critic.q_values[:, :, n_start + i, ...],
+                target_value=target_q_bootstrap[:, :, i, ...]
+                - self._beta_lb * target_q_std).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
