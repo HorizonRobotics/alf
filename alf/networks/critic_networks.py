@@ -184,14 +184,14 @@ class CriticNetwork(EncodingNetwork):
             name=name)
         self._use_naive_parallel_network = use_naive_parallel_network
 
-    def make_parallel(self, n):
+    def make_parallel(self, n, deepcopy=False):
         """Create a parallel critic network using ``n`` replicas of ``self``.
         The initialized network parameters will be different.
         If ``use_naive_parallel_network`` is True, use ``NaiveParallelNetwork``
         to create the parallel network.
         """
         if self._use_naive_parallel_network:
-            return alf.networks.NaiveParallelNetwork(self, n)
+            return alf.networks.NaiveParallelNetwork(self, n, deepcopy=deepcopy)
         else:
             return super().make_parallel(n, True)
 

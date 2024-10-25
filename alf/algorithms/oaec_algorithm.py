@@ -24,32 +24,34 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.data_structures import TimeStep, LossInfo, namedtuple
 from alf.data_structures import AlgStep
-from alf.optimizers import AdamTF
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorDistributionNetwork
-from alf.networks.param_networks import CriticDistributionParamNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 
 
 OaecRolloutInfo = namedtuple(
     'OaecRolloutInfo', ["action", "mask", "reward_noise"], default_value=())
-OaecCriticState = namedtuple("OaecCriticState",
-                             ['critics', 'target_actor', 'target_critics'])
-OaecCriticInfo = namedtuple("OaecCriticInfo", ["q_values", "target_q_values"])
-OaecActorState = namedtuple("OaecActorState", ['actor', 'critics'])
-OaecState = namedtuple("OaecState", ['actor', 'critics'])
+OaecCriticState = namedtuple(
+    "OaecCriticState", ['critics', 'target_actor', 'target_critics'],
+    default_value=())
+OaecCriticInfo = namedtuple(
+    "OaecCriticInfo", ["q_values", "target_q_values"], default_value=())
+OaecActionState = namedtuple(
+    "OaecActionState", ['actor_network', 'critics'], default_value=())
+OaecState = namedtuple(
+    "OaecState", ['action', 'actor', 'critics'], default_value=())
 OaecInfo = namedtuple(
     "OaecInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor_loss", "critic", "discounted_return"
+        "reward", "reward_noise", "mask", "step_type", "discount", 
+        "action", "actor_loss", "critic", "discounted_return"
     ],
     default_value=())
-OaecLossInfo = namedtuple('OaecLossInfo', ('actor', 'critic'))
+OaecLossInfo = namedtuple(
+    'OaecLossInfo', ('actor', 'critic'), default_value=())
 
 
 @alf.configurable
@@ -95,7 +97,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorDistributionNetwork,
-                 critic_network_ctor=CriticNetwork,
+                 critic_network_cls=CriticNetwork,
                  reward_weights=None,
                  reward_noise_scale=None,
                  epsilon_greedy=None,
@@ -104,8 +106,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  num_rollout_sampled_actions=10,
-                 num_bootstrapped_critics=1,
-                 critic_replicas_deepcopy=False,
+                 num_bootstrap_critics=1,
+                 critic_replicas_deepcopy=True,
                  bootstrap_mask_prob=0.8,
                  # correct_optimization_noise=False,
                  # align_optimization_noise=False,
@@ -151,7 +153,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 only useful if priority replay is enabled.
             num_rollout_sampled_actions (int): number of sampled actions in rollout.
                 The one with the highest Q_value + epistemic_std will be executed.
-            num_bootstrapped_critics (int): a positive number of bootstrapped critics 
+            num_bootstrap_critics (int): a positive number of bootstrapped critics 
                 for uncertainty estimation. Default is 1.
             critic_replicas_deepcopy (bool): whether to deepcopy the critic_network
                 for replicas. Default is False, meaning that each critic_replica
@@ -192,23 +194,24 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-        assert num_bootstrapped_critics >= 1, (
-            "OaecAlgorithm requires a positive num_bootstrapped_critics.")
+        assert num_bootstrap_critics >= 1, (
+            "OaecAlgorithm requires a positive num_bootstrap_critics.")
 
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
-        critic_network = critic_network_ctor(
+        critic_network = critic_network_cls(
             input_tensor_spec=(observation_spec, action_spec),
-            output_tensor_spec=reward_spec)
-        actor_network = actor_network_ctor(
+            output_tensor_spec=reward_spec,
+            use_naive_parallel_network=True)  # enable deepcopy when make_parallel
+        actor_network = actor_network_cls(
             input_tensor_spec=observation_spec, action_spec=action_spec)
 
-        self._num_bootstrapped_critics = num_bootstrapped_critics
-        self._num_opt_ptb_critics = num_bootstrapped_critics
-        self._total_num_critics = 1 + self._num_bootstrapped_critics \
+        self._num_bootstrap_critics = num_bootstrap_critics
+        self._num_opt_ptb_critics = num_bootstrap_critics
+        self._total_num_critics = 1 + self._num_bootstrap_critics \
             + self._num_opt_ptb_critics
         critic_networks = critic_network.make_parallel(
             self._total_num_critics, deepcopy=critic_replicas_deepcopy)
@@ -224,10 +227,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         # self._correct_optimization_noise = correct_optimization_noise
         # self._align_optimization_noise = align_optimization_noise
 
+        action_state_spec = OaecActionState(
+            actor_network=actor_network.state_spec,
+            critics=critic_networks.state_spec)
         train_state_spec = OaecState(
-            actor=OaecActorState(
-                actor=actor_network.state_spec,
-                critics=critic_networks.state_spec),
+            action=action_state_spec,
+            actor=critic_networks.state_spec,
             critics=OaecCriticState(
                 critics=critic_networks.state_spec,
                 target_actor=actor_network.state_spec,
@@ -238,6 +243,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             action_spec=action_spec,
             reward_spec=reward_spec,
             train_state_spec=train_state_spec,
+            predict_state_spec=OaecState(action=action_state_spec),
             reward_weights=reward_weights,
             env=env,
             config=config,
@@ -250,7 +256,6 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(critic_optimizer, [critic_networks])
 
         self._actor_network = actor_network
-        self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
 
         self._target_actor_network = actor_network.copy(
@@ -264,8 +269,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor = OneStepTDLoss
         critic_loss_ctor = functools.partial(
             critic_loss_ctor, debug_summaries=debug_summaries)
-        self._critic_losses = [None] * num_critic_replicas
-        for i in range(num_critic_replicas):
+        self._critic_losses = [None] * self._total_num_critics
+        for i in range(self._total_num_critics):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
 
@@ -281,11 +286,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
     def _predict_action(self, 
                         observation, 
-                        state: OaecActorState, 
+                        state: OaecActionState, 
                         epsilon_greedy=None,
                         eps_greedy_sampling=False,
                         explore=False):
-        action_dist, actor_state = self._actor_network(observation, state=state.actor)
+        action_dist, actor_state = self._actor_network(
+            observation, state=state.actor_network)
         critic_states = state.critics
 
         if explore:
@@ -294,13 +300,13 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             ## Step 1: sample multiple candidate actions from action_dist
             # [n_sampled, n_env, ...]
             actions = action_dist.sample(
-                sample_shape=(self._num_rollout_sampled_actions))  
+                sample_shape=(self._num_rollout_sampled_actions,))  
             # [n_sampled * n_env, ...]
             critic_actions = actions.reshape(
                 actions.shape[0] * actions.shape[1], *actions.shape[2:])
             # [n_sampled * n_env, ...]
             critic_observations = observation.repeat(
-                [self._num_rollout_sampled_actions,] + [1] * observation_spec.ndim)
+                [self._num_rollout_sampled_actions,] + [1] * self.observation_spec.ndim)
 
             ## Step 2: forward critic_network to get the Q_values
             # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
@@ -309,11 +315,11 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             # [n_sampled * n_env, n_opt_ptb]
             q_opt_ptb = q_values[:, 1:1 + self._num_opt_ptb_critics]
             # [n_sampled * n_env, n_bootstrap]
-            q_bootstrap = q_values[:, -self._num_bootstrapped_critics:]
+            q_bootstrap = q_values[:, -self._num_bootstrap_critics:]
 
             ## Step 3: compute epistemic_std for each (s, a)
             # [n_sampled * n_env, n_bootstrap]
-            q_bootstrap_diff = q_bootstrap - q_values[:, 0]
+            q_bootstrap_diff = q_bootstrap - q_values[:, :1]
             # [n_sampled, n_env, n_bootstrap]
             q_bootstrap_diff = q_bootstrap_diff.reshape(
                 actions.shape[0], -1, *q_bootstrap_diff.shape[1:])
@@ -321,7 +327,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             q_tot_std = (q_bootstrap_diff ** 2).mean(dim=2).sqrt()
 
             # [n_sampled * n_env, n_bootstrap]
-            q_opt_ptb_diff = q_opt_ptb - q_values[:, 0]
+            q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
             # [n_sampled, n_env, n_bootstrap]
             q_opt_ptb_diff = q_opt_ptb_diff.reshape(
                 actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
@@ -353,18 +359,19 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             else:
                 action = dist_utils.rsample_action_distribution(action_dist)
 
-        return action, actor_state, critic_states
+        return action, OaecActionState(actor_network=actor_state, 
+                                       critics=critic_states)
 
     def predict_step(self, inputs: TimeStep, state: OaecState):
-        action, actor_state, _ = self._predict_action(
+        action, action_state = self._predict_action(
             inputs.observation,
-            state=state.actor,
+            state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
 
         return AlgStep(
             output=action,
-            state=OaecState(actor=actor_state),
+            state=OaecState(action=action_state),
             info=OaecInfo(action=action))
 
     def rollout_step(self, inputs: TimeStep, state=None):
@@ -372,31 +379,34 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by OaecAlgorithm")
 
-        action, actor_state, critic_states = self._predict_action(
+        action, action_state = self._predict_action(
             inputs.observation, 
-            state.actor, 
+            state.action, 
             explore=True)
         # [n_env, n_bootstrap]
-        prob_t = torch.full((inputs.reward.shape[0], self._num_bootstrapped_critics), 
+        prob_t = torch.full((inputs.reward.shape[0], self._num_bootstrap_critics), 
                             self._bootstrap_mask_prob)
         mask = torch.bernoulli(prob_t)
 
         new_state = OaecState(
-            actor=actor_state,
-            critics=critic_states)
+            action=action_state,
+            actor=state.actor,
+            critics=state.critics)
         info = OaecRolloutInfo(action=action,
                                mask=mask)
         if self._reward_noise_scale:
             reward_noise = self._reward_noise_scale * torch.randn(
-                inputs.reward.shape + (self._num_bootstrapped_critics,))
+                inputs.reward.shape + (self._num_bootstrap_critics,))
             info._replace(reward_noise=reward_noise)
         return AlgStep(
             output=action, state=new_state, info=info)
 
     def _critic_train_step(self, inputs: TimeStep, state: OaecCriticState,
                            rollout_info: OaecRolloutInfo):
-        target_action, target_actor_state = self._target_actor_network(
+        target_action_dist, target_actor_state = self._target_actor_network(
             inputs.observation, state=state.target_actor)
+        target_action = dist_utils.rsample_action_distribution(
+            target_action_dist)
         target_q_values, target_critic_states = self._target_critic_networks(
             (inputs.observation, target_action), state=state.target_critics)
         q_values, critic_states = self._critic_networks(
@@ -412,12 +422,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
         return state, info
 
-    def _actor_train_step(self, inputs: TimeStep, state: OaecActorState):
-        action, actor_state = self._actor_network(
-            inputs.observation, state=state.actor)
-
+    def _actor_train_step(self, inputs: TimeStep, state, action):
         q_values, critic_states = self._critic_networks(
-            (inputs.observation, action), state=state.critics)
+            (inputs.observation, action), state=state)
         if self.has_multidim_reward():
             # Multidimensional reward: [B, replicas, reward_dim]
             q_values = q_values * self.reward_weights
@@ -440,40 +447,47 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
-        state = OaecActorState(actor=actor_state, critics=critic_states)
-        info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
-        return AlgStep(output=action, state=state, info=info)
+        actor_loss_info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
+        return critic_states, actor_loss_info
 
     def train_step(self, inputs: TimeStep, state: OaecState,
                    rollout_info: OaecRolloutInfo):
+        # train actor_network
+        action, action_state = self._predict_action(
+            inputs.observation, state=state.action)
+        actor_state, actor_loss_info = self._actor_train_step(
+            inputs=inputs, state=state.actor, action=action)
+
+        # collect infor for critic_networks training
         critic_states, critic_info = self._critic_train_step(
             inputs=inputs, state=state.critics, rollout_info=rollout_info)
-        policy_step = self._actor_train_step(inputs=inputs, state=state.actor)
-        return policy_step._replace(
-            state=OaecState(actor=policy_step.state, critics=critic_states),
-            info=OaecInfo(
-                reward=inputs.reward,
-                reward_noise=rollout_info.reward_noise,
-                step_type=inputs.step_type,
-                discount=inputs.discount,
-                action_distribution=policy_step.output,
-                critic=critic_info,
-                actor_loss=policy_step.info))
+
+        state = OaecState(
+            action=action_state, actor=actor_state, critics=critic_states),
+        info = OaecInfo(
+            reward=inputs.reward,
+            reward_noise=rollout_info.reward_noise,
+            mask=rollout_info.mask,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            critic=critic_info,
+            actor_loss=actor_loss_info)
+        return AlgStep(output=action, state=state, info=info)
 
     def calc_loss(self, info: OaecInfo):
         critic_losses = [None] * self._total_num_critics
 
         # compute total std of the target critic for estimation of overestimation
-        target_q = info.critic.target_q_values[:, :, 0, ...]
+        target_q = info.critic.target_q_values[:, :, :1, ...]
         target_q_bootstrap = info.critic.target_q_values[
-            :, :, -self._num_bootstrapped_critics:, ...]
+            :, :, -self._num_bootstrap_critics:, ...]
         target_q_bootstrap_diff = target_q_bootstrap - target_q
         target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()  # [T, B, ...]
 
         # original critic and optimization perturbed critics
         weights = self._opt_ptb_dist.sample(
             (self._num_opt_ptb_critics, )).to(self._device)
-        weights = torch.cat((torch.tensor(1.0), weights))
+        weights = torch.cat((torch.tensor([1.0]), weights))
         for i in range(1 + self._num_opt_ptb_critics):
             critic_losses[i] = weights[i] * self._critic_losses[i](
                 info=info,
@@ -483,7 +497,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
         # bootstrapped critics
         n_start = 1 + self._num_opt_ptb_critics
-        for i in range(self._num_bootstrapped_critics):
+        for i in range(self._num_bootstrap_critics):
             mask = info.mask[:, :, i] / self._bootstrap_mask_prob
             reward = info.reward
             if self._reward_noise_scale:
@@ -511,7 +525,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             priority=priority,
             extra=OaecLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
-    def after_update(self, root_inputs, info: DdpgInfo):
+    def after_update(self, root_inputs, info: OaecInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

@@ -66,7 +66,7 @@ alf.config(
     "TrainerConfig",
     temporally_independent_train_step=True,
     use_rollout_state=True,
-    use_wandb=True,
+    # use_wandb=True,
     async_eval=True,
     entity="runjerry",
     project="Actor-Bayes-Critic",
