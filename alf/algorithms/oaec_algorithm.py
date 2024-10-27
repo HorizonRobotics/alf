@@ -35,14 +35,14 @@ from alf.utils import losses, common, dist_utils, math_ops, summary_utils
 OaecRolloutInfo = namedtuple(
     'OaecRolloutInfo', ["action", "mask", "reward_noise"], default_value=())
 OaecCriticState = namedtuple(
-    "OaecCriticState", ['critics', 'target_actor', 'target_critics'],
-    default_value=())
+    "OaecCriticState", ['critics', 'target_critics'], default_value=())
 OaecCriticInfo = namedtuple(
     "OaecCriticInfo", ["q_values", "target_q_values"], default_value=())
 OaecActionState = namedtuple(
     "OaecActionState", ['actor_network', 'critics'], default_value=())
 OaecState = namedtuple(
-    "OaecState", ['action', 'actor', 'critics'], default_value=())
+    "OaecState", ['action', 'actor', 'target_actor', 'critics'],
+    default_value=())
 OaecInfo = namedtuple(
     "OaecInfo", [
         "reward", "reward_noise", "mask", "step_type", "discount", "action",
@@ -113,6 +113,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             # align_optimization_noise=False,
             beta_ub=1.0,
             beta_lb=0.5,
+            use_target_actor=True,
             target_update_tau=0.05,
             target_update_period=1,
             rollout_random_action=0.,
@@ -180,6 +181,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            use_target_actor (bool): whether to use target actor for actor.
             rollout_random_action (float): the probability of taking a uniform
                 random action during a ``rollout_step()``. 0 means always directly
                 taking actions added with OU noises and 1 means always sample
@@ -221,6 +223,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._reward_noise_scale = reward_noise_scale
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
+        self._use_target_actor = use_target_actor
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._opt_ptb_dist = torch.distributions.Exponential(1.0)
@@ -234,9 +237,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         train_state_spec = OaecState(
             action=action_state_spec,
             actor=critic_networks.state_spec,
+            target_actor=actor_network.state_spec,
             critics=OaecCriticState(
                 critics=critic_networks.state_spec,
-                target_actor=actor_network.state_spec,
                 target_critics=critic_networks.state_spec))
 
         super().__init__(
@@ -259,10 +262,16 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._critic_networks = critic_networks
 
-        self._target_actor_network = actor_network.copy(
-            name='target_actor_networks')
         self._target_critic_networks = critic_networks.copy(
             name='target_critic_networks')
+        original_models = [self._critic_networks]
+        target_models = [self._target_critic_networks]
+
+        if use_target_actor:
+            self._target_actor_network = actor_network.copy(
+                name='target_actor_networks')
+            original_models.append(self._actor_network)
+            target_models.append(self._target_actor_network)
 
         self._rollout_random_action = float(rollout_random_action)
 
@@ -276,10 +285,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 name=("critic_loss" + str(i)))
 
         self._update_target = common.TargetUpdater(
-            models=[self._actor_network, self._critic_networks],
-            target_models=[
-                self._target_actor_network, self._target_critic_networks
-            ],
+            # models=[self._actor_network, self._critic_networks],
+            # target_models=[
+            #     self._target_actor_network, self._target_critic_networks
+            # ],
+            models=original_models,
+            target_models=target_models,
             tau=target_update_tau,
             period=target_update_period)
 
@@ -399,20 +410,18 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         return AlgStep(output=action, state=new_state, info=info)
 
     def _critic_train_step(self, inputs: TimeStep, state: OaecCriticState,
-                           rollout_info: OaecRolloutInfo):
-        target_action_dist, target_actor_state = self._target_actor_network(
-            inputs.observation, state=state.target_actor)
-        target_action = dist_utils.rsample_action_distribution(
-            target_action_dist)
+                           rollout_info: OaecRolloutInfo, action):
+        # target_action_dist, target_actor_state = self._target_actor_network(
+        #     inputs.observation, state=state.target_actor)
+        # target_action = dist_utils.rsample_action_distribution(
+        #     target_action_dist)
         target_q_values, target_critic_states = self._target_critic_networks(
-            (inputs.observation, target_action), state=state.target_critics)
+            (inputs.observation, action), state=state.target_critics)
         q_values, critic_states = self._critic_networks(
             (inputs.observation, rollout_info.action), state=state.critics)
 
         state = OaecCriticState(
-            critics=critic_states,
-            target_actor=target_actor_state,
-            target_critics=target_critic_states)
+            critics=critic_states, target_critics=target_critic_states)
 
         info = OaecCriticInfo(
             q_values=q_values, target_q_values=target_q_values)
@@ -457,11 +466,24 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             inputs=inputs, state=state.actor, action=action)
 
         # collect info for critic_networks training
+        target_actor_state = ()
+        target_critic_action = action
+        if self._use_target_actor:
+            target_action_dist, target_actor_state = self._target_actor_network(
+                inputs.observation, state=state.target_actor)
+            target_critic_action = dist_utils.rsample_action_distribution(
+                target_action_dist)
         critic_states, critic_info = self._critic_train_step(
-            inputs=inputs, state=state.critics, rollout_info=rollout_info)
+            inputs=inputs,
+            state=state.critics,
+            rollout_info=rollout_info,
+            action=target_critic_action)
 
         state = OaecState(
-            action=action_state, actor=actor_state, critics=critic_states),
+            action=action_state,
+            actor=actor_state,
+            target_actor=target_actor_state,
+            critics=critic_states),
         info = OaecInfo(
             reward=inputs.reward,
             reward_noise=rollout_info.reward_noise,
@@ -530,4 +552,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_actor_network', '_target_critic_networks']
+        # return ['_target_actor_network', '_target_critic_networks']
+        ignored = ['_target_critic_networks']
+        if self._use_target_actor:
+            ignored.append('_target_actor_network')
+        return ignored
