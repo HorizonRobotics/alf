@@ -74,9 +74,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         1. The default setting, i.e., not ``correct_optimization_noise`` and not 
            ``align_optimization_noise``, (2n + 1) critics with the following order
 
-            - a default critic
-            - n optimization perturbed critics
+            - the default critic
             - n bootstrapped critics
+            - n optimization perturbed critics
 
         2. ``correct_optimization_noise`` but not ``align_optimization_noise``, 
            n more auxiliary critics, (2n + 2) in total
@@ -226,7 +226,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._use_target_actor = use_target_actor
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
-        self._opt_ptb_dist = torch.distributions.Exponential(1.0)
+        # self._opt_ptb_dist = torch.distributions.Exponential(1.0)
         self._device = alf.get_default_device()
         # self._correct_optimization_noise = correct_optimization_noise
         # self._align_optimization_noise = align_optimization_noise
@@ -295,6 +295,13 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             period=target_update_period)
 
         self._dqda_clipping = dqda_clipping
+        self._mini_batch_size = alf.get_config_value(
+            'TrainerConfig.mini_batch_size')
+        self._mini_batch_length = alf.get_config_value(
+            'TrainerConfig.mini_batch_length')
+        self._opt_ptb_weights = torch.empty(
+            (self._mini_batch_length, self._mini_batch_size,
+             self._num_opt_ptb_critics))
 
     def _predict_action(self,
                         observation,
@@ -323,12 +330,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
             ## Step 2: forward critic_network to get the Q_values
             # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
-            q_values, critic_states = self._critic_networks(
+            q_values, critic_states = self._target_critic_networks(
                 (critic_observations, critic_actions), state=state.critics)
-            # [n_sampled * n_env, n_opt_ptb]
-            q_opt_ptb = q_values[:, 1:1 + self._num_opt_ptb_critics]
             # [n_sampled * n_env, n_bootstrap]
-            q_bootstrap = q_values[:, -self._num_bootstrap_critics:]
+            q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
+            # [n_sampled * n_env, n_opt_ptb]
+            q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
 
             ## Step 3: compute epistemic_std for each (s, a)
             # [n_sampled * n_env, n_bootstrap]
@@ -352,8 +359,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
             ## Step 4: use Q_value + epistemic_std to select action for exploration
             # [n_sampled, n_env]
-            q_values_ub = q_values[:, 0].reshape(
-                actions.shape[0], -1) + self._beta_ub * q_epi_std
+            q_mean_values = q_values[:, :1 +
+                                     self._num_bootstrap_critics].mean(-1)
+            q_values_ub = q_mean_values.reshape(actions.shape[0],
+                                                -1) + self._beta_ub * q_epi_std
             action_idx = q_values_ub.max(dim=0)[1]  # [n_env]
             batch_idx = torch.arange(actions.shape[1]).type_as(action_idx)
             # [n_env, ...]
@@ -394,7 +403,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
         action, action_state = self._predict_action(
             inputs.observation, state.action, explore=True)
-        # [n_env, n_bootstrap]
+        # [n_env, n_bootstrap] masks for bootstrap critics
         prob_t = torch.full(
             (inputs.reward.shape[0], self._num_bootstrap_critics),
             self._bootstrap_mask_prob)
@@ -429,13 +438,13 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _actor_train_step(self, inputs: TimeStep, state, action):
-        q_values, critic_states = self._critic_networks(
+        q_values, critic_states = self._target_critic_networks(
             (inputs.observation, action), state=state)
         if self.has_multidim_reward():
             # Multidimensional reward: [B, replicas, reward_dim]
             q_values = q_values * self.reward_weights
-        # use the default critic
-        q_value = q_values[:, 0]
+        # use the mean of default and bootstrapped target critics
+        q_value = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
 
         # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())
@@ -499,26 +508,22 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
         # compute total std of the target critic for estimation of overestimation
         target_q = info.critic.target_q_values[:, :, :1, ...]
-        target_q_bootstrap = info.critic.target_q_values[:, :, -self.
-                                                         _num_bootstrap_critics:,
+        target_q_bootstrap = info.critic.target_q_values[:, :, 1:1 + self.
+                                                         _num_bootstrap_critics,
                                                          ...]
         target_q_bootstrap_diff = target_q_bootstrap - target_q
         target_q_std = (target_q_bootstrap_diff
                         **2).mean(dim=2).sqrt()  # [T, B, ...]
 
-        # original critic and optimization perturbed critics
-        weights = self._opt_ptb_dist.sample(
-            (self._num_opt_ptb_critics, )).to(self._device)
-        weights = torch.cat((torch.tensor([1.0]), weights))
-        for i in range(1 + self._num_opt_ptb_critics):
-            critic_losses[i] = weights[i] * self._critic_losses[i](
-                info=info,
-                value=info.critic.q_values[:, :, i, ...],
-                target_value=info.critic.target_q_values[:, :, i, ...] -
-                self._beta_lb * target_q_std).loss
+        # original critic
+        critic_losses[0] = self._critic_losses[0](
+            info=info,
+            value=info.critic.q_values[:, :, 0, ...],
+            target_value=info.critic.target_q_values[:, :, 0, ...] -
+            self._beta_lb * target_q_std).loss
 
         # bootstrapped critics
-        n_start = 1 + self._num_opt_ptb_critics
+        n_start = 1
         for i in range(self._num_bootstrap_critics):
             mask = info.mask[:, :, i] / self._bootstrap_mask_prob
             reward = info.reward
@@ -529,6 +534,22 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                     info=info._replace(reward=reward),
                     value=info.critic.q_values[:, :, n_start + i, ...],
                     target_value=target_q_bootstrap[:, :, i, ...] -
+                    self._beta_lb * target_q_std).loss
+
+        # optimization perturbed critics
+        # weights = self._opt_ptb_dist.sample(
+        #     (self._num_opt_ptb_critics, )).to(self._device)
+        # weights = torch.cat((torch.tensor([1.0]), weights))
+        self._opt_ptb_weights.exponential_(1.0)
+        n_start = 1 + self._num_bootstrap_critics
+        for i in range(self._num_opt_ptb_critics):
+            weights = self._opt_ptb_weights[:, :, i]
+            critic_losses[
+                n_start + i] = weights * self._critic_losses[n_start + i](
+                    info=info,
+                    value=info.critic.q_values[:, :, n_start + i, ...],
+                    target_value=info.critic.target_q_values[:, :, n_start +
+                                                             i, ...] -
                     self._beta_lb * target_q_std).loss
 
         critic_loss = math_ops.add_n(critic_losses)
