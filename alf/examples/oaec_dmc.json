@@ -2,7 +2,7 @@
     "desc": [
         "DM Control tasks with 4 seeds on each environment"
     ],
-    "version": "hopper_oaec_no-tar-actor_nb_2-ces",
+    "version": "hopper_oaec_a4371_nb_2-ces",
     "use_gpu": true,
     "gpus": [
         0,

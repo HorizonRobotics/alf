@@ -31,6 +31,7 @@ import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, summary_utils
+from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 OaecRolloutInfo = namedtuple(
@@ -109,6 +110,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  num_bootstrap_critics=1,
                  critic_replicas_deepcopy=True,
                  bootstrap_mask_prob=0.8,
+                 opt_ptb_dist="exponential",
                  # correct_optimization_noise=False,
                  # align_optimization_noise=False,
                  beta_ub=1.0,
@@ -161,6 +163,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 will have different independently instantiated parameters.
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
                 for independently masking out a transition to simulate bootstrapping.
+            opt_ptb_dist (str): the distribution for sampling optimization perturbation.
+                Options are ["exponential", "uniform"].
             correct_optimization_noise (bool): whether to correct the optimization
                 variability of critic training by using auxiliary critics.
             align_optimization_noise (bool): whether to align the optimization noise
@@ -225,6 +229,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._use_target_actor = use_target_actor
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
+        assert opt_ptb_dist in ["exponential", "uniform"], (
+            "optimization perturbation distribution must be exponential or uniform")
+        self._opt_ptb_dist = opt_ptb_dist
         # self._opt_ptb_dist = torch.distributions.Exponential(1.0)
         self._device = alf.get_default_device()
         # self._correct_optimization_noise = correct_optimization_noise
@@ -509,13 +516,15 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             :, :, 1: 1 + self._num_bootstrap_critics, ...]
         target_q_bootstrap_diff = target_q_bootstrap - target_q
         target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()  # [T, B, ...]
+        target_q_mean = info.critic.target_q_values[
+            :, :, :1 + self._num_bootstrap_critics, ...].mean(dim=2)  # [T, B, ...]
+        target_value = target_q_mean - self._beta_lb * target_q_std  # [T, B, ...]
 
         # original critic
         critic_losses[0] = self._critic_losses[0](
             info=info,
             value=info.critic.q_values[:, :, 0, ...],
-            target_value=info.critic.target_q_values[:, :, 0, ...]
-            - self._beta_lb * target_q_std).loss
+            target_value=target_value).loss
 
         # bootstrapped critics
         n_start = 1
@@ -527,22 +536,20 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             critic_losses[n_start + i] = mask * self._critic_losses[n_start + i](
                 info=info._replace(reward=reward),
                 value=info.critic.q_values[:, :, n_start + i, ...],
-                target_value=target_q_bootstrap[:, :, i, ...]
-                - self._beta_lb * target_q_std).loss
+                target_value=target_value).loss
 
         # optimization perturbed critics
-        # weights = self._opt_ptb_dist.sample(
-        #     (self._num_opt_ptb_critics, )).to(self._device)
-        # weights = torch.cat((torch.tensor([1.0]), weights))
-        self._opt_ptb_weights.exponential_(1.0)
+        if self._opt_ptb_dist == 'exponential':
+            self._opt_ptb_weights.exponential_(1.0)
+        else:
+            self._opt_ptb_dist.uniform_(0.5, 1.5)
         n_start = 1 + self._num_bootstrap_critics
         for i in range(self._num_opt_ptb_critics):
             weights = self._opt_ptb_weights[:, :, i]
             critic_losses[n_start + i] = weights * self._critic_losses[n_start + i](
                 info=info,
                 value=info.critic.q_values[:, :, n_start + i, ...],
-                target_value=info.critic.target_q_values[:, :, n_start + i, ...]
-                - self._beta_lb * target_q_std).loss
+                target_value=target_value).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
@@ -555,6 +562,13 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             priority = ()
 
         actor_loss = info.actor_loss
+
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                safe_mean_hist_summary("target_value", target_value)
+                safe_mean_hist_summary("target_q_mean", target_q_mean)
+                safe_mean_hist_summary("target_q_tot_std", target_q_std)
+                safe_mean_hist_summary("opt_ptb_weights", self._opt_ptb_weights)
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
