@@ -304,6 +304,7 @@ class TrajPPOInfo(NamedTuple):
     critic: torch.Tensor = ()
     rollout_log_prob: torch.Tensor = ()
     value_diff: torch.Tensor = ()
+    switched: torch.Tensor = ()
     returns: torch.Tensor = ()
     advantages: torch.Tensor = ()
     normalized_advantages: torch.Tensor = ()
@@ -510,6 +511,7 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
         # update state
         action_prefix = self._unflatten_action(action)[:, :-1, :]
         switched = ~(prev_action == action_prefix).all(-1).all(-1)
+        switched = switched & (inputs.step_type != StepType.FIRST)
         steps_since_last_switch = state.steps_since_last_switch + 1
         state = TrajPPOState(
             action_shifter=action_shifter_state,
@@ -544,6 +546,7 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
 
         action_prefix = self._unflatten_action(rollout_info.action)[:, :-1, :]
         switched = ~(prev_action == action_prefix).all(-1).all(-1)
+        switched = switched & (inputs.step_type != StepType.FIRST)
         steps_since_last_switch = state.steps_since_last_switch + 1
         state = TrajPPOState(
             action_shifter=action_shifter_state,
@@ -569,6 +572,7 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
                 value=value,
                 critic=critic,
                 value_diff=rollout_info.value_diff,
+                switched=switched,
                 rollout_log_prob=rollout_info.rollout_log_prob,
                 returns=rollout_info.returns,
                 advantages=rollout_info.advantages,
@@ -649,6 +653,7 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope("TrajPPOAlgorithm"):
+                alf.summary.scalar("switched", info.switched.float().mean())
                 alf.summary.scalar("avg_switch_steps", self._avg_switch_steps)
                 alf.summary.scalar("switch_threshold", self._switch_threshold)
                 alf.summary.scalar("total_num_switches",
@@ -657,16 +662,18 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
                                    self._value_diff_normalizer.mean)
                 alf.summary.scalar("value_diff_std",
                                    self._value_diff_normalizer.variance**0.5)
-                summary_utils.safe_mean_hist_summary(
-                    "value_diff", info.value_diff,
-                    info.step_type != StepType.FIRST)
+
                 value_diff = info.value_diff
                 if self.has_multidim_reward():
                     value_diff = value_diff @ self.reward_weights
                 diff = self._value_diff_normalizer.normalize(value_diff)
                 prob = torch.sigmoid(diff - self._switch_threshold).detach()
                 prob[info.step_type == StepType.FIRST] = 1.0
-                summary_utils.safe_mean_hist_summary("switch_prob", prob)
+                not_first = info.step_type != StepType.FIRST
+                summary_utils.safe_mean_hist_summary("value_diff", value_diff,
+                                                     not_first)
+                summary_utils.safe_mean_hist_summary("switch_prob", prob,
+                                                     not_first)
 
                 def _summarize(v, r, td, suffix):
                     alf.summary.scalar(
