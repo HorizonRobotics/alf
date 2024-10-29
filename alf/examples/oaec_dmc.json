@@ -12,11 +12,11 @@
             "hopper:hop"
         ],
         "OaecAlgorithm.beta_ub": "[1.]",
-        "OaecAlgorithm.beta_lb": "[.5, .1]",
+        "OaecAlgorithm.beta_lb": "[.2, .1]",
+        "OaecAlgorithm.output_target_critic": "[True]",
         "OaecAlgorithm.num_rollout_sampled_actions": "[10]",
         "OaecAlgorithm.num_bootstrap_critics": "[2]",
         "OaecAlgorithm.bootstrap_mask_prob": "[0.8]",
-        "OaecAlgorithm.opt_ptb_dist": "['uniform']",
         "OaecAlgorithm.use_target_actor": "[False]",
         "OaecAlgorithm.target_update_tau": "[0.005]",
         "TrainerConfig.random_seed": "list(range(2))"

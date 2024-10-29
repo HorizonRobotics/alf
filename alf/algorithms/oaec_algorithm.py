@@ -115,6 +115,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             # align_optimization_noise=False,
             beta_ub=1.0,
             beta_lb=0.5,
+            output_target_critic=True,
             use_target_actor=True,
             target_update_tau=0.05,
             target_update_period=1,
@@ -185,6 +186,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            output_target_critic (bool): whether to use the target critic output
+                whenever critic values are needed, such as explorative rollout 
+                and actor training.
             use_target_actor (bool): whether to use target actor for actor.
             rollout_random_action (float): the probability of taking a uniform
                 random action during a ``rollout_step()``. 0 means always directly
@@ -227,6 +231,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._reward_noise_scale = reward_noise_scale
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
+        self._output_target_critic = output_target_critic
         self._use_target_actor = use_target_actor
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
@@ -339,8 +344,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
             ## Step 2: forward critic_network to get the Q_values
             # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
-            q_values, critic_states = self._target_critic_networks(
-                (critic_observations, critic_actions), state=state.critics)
+            if self._output_target_critic:
+                q_values, critic_states = self._target_critic_networks(
+                    (critic_observations, critic_actions), state=state.critics)
+            else:
+                q_values, critic_states = self._critic_networks(
+                    (critic_observations, critic_actions), state=state.critics)
             # [n_sampled * n_env, n_bootstrap]
             q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
             # [n_sampled * n_env, n_opt_ptb]
@@ -447,8 +456,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _actor_train_step(self, inputs: TimeStep, state, action):
-        q_values, critic_states = self._target_critic_networks(
-            (inputs.observation, action), state=state)
+        if self._output_target_critic:
+            q_values, critic_states = self._target_critic_networks(
+                (inputs.observation, action), state=state)
+        else:
+            q_values, critic_states = self._critic_networks(
+                (inputs.observation, action), state=state)
         if self.has_multidim_reward():
             # Multidimensional reward: [B, replicas, reward_dim]
             q_values = q_values * self.reward_weights

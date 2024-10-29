@@ -33,6 +33,7 @@ alf.config(
     critic_network_cls=critic_network_cls,
     beta_ub=1.,
     beta_lb=.5,
+    output_target_critic=True,
     reward_noise_scale=None,
     num_rollout_sampled_actions=10,
     num_bootstrap_critics=2,
