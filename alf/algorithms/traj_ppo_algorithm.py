@@ -520,7 +520,7 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
 
         # update self._avg_switch_steps
         num_switches = switched.sum()
-        rate = (10 * num_switches / self._total_num_switches).clip(max=1)
+        rate = (100 * num_switches / self._total_num_switches).clip(max=1)
         self._total_num_switches += num_switches
         avg_length = (steps_since_last_switch * switched).sum() / (
             num_switches + 1e-10)
