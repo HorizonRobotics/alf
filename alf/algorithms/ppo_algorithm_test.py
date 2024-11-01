@@ -71,10 +71,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         config=config,
         actor_network_ctor=actor_net,
         value_network_ctor=value_net,
-        loss=PPOLoss(
-            reward_dim=env.reward_spec().numel,
-            gamma=1.0,
-            debug_summaries=DEBUGGING),
+        loss=PPOLoss(gamma=1.0, debug_summaries=DEBUGGING),
         optimizer=optimizer,
         debug_summaries=DEBUGGING)
 
