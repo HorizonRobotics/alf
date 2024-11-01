@@ -552,7 +552,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         if self._opt_ptb_dist == 'exponential':
             self._opt_ptb_weights.exponential_(1.0)
         else:
-            self._opt_ptb_dist.uniform_(0.5, 1.5)
+            self._opt_ptb_weights.uniform_(0.5, 1.5)
         n_start = 1 + self._num_bootstrap_critics
         for i in range(self._num_opt_ptb_critics):
             weights = self._opt_ptb_weights[:, :, i]

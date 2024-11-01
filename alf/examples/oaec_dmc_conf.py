@@ -37,6 +37,7 @@ alf.config(
     num_rollout_sampled_actions=10,
     num_bootstrap_critics=2,
     bootstrap_mask_prob=0.8,
+    opt_ptb_dist="exponential",
     actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     target_update_tau=0.005)
