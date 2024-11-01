@@ -231,6 +231,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._reward_noise_scale = reward_noise_scale
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
+        if output_target_critic:
+            self._output_critic_name = 'q'
+        else:
+            self._output_critic_name = 'target_q'
         self._output_target_critic = output_target_critic
         self._use_target_actor = use_target_actor
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
@@ -385,6 +389,18 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             batch_idx = torch.arange(actions.shape[1]).type_as(action_idx)
             # [n_env, ...]
             action = actions[action_idx, batch_idx, ...]
+
+            if self._debug_summaries and alf.summary.should_record_summaries():
+                with alf.summary.scope(self._name):
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_tot_std",
+                        q_tot_std)
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_opt_std",
+                        q_opt_std)
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_epi_std",
+                        q_epi_std)
 
             # else:
             #     # This uniform sampling during initial collect stage is
