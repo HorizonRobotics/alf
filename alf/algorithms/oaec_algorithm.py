@@ -117,6 +117,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  beta_lb=0.5,
                  output_target_critic=True,
                  use_target_actor=True,
+                 std_for_overestimate='tot',
                  target_update_tau=0.05,
                  target_update_period=1,
                  rollout_random_action=0.,
@@ -190,6 +191,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 whenever critic values are needed, such as explorative rollout 
                 and actor training.
             use_target_actor (bool): whether to use target actor for actor.
+            std_for_overestimate (str): std type used for std for overestimation,
+                options are ['tot', 'opt'].
             rollout_random_action (float): the probability of taking a uniform
                 random action during a ``rollout_step()``. 0 means always directly
                 taking actions added with OU noises and 1 means always sample
@@ -206,6 +209,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         """
         assert num_bootstrap_critics >= 1, (
             "OaecAlgorithm requires a positive num_bootstrap_critics.")
+        assert opt_ptb_dist in ["exponential", "uniform"], (
+            "optimization perturbation distribution must be 'exponential' or 'uniform'")
+        assert std_for_overestimate in ["tot", "opt"], (
+            "type of std for overestimation must be 'tot' or 'opt'")
 
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
@@ -236,10 +243,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             self._output_critic_name = 'target_q'
         self._output_target_critic = output_target_critic
         self._use_target_actor = use_target_actor
+        self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
-        assert opt_ptb_dist in ["exponential", "uniform"], (
-            "optimization perturbation distribution must be exponential or uniform")
         self._opt_ptb_dist = opt_ptb_dist
         # self._opt_ptb_dist = torch.distributions.Exponential(1.0)
         self._device = alf.get_default_device()
@@ -538,13 +544,21 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
         # compute total std of the target critic for estimation of overestimation
         target_q = info.critic.target_q_values[:, :, :1, ...]
-        target_q_bootstrap = info.critic.target_q_values[
-            :, :, 1: 1 + self._num_bootstrap_critics, ...]
-        target_q_bootstrap_diff = target_q_bootstrap - target_q
-        target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()  # [T, B, ...]
         target_q_mean = info.critic.target_q_values[
             :, :, :1 + self._num_bootstrap_critics, ...].mean(dim=2)  # [T, B, ...]
-        target_value = target_q_mean - self._beta_lb * target_q_std  # [T, B, ...]
+        if self._std_for_overestimate == 'tot':
+            target_q_bootstrap = info.critic.target_q_values[
+                :, :, 1: 1 + self._num_bootstrap_critics, ...]
+            target_q_bootstrap_diff = target_q_bootstrap - target_q
+            # [T, B, ...]
+            target_overest_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+        else:
+            target_q_opt_ptb = info.critic.target_q_values[
+                :, :, -self._num_opt_ptb_critics:, ...]
+            target_q_opt_ptb_diff = target_q_opt_ptb - target_q
+            # [T, B, ...]
+            target_overest_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
+        target_value = target_q_mean - self._beta_lb * target_overest_std
 
         # original critic
         critic_losses[0] = self._critic_losses[0](
@@ -593,7 +607,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             with alf.summary.scope(self._name):
                 safe_mean_hist_summary("target_value", target_value)
                 safe_mean_hist_summary("target_q_mean", target_q_mean)
-                safe_mean_hist_summary("target_q_tot_std", target_q_std)
+                safe_mean_hist_summary("target_overest_std", target_overest_std)
                 safe_mean_hist_summary("opt_ptb_weights", self._opt_ptb_weights)
 
         return LossInfo(
