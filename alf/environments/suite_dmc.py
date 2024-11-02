@@ -77,6 +77,9 @@ def load(environment_name='cheetah:run',
         A wrapped AlfEnvironment
     """
     names = environment_name.split(":")
+    # (Jerry) A hack to make it work with gridsearch
+    if len(names) == 1:
+        names = environment_name.split("-")
     assert len(names) == 2, (
         "environment_name must be in the format 'domain_name:task_name'!"
         f" Provided environment_name: {environment_name}")

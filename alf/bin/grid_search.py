@@ -133,8 +133,8 @@ class GridSearchConfig(object):
     """
 
     _all_keys_ = [
-        "desc", "comment", "use_gpu", "gpus", "max_worker_num", "repeats",
-        "parameters"
+        "desc", "version", "comment", "use_gpu", "gpus", "max_worker_num",
+        "repeats", "parameters"
     ]
 
     def __init__(self, conf_file):
@@ -254,26 +254,41 @@ class GridSearch(object):
                 return _slugify('_'.join([w[:len_per_word] for w in words]))
 
             if isinstance(x, str):
+                # Jerry: for shorter naming
+                if x == 'True' or x == 'False':
+                    x = x[0]
                 tokens = x.replace("/", "_").split(".")
                 tokens = [_initials(t) for t in tokens]
                 return ".".join(tokens)
             else:
                 return _abbr_single(str(x), l)
 
-        def _abbr(x, l):
+        # def _abbr(x, l):
+        def _abbr(x, l, is_value=False):
             if isinstance(x, Iterable) and not isinstance(x, str):
                 strs = []
                 for key, val in x.items():
-                    strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
+                    if 'random_seed' in key or 'env_name' in key:
+                        continue
+                    # strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
+                    strs.append("%s=%s" % (_abbr(key, l),
+                                           _abbr(val, l, is_value=True)))
                 return "+".join(strs)
             else:
+                if isinstance(x, str):
+                    x = x.split('.')[-1]
+                if not is_value:
+                    # Jerry: '[:3]' for shorter naming
+                    x = ''.join([str(s[0]) for s in x.split('_')[:3]])
+                    # x = ''.join([str(s[0]) for s in x.split('_')])
                 return _abbr_single(x, l)
 
         def _generate_name(max_token_len):
-            name = "%04dr%d" % (id, repeat)
+            # name = "%04dr%d" % (id, repeat)
+            name = ""
             abbr = _abbr(parameters, max_token_len)
             if abbr:
-                name += "+" + abbr
+                name += abbr
             return name
 
         # first try not truncating words
@@ -282,7 +297,12 @@ class GridSearch(object):
             # If this regenerated name is still over ``max_len``, it will get
             # hard truncated
             name = _generate_name(max_token_len=token_len)
-        return name[:max_len]
+        name = name[:max_len]
+
+        if 'TrainerConfig.random_seed' in parameters.keys():
+            name = os.path.join(
+                name, f"seed_{parameters['TrainerConfig.random_seed']}")
+        return name
 
     def run(self):
         """Run trainings with all possible parameter combinations in
@@ -300,6 +320,8 @@ class GridSearch(object):
             processes=max_worker_num, maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
+        # conf_name = FLAGS.root_dir.split('/')[-2]
+        version = FLAGS.root_dir.split('/')[-1]
         for repeat in range(self._conf.repeats):
             for task_count, values in enumerate(
                     itertools.product(*param_values)):
@@ -308,6 +330,8 @@ class GridSearch(object):
                                       self._generate_run_name(
                                           parameters, task_count, repeat))
                 root_dir = common.abs_path(root_dir)
+                parameters.update({'TrainerConfig.version': version})
+                # parameters.update({'TrainerConfig.conf_name': conf_name})
                 process_pool.apply_async(
                     func=self._worker,
                     args=[root_dir, parameters, device_queue],
@@ -359,6 +383,15 @@ class GridSearch(object):
                 confs.update({
                     'TrainerConfig.confirm_checkpoint_upon_crash': False
                 })
+                for k, v in confs.items():
+                    if 'version' in k:
+                        continue
+                    if isinstance(v, str):
+                        try:
+                            confs[k] = eval(v)
+                        except NameError:
+                            confs[k] = v
+
                 alf.pre_config(confs)
                 common.parse_conf_file(conf_file)
 
@@ -395,6 +428,20 @@ def launch_snapshot_gridsearch():
     # ``<root_dir>/alf_config.py`` or ``<root_dir>/configured.gin``
     conf_file = common.get_conf_file()
     common.parse_conf_file(conf_file)
+    # add version name into root_dir
+    if not conf_file.endswith('.gin'):
+        with open(FLAGS.search_config) as f:
+            search_conf = json.loads(f.read())
+        version = search_conf.get('version', "default")
+        # conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
+        root_dir = os.path.join(root_dir, version)
+        os.makedirs(root_dir, exist_ok=True)
+        for i in range(len(sys.argv)):
+            if sys.argv[i] == '--root_dir':
+                sys.argv[i + 1] = root_dir
+            elif '--root_dir' in sys.argv[i]:
+                sys.argv[i] = f"--root_dir={root_dir}"
+
     common.write_config(root_dir)
 
     # generate a snapshot of ALF repo as ``<root_dir>/alf``

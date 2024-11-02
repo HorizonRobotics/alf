@@ -1,20 +1,21 @@
 {
     "desc": "DM Control tasks with 4 seeds on each environment",
+    "version": "hopper_oaec_04337_nb_2-newton",
     "use_gpu": true,
     "gpus": [
-        0
+        0, 1
     ],
-    "max_worker_num": 2,
+    "max_worker_num": 4,
     "repeats": 1,
     "parameters": {
         "create_environment.env_name": [
-            "hopper:hop"
+            "hopper-hop"
         ],
         "OaecAlgorithm.beta_ub": "[1.]",
-        "OaecAlgorithm.beta_lb": "[.1]",
+        "OaecAlgorithm.beta_lb": "[0.]",
         "OaecAlgorithm.output_target_critic": "[True]",
         "OaecAlgorithm.num_bootstrap_critics": "[2]",
-        "OaecAlgorithm.bootstrap_mask_prob": "[0.5]",
+        "OaecAlgorithm.bootstrap_mask_prob": "[0.5, 0.8]",
         "OaecAlgorithm.use_target_actor": "[False]",
         "OaecAlgorithm.target_update_tau": "[0.005]",
         "TrainerConfig.random_seed": "list(range(2))"
