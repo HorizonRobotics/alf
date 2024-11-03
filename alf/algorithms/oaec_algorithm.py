@@ -48,7 +48,7 @@ OaecState = namedtuple(
 OaecInfo = namedtuple(
     "OaecInfo", [
         "reward", "reward_noise", "mask", "step_type", "discount", 
-        "action", "actor_loss", "critic", "discounted_return"
+        "action", "action_distribution", "actor_loss", "critic", "discounted_return"
     ],
     default_value=())
 OaecLossInfo = namedtuple(
@@ -252,6 +252,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._use_target_actor = use_target_actor
         self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
+        self._num_sampled_target_q_actions = num_sampled_target_q_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._opt_ptb_single_data = opt_ptb_single_data
         self._opt_ptb_dist = opt_ptb_dist
@@ -392,8 +393,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
 
             ## Step 4: use Q_value + epistemic_std to select action for exploration
-            # [n_sampled, n_env]
             q_mean_values = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
+            # [n_sampled, n_env]
             q_values_ub = q_mean_values.reshape(
                 actions.shape[0], -1) + self._beta_ub * q_epi_std
             action_idx = q_values_ub.max(dim=0)[1]  # [n_env]
@@ -423,11 +424,11 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             else:
                 action = dist_utils.rsample_action_distribution(action_dist)
 
-        return action, OaecActionState(actor_network=actor_state, 
-                                       critics=critic_states)
+        return action_dist, action, OaecActionState(actor_network=actor_state, 
+                                                    critics=critic_states)
 
     def predict_step(self, inputs: TimeStep, state: OaecState):
-        action, action_state = self._predict_action(
+        action_dist, action, action_state = self._predict_action(
             inputs.observation,
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
@@ -436,14 +437,14 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=action,
             state=OaecState(action=action_state),
-            info=OaecInfo(action=action))
+            info=OaecInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state=None):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by OaecAlgorithm")
 
-        action, action_state = self._predict_action(
+        _, action, action_state = self._predict_action(
             inputs.observation, 
             state.action, 
             explore=True)
@@ -466,13 +467,48 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             output=action, state=new_state, info=info)
 
     def _critic_train_step(self, inputs: TimeStep, state: OaecCriticState,
-                           rollout_info: OaecRolloutInfo, action):
-        # target_action_dist, target_actor_state = self._target_actor_network(
-        #     inputs.observation, state=state.target_actor)
-        # target_action = dist_utils.rsample_action_distribution(
-        #     target_action_dist)
+                           rollout_info: OaecRolloutInfo, action, action_dist):
+        if self._num_sampled_target_q_actions > 0:
+            # [n_sampled, T*B, ...]
+            sampled_actions = action_dist.sample(
+                sample_shape=(self._num_sampled_target_q_actions,))
+            # [n_sampled*T*B, ...]
+            target_critic_actions = sampled_actions.reshape(
+                sampled_actions.shape[0] * sampled_actions.shape[1], 
+                *sampled_actions.shape[2:])
+            target_critic_observations = inputs.observation.repeat(
+                [self._num_sampled_target_q_actions,] + [1] * self.observation_spec.ndim)
+        else:
+            target_critic_actions = action
+            target_critic_observations = inputs.observation
+
+        # [n_sampled * T*B, n_total_critics] or [T*B, n_total_critics]
         target_q_values, target_critic_states = self._target_critic_networks(
-            (inputs.observation, action), state=state.target_critics)
+            (target_critic_observations, target_critic_actions), 
+            state=state.target_critics)
+        if self._num_sampled_target_q_actions > 0:
+            # [n_sampled, T*B, n_total_critics]
+            target_q_values = target_q_values.reshape(
+                sampled_actions.shape[0], -1, self._total_num_critics)
+            # [n_sampled, T*B]
+            target_q_mean = target_q_values[:, :, :1 + self._num_opt_ptb_critics].mean(-1)
+            if self._std_for_overestimate == 'tot':
+                target_q_bootstrap = target_q_values[
+                    :, :, 1:1 + self._num_bootstrap_critics]
+                target_q_bootstrap_diff = target_q_bootstrap - target_q_values[:, :, :1]
+                # [n_sampled, T*B]
+                target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+            else:
+                target_q_opt_ptb = target_q_values[:, :, -self._num_opt_ptb_critics]
+                target_q_opt_ptb_diff = target_q_opt_ptb - target_q_values[:, :, :1]
+                target_q_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
+
+            target_q_lb = target_q_mean - self._beta_lb * target_q_std
+            action_idx = target_q_lb.max(dim=0)[1]  # [T*B]
+            batch_idx = torch.arange(
+                sampled_actions.shape[1]).type_as(action_idx)
+            target_q_values = target_q_lb[action_idx, batch_idx]
+
         q_values, critic_states = self._critic_networks(
             (inputs.observation, rollout_info.action), state=state.critics)
 
@@ -520,7 +556,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
     def train_step(self, inputs: TimeStep, state: OaecState,
                    rollout_info: OaecRolloutInfo):
         # train actor_network
-        action, action_state = self._predict_action(
+        action_dist, action, action_state = self._predict_action(
             inputs.observation, state=state.action)
         actor_state, actor_loss_info = self._actor_train_step(
             inputs=inputs, state=state.actor, action=action)
@@ -528,6 +564,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         # collect infor for critic_networks training
         target_actor_state = ()
         target_critic_action = action
+        target_action_dist = action_dist
         if self._use_target_actor:
             target_action_dist, target_actor_state = self._target_actor_network(
                 inputs.observation, state=state.target_actor)
@@ -535,7 +572,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 target_action_dist)
         critic_states, critic_info = self._critic_train_step(
             inputs=inputs, state=state.critics, rollout_info=rollout_info,
-            action=target_critic_action)
+            action=target_critic_action, action_dist=target_action_dist)
 
         state = OaecState(
             action=action_state, actor=actor_state, 
@@ -546,6 +583,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             mask=rollout_info.mask,
             step_type=inputs.step_type,
             discount=inputs.discount,
+            action_distribution=action_dist,
             critic=critic_info,
             actor_loss=actor_loss_info)
         return AlgStep(output=action, state=state, info=info)
@@ -554,22 +592,25 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         critic_losses = [None] * self._total_num_critics
 
         # compute total std of the target critic for estimation of overestimation
-        target_q = info.critic.target_q_values[:, :, :1, ...]
-        target_q_mean = info.critic.target_q_values[
-            :, :, :1 + self._num_bootstrap_critics, ...].mean(dim=2)  # [T, B, ...]
-        if self._std_for_overestimate == 'tot':
-            target_q_bootstrap = info.critic.target_q_values[
-                :, :, 1: 1 + self._num_bootstrap_critics, ...]
-            target_q_bootstrap_diff = target_q_bootstrap - target_q
-            # [T, B, ...]
-            target_overest_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+        if self._num_sampled_target_q_actions > 0:
+            target_value = info.critic.target_q_values
         else:
-            target_q_opt_ptb = info.critic.target_q_values[
-                :, :, -self._num_opt_ptb_critics:, ...]
-            target_q_opt_ptb_diff = target_q_opt_ptb - target_q
-            # [T, B, ...]
-            target_overest_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
-        target_value = target_q_mean - self._beta_lb * target_overest_std
+            target_q = info.critic.target_q_values[:, :, :1, ...]
+            target_q_mean = info.critic.target_q_values[
+                :, :, :1 + self._num_bootstrap_critics, ...].mean(dim=2)  # [T, B, ...]
+            if self._std_for_overestimate == 'tot':
+                target_q_bootstrap = info.critic.target_q_values[
+                    :, :, 1: 1 + self._num_bootstrap_critics, ...]
+                target_q_bootstrap_diff = target_q_bootstrap - target_q
+                # [T, B, ...]
+                target_overest_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+            else:
+                target_q_opt_ptb = info.critic.target_q_values[
+                    :, :, -self._num_opt_ptb_critics:, ...]
+                target_q_opt_ptb_diff = target_q_opt_ptb - target_q
+                # [T, B, ...]
+                target_overest_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
+            target_value = target_q_mean - self._beta_lb * target_overest_std
 
         # original critic
         critic_losses[0] = self._critic_losses[0](
@@ -620,8 +661,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 safe_mean_hist_summary("target_value", target_value)
-                safe_mean_hist_summary("target_q_mean", target_q_mean)
-                safe_mean_hist_summary("target_overest_std", target_overest_std)
+                if self._num_sampled_target_q_actions == 0:
+                    safe_mean_hist_summary("target_q_mean", target_q_mean)
+                    safe_mean_hist_summary("target_overest_std", target_overest_std)
                 safe_mean_hist_summary("opt_ptb_weights", self._opt_ptb_weights)
 
         return LossInfo(
