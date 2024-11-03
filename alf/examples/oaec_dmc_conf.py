@@ -35,6 +35,7 @@ alf.config(
     beta_lb=.5,
     output_target_critic=True,
     std_for_overestimate='opt',
+    opt_ptb_single_data=True,
     reward_noise_scale=None,
     num_rollout_sampled_actions=10,
     num_bootstrap_critics=2,

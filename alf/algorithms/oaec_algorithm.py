@@ -107,9 +107,11 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             config: TrainerConfig = None,
             critic_loss_ctor=None,
             num_rollout_sampled_actions=10,
+            num_sampled_target_q_actions=0,
             num_bootstrap_critics=1,
             critic_replicas_deepcopy=True,
             bootstrap_mask_prob=0.8,
+            opt_ptb_single_data=True,
             opt_ptb_dist="exponential",
             # correct_optimization_noise=False,
             # align_optimization_noise=False,
@@ -158,6 +160,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 only useful if priority replay is enabled.
             num_rollout_sampled_actions (int): number of sampled actions in rollout.
                 The one with the highest Q_value + epistemic_std will be executed.
+            num_sampled_target_q_actions (int): number of sampled actions for target
+                critics, default is 0, indicating no sampling, i.e., using the mean
+                of the policy output.
             num_bootstrap_critics (int): a positive number of bootstrapped critics 
                 for uncertainty estimation. Default is 1.
             critic_replicas_deepcopy (bool): whether to deepcopy the critic_network
@@ -165,6 +170,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 will have different independently instantiated parameters.
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
                 for independently masking out a transition to simulate bootstrapping.
+            opt_ptb_single_data (bool): whether to perturb each training data
+                during optimization.
             opt_ptb_dist (str): the distribution for sampling optimization perturbation.
                 Options are ["exponential", "uniform"].
             correct_optimization_noise (bool): whether to correct the optimization
@@ -250,10 +257,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
-        assert opt_ptb_dist in [
-            "exponential", "uniform"
-        ], ("optimization perturbation distribution must be exponential or uniform"
-            )
+        self._opt_ptb_single_data = opt_ptb_single_data
         self._opt_ptb_dist = opt_ptb_dist
         # self._opt_ptb_dist = torch.distributions.Exponential(1.0)
         self._device = alf.get_default_device()
@@ -328,9 +332,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             'TrainerConfig.mini_batch_size')
         self._mini_batch_length = alf.get_config_value(
             'TrainerConfig.mini_batch_length')
-        self._opt_ptb_weights = torch.empty(
-            (self._mini_batch_length, self._mini_batch_size,
-             self._num_opt_ptb_critics))
+        if opt_ptb_single_data:
+            self._opt_ptb_weights = torch.empty(
+                (self._mini_batch_length, self._mini_batch_size,
+                 self._num_opt_ptb_critics))
+        else:
+            self._opt_ptb_weights = torch.empty((self._num_opt_ptb_critics, ))
 
     def _predict_action(self,
                         observation,
@@ -604,7 +611,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             self._opt_ptb_weights.uniform_(0.5, 1.5)
         n_start = 1 + self._num_bootstrap_critics
         for i in range(self._num_opt_ptb_critics):
-            weights = self._opt_ptb_weights[:, :, i]
+            if self._opt_ptb_single_data:
+                weights = self._opt_ptb_weights[:, :, i]
+            else:
+                weights = self._opt_ptb_weights[i]
             critic_losses[
                 n_start + i] = weights * self._critic_losses[n_start + i](
                     info=info,
