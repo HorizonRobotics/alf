@@ -15,6 +15,7 @@
         "OaecAlgorithm.beta_lb": "[0.]",
         "OaecAlgorithm.output_target_critic": "[True]",
         "OaecAlgorithm.num_sampled_target_q_actions": "[10]",
+        "OaecAlgorithm.target_q_from_sampled_actions": "['mean']",
         "OaecAlgorithm.std_for_overestimate": "['opt']",
         "OaecAlgorithm.opt_ptb_single_data": "[True]",
         "OaecAlgorithm.bootstrap_mask_prob": "[0.5]",
