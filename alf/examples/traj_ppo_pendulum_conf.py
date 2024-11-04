@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import partial
+import torch
 
 import alf
 from alf.environments import suite_gym
@@ -67,16 +68,23 @@ optimizer = alf.optimizers.Adam(
 
 alf.config("ActorDistributionNetwork", fc_layer_params=(100, 100))
 alf.config("CriticNetwork", joint_fc_layer_params=(100, 100))
+alf.config("TrainerConfig", random_seed=1)
+
+if alf.get_action_spec().is_discrete:
+    alf.config(
+        "CriticNetwork",
+        action_input_processors=alf.layers.Sequential(
+            torch.nn.Embedding(2, 10), torch.nn.Flatten()))
 alf.config("ValueNetwork", fc_layer_params=(100, 100))
 alf.config(
     "RNNARModel",
     cell_ctor=alf.nn.GRUCell,
     hidden_sizes=[100, 100],
-    projection_net_ctor=alf.nn.BetaProjectionNetwork)
+    continuous_projection_net_ctor=alf.nn.BetaProjectionNetwork)
 alf.config(
     "TrajectoryPPOAlgorithm",
     trajectory_length=trajectory_length,
-    target_switch_steps=10)
+    target_switch_steps=2)
 
 alf.config(
     'Agent', rl_algorithm_cls=TrajectoryPPOAlgorithm, optimizer=optimizer)
@@ -103,7 +111,6 @@ alf.config(
     eval_interval=0,
     num_evals=20,
     confirm_checkpoint_upon_crash=False,
-    random_seed=1,
     summarize_grads_and_vars=True,
     summarize_action_distributions=True,
     debug_summaries=True,

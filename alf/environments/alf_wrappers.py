@@ -1224,10 +1224,10 @@ class TrajectoryActionWrapper(AlfEnvironmentBaseWrapper):
         super().__init__(env)
         action_spec = env.action_spec()
         assert isinstance(action_spec, alf.BoundedTensorSpec)
-        assert action_spec.ndim == 1
+        assert action_spec.ndim <= 1
 
         def _f(bound):
-            bound = np.broadcast_to(bound, action_spec.shape)[:, None]
+            bound = np.broadcast_to(bound, action_spec.shape)[..., None]
             bound = np.broadcast_to(bound,
                                     (action_spec.numel, trajectory_length))
             return np.reshape(bound, (-1, ))
@@ -1246,7 +1246,11 @@ class TrajectoryActionWrapper(AlfEnvironmentBaseWrapper):
 
     def _step(self, action):
         l = self._trajectory_length
-        time_step = self._env.step(action[:, l - 1::l])
+        if self._env.action_spec().ndim == 0:
+            a = action[:, 0]
+        else:
+            a = action[:, ::l]
+        time_step = self._env.step(a)
         action[time_step.step_type == StepType.FIRST] = 0
         return time_step._replace(prev_action=action)
 

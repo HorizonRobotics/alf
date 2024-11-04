@@ -333,8 +333,8 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
 
 @alf.configurable
 class CriticQuantileNetwork(EncodingNetwork):
-    """Creates an instance of ``CriticQuantileNetwork`` for estimating the quantiles 
-    of a (state, action) input for continuous or discrete actions. Used by the 
+    """Creates an instance of ``CriticQuantileNetwork`` for estimating the quantiles
+    of a (state, action) input for continuous or discrete actions. Used by the
     DSacAlgorithm.
     """
 

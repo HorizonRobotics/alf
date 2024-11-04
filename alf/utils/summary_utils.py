@@ -271,8 +271,8 @@ def summarize_action(actions, action_specs, name="action"):
             histogram_discrete(
                 name="%s/%s" % (name, path),
                 data=action,
-                bucket_min=int(action_spec.minimum),
-                bucket_max=int(action_spec.maximum))
+                bucket_min=int(np.max(action_spec.minimum)),
+                bucket_max=int(np.min(action_spec.maximum)))
         else:
             if len(action_spec.shape) == 0:
                 action_dim = 1

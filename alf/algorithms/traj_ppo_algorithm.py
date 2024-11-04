@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from functools import partial
+import numpy as np
 from typing import Callable, NamedTuple
 import torch.distributions as td
 from torch import nn
@@ -49,23 +50,51 @@ class ARModel(nn.Module):
     def log_prob(self, input, sample, prefix_length):
         raise NotImplementedError()
 
-    def sample(self, input, prefix, prefix_length):
-        raise NotImplementedError()
+    def sample_with_prefix(self,
+                           input,
+                           prefix,
+                           prefix_length,
+                           return_log_prob=False):
+        return self._sample(input, prefix, prefix_length,
+                            dist_utils.sample_action_distribution,
+                            return_log_prob)
 
-    def epsilon_greedy_sample(self, input, prefix, prefix_length, epsilon):
-        raise NotImplementedError()
+    def epsilon_greedy_sample_with_prefix(self, input, prefix, prefix_length,
+                                          epsilon):
+        return self._sample(
+            input, prefix, prefix_length,
+            partial(dist_utils.epsilon_greedy_sample, eps=epsilon))
 
 
 @alf.configurable(
     blacklist=["input_tensor_spec", "output_spec", "sequence_length"])
 class RNNARModel(ARModel):
-    def __init__(self, input_tensor_spec, output_spec, sequence_length,
-                 cell_ctor, hidden_sizes, projection_net_ctor: Callable):
+    def __init__(self,
+                 input_tensor_spec,
+                 output_spec,
+                 sequence_length,
+                 cell_ctor,
+                 hidden_sizes,
+                 continuous_projection_net_ctor: Callable = alf.nn.
+                 NormalProjectionNetwork,
+                 discrete_projection_net_ctor: Callable = alf.nn.
+                 CategoricalProjectionNetwork):
         super().__init__()
         input_dim = input_tensor_spec.numel
         output_dim = output_spec.numel
-        self._output_to_rnn_input = alf.layers.FC(output_dim, hidden_sizes[0])
+        if output_spec.is_discrete:
+            self._output_to_rnn_input = alf.layers.Sequential(
+                torch.nn.Embedding(
+                    np.max(output_spec.maximum) + 1, hidden_sizes[0]),
+                torch.nn.Flatten())
+        else:
+            self._output_to_rnn_input = alf.layers.FC(output_dim,
+                                                      hidden_sizes[0])
         self._input_to_rnn_input = alf.layers.FC(input_dim, hidden_sizes[0])
+        if output_spec.is_discrete:
+            projection_net_ctor = discrete_projection_net_ctor
+        else:
+            projection_net_ctor = continuous_projection_net_ctor
         self._proj_net = projection_net_ctor(
             input_size=hidden_sizes[-1], action_spec=output_spec)
         self._sequence_length = sequence_length
@@ -83,29 +112,19 @@ class RNNARModel(ARModel):
     def event_shape(self):
         return self._event_shape
 
-    def log_prob(self, input, sample, prefix_length):
+    def log_prob(self, input, sample):
         assert sample.size(1) == self._sequence_length
         state = common.zero_tensor_from_nested_spec(self._rnn.state_spec,
                                                     input.size(0))
         rnn_input = self._input_to_rnn_input(input)
-        log_prob = 0
+        log_probs = []
         for i in range(self._sequence_length):
             rnn_output, state = self._rnn(rnn_input, state)
             output_dist = self._proj_net(rnn_output)[0]
             lp = output_dist.log_prob(sample[:, i])
-            log_prob = torch.where(i >= prefix_length, log_prob + lp, log_prob)
+            log_probs.append(lp)
             rnn_input = self._output_to_rnn_input(sample[:, i])
-        return log_prob
-
-    def sample(self, input, prefix, prefix_length, return_log_prob=False):
-        return self._sample(input, prefix, prefix_length,
-                            dist_utils.sample_action_distribution,
-                            return_log_prob)
-
-    def epsilon_greedy_sample(self, input, prefix, prefix_length, epsilon):
-        return self._sample(
-            input, prefix, prefix_length,
-            partial(dist_utils.epsilon_greedy_sample, eps=epsilon))
+        return torch.stack(log_probs, dim=1)
 
     def _sample(self,
                 input,
@@ -123,16 +142,21 @@ class RNNARModel(ARModel):
             rnn_output, state = self._rnn(rnn_input, state)
             output_dist = self._proj_net(rnn_output)[0]
             sample = sample_func(output_dist)
-            use_pre = i < prefix_length
-            samples.append(torch.where(use_pre[:, None], prefix[:, i], sample))
+            if prefix is not None:
+                use_pre = i < prefix_length
+                samples.append(
+                    torch.where(use_pre[:, None], prefix[:, i], sample))
+            else:
+                samples.append(sample)
             rnn_input = self._output_to_rnn_input(samples[-1])
             if return_log_prob:
-                # The reason of not using samples[-1] for log_prob is to utilize
-                # the caching mechanism of td.Transform so that log_prob is more
-                # accurate for samples near the boundary of the action space.
-                nlogp = output_dist.log_prob(sample)
-                ologp = output_dist.log_prob(prefix[:, i])
-                logp = torch.where(use_pre, ologp, nlogp)
+                logp = output_dist.log_prob(sample)
+                if prefix is not None:
+                    # The reason of not using samples[-1] for log_prob is to utilize
+                    # the caching mechanism of td.Transform so that log_prob is more
+                    # accurate for samples near the boundary of the action space.
+                    ologp = output_dist.log_prob(prefix[:, i])
+                    logp = torch.where(use_pre, ologp, logp)
                 log_probs.append(logp)
 
         samples = torch.stack(samples, dim=1)
@@ -166,7 +190,8 @@ class MixtureARDistribution(td.Distribution):
         padding = torch.zeros(
             prefix.shape[:-2] + (model.sequence_length - self._prefix_length,
                                  prefix.size(-1)),
-            device=input.device)
+            dtype=prefix.dtype,
+            device=prefix.device)
         prefix = torch.cat([prefix, padding], dim=-2)
         self._prefix = prefix
 
@@ -198,14 +223,27 @@ class MixtureARDistribution(td.Distribution):
         assert sample.shape[-1 - len(self.batch_shape):-1] == self.batch_shape
         sample = sample.reshape(*sample.shape[:-1], self._model.event_shape[1],
                                 self._model.event_shape[0]).transpose(-2, -1)
-        is_old_sample = (sample == self._prefix
-                         )[..., :self._prefix_length, :].all(-1).all(-1)
-        prefix_length = self._prefix_length * is_old_sample
-        logp = -F.binary_cross_entropy_with_logits(
-            self._new_sample_logit, (1 - is_old_sample.float()),
-            reduction='none')
-        return logp + self._batch_squash_call(
-            self._model.log_prob, self._input, sample, prefix_length)
+        log_probs = self._batch_squash_call(self._model.log_prob, self._input,
+                                            sample)
+        return self._calc_log_prob(sample, log_probs)
+
+    def _calc_log_prob(self, sample, log_probs):
+        same_as_prefix = (sample == self._prefix)[..., :self._prefix_length, :]
+        same_as_prefix = same_as_prefix.all(-1).all(-1)  # [B]
+        logp_new = -F.softplus(-self._new_sample_logit) + log_probs.sum(-1)
+        logp_old = (-F.softplus(self._new_sample_logit) +
+                    log_probs[..., self._prefix_length:].sum(-1))
+        if sample.dtype.is_floating_point:
+            # P(a_prefix, a|prefix, s) =
+            #       (1-P_switch) * delta(a_prefix-prefix) * Q(a|prefix, s)
+            #       + P_switch * Q(a_prefix, a|s)
+            # where delta is the Dirac delta function. If a_prefix is same as prefix,
+            # the first term dominates and we can ignore the second term.
+            logp = torch.where(same_as_prefix, logp_old, logp_new)
+        else:
+            logp = torch.logsumexp(
+                torch.stack([logp_new, logp_old], dim=-1), dim=-1)
+        return torch.where(same_as_prefix, logp, logp_new)
 
     def sample(self, sample_shape=torch.Size(), return_log_prob=False):
         if return_log_prob:
@@ -224,40 +262,16 @@ class MixtureARDistribution(td.Distribution):
         is_old_sample = torch.rand(
             self._input.shape[:-1]) > self._new_sample_logit.sigmoid()
         prefix_length = self._prefix_length * is_old_sample
-        ret = self._batch_squash_call(self._model.sample, self._input,
-                                      self._prefix, prefix_length,
+        ret = self._batch_squash_call(self._model.sample_with_prefix,
+                                      self._input, self._prefix, prefix_length,
                                       return_log_prob)
 
         def _as_sample_shape(x):
             return x.expand(sample_shape + x.shape)
 
         if return_log_prob:
-            sample = ret[0]
-            log_probs = ret[1]
-
-            # For a completely new sample (i.e. is_old_sample == 0), it is still possible
-            # that the sample has the same prefix. In this case, we still
-            # consider it as an old sample and only calculate the probability conditioned
-            # on the prefix. This is justified by the following calculation:
-            #
-            # P(a_prefix, a|prefix, s) = (1-P_switch) * delta(a_prefix-prefix) * Q(a|prefix, s)
-            #                             + P_switch * Q(a_prefix, a|s)
-            # where delta is the Dirac delta function. If a_prefix is same as prefix,
-            # the first term dominates and we can ignore the second term.
-
-            same_as_prefix = (
-                sample == self._prefix)[..., :self._prefix_length, :]
-            same_as_prefix = same_as_prefix.all(-1).all(-1)  # [B]
-            logp = -F.binary_cross_entropy_with_logits(
-                self._new_sample_logit, (1 - same_as_prefix.float()),
-                reduction='none')
-            prefix_length = self._prefix_length * same_as_prefix  # [B]
-            pos = torch.arange(self._model.sequence_length)
-            pos = pos.reshape(*([1] * len(self.batch_shape)), -1)  # [1, L]
-            pos = pos.expand_as(log_probs)  # [B, L]
-            log_probs[pos < prefix_length.unsqueeze(-1)] = 0
-            log_prob = logp + log_probs.sum(-1)
-
+            sample, log_probs = ret
+            log_prob = self._calc_log_prob(sample, log_probs)
             return (_as_sample_shape(sample.transpose(-2, -1).flatten(-2, -1)),
                     _as_sample_shape(log_prob))
         else:
@@ -268,11 +282,14 @@ class MixtureARDistribution(td.Distribution):
         :param epsilon:
         :return: [batch_size, per_step_dim * sequence_length]
         """
-        is_old_sample = 0.0 > self._new_sample_logit
+        B = self._input.shape[:-1]
+        is_old_sample = torch.rand(B) > self._new_sample_logit.sigmoid()
+        # is_old_sample = is_old_sample.where(
+        #     torch.rand(B) < epsilon, self._new_sample_logit < 0.0)
         prefix_length = self._prefix_length * is_old_sample
-        sample = self._batch_squash_call(self._model.epsilon_greedy_sample,
-                                         self._input, self._prefix,
-                                         prefix_length, epsilon)
+        sample = self._batch_squash_call(
+            self._model.epsilon_greedy_sample_with_prefix, self._input,
+            self._prefix, prefix_length, epsilon)
         return sample.transpose(-2, -1).flatten(-2, -1)
 
     @property
@@ -403,8 +420,9 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
 
         """
         assert action_spec.ndim == 1
-        assert action_spec.numel % trajectory_length == 0
-        assert action_spec.is_continuous
+        assert action_spec.numel % trajectory_length == 0, (
+            f"action_spec.numel={action_spec.numel}, "
+            f"trajectory_length={trajectory_length}")
         assert distribution_adapter_ctor is None, "Not supported yet"
 
         per_step_action_dim = action_spec.numel // trajectory_length
@@ -417,7 +435,8 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
             minimum=action_spec.minimum[trajectory_length -
                                         1::trajectory_length],
             maximum=action_spec.maximum[trajectory_length -
-                                        1::trajectory_length])
+                                        1::trajectory_length],
+            dtype=action_spec.dtype)
 
         prefix_action_spec = alf.TensorSpec(
             ((trajectory_length - 1) * per_step_action_dim, ),
