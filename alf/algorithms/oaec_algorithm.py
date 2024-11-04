@@ -108,6 +108,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  critic_loss_ctor=None,
                  num_rollout_sampled_actions=10,
                  num_sampled_target_q_actions=0,
+                 target_q_from_sampled_actions="max",
                  num_bootstrap_critics=1,
                  critic_replicas_deepcopy=True,
                  bootstrap_mask_prob=0.8,
@@ -163,6 +164,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             num_sampled_target_q_actions (int): number of sampled actions for target
                 critics, default is 0, indicating no sampling, i.e., using the mean
                 of the policy output.
+            target_q_from_sampled_actions (str): the method to select generate
+                target q values from sampled actions, options are ["max", "mean"].
             num_bootstrap_critics (int): a positive number of bootstrapped critics 
                 for uncertainty estimation. Default is 1.
             critic_replicas_deepcopy (bool): whether to deepcopy the critic_network
@@ -220,6 +223,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             "optimization perturbation distribution must be 'exponential' or 'uniform'")
         assert std_for_overestimate in ["tot", "opt"], (
             "type of std for overestimation must be 'tot' or 'opt'")
+        assert target_q_from_sampled_actions in ["max", "mean"], (
+            "type of std for overestimation must be 'tot' or 'opt'")
 
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
@@ -253,6 +258,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._num_sampled_target_q_actions = num_sampled_target_q_actions
+        self._target_q_from_sampled_actions = target_q_from_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._opt_ptb_single_data = opt_ptb_single_data
         self._opt_ptb_dist = opt_ptb_dist
@@ -506,11 +512,15 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 target_q_opt_ptb_diff = target_q_opt_ptb - target_q_values[:, :, :1]
                 target_q_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
 
+            # [n_sampled, T*B]
             target_q_lb = target_q_mean - self._beta_lb * target_q_std
-            action_idx = target_q_lb.max(dim=0)[1]  # [T*B]
-            batch_idx = torch.arange(
-                sampled_actions.shape[1]).type_as(action_idx)
-            target_q_values = target_q_lb[action_idx, batch_idx]
+            if self._target_q_from_sampled_actions == 'max':
+                action_idx = target_q_lb.max(dim=0)[1]  # [T*B]
+                batch_idx = torch.arange(
+                    sampled_actions.shape[1]).type_as(action_idx)
+                target_q_values = target_q_lb[action_idx, batch_idx]
+            else:
+                target_q_values = target_q_lb.mean(dim=0)
 
         q_values, critic_states = self._critic_networks(
             (inputs.observation, rollout_info.action), state=state.critics)

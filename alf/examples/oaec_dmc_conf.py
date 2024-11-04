@@ -40,6 +40,7 @@ alf.config(
     reward_noise_scale=None,
     num_rollout_sampled_actions=10,
     num_sampled_target_q_actions=0,
+    target_q_from_sampled_actions='max',
     num_bootstrap_critics=2,
     bootstrap_mask_prob=0.8,
     use_target_actor=True,
