@@ -497,8 +497,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             target_q_values = target_q_values.reshape(
                 sampled_actions.shape[0], -1, self._total_num_critics)
             # [n_sampled, T*B]
-            target_q_mean = target_q_values[:, :, :1 +
-                                            self._num_opt_ptb_critics].mean(-1)
+            target_q_mean = target_q_values[:, :, :1 + self.
+                                            _num_bootstrap_critics].mean(-1)
             if self._std_for_overestimate == 'tot':
                 target_q_bootstrap = target_q_values[:, :, 1:1 + self.
                                                      _num_bootstrap_critics]
@@ -508,7 +508,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 target_q_std = (target_q_bootstrap_diff**2).mean(dim=2).sqrt()
             else:
                 target_q_opt_ptb = target_q_values[:, :, -self.
-                                                   _num_opt_ptb_critics]
+                                                   _num_opt_ptb_critics:]
                 target_q_opt_ptb_diff = target_q_opt_ptb - target_q_values[:, :, :
                                                                            1]
                 target_q_std = (target_q_opt_ptb_diff**2).mean(dim=2).sqrt()
