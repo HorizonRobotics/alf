@@ -330,8 +330,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._mini_batch_length = alf.get_config_value(
             'TrainerConfig.mini_batch_length')
         if opt_ptb_single_data:
-            self._opt_ptb_weights = torch.empty(
-                (self._mini_batch_length, self._mini_batch_size, self._num_opt_ptb_critics))
+            self._opt_ptb_weights = torch.empty((self._mini_batch_length, 
+                                                 self._mini_batch_size, 
+                                                 self._num_opt_ptb_critics))
         else:
             self._opt_ptb_weights = torch.empty((self._num_opt_ptb_critics,))
 
@@ -405,12 +406,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope(self._name):
-                    safe_mean_hist_summary(f"explore/{self._output_critic_name}_tot_std", 
-                                           q_tot_std)
-                    safe_mean_hist_summary(f"explore/{self._output_critic_name}_opt_std", 
-                                           q_opt_std)
-                    safe_mean_hist_summary(f"explore/{self._output_critic_name}_epi_std", 
-                                           q_epi_std)
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_tot_std", q_tot_std)
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_opt_std", q_opt_std)
+                    safe_mean_hist_summary(
+                        f"explore/{self._output_critic_name}_epi_std", q_epi_std)
 
             # else:
             #     # This uniform sampling during initial collect stage is
@@ -477,7 +478,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 sampled_actions.shape[0] * sampled_actions.shape[1], 
                 *sampled_actions.shape[2:])
             target_critic_observations = inputs.observation.repeat(
-                [self._num_sampled_target_q_actions,] + [1] * self.observation_spec.ndim)
+                [self._num_sampled_target_q_actions,] + 
+                [1] * self.observation_spec.ndim)
         else:
             target_critic_actions = action
             target_critic_observations = inputs.observation
@@ -491,7 +493,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             target_q_values = target_q_values.reshape(
                 sampled_actions.shape[0], -1, self._total_num_critics)
             # [n_sampled, T*B]
-            target_q_mean = target_q_values[:, :, :1 + self._num_opt_ptb_critics].mean(-1)
+            target_q_mean = target_q_values[
+                :, :, :1 + self._num_bootstrap_critics].mean(-1)
             if self._std_for_overestimate == 'tot':
                 target_q_bootstrap = target_q_values[
                     :, :, 1:1 + self._num_bootstrap_critics]
@@ -499,7 +502,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 # [n_sampled, T*B]
                 target_q_std = (target_q_bootstrap_diff ** 2).mean(dim=2).sqrt()
             else:
-                target_q_opt_ptb = target_q_values[:, :, -self._num_opt_ptb_critics]
+                target_q_opt_ptb = target_q_values[:, :, -self._num_opt_ptb_critics:]
                 target_q_opt_ptb_diff = target_q_opt_ptb - target_q_values[:, :, :1]
                 target_q_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
 
