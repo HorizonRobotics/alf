@@ -108,6 +108,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor=None,
             num_rollout_sampled_actions=10,
             num_sampled_target_q_actions=0,
+            greedy_target_q_action=False,
             target_q_from_sampled_actions="max",
             num_bootstrap_critics=1,
             critic_replicas_deepcopy=True,
@@ -164,8 +165,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             num_sampled_target_q_actions (int): number of sampled actions for target
                 critics, default is 0, indicating no sampling, i.e., using the mean
                 of the policy output.
-            target_q_from_sampled_actions (str): the method to select generate
-                target q values from sampled actions, options are ["max", "mean"].
+            greedy_target_q_action (bool): whether to use greedy action for target
+                critic computation. Only effective if num_sampled_target_q_actions
+                is zero.
+            target_q_from_sampled_actions (str): the method to generate target q
+                values from sampled actions, options are ["max", "mean"]. Only
+                effective when num_sampled_target_q_actions is greater than zero.
             num_bootstrap_critics (int): a positive number of bootstrapped critics 
                 for uncertainty estimation. Default is 1.
             critic_replicas_deepcopy (bool): whether to deepcopy the critic_network
@@ -264,6 +269,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._num_sampled_target_q_actions = num_sampled_target_q_actions
         self._target_q_from_sampled_actions = target_q_from_sampled_actions
+        self._greedy_target_q_action = greedy_target_q_action
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._opt_ptb_single_data = opt_ptb_single_data
         self._opt_ptb_dist = opt_ptb_dist
@@ -492,8 +498,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 self._num_sampled_target_q_actions,
             ] + [1] * self.observation_spec.ndim)
         else:
-            target_critic_actions = action
             target_critic_observations = inputs.observation
+            if self._greedy_target_q_action:
+                target_critic_actions = dist_utils.epsilon_greedy_sample(
+                    action_dist, eps=0.0)
+            else:
+                target_critic_actions = action
 
         # [n_sampled * T*B, n_total_critics] or [T*B, n_total_critics]
         target_q_values, target_critic_states = self._target_critic_networks(
