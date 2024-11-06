@@ -123,7 +123,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  std_for_overestimate='tot',
                  target_update_tau=0.05,
                  target_update_period=1,
-                 rollout_random_action=0.,
+                 initial_uniform_rollout=False,
                  dqda_clipping=None,
                  action_l2=0,
                  actor_optimizer=None,
@@ -204,11 +204,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             use_target_actor (bool): whether to use target actor for actor.
             std_for_overestimate (str): std type used for std for overestimation,
                 options are ['tot', 'opt'].
-            rollout_random_action (float): the probability of taking a uniform
-                random action during a ``rollout_step()``. 0 means always directly
-                taking actions added with OU noises and 1 means always sample
-                uniformly random actions. A bigger value results in more
-                exploration during rollout.
+            initial_uniform_rollout (bool): whether to use uniform rollout instead
+                of random sampling actor for initial_collect_steps. 
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
@@ -310,7 +307,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             original_models.append(self._actor_network)
             target_models.append(self._target_actor_network)
 
-        self._rollout_random_action = float(rollout_random_action)
+        self._initial_uniform_rollout = initial_uniform_rollout
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -331,6 +328,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
+        self._training_started = False
         self._dqda_clipping = dqda_clipping
         self._mini_batch_size = alf.get_config_value(
             'TrainerConfig.mini_batch_size')
@@ -354,78 +352,77 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         critic_states = state.critics
 
         if explore:
-            # if self._training_started:
+            if self._training_started or not self._initial_uniform_rollout:
+                ## Step 1: sample multiple candidate actions from action_dist
+                # [n_sampled, n_env, ...]
+                actions = action_dist.sample(
+                    sample_shape=(self._num_rollout_sampled_actions,))  
+                # [n_sampled * n_env, ...]
+                critic_actions = actions.reshape(
+                    actions.shape[0] * actions.shape[1], *actions.shape[2:])
+                # [n_sampled * n_env, ...]
+                critic_observations = observation.repeat(
+                    [self._num_rollout_sampled_actions,] + [1] * self.observation_spec.ndim)
 
-            ## Step 1: sample multiple candidate actions from action_dist
-            # [n_sampled, n_env, ...]
-            actions = action_dist.sample(
-                sample_shape=(self._num_rollout_sampled_actions,))  
-            # [n_sampled * n_env, ...]
-            critic_actions = actions.reshape(
-                actions.shape[0] * actions.shape[1], *actions.shape[2:])
-            # [n_sampled * n_env, ...]
-            critic_observations = observation.repeat(
-                [self._num_rollout_sampled_actions,] + [1] * self.observation_spec.ndim)
+                ## Step 2: forward critic_network to get the Q_values
+                # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
+                if self._output_target_critic:
+                    q_values, critic_states = self._target_critic_networks(
+                        (critic_observations, critic_actions), state=state.critics)
+                else:
+                    q_values, critic_states = self._critic_networks(
+                        (critic_observations, critic_actions), state=state.critics)
+                # [n_sampled * n_env, n_bootstrap]
+                q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
+                # [n_sampled * n_env, n_opt_ptb]
+                q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
 
-            ## Step 2: forward critic_network to get the Q_values
-            # [n_sampled * n_env, n_opt_ptb + n_bootstrap + 1]
-            if self._output_target_critic:
-                q_values, critic_states = self._target_critic_networks(
-                    (critic_observations, critic_actions), state=state.critics)
+                ## Step 3: compute epistemic_std for each (s, a)
+                # [n_sampled * n_env, n_bootstrap]
+                q_bootstrap_diff = q_bootstrap - q_values[:, :1]
+                # [n_sampled, n_env, n_bootstrap]
+                q_bootstrap_diff = q_bootstrap_diff.reshape(
+                    actions.shape[0], -1, *q_bootstrap_diff.shape[1:])
+                # [n_sampled, n_env]
+                q_tot_std = (q_bootstrap_diff ** 2).mean(dim=2).sqrt()
+
+                # [n_sampled * n_env, n_bootstrap]
+                q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
+                # [n_sampled, n_env, n_bootstrap]
+                q_opt_ptb_diff = q_opt_ptb_diff.reshape(
+                    actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
+                # [n_sampled, n_env]
+                q_opt_std = (q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
+
+                # get a lower bound of the epistemic_std
+                q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
+
+                ## Step 4: use Q_value + epistemic_std to select action for exploration
+                q_mean_values = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
+                # [n_sampled, n_env]
+                q_values_ub = q_mean_values.reshape(
+                    actions.shape[0], -1) + self._beta_ub * q_epi_std
+                action_idx = q_values_ub.max(dim=0)[1]  # [n_env]
+                batch_idx = torch.arange(
+                    actions.shape[1]).type_as(action_idx)
+                # [n_env, ...]
+                action = actions[action_idx, batch_idx, ...]
+
+                if self._debug_summaries and alf.summary.should_record_summaries():
+                    with alf.summary.scope(self._name):
+                        safe_mean_hist_summary(
+                            f"explore/{self._output_critic_name}_tot_std", q_tot_std)
+                        safe_mean_hist_summary(
+                            f"explore/{self._output_critic_name}_opt_std", q_opt_std)
+                        safe_mean_hist_summary(
+                            f"explore/{self._output_critic_name}_epi_std", q_epi_std)
+
             else:
-                q_values, critic_states = self._critic_networks(
-                    (critic_observations, critic_actions), state=state.critics)
-            # [n_sampled * n_env, n_bootstrap]
-            q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
-            # [n_sampled * n_env, n_opt_ptb]
-            q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
-
-            ## Step 3: compute epistemic_std for each (s, a)
-            # [n_sampled * n_env, n_bootstrap]
-            q_bootstrap_diff = q_bootstrap - q_values[:, :1]
-            # [n_sampled, n_env, n_bootstrap]
-            q_bootstrap_diff = q_bootstrap_diff.reshape(
-                actions.shape[0], -1, *q_bootstrap_diff.shape[1:])
-            # [n_sampled, n_env]
-            q_tot_std = (q_bootstrap_diff ** 2).mean(dim=2).sqrt()
-
-            # [n_sampled * n_env, n_bootstrap]
-            q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
-            # [n_sampled, n_env, n_bootstrap]
-            q_opt_ptb_diff = q_opt_ptb_diff.reshape(
-                actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
-            # [n_sampled, n_env]
-            q_opt_std = (q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
-
-            # get a lower bound of the epistemic_std
-            q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
-
-            ## Step 4: use Q_value + epistemic_std to select action for exploration
-            q_mean_values = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
-            # [n_sampled, n_env]
-            q_values_ub = q_mean_values.reshape(
-                actions.shape[0], -1) + self._beta_ub * q_epi_std
-            action_idx = q_values_ub.max(dim=0)[1]  # [n_env]
-            batch_idx = torch.arange(
-                actions.shape[1]).type_as(action_idx)
-            # [n_env, ...]
-            action = actions[action_idx, batch_idx, ...]
-
-            if self._debug_summaries and alf.summary.should_record_summaries():
-                with alf.summary.scope(self._name):
-                    safe_mean_hist_summary(
-                        f"explore/{self._output_critic_name}_tot_std", q_tot_std)
-                    safe_mean_hist_summary(
-                        f"explore/{self._output_critic_name}_opt_std", q_opt_std)
-                    safe_mean_hist_summary(
-                        f"explore/{self._output_critic_name}_epi_std", q_epi_std)
-
-            # else:
-            #     # This uniform sampling during initial collect stage is
-            #     # important since current explore_network is deterministic
-            #     action = alf.nest.map_structure(
-            #         lambda spec: spec.sample(outer_dims=observation.shape[:1]),
-            #         self._action_spec)
+                # This uniform sampling during initial collect stage is
+                # important since current explore_network is deterministic
+                action = alf.nest.map_structure(
+                    lambda spec: spec.sample(outer_dims=observation.shape[:1]),
+                    self._action_spec)
         else:
             if eps_greedy_sampling:
                 action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
@@ -569,6 +566,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: OaecState,
                    rollout_info: OaecRolloutInfo):
+        self._training_started = True
+
         # train actor_network
         action_dist, action, action_state = self._predict_action(
             inputs.observation, state=state.action)
