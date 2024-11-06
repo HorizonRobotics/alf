@@ -164,8 +164,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             num_sampled_target_q_actions (int): number of sampled actions for target
                 critics, default is 0, indicating no sampling, i.e., using the mean
                 of the policy output.
-            target_q_from_sampled_actions (str): the method to select generate
-                target q values from sampled actions, options are ["max", "mean"].
+            target_q_from_sampled_actions (str): the method to generate target q
+                values from sampled actions, options are ["max", "mean"]. Only
+                effective when num_sampled_target_q_actions is greater than zero.
             num_bootstrap_critics (int): a positive number of bootstrapped critics 
                 for uncertainty estimation. Default is 1.
             critic_replicas_deepcopy (bool): whether to deepcopy the critic_network
@@ -220,11 +221,11 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         assert num_bootstrap_critics >= 1, (
             "OaecAlgorithm requires a positive num_bootstrap_critics.")
         assert opt_ptb_dist in ["exponential", "uniform"], (
-            "optimization perturbation distribution must be 'exponential' or 'uniform'")
+            "optimization perturbation distribution must be 'exponential' or 'uniform'.")
         assert std_for_overestimate in ["tot", "opt"], (
-            "type of std for overestimation must be 'tot' or 'opt'")
+            "type of std for overestimation must be 'tot' or 'opt'.")
         assert target_q_from_sampled_actions in ["max", "mean"], (
-            "type of std for overestimation must be 'tot' or 'opt'")
+            "target_q_from_sampled_actions must be 'max' or 'mean'.")
 
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
