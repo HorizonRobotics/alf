@@ -226,14 +226,14 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             "OaecAlgorithm requires a positive num_bootstrap_critics.")
         assert opt_ptb_dist in [
             "exponential", "uniform"
-        ], ("optimization perturbation distribution must be 'exponential' or 'uniform'"
+        ], ("optimization perturbation distribution must be 'exponential' or 'uniform'."
             )
         assert std_for_overestimate in [
             "tot", "opt"
-        ], ("type of std for overestimation must be 'tot' or 'opt'")
+        ], ("type of std for overestimation must be 'tot' or 'opt'.")
         assert target_q_from_sampled_actions in [
             "max", "mean"
-        ], ("type of std for overestimation must be 'tot' or 'opt'")
+        ], ("target_q_from_sampled_actions must be 'max' or 'mean'.")
 
         self._calculate_priority = calculate_priority
         if epsilon_greedy is None:
