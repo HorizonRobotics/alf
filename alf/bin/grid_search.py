@@ -229,7 +229,7 @@ class GridSearch(object):
                            id,
                            repeat,
                            token_len=20,
-                           max_len=50):
+                           max_len=100):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy comparison between different search runs without going
         into Tensorboard 'text' for run details.

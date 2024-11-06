@@ -1,6 +1,6 @@
 {
     "desc": "DM Control tasks with 4 seeds on each environment",
-    "version": "hopper_oaec_04337_nb_2-newton",
+    "version": "hopper_oaec_57e32_nb_2-newton",
     "use_gpu": true,
     "gpus": [
         0, 1
