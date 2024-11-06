@@ -41,6 +41,7 @@ alf.config(
     num_sampled_target_q_actions=0,
     target_q_from_sampled_actions='max',
     greedy_target_q_action=False,
+    initial_uniform_rollout=False,
     num_bootstrap_critics=2,
     bootstrap_mask_prob=0.8,
     use_target_actor=True,
