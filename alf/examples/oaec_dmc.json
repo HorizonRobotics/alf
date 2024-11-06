@@ -11,12 +11,13 @@
         "create_environment.env_name": [
             "hopper-hop"
         ],
-        "OaecAlgorithm.beta_ub": "[0.]",
+        "OaecAlgorithm.beta_ub": "[1.]",
         "OaecAlgorithm.beta_lb": "[.1]",
         "OaecAlgorithm.output_target_critic": "[True]",
         "OaecAlgorithm.num_sampled_target_q_actions": "[0]",
         "OaecAlgorithm.target_q_from_sampled_actions": "['mean']",
-        "OaecAlgorithm.greedy_target_q_action": "[True]",
+        "OaecAlgorithm.greedy_target_q_action": "[False]",
+        "OaecAlgorithm.std_for_explore": "['tot']",
         "OaecAlgorithm.std_for_overestimate": "['opt']",
         "OaecAlgorithm.initial_uniform_rollout": "[True, False]",
         "OaecAlgorithm.opt_ptb_single_data": "[True]",

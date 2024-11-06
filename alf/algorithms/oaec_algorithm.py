@@ -121,6 +121,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             beta_lb=0.5,
             output_target_critic=True,
             use_target_actor=True,
+            std_for_explore='epi',
             std_for_overestimate='tot',
             target_update_tau=0.05,
             target_update_period=1,
@@ -206,6 +207,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 whenever critic values are needed, such as explorative rollout 
                 and actor training.
             use_target_actor (bool): whether to use target actor for actor.
+            std_for_explore (str): std type used for std for exploration, options
+                are ['tot', 'epi'].
             std_for_overestimate (str): std type used for std for overestimation,
                 options are ['tot', 'opt'].
             initial_uniform_rollout (bool): whether to use uniform rollout instead
@@ -225,6 +228,9 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             "exponential", "uniform"
         ], ("optimization perturbation distribution must be 'exponential' or 'uniform'."
             )
+        assert std_for_explore in [
+            "tot", "epi"
+        ], ("type of std for exploration must be 'tot' or 'epi'.")
         assert std_for_overestimate in [
             "tot", "opt"
         ], ("type of std for overestimation must be 'tot' or 'opt'.")
@@ -262,6 +268,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             self._output_critic_name = 'target_q'
         self._output_target_critic = output_target_critic
         self._use_target_actor = use_target_actor
+        self._std_for_explore = std_for_explore
         self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._num_sampled_target_q_actions = num_sampled_target_q_actions
@@ -390,7 +397,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 # [n_sampled * n_env, n_opt_ptb]
                 q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
 
-                ## Step 3: compute epistemic_std for each (s, a)
+                ## Step 3: compute explore std for each (s, a)
                 # [n_sampled * n_env, n_bootstrap]
                 q_bootstrap_diff = q_bootstrap - q_values[:, :1]
                 # [n_sampled, n_env, n_bootstrap]
@@ -398,17 +405,19 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                     actions.shape[0], -1, *q_bootstrap_diff.shape[1:])
                 # [n_sampled, n_env]
                 q_tot_std = (q_bootstrap_diff**2).mean(dim=2).sqrt()
+                q_epi_std = q_tot_std
 
-                # [n_sampled * n_env, n_bootstrap]
-                q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
-                # [n_sampled, n_env, n_bootstrap]
-                q_opt_ptb_diff = q_opt_ptb_diff.reshape(
-                    actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
-                # [n_sampled, n_env]
-                q_opt_std = (q_opt_ptb_diff**2).mean(dim=2).sqrt()
+                if self._std_for_explore == 'epi':
+                    # [n_sampled * n_env, n_bootstrap]
+                    q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
+                    # [n_sampled, n_env, n_bootstrap]
+                    q_opt_ptb_diff = q_opt_ptb_diff.reshape(
+                        actions.shape[0], -1, *q_opt_ptb_diff.shape[1:])
+                    # [n_sampled, n_env]
+                    q_opt_std = (q_opt_ptb_diff**2).mean(dim=2).sqrt()
 
-                # get a lower bound of the epistemic_std
-                q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
+                    # get a lower bound of the epistemic_std
+                    q_epi_std = (q_tot_std - q_opt_std).clamp_(min=0.0)
 
                 ## Step 4: use Q_value + epistemic_std to select action for exploration
                 q_mean_values = q_values[:, :1 +
@@ -428,11 +437,12 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                             f"explore/{self._output_critic_name}_tot_std",
                             q_tot_std)
                         safe_mean_hist_summary(
-                            f"explore/{self._output_critic_name}_opt_std",
-                            q_opt_std)
-                        safe_mean_hist_summary(
                             f"explore/{self._output_critic_name}_epi_std",
                             q_epi_std)
+                        if self._std_for_explore == 'epi':
+                            safe_mean_hist_summary(
+                                f"explore/{self._output_critic_name}_opt_std",
+                                q_opt_std)
 
             else:
                 # This uniform sampling during initial collect stage is

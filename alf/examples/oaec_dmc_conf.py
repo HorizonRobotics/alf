@@ -34,6 +34,7 @@ alf.config(
     beta_ub=1.,
     beta_lb=.5,
     output_target_critic=True,
+    std_for_explore='epi',
     std_for_overestimate='tot',
     opt_ptb_single_data=True,
     reward_noise_scale=None,
