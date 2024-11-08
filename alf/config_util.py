@@ -369,7 +369,8 @@ def config1(config_name,
             mutable=True,
             raise_if_used=True,
             sole_init=False,
-            override_sole_init=False):
+            override_sole_init=False,
+            override_all=False):
     """Set one configurable value.
 
     Args:
@@ -394,7 +395,10 @@ def config1(config_name,
             where the student must override certain configs inherited from the
             teacher). If the config is immutable, a warning will be declared with
             no changes made.
-    """
+        override_all (bool): If True, the value of the config will be set regardless
+            of any pre-existing ``mutable`` or ``sole_init`` settings. This should
+            be used only when absolutely necessary (e.g., adjusting certain configs
+            such as mini_batch_size for DDP workers.)."""
     config_node = _get_config_node(config_name)
 
     if raise_if_used and config_node.is_used():
@@ -402,7 +406,22 @@ def config1(config_name,
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
 
-    if override_sole_init:
+    if override_all:
+        if config_node.get_sole_init():
+            logging.warning(
+                "The value of config '%s' (%s) is protected by sole_init. "
+                "It is now being overridden by the overide_all flag to a new value %s. "
+                "Use at your own risk." % (config_name,
+                                           config_node.get_value(), value))
+        if not config_node.is_mutable():
+            logging.warning(
+                "The value of config '%s' (%s) is immutable. "
+                "It is now being overridden by the overide_all flag to a new value %s. "
+                "Use at your own risk." % (config_name,
+                                           config_node.get_value(), value))
+        config_node.set_value(value)
+        return
+    elif override_sole_init:
         if config_node.is_configured():
             if not config_node.is_mutable():
                 logging.warning(
