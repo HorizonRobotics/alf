@@ -40,6 +40,7 @@ alf.config(
     reward_noise_scale=None,
     num_rollout_sampled_actions=10,
     num_sampled_target_q_actions=0,
+    use_common_target_q=True,
     target_q_from_sampled_actions='max',
     greedy_target_q_action=False,
     initial_uniform_rollout=False,
