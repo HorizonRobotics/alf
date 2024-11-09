@@ -108,6 +108,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  critic_loss_ctor=None,
                  num_rollout_sampled_actions=10,
                  num_sampled_target_q_actions=0,
+                 use_common_target_q=True,
                  target_q_from_sampled_actions="max",
                  num_bootstrap_critics=1,
                  critic_replicas_deepcopy=True,
@@ -164,6 +165,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             num_sampled_target_q_actions (int): number of sampled actions for target
                 critics, default is 0, indicating no sampling, i.e., using the mean
                 of the policy output.
+            use_common_target_q (bool): whether to use common target q values
+                for all critics training. Default is True.
             target_q_from_sampled_actions (str): the method to generate target q
                 values from sampled actions, options are ["max", "mean"]. Only
                 effective when num_sampled_target_q_actions is greater than zero.
@@ -256,6 +259,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._std_for_overestimate = std_for_overestimate
         self._num_rollout_sampled_actions = num_rollout_sampled_actions
         self._num_sampled_target_q_actions = num_sampled_target_q_actions
+        self._use_common_target_q = use_common_target_q
         self._target_q_from_sampled_actions = target_q_from_sampled_actions
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._opt_ptb_single_data = opt_ptb_single_data
@@ -626,22 +630,37 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             target_value = target_q_mean - self._beta_lb * target_overest_std
 
         # original critic
+        if self._use_common_target_q:
+            original_target_value = target_value
+        else:
+            original_target_value = info.critic.target_q_values[
+                :, :, 1:1 + self._num_bootstrap_critics, ...].mean(dim=2)  # [T, B, ...]
         critic_losses[0] = self._critic_losses[0](
             info=info,
             value=info.critic.q_values[:, :, 0, ...],
-            target_value=target_value).loss
+            target_value=original_target_value).loss
 
         # bootstrapped critics
         n_start = 1
         for i in range(self._num_bootstrap_critics):
             mask = info.mask[:, :, i] / self._bootstrap_mask_prob
             reward = info.reward
+            if self._use_common_target_q:
+                bootstrap_target_value = target_value
+            else:
+                target_values_before = info.critic.target_q_values[
+                    :, :, :n_start + i, ...]
+                target_values_after = info.critic.target_q_values[
+                    :, :, n_start + i + 1:, ...]
+                # [T, B, ...]
+                bootstrap_target_value = torch.cat(
+                    (target_values_before, target_values_after), dim=2).mean(dim=2)
             if self._reward_noise_scale:
                 reward += info.reward_noise[:, :, :, i]
             critic_losses[n_start + i] = mask * self._critic_losses[n_start + i](
                 info=info._replace(reward=reward),
                 value=info.critic.q_values[:, :, n_start + i, ...],
-                target_value=target_value).loss
+                target_value=bootstrap_target_value).loss
 
         # optimization perturbed critics
         if self._opt_ptb_dist == 'exponential':
@@ -657,7 +676,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             critic_losses[n_start + i] = weights * self._critic_losses[n_start + i](
                 info=info,
                 value=info.critic.q_values[:, :, n_start + i, ...],
-                target_value=target_value).loss
+                target_value=original_target_value).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
