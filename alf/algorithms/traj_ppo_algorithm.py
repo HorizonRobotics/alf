@@ -179,10 +179,15 @@ class MixtureARDistribution(td.Distribution):
     """
 
     def __init__(self, input, prefix, new_sample_logit, model: ARModel):
+        batch_shape = new_sample_logit.shape
+        assert prefix.shape[:-2] == batch_shape
+        rank = len(batch_shape)
+        assert all(alf.nest.flatten(alf.nest.map_structure(
+            lambda x: x.shape[:rank] == batch_shape, input))), \
+                "Mismatched batch_shape: %s" % alf.nest.map_structure(
+                lambda x: x.shape, input)
         super().__init__(
-            batch_shape=input.shape[:-1],
-            event_shape=(model.event_shape.numel(), ))
-        assert input.shape[:-1] == prefix.shape[:-2] == new_sample_logit.shape
+            batch_shape=batch_shape, event_shape=(model.event_shape.numel(), ))
         self._input = input
         self._model = model
         self._new_sample_logit = new_sample_logit
@@ -260,7 +265,7 @@ class MixtureARDistribution(td.Distribution):
         sample_shape = torch.Size(sample_shape)
         assert sample_shape.numel() == 1
         is_old_sample = torch.rand(
-            self._input.shape[:-1]) > self._new_sample_logit.sigmoid()
+            self.batch_shape) > self._new_sample_logit.sigmoid()
         prefix_length = self._prefix_length * is_old_sample
         ret = self._batch_squash_call(self._model.sample_with_prefix,
                                       self._input, self._prefix, prefix_length,
@@ -282,7 +287,7 @@ class MixtureARDistribution(td.Distribution):
         :param epsilon:
         :return: [batch_size, per_step_dim * sequence_length]
         """
-        B = self._input.shape[:-1]
+        B = self.batch_shape
         is_old_sample = torch.rand(B) > self._new_sample_logit.sigmoid()
         # is_old_sample = is_old_sample.where(
         #     torch.rand(B) < epsilon, self._new_sample_logit < 0.0)
@@ -448,11 +453,12 @@ class TrajectoryPPOAlgorithm(OffPolicyAlgorithm):
             input_tensor_spec=observation_spec,
             output_spec=per_step_action_spec,
             sequence_length=trajectory_length)
-        value_network = value_network_ctor(
-            input_tensor_spec=observation_spec, output_tensor_spec=reward_spec)
+        value_network = value_network_ctor(input_tensor_spec=observation_spec)
         critic_network = critic_network_ctor(
-            input_tensor_spec=(observation_spec, prefix_action_spec),
-            output_tensor_spec=reward_spec)
+            input_tensor_spec=(observation_spec, prefix_action_spec))
+        if reward_spec.numel > 1:
+            value_network = value_network.make_parallel(reward_spec.numel)
+            critic_network = critic_network.make_parallel(reward_spec.numel)
 
         super().__init__(
             observation_spec=observation_spec,
