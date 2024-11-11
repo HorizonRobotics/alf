@@ -119,6 +119,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                  # align_optimization_noise=False,
                  beta_ub=1.0,
                  beta_lb=0.5,
+                 conservative_actor_training=False,
+                 conservative_critic_training=True,
                  output_target_critic=True,
                  use_target_actor=True,
                  std_for_overestimate='tot',
@@ -201,6 +203,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
+            conservative_actor_training (bool): whether to train actor using
+                conservative critic values.
+            conservative_critic_training (bool): whether to train critic using
+                conservative target critic values.
             output_target_critic (bool): whether to use the target critic output
                 whenever critic values are needed, such as explorative rollout 
                 and actor training.
@@ -250,6 +256,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         self._reward_noise_scale = reward_noise_scale
         self._beta_ub = beta_ub
         self._beta_lb = beta_lb
+        self._conservative_actor_training = conservative_actor_training
+        self._conservative_critic_training = conservative_critic_training
         if output_target_critic:
             self._output_critic_name = 'q'
         else:
@@ -548,6 +556,16 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             q_values = q_values * self.reward_weights
         # use the mean of default and bootstrapped target critics
         q_value = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
+        if self._conservative_actor_training:
+            if self._std_for_overestimate == 'tot':
+                q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
+                q_bootstrap_diff = q_bootstrap - q_values[:, :1]
+                q_value_std = (q_bootstrap_diff ** 2).mean(dim=-1).sqrt()
+            else:
+                q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
+                q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
+                q_value_std = (q_opt_ptb_diff ** 2).mean(dim=-1).sqrt()
+            q_value -= self._beta_lb * q_value_std
 
         # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())
@@ -627,7 +645,10 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 target_q_opt_ptb_diff = target_q_opt_ptb - target_q
                 # [T, B, ...]
                 target_overest_std = (target_q_opt_ptb_diff ** 2).mean(dim=2).sqrt()
-            target_value = target_q_mean - self._beta_lb * target_overest_std
+            if self._conservative_critic_training:
+                target_value = target_q_mean - self._beta_lb * target_overest_std
+            else:
+                target_value = target_q_mean
 
         # original critic
         if self._use_common_target_q:

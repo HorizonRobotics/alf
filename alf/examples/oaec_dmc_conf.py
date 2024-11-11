@@ -34,6 +34,8 @@ alf.config(
     critic_network_cls=critic_network_cls,
     beta_ub=1.,
     beta_lb=.5,
+    conservative_actor_training=False,
+    conservative_critic_training=True,
     output_target_critic=True,
     std_for_overestimate='tot',
     opt_ptb_single_data=True,
