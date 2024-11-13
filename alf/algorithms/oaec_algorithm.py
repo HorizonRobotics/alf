@@ -618,15 +618,20 @@ class OaecAlgorithm(OffPolicyAlgorithm):
         # use the mean of default and bootstrapped target critics
         q_value = q_values[:, :1 + self._num_bootstrap_critics].mean(-1)
         if conservative_training:
-            if self._std_for_overestimate == 'tot':
-                q_bootstrap = q_values[:, 1:1 + self._num_bootstrap_critics]
-                q_bootstrap_diff = q_bootstrap - q_values[:, :1]
-                q_value_std = (q_bootstrap_diff**2).mean(dim=-1).sqrt()
+            if self._num_bootstrap_critics > 1:
+                if self._std_for_overestimate == 'tot':
+                    q_bootstrap = q_values[:, 1:1 +
+                                           self._num_bootstrap_critics]
+                    q_bootstrap_diff = q_bootstrap - q_values[:, :1]
+                    q_value_std = (q_bootstrap_diff**2).mean(dim=-1).sqrt()
+                else:
+                    q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
+                    q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
+                    q_value_std = (q_opt_ptb_diff**2).mean(dim=-1).sqrt()
+                q_value -= self._beta_lb * q_value_std
             else:
-                q_opt_ptb = q_values[:, -self._num_opt_ptb_critics:]
-                q_opt_ptb_diff = q_opt_ptb - q_values[:, :1]
-                q_value_std = (q_opt_ptb_diff**2).mean(dim=-1).sqrt()
-            q_value -= self._beta_lb * q_value_std
+                q_value = q_values[:, :1 +
+                                   self._num_bootstrap_critics].min(-1)[0]
 
         # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())

@@ -50,9 +50,8 @@ alf.config(
 proj_net = partial(BetaProjectionNetwork, min_concentration=1.)
 
 actor_distribution_network_cls = partial(
-    alf.networks.ActorDistributionNetwork,
-    fc_layer_params=hidden_layers,
-    continuous_projection_net_ctor=proj_net)
+    alf.networks.ActorDistributionNetwork, fc_layer_params=hidden_layers)
+# continuous_projection_net_ctor=proj_net)
 
 optimizer = AdamTF(lr=3e-4)
 

@@ -1,6 +1,6 @@
 {
     "desc": "DM Control tasks with 4 seeds on each environment",
-    "version": "hopper_oaec_aeeac_beta_proj_nb_1-newton",
+    "version": "hopper_oaec_d6ddd_nb_1-newton",
     "use_gpu": true,
     "gpus": [
         0, 1
@@ -12,7 +12,7 @@
             "hopper-hop"
         ],
         "OaecAlgorithm.beta_ub": "[1.]",
-        "OaecAlgorithm.beta_lb": "[.1, .5]",
+        "OaecAlgorithm.beta_lb": "[.1]",
         "OaecAlgorithm.conservative_actor_training": "[True]",
         "OaecAlgorithm.conservative_critic_training": "[False]",
         "OaecAlgorithm.separate_conservative_actor": "[True]",
@@ -21,7 +21,7 @@
         "OaecAlgorithm.target_q_from_sampled_actions": "['mean']",
         "OaecAlgorithm.greedy_target_q_action": "[False]",
         "OaecAlgorithm.use_common_target_q": "[True]",
-        "OaecAlgorithm.std_for_explore": "['epi']",
+        "OaecAlgorithm.std_for_explore": "['epi', 'tot']",
         "OaecAlgorithm.std_for_overestimate": "['tot']",
         "OaecAlgorithm.initial_uniform_rollout": "[False]",
         "OaecAlgorithm.opt_ptb_single_data": "[True]",
