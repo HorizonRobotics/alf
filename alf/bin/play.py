@@ -167,7 +167,6 @@ def play():
         kwargs['reward_spec'] = env.reward_spec()
 
     algorithm = algorithm_ctor(**kwargs)
-    algorithm.set_path('')
 
     algorithm.set_path('')
 
