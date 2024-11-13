@@ -73,8 +73,7 @@ ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS=TensorrtExecutionProvider
 ```
 
 ### `rsample()`
-TensorRT will report "ERROR: Network must have at least one output" when there is any `rsample()` in the eager mode code. Fortunately, for inference we can usually use the distribution's mode
-instead to avoid this issue.
+TensorRT will report "ERROR: Network must have at least one output" when there is any `rsample()` in the eager mode code. Fortunately, for inference we can usually use the distribution's mode or `sample()` instead to avoid this issue.
 
 ## Common issues
 There is some known side effect on CUDA/GPU when importing ``tensorrt_utils.py``. It is crucial to make sure
