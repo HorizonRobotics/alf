@@ -15,6 +15,7 @@
         "OaecAlgorithm.beta_lb": "[.1]",
         "OaecAlgorithm.conservative_actor_training": "[True]",
         "OaecAlgorithm.conservative_critic_training": "[False]",
+        "OaecAlgorithm.separate_conservative_actor": "[True]",
         "OaecAlgorithm.output_target_critic": "[True]",
         "OaecAlgorithm.num_sampled_target_q_actions": "[0]",
         "OaecAlgorithm.target_q_from_sampled_actions": "['mean']",

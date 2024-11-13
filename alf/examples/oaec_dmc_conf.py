@@ -35,6 +35,7 @@ alf.config(
     beta_lb=.5,
     conservative_actor_training=False,
     conservative_critic_training=True,
+    separate_conservative_actor=False,
     output_target_critic=True,
     std_for_explore='epi',
     std_for_overestimate='tot',
@@ -50,6 +51,7 @@ alf.config(
     bootstrap_mask_prob=0.8,
     use_target_actor=True,
     actor_optimizer=AdamTF(lr=3e-4),
+    conservative_actor_optimizer=AdamTF(lr=3e-4),
     critic_optimizer=AdamTF(lr=3e-4),
     target_update_tau=0.005)
 
