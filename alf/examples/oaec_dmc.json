@@ -1,6 +1,6 @@
 {
     "desc": "DM Control tasks with 4 seeds on each environment",
-    "version": "hopper_oaec_57e32_nb_2-newton",
+    "version": "hopper_oaec_aeeac_beta_proj_nb_1-newton",
     "use_gpu": true,
     "gpus": [
         0, 1
@@ -12,7 +12,7 @@
             "hopper-hop"
         ],
         "OaecAlgorithm.beta_ub": "[1.]",
-        "OaecAlgorithm.beta_lb": "[.1]",
+        "OaecAlgorithm.beta_lb": "[.1, .5]",
         "OaecAlgorithm.conservative_actor_training": "[True]",
         "OaecAlgorithm.conservative_critic_training": "[False]",
         "OaecAlgorithm.separate_conservative_actor": "[True]",
@@ -20,14 +20,14 @@
         "OaecAlgorithm.num_sampled_target_q_actions": "[0]",
         "OaecAlgorithm.target_q_from_sampled_actions": "['mean']",
         "OaecAlgorithm.greedy_target_q_action": "[False]",
-        "OaecAlgorithm.use_common_target_q": "[False]",
-        "OaecAlgorithm.std_for_explore": "['tot']",
-        "OaecAlgorithm.std_for_overestimate": "['opt']",
-        "OaecAlgorithm.initial_uniform_rollout": "[True, False]",
+        "OaecAlgorithm.use_common_target_q": "[True]",
+        "OaecAlgorithm.std_for_explore": "['epi']",
+        "OaecAlgorithm.std_for_overestimate": "['tot']",
+        "OaecAlgorithm.initial_uniform_rollout": "[False]",
         "OaecAlgorithm.opt_ptb_single_data": "[True]",
         "OaecAlgorithm.bootstrap_mask_prob": "[0.5]",
         "OaecAlgorithm.use_target_actor": "[False]",
-        "OaecAlgorithm.num_bootstrap_critics": "[2]",
+        "OaecAlgorithm.num_bootstrap_critics": "[1]",
         "OaecAlgorithm.target_update_tau": "[0.005]",
         "TrainerConfig.random_seed": "list(range(2))"
     }

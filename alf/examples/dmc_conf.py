@@ -24,6 +24,7 @@ from alf.environments import suite_dmc
 from alf.environments.gym_wrappers import FrameSkip
 from alf.utils.math_ops import clipped_exp
 from alf.algorithms.data_transformer import RewardNormalizer, ObservationNormalizer
+from alf.networks import BetaProjectionNetwork
 from alf.optimizers import AdamTF
 
 alf.config(
@@ -46,8 +47,12 @@ alf.config(
     scale_distribution=True,
     std_transform=partial(clipped_exp, clip_value_min=-20, clip_value_max=2))
 
+proj_net = partial(BetaProjectionNetwork, min_concentration=1.)
+
 actor_distribution_network_cls = partial(
-    alf.networks.ActorDistributionNetwork, fc_layer_params=hidden_layers)
+    alf.networks.ActorDistributionNetwork,
+    fc_layer_params=hidden_layers,
+    continuous_projection_net_ctor=proj_net)
 
 optimizer = AdamTF(lr=3e-4)
 
