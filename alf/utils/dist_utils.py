@@ -1293,7 +1293,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
         entropy = -log_prob.detach()
         if check_numerics:
             assert torch.all(torch.isfinite(entropy))
-        entropy_for_gradient = -0.5 * entropy**2
+        entropy_for_gradient = -0.5 * log_prob**2
         entropy = entropy.mean(dim=0)
         entropy_for_gradient = entropy_for_gradient.mean(dim=0)
     return entropy, entropy_for_gradient
