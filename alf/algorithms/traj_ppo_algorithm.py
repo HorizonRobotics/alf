@@ -277,12 +277,18 @@ class MixtureARDistribution(td.Distribution):
         return torch.where(same_as_prefix, logp, logp_new)
 
     def sample(self, sample_shape=torch.Size(), return_log_prob=False):
-        if return_log_prob:
+        if not torch.is_grad_enabled():
+            return self.rsample(sample_shape, return_log_prob)
+        if return_log_prob and self._model.has_rsample:
             sample, log_prob = self.rsample(sample_shape, return_log_prob)
             return sample.detach(), log_prob
+        with torch.no_grad():
+            sample = self.rsample(sample_shape)
+        if return_log_prob:
+            log_prob = self.log_prob(sample)
+            return sample, log_prob
         else:
-            with torch.no_grad():
-                return self.rsample(sample_shape, return_log_prob)
+            return sample
 
     def rsample(self, sample_shape=torch.Size(), return_log_prob=False):
         """
