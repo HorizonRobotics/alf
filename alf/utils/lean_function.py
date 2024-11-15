@@ -329,7 +329,8 @@ class SplitBatchRunner(torch.nn.Module):
         """
         batch_size = alf.nest.get_nest_batch_size((args, kwargs))
         if self._max_batch_size <= 0 or batch_size <= self._max_batch_size:
-            return self._model(*args, **kwargs, **non_batched_inputs)
+            return self._model._original_forward_for_lean_function(
+                *args, **kwargs, **non_batched_inputs)
 
         outputs = []
         for i in range(0, batch_size, self._max_batch_size):
@@ -342,7 +343,7 @@ class SplitBatchRunner(torch.nn.Module):
 
     def original_forward(self, *args, **kwargs):
         """Run the model on the input without splitting the batch."""
-        return self._model(*args, **kwargs)
+        return self._model._original_forward_for_lean_function(*args, **kwargs)
 
     def __getattr__(self, name):
         return getattr(self._model, name)

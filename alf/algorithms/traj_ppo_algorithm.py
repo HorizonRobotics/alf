@@ -47,7 +47,7 @@ class ARModel(nn.Module):
         """The shape of one step of the  output of the model."""
         raise NotImplementedError()
 
-    def log_prob(self, input, sample, prefix_length):
+    def log_prob(self, input, sample):
         raise NotImplementedError()
 
     def sample_with_prefix(self,
@@ -64,6 +64,24 @@ class ARModel(nn.Module):
         return self._sample(
             input, prefix, prefix_length,
             partial(dist_utils.epsilon_greedy_sample, eps=epsilon))
+
+    def sample(self, input, return_log_prob=False):
+        return self._sample(input, None, None,
+                            dist_utils.sample_action_distribution,
+                            return_log_prob)
+
+    def epsilon_greedy_sample(self, input, epsilon):
+        return self._sample(
+            input, None, None,
+            partial(dist_utils.epsilon_greedy_sample, eps=epsilon))
+
+    def _sample(self,
+                input,
+                prefix,
+                prefix_length,
+                sample_func,
+                return_log_prob=False):
+        raise NotImplementedError()
 
 
 @alf.configurable(
@@ -103,6 +121,11 @@ class RNNARModel(ARModel):
             for i in range(1, len(hidden_sizes))
         ])
         self._event_shape = torch.Size((sequence_length, output_dim))
+        self._output_spec = output_spec
+
+    @property
+    def has_rsample(self):
+        return self._output_spec.is_continuous
 
     @property
     def sequence_length(self):
@@ -168,7 +191,6 @@ class RNNARModel(ARModel):
 
 
 class MixtureARDistribution(td.Distribution):
-    has_rsample = True
     """Auto-regressive distribution.
 
     :param input: [batch_size, input_dim]
@@ -203,6 +225,10 @@ class MixtureARDistribution(td.Distribution):
     @property
     def arg_constraints(self):
         return {}
+
+    @property
+    def has_rsample(self):
+        return self._model.has_rsample
 
     def _batch_squash_call(self, f, *args, **kwargs):
         outer_rank = len(self.batch_shape)
