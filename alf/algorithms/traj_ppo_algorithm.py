@@ -249,14 +249,17 @@ class MixtureARDistribution(td.Distribution):
         :param sample: [batch_size, per_step_dim * sequence_length]
         :return: [batch_size]
         """
-        sample_shape = sample.shape[:-1 - len(self.batch_shape)]
-        assert len(sample_shape) == 0
-        assert sample.shape[-1 - len(self.batch_shape):-1] == self.batch_shape
+        sample_ndim = sample.ndim - 1 - len(self.batch_shape)
+        sample_shape = sample.shape[:sample_ndim]
+        assert sample_shape.numel() == 1
+        sample = sample.reshape(sample.shape[sample_ndim:])
+        assert sample.shape[:len(self.batch_shape)] == self.batch_shape
         sample = sample.reshape(*sample.shape[:-1], self._model.event_shape[1],
                                 self._model.event_shape[0]).transpose(-2, -1)
         log_probs = self._batch_squash_call(self._model.log_prob, self._input,
                                             sample)
-        return self._calc_log_prob(sample, log_probs)
+        log_prob = self._calc_log_prob(sample, log_probs)
+        return log_prob.reshape(sample_shape + self.batch_shape)
 
     def _calc_log_prob(self, sample, log_probs):
         same_as_prefix = (sample == self._prefix)[..., :self._prefix_length, :]
