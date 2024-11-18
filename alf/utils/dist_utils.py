@@ -1085,6 +1085,9 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
         - sampled actions if return_log_prob is False
         - sampled actions and log_prob if return_log_prob is True
     """
+    if return_log_prob and hasattr(nested_distributions,
+                                   'sample_and_return_log_prob'):
+        return nested_distributions.sample_and_return_log_prob()
     sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
     if return_log_prob:
         log_prob = compute_log_probability(nested_distributions, sample)
@@ -1270,16 +1273,16 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     """
     sample_shape = (num_samples, )
     if dist.has_rsample:
-        if 'return_log_prob' in inspect.signature(dist.rsample).parameters:
-            single_action, log_prob = dist.rsample(
-                sample_shape=sample_shape, return_log_prob=True)
+        if hasattr(dist, 'rsample_and_return_log_prob'):
+            single_action, log_prob = dist.rsample_and_return_log_prob(
+                sample_shape=sample_shape)
         else:
             single_action = dist.rsample(sample_shape=sample_shape)
             log_prob = dist.log_prob(single_action)
     else:
-        if 'return_log_prob' in inspect.signature(dist.sample).parameters:
-            single_action, log_prob = dist.sample(
-                sample_shape=sample_shape, return_log_prob=True)
+        if hasattr(dist, 'sample_and_return_log_prob'):
+            single_action, log_prob = dist.sample_and_return_log_prob(
+                sample_shape=sample_shape)
         else:
             single_action = dist.sample(sample_shape=sample_shape)
             log_prob = dist.log_prob(single_action)

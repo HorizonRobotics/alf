@@ -279,21 +279,29 @@ class MixtureARDistribution(td.Distribution):
                 torch.stack([logp_new, logp_old], dim=-1), dim=-1)
         return torch.where(same_as_prefix, logp, logp_new)
 
+    def sample_and_return_log_prob(self, sample_shape=torch.Size()):
+        return self.sample(sample_shape, return_log_prob=True)
+
     def sample(self, sample_shape=torch.Size(), return_log_prob=False):
         if not torch.is_grad_enabled():
-            return self.rsample(sample_shape, return_log_prob)
-        if return_log_prob and self._model.has_rsample:
-            sample, log_prob = self.rsample(sample_shape, return_log_prob)
-            return sample.detach(), log_prob
+            return self._sample(sample_shape, return_log_prob)
         with torch.no_grad():
-            sample = self.rsample(sample_shape)
+            sample = self._sample(sample_shape)
         if return_log_prob:
             log_prob = self.log_prob(sample)
             return sample, log_prob
         else:
             return sample
 
+    def rsample_and_return_log_prob(self, sample_shape=torch.Size()):
+        assert self.has_rsample, "rsample is not supported"
+        return self._sample(sample_shape, return_log_prob=True)
+
     def rsample(self, sample_shape=torch.Size(), return_log_prob=False):
+        assert self.has_rsample, "rsample is not supported"
+        return self._sample(sample_shape, return_log_prob)
+
+    def _sample(self, sample_shape=torch.Size(), return_log_prob=False):
         """
         :return: [batch_size, per_step_dim * sequence_length]
         """
