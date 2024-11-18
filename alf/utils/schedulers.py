@@ -114,6 +114,7 @@ class StepScheduler(Scheduler):
     def __init__(self,
                  progress_type,
                  schedule,
+                 scale=1.0,
                  warm_up_period: Number = 0,
                  start: Number = 0):
         """
@@ -123,6 +124,7 @@ class StepScheduler(Scheduler):
                 the scheduled result will be the ``value`` of the smallest
                 ``progress`` such that it is greater than the current
                 training progress.
+            scale: the actual value will be multiplied by this scale.
             warm_up_period: linearly increasing the output value from 0 to the
                 first value (i.e schedule[0][0]) for a duration of ``warm_up_period``
                 starting from ``start``. The value before ``start`` will be 0.
@@ -130,6 +132,7 @@ class StepScheduler(Scheduler):
         """
         super().__init__(progress_type)
         self._progresses, self._values = zip(*schedule)
+        self._values = [v * scale for v in self._values]
         self._index = 0
         self._warm_up_period = warm_up_period
         self._start = start
@@ -334,7 +337,7 @@ class CyclicalScheduler(Scheduler):
 
 
 class PowerDecayScheduler(Scheduler):
-    """The sheduled value decays according to the following power law:
+    """The scheduled value decays according to the following power law:
 
         ``initial_value / (1 + progress / time_constant) ** degree``
 
