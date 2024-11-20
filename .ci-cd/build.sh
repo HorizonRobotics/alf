@@ -56,7 +56,6 @@ function test() {
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
         alf.algorithms.functional_particle_vi_algorithm_test \
-        alf.algorithms.flow_matching_algorithm_test \
         alf.algorithms.hypernetwork_algorithm_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \

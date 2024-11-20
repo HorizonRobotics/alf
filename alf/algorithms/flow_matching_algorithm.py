@@ -192,7 +192,7 @@ class FlowMatchingAlgorithm(Algorithm):
             batch_size: the batch size of the generated outputs.
             return_intermediate_steps: whether to return the intermediate outputs.
                 If True, return all ``self._int_steps`` outputs in a list; otherwise
-                return the final output as a list.
+                return the final output.
         """
         if cond_input is not None:
             batch_size = alf.nest.get_nest_batch_size(cond_input)
@@ -220,4 +220,4 @@ class FlowMatchingAlgorithm(Algorithm):
 
         if return_intermediate_steps:
             return outputs
-        return outputs[-1:]
+        return outputs[-1]
