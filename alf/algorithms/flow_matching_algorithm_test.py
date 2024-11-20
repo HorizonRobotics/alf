@@ -94,7 +94,7 @@ class FlowMatchingAlgorithmTest(alf.test.TestCase):
             vector_field_network_ctor=_VectorFieldNetwork,
             tau_beta_paras=(1., 1.5),
             noise_std=2.,
-            euler_integration_steps=30)
+            integration_steps=30)
 
         # Train
         optimizer = torch.optim.Adam(

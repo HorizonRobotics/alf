@@ -75,7 +75,8 @@ class FlowMatchingAlgorithm(Algorithm):
                  vector_field_network_ctor: Callable = EncodingNetwork,
                  tau_beta_paras: Tuple[float] = (1., 1.),
                  noise_std: float = 1.,
-                 euler_integration_steps: int = 10,
+                 integration_steps: int = 10,
+                 integration_type: str = 'euler',
                  loss_fn: Callable = losses.element_wise_huber_loss,
                  name: str = "FlowMatchingAlgorithm"):
         """
@@ -101,15 +102,18 @@ class FlowMatchingAlgorithm(Algorithm):
             noise_std: the standard deviation of the noise to construct corrupted
                 outputs. A larger std will make the denoising process slower (i.e.,
                 more steps on noisier outputs).
-            euler_integration_steps: the number of integration steps for euler
-                integration when generating a new output.
+            integration_steps: the number of integration steps when generating a
+                new output.
+            integration_type: either "euler" or "midpoint".
             loss_fn: loss function for predicting the vector field.
             name: the name of the algorithm.
         """
         super().__init__(name=name)
         self._tau_beta = Beta(
             torch.tensor(tau_beta_paras[0]), torch.tensor(tau_beta_paras[1]))
-        self._int_steps = euler_integration_steps
+        self._int_steps = integration_steps
+        assert integration_type in ('euler', 'midpoint')
+        self._int_type = integration_type
         self._noise_spec = noise_tensor_spec or output_tensor_spec
         self._noise_std = noise_std
         self._output_spec = output_tensor_spec
@@ -195,13 +199,25 @@ class FlowMatchingAlgorithm(Algorithm):
         output = self._get_random_noise(batch_size)
         outputs = [output]
         delta = 1. / self._int_steps
-        for t in np.arange(0, 1, delta):
-            tau = torch.full((batch_size, ), t)
-            inputs = (output, tau)
+
+        def _time_forward(x0, x, t, dt):
+            """Compute x' = x0 + v(x, t)dt
+            """
+            inputs = (x, t)
             if cond_input is not None:
                 inputs += (cond_input, )
-            output = output + delta * self._vector_field_net(inputs)[0]
+            return x0 + dt * self._vector_field_net(inputs)[0]
+
+        for t in np.arange(0, 1, delta):
+            tau = torch.full((batch_size, ), t)
+            if self._int_type == 'midpoint':
+                output_mid = _time_forward(output, output, tau, delta / 2)
+                output = _time_forward(output, output_mid, tau + delta / 2,
+                                       delta)
+            else:
+                output = _time_forward(output, output, tau, delta)
             outputs.append(output)
+
         if return_intermediate_steps:
             return outputs
         return outputs[-1:]
