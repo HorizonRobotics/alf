@@ -113,7 +113,8 @@ class FlowMatchingAlgorithmTest(alf.test.TestCase):
                     # so we have to manually set the device.
                     alf.set_default_device('cpu')
                     img, label = next(data_iter)
-                    img, label = img.cuda(), label.cuda()
+                    if device != 'cpu':
+                        img, label = img.cuda(), label.cuda()
                 except StopIteration:
                     break
                 finally:
