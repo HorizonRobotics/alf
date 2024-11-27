@@ -430,13 +430,9 @@ class Algorithm(AlgorithmInterface):
                 :math:`[B, \ldots]`, where :math:`B` is the batch size of the
                 batched environment.
         """
-        if not self._use_rollout_state:
-            exp = exp._replace(state=())
-        elif id(self.rollout_state_spec) != id(self.train_state_spec):
-            # Prune exp's state (rollout_state) according to the train state spec
-            exp = exp._replace(
-                state=alf.nest.prune_nest_like(
-                    exp.state, self.train_state_spec, value_to_match=()))
+        exp = common.prune_exp_replay_state(exp, self._use_rollout_state,
+                                            self.rollout_state_spec,
+                                            self.train_state_spec)
 
         if self._replay_buffer is None:
             self._set_replay_buffer(exp)

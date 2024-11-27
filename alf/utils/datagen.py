@@ -71,10 +71,10 @@ def get_classes(target, labels):
     Args:
         target (torch.utils.data.Dataset): the dataset that should be filtered.
         labels (list[int]): list of labels to filter on.
-    
+
     Returns:
         label_indices (list[int]): indices of examples with label in
-            ``labels``. 
+            ``labels``.
     """
     label_indices = []
     for i in range(len(target)):
@@ -85,15 +85,15 @@ def get_classes(target, labels):
 
 @alf.configurable
 def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
-    """ Loads the MNIST dataset. 
-    
+    """ Loads the MNIST dataset.
+
     Args:
         label_idx (list[int]): class indices to load from the dataset.
         train_bs (int): training batch size.
-        test_bs (int): testing batch size. 
+        test_bs (int): testing batch size.
         num_workers (int): number of processes to allocate for loading data.
-        small_subset (bool): load a small subset of 50 images for testing. 
-        
+        small_subset (bool): load a small subset of 50 images for testing.
+
     Returns:
         train_loader (torch.utils.data.DataLoader): training data loader.
         test_loader (torch.utils.data.DataLoader): test data loader.
@@ -132,9 +132,9 @@ def load_cifar10(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
     Args:
         label_idx (list[int]): classes to be loaded from the dataset.
         train_bs (int): training batch size.
-        test_bs (int): testing batch size. 
+        test_bs (int): testing batch size.
         num_workers (int): number of processes to allocate for loading data.
-        
+
     Returns:
         train_loader (torch.utils.data.DataLoader): training data loader.
         test_loader (torch.utils.data.DataLoader): test data loader.

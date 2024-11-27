@@ -1714,3 +1714,30 @@ def get_unused_port(start, end=65536, n=1):
         if process_locks:
             for process_lock in process_locks:
                 process_lock.release()
+
+
+def prune_exp_replay_state(
+        exp: 'Experience', use_rollout_state: bool,
+        rollout_state_spec: alf.NestedTensorSpec,
+        train_state_spec: alf.NestedTensorSpec) -> 'Experience':
+    """Prune an experience's state in the replay buffer to save memory.
+
+    The basic idea is to remove state components that are not needed by training.
+
+    Args:
+        exp: The experience whose state is to be pruned.
+        use_rollout_state: Whether to use rollout state as the initial training state.
+        rollout_state_spec: The rollout state spec.
+        train_state_spec: The training state spec.
+
+    Returns:
+        An experience whose state is pruned.
+    """
+    if not use_rollout_state:
+        exp = exp._replace(state=())
+    elif id(rollout_state_spec) != id(train_state_spec):
+        # Prune exp's state (rollout_state) according to the train state spec
+        exp = exp._replace(
+            state=alf.nest.prune_nest_like(
+                exp.state, train_state_spec, value_to_match=()))
+    return exp
