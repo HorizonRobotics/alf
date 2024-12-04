@@ -75,6 +75,14 @@ class ARModel(nn.Module):
             input, None, None,
             partial(dist_utils.epsilon_greedy_sample, eps=epsilon))
 
+    def top_k_sample(self, input, k):
+        return self._sample(input, None, None,
+                            partial(dist_utils.top_k_sample, k=k))
+
+    def top_p_sample(self, input, p):
+        return self._sample(input, None, None,
+                            partial(dist_utils.top_p_sample, p=p))
+
     def _sample(self,
                 input,
                 prefix,
