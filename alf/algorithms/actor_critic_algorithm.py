@@ -51,6 +51,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  value_network_ctor=ValueNetwork,
                  distribution_adapter_ctor=None,
                  epsilon_greedy=None,
+                 top_k_sample: int = 0,
+                 top_p_sample: float = 0,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,
@@ -80,6 +82,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 Breakout. Only used for evaluation. If None, its value is taken
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
+            top_k_sample: If >0, use top-k sampling for action selection in
+                ``predict_step()``
+            top_p_sample: If >0, use top-p sampling for action selection in
+                ``predict_step()``
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -111,6 +117,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
+        self._top_k_sample = top_k_sample
+        self._top_p_sample = top_p_sample
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         value_network = None
@@ -196,8 +204,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         else:
             adapter_state = ()
 
-        action = dist_utils.epsilon_greedy_sample(action_dist,
-                                                  self._epsilon_greedy)
+        if self._top_k_sample > 0:
+            action = action_dist.top_k_sample(self._top_k_sample)
+        elif self._top_p_sample > 0:
+            action = action_dist.top_p_sample(self._top_p_sample)
+        else:
+            action = dist_utils.epsilon_greedy_sample(action_dist,
+                                                      self._epsilon_greedy)
         return AlgStep(
             output=action,
             state=ActorCriticState(actor=actor_state, adapter=adapter_state),

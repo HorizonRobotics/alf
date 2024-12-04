@@ -1474,3 +1474,49 @@ def calc_uniform_log_prob(spec):
     else:
         log_prob = np.sum([-np.log(M - m + 1) for m, M, _ in min_max])
     return log_prob
+
+
+def top_k_sample(dist: td.Categorical, k):
+    """Sample top-k categories from a categorical distribution.
+
+    The probabilities of the top-k categories are renormalized and samples are
+    drawn from them.
+
+    Args:
+        dist (td.Categorical): the categorical distribution
+        k (int): number of top-k indices to sample
+    Returns:
+        Tensor: the indices of the top-k categories with shape as
+            ``dist.batch_shape``
+    """
+    assert isinstance(dist, td.Categorical)
+    logits = dist.logits
+    topk, indices = logits.topk(k, dim=-1)
+    dist = td.Categorical(logits=topk)
+    sample = dist.sample()
+    return indices[torch.arange(indices.size(0)), sample]
+
+
+def top_p_sample(dist: td.Categorical, p):
+    """Sample from a categorical distribution using top-p sampling.
+
+    The probabilities of the categories are sorted in descending order. The top k
+    categories are selected such that the cumulative probability is bigger than p.
+    The probabilities of the selected categories are renormalized and samples are
+    drawn from them.
+
+    Args:
+        dist (td.Categorical): the categorical distribution
+        p (float): the cumulative probability threshold
+    Returns:
+        Tensor: the indices of the selected categories with shape as
+            ``dist.batch_shape``
+    """
+    assert isinstance(dist, td.Categorical)
+    probs, indices = dist.probs.sort(dim=-1)
+    cum_probs = probs.cumsum(dim=-1)
+    mask = cum_probs < 1 - p
+    probs[mask] = 0
+    dist = td.Categorical(probs=probs)
+    sample = dist.sample()
+    return indices[torch.arange(indices.size(0)), sample]
