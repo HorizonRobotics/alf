@@ -14,7 +14,6 @@
 
 from typing import Callable
 import threading
-import multiprocessing as mp
 import zmq
 import time
 import io
@@ -22,6 +21,7 @@ import subprocess
 from absl import logging
 
 import torch
+import torch.multiprocessing as mp
 
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -32,6 +32,11 @@ from alf.data_structures import Experience, make_experience
 from alf.trainers import policy_trainer
 from alf.utils.per_process_context import PerProcessContext
 from alf.utils import dist_utils
+
+
+class UnrollerMessage(object):
+    OK = 'unroller: ok'  # unroller responds OK to the trainer
+    NEED_UPDATE = 'unroller: update'  # unroller requests updated params
 
 
 def get_local_ip():
@@ -86,9 +91,9 @@ def create_zmq_socket(type: int, ip: str, port: int, id: str = None):
 
 class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
+                 core_alg_ctor: Callable,
                  *args,
                  port: int = 50000,
-                 core_alg_ctor: Callable = OffPolicyAlgorithm,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
                  optimizer: alf.optimizers.Optimizer = None,
@@ -98,10 +103,10 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
                  **kwargs):
         """
         Args:
+            core_alg_ctor: creates the algorithm to be wrapped by this class.
             config: the global ``TrainerConfig`` instance. The user is required
                 to always specify this argument.
             port: port number for communication on the *current* machine.
-            core_alg_ctor: creates the algorithm to be wrapped by this class.
             env: The environment to interact with. Its batch size must be 1.
             optimizer: optimizer for the training the core algorithm.
             checkpoint: a string in the format of "prefix@path",
@@ -120,9 +125,8 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
             env=None,
             debug_summaries=debug_summaries,
             **kwargs)
-        assert isinstance(
-            core_alg,
-            OffPolicyAlgorithm), ("The core algorithm must be off-policy!")
+        assert not core_alg.on_policy, (
+            "The core algorithm must be off-policy!")
         assert env.batch_size == 1, (
             "DistributedOffPolicyAlgorithm currently only supports batch_size=1"
         )
@@ -171,8 +175,7 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
 
 
 def receive_experience_data(replay_buffer: ReplayBuffer, worker_id: int,
-                            unroller_ip: str, unroller_port: int,
-                            total_exps_received: mp.Value) -> None:
+                            unroller_ip: str, unroller_port: int) -> None:
     """A worker function for consistently receiving experience data from the
     unroller.
 
@@ -186,8 +189,6 @@ def receive_experience_data(replay_buffer: ReplayBuffer, worker_id: int,
             experience data.
         unroller_ip: ip address of the unroller.
         unroller_port: port number used by the unroller.
-        total_exps_received: a shared variable to store the total number of
-            experience data received.
     """
 
     socket, _ = create_zmq_socket(zmq.DEALER, unroller_ip, unroller_port,
@@ -197,10 +198,6 @@ def receive_experience_data(replay_buffer: ReplayBuffer, worker_id: int,
         buffer = io.BytesIO(socket.recv())
         exp_params = torch.load(buffer, map_location='cpu')
         replay_buffer.add_batch(exp_params, exp_params.env_id)
-        # ``exp_params`` is per-step exp, so no time dimension
-        B = exp_params.step_type.shape[0]
-        with total_exps_received.get_lock():
-            total_exps_received.value += B
 
 
 def send_params_to_unroller(m: torch.nn.Module, port: int,
@@ -216,7 +213,7 @@ def send_params_to_unroller(m: torch.nn.Module, port: int,
     while True:
         try:
             message = socket.recv_string(flags=zmq.NOBLOCK)
-            if message == "unroller: update":
+            if message == UnrollerMessage.NEED_UPDATE:
                 # Get all parameters/buffers in a state dict and send them out
                 buffer = io.BytesIO()
                 with lock:
@@ -227,14 +224,13 @@ def send_params_to_unroller(m: torch.nn.Module, port: int,
             time.sleep(0.1)
 
 
-@alf.configurable(whitelist=[
-    'max_utd_ratio', 'core_alg_ctor', 'checkpoint', 'name', 'optimizer'
-])
+@alf.configurable(
+    whitelist=['max_utd_ratio', 'checkpoint', 'name', 'optimizer'])
 class DistributedTrainer(DistributedOffPolicyAlgorithm):
     def __init__(self,
+                 core_alg_ctor: Callable,
                  *args,
                  max_utd_ratio: float = 10.,
-                 core_alg_ctor: Callable = OffPolicyAlgorithm,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
                  optimizer: alf.optimizers.Optimizer = None,
@@ -244,6 +240,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                  **kwargs):
         """
         Args:
+            core_alg_ctor: creates the algorithm to be wrapped by this class.
+                This algorithm's ``train_step()`` will be used for training.
             max_utd_ratio: max update-to-data ratio, defined as the ratio between
                 the number of gradient updates and the number of exp samples
                 put in the replay buffer. If the current ratio is higher than
@@ -254,15 +252,13 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                 sync gradients among subprocesses after each backward.
                 A larger value will make the trainer more likely overfit to the
                 replay buffer data, while a smaller value will lead to data wastage.
-            core_alg_ctor: creates the algorithm to be wrapped by this class.
-                This algorithm's ``train_step()`` will be used for training.
             *args: additional args to pass to ``core_alg_ctor``.
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
         super().__init__(
+            core_alg_ctor,
             *args,
             port=_unroller_addr_config.port + 1,
-            core_alg_ctor=core_alg_ctor,
             env=env,
             config=config,
             optimizer=optimizer,
@@ -325,10 +321,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         alf.config('ReplayBuffer', allow_multiprocess=True)
         self._set_replay_buffer(exp)
 
-        # Create a shared value to record the total number of experience samples
-        # received from the unroller
-        self._total_exps_received = mp.Value('i', 0)
-
         # In the case of DDP, each subprocess is spawned. By default, if we create
         # a new subprocess, the default start method inherited is spawn. In this case,
         # we need to explicitly set the start method to fork, so that the daemon
@@ -339,8 +331,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             target=receive_experience_data,
             args=(self._replay_buffer, max(0,
                                            PerProcessContext().ddp_rank),
-                  self._unroller_ip, self._unroller_port,
-                  self._total_exps_received),
+                  self._unroller_ip, self._unroller_port),
             daemon=True)
         process.start()
 
@@ -363,17 +354,15 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             f'worker-0: {PerProcessContext().num_processes}, {trainer_ip}, {self._port}'
         )
         message = socket.recv_string()
-        assert message == 'unroller: ok'
+        assert message == UnrollerMessage.OK
         socket.close()
         cxt.term()
 
-    @property
     def utd(self):
-        with self._total_exps_received.get_lock():
-            exps_received = self._total_exps_received.value
-        if exps_received == 0:
+        total_exps = int(self._replay_buffer.get_current_position().sum())
+        if total_exps == 0:
             return 0
-        return self._total_updates / exps_received
+        return self._total_updates / total_exps
 
     def _train_iter_off_policy(self):
         # A worker will pause when either happens:
@@ -382,7 +371,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         while True:
             replay_buffer_not_ready = (self._replay_buffer.total_size <
                                        self._config.initial_collect_steps)
-            utd_exceeded = self.utd > self._max_utd_ratio
+            utd_exceeded = self.utd() > self._max_utd_ratio
             if not (replay_buffer_not_ready or utd_exceeded):
                 break
             if replay_buffer_not_ready:
@@ -410,14 +399,12 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             return super()._backward_and_gradient_update(loss)
 
 
-@alf.configurable(whitelist=[
-    'core_alg_ctor', 'pull_params_every_n_iters', 'checkpoint', 'name',
-    'optimizer'
-])
+@alf.configurable(
+    whitelist=['pull_params_every_n_iters', 'checkpoint', 'name', 'optimizer'])
 class DistributedUnroller(DistributedOffPolicyAlgorithm):
     def __init__(self,
+                 core_alg_ctor: Callable,
                  *args,
-                 core_alg_ctor: Callable = OffPolicyAlgorithm,
                  pull_params_every_n_iters: int = 1,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
@@ -436,9 +423,9 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
         super().__init__(
+            core_alg_ctor,
             *args,
             port=_unroller_addr_config.port,
-            core_alg_ctor=core_alg_ctor,
             env=env,
             config=config,
             checkpoint=checkpoint,
@@ -462,15 +449,6 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         # in a round-robin fashion.
         self._current_worker = 0
 
-    @property
-    def has_offline(self):
-        """Hardcode this flag to train without creating an online replay buffer.
-
-        Because the unroller never creates an online replay buffer, we need this
-        hacked flag for to perform training in ``_train_iter_off_policy()``.
-        """
-        return True
-
     def _query_trainer_info(self):
         """Create a REQ socket and query the number of workers, ip address, and
         port number from the trainer.
@@ -488,7 +466,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         logging.info(
             f'Found {self._num_trainer_workers} workers on the trainer. '
             f'Trainer ip: {self._trainer_ip} port: {self._trainer_port}')
-        socket.send_string('unroller: ok')
+        socket.send_string(UnrollerMessage.OK)
         socket.close()
         cxt.term()
 
@@ -523,18 +501,17 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         """Send a request to the trainer to let it send back the updated params for
         ``self._core_alg``.
         """
-        self._param_socket.send_string('unroller: update')
+        self._param_socket.send_string(UnrollerMessage.NEED_UPDATE)
         # Start receiving params; will get blocked if the trainer is not running
         buffer = io.BytesIO(self._param_socket.recv())
         state_dict = torch.load(buffer, map_location='cpu')
         self._core_alg.load_state_dict(state_dict)
         logging.debug("Params updated from the trainer.")
 
-    def train_from_replay_buffer(self, update_global_counter=False):
-        """Pull model parameters from the trainer.
-
-        Right now always pull whenever this function is called.
-        """
+    def _train_iter_off_policy(self):
+        # Experience will be sent to the trainer in this function
+        self._unroll_iter_off_policy()
+        # Pull model parameters from the trainer periodically.
         if alf.summary.get_global_counter(
         ) % self._pull_params_every_n_iters == 0:
             self._pull_params_from_trainer()

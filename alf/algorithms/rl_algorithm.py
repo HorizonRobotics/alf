@@ -762,14 +762,22 @@ class RLAlgorithm(Algorithm):
 
         return steps
 
-    def _train_iter_off_policy(self):
-        """User may override this for their own training procedure."""
+    def _unroll_iter_off_policy(self):
+        """Perform an unroll before the next off-policy training iteration.
+
+        Returns:
+            tuple:
+            - unrolled: if the ``unroll()`` has been called. Sometimes for fractional
+                unroll length, it may not have been called.
+            - root_inputs: root-level time step returned by the unroll
+            - rollout_info: rollout info returned by the unroll
+        """
         config: TrainerConfig = self._config
 
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
 
-        unroll_length = self._remaining_unroll_length_fraction + self._config.unroll_length
+        unroll_length = self._remaining_unroll_length_fraction + config.unroll_length
         self._remaining_unroll_length_fraction = unroll_length - int(
             unroll_length)
         unroll_length = int(unroll_length)
@@ -778,16 +786,15 @@ class RLAlgorithm(Algorithm):
 
         unrolled = False
         root_inputs = None
-        train_info = None
+        rollout_info = None
         if (alf.summary.get_global_counter() >=
                 self._rl_train_after_update_steps
-                and (unroll_length > 0 or self._config.unroll_length == 0)
-                and (self._config.num_env_steps == 0
-                     or self.get_step_metrics()[1].result() <
-                     self._config.num_env_steps)):
+                and (unroll_length > 0 or config.unroll_length == 0) and
+            (config.num_env_steps == 0
+             or self.get_step_metrics()[1].result() < config.num_env_steps)):
             unrolled = True
             with (torch.set_grad_enabled(config.unroll_with_grad),
-                  torch.cuda.amp.autocast(self._config.enable_amp)):
+                  torch.cuda.amp.autocast(config.enable_amp)):
                 with record_time("time/unroll"):
                     self.eval()
                     # The period of performing unroll may not be an integer
@@ -801,10 +808,15 @@ class RLAlgorithm(Algorithm):
                         if experience:
                             self.summarize_rollout(experience)
                             self.summarize_metrics()
-                            train_info = experience.rollout_info
-                            if self._config.use_root_inputs_for_after_train_iter:
+                            rollout_info = experience.rollout_info
+                            if config.use_root_inputs_for_after_train_iter:
                                 root_inputs = experience.time_step
                             del experience
+        return unrolled, root_inputs, rollout_info
+
+    def _train_iter_off_policy(self):
+        """User may override this for their own training procedure."""
+        unrolled, root_inputs, rollout_info = self._unroll_iter_off_policy()
 
         # replay buffer may not have been created for two different reasons:
         # 1. in online RL training (``has_offline`` is False), unroll is not
@@ -820,7 +832,7 @@ class RLAlgorithm(Algorithm):
 
         if unrolled:
             with record_time("time/after_train_iter"):
-                self.after_train_iter(root_inputs, train_info)
+                self.after_train_iter(root_inputs, rollout_info)
 
         # For now, we only return the steps of the primary algorithm's training
         return steps

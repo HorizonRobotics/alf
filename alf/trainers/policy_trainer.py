@@ -24,6 +24,7 @@ import re
 import signal
 import threading
 import sys
+from typing import Callable
 import time
 import torch
 import torch.nn as nn
@@ -513,7 +514,10 @@ class Trainer(object):
 class RLTrainer(Trainer):
     """Trainer for reinforcement learning. """
 
-    def __init__(self, config: TrainerConfig, ddp_rank: int = -1):
+    def __init__(self,
+                 config: TrainerConfig,
+                 ddp_rank: int = -1,
+                 algorithm_wrapper_ctor: Callable = None):
         """
 
         Args:
@@ -522,6 +526,8 @@ class RLTrainer(Trainer):
                 process participates in a DDP process group to run distributed
                 data parallel training. A value of -1 indicates regular single
                 process training.
+            algorithm_wrapper_ctor: if not None, will be used to wrap
+                ``self._algorithm_ctor`` before creating ``self._algorithm``.
         """
         super().__init__(config, ddp_rank)
 
@@ -565,6 +571,10 @@ class RLTrainer(Trainer):
         common.set_transformed_observation_spec(observation_spec)
         logging.info("transformed_observation_spec=%s" %
                      pformat_pycolor(observation_spec))
+
+        if algorithm_wrapper_ctor is not None:
+            self._algorithm_ctor = partial(algorithm_wrapper_ctor,
+                                           self._algorithm_ctor)
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,
