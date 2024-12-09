@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import alf
+import alf.algorithms.distributed_off_policy_algorithm
 
 alf.import_config("sac_cart_pole_conf.py")
 # Distributed training only supports a single environment
