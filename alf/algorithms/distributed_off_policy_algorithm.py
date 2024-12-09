@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 from typing import Callable
-import zmq
 import time
 import io
 import random
-from multiprocessing.shared_memory import SharedMemory
 import threading
 import subprocess
-from absl import logging
+import zmq
 
 import torch
 import torch.multiprocessing as mp

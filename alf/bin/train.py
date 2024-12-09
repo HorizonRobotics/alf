@@ -55,7 +55,6 @@ from absl import flags
 from absl import logging
 import os
 import sys
-from functools import partial
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -64,8 +63,6 @@ from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
-from alf.algorithms.distributed_off_policy_algorithm import (
-    DistributedTrainer, DistributedUnroller)
 
 
 def _define_flags():
@@ -153,10 +150,13 @@ def _train(root_dir, rank=0, world_size=1):
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
-        if FLAGS.as_remote_trainer:
-            alg_wrapper_ctor = DistributedTrainer
-        elif FLAGS.as_remote_unroller:
-            alg_wrapper_ctor = DistributedUnroller
+        if FLAGS.as_remote_trainer or FLAGS.as_remote_unroller:
+            from alf.algorithms.distributed_off_policy_algorithm import (
+                DistributedTrainer, DistributedUnroller)
+            if FLAGS.as_remote_trainer:
+                alg_wrapper_ctor = DistributedTrainer
+            else:
+                alg_wrapper_ctor = DistributedUnroller
         else:
             alg_wrapper_ctor = None
         trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank,
