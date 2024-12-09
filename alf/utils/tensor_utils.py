@@ -443,3 +443,29 @@ def spatial_broadcast(z: torch.Tensor, im_shape: Tuple[int]):
             input embedding size and ``[H,W]`` are input height and width.
     """
     return z.reshape(z.shape + (1, 1)).expand(*(z.shape + im_shape[-2:]))
+
+
+def expand_dims_as(x, y, end=True):
+    """Expand the shape of ``x`` with extra singular dimensions.
+
+    The result is broadcastable to the shape of ``y``.
+
+    Args:
+        x (Tensor): source tensor
+        y (Tensor): target tensor. Only its shape will be used.
+        end (bool): If True, the extra dimensions are at the end of ``x``;
+            otherwise they are at the beginning.
+    Returns:
+        ``x`` with extra singular dimensions.
+    """
+    assert x.ndim <= y.ndim
+    k = y.ndim - x.ndim
+    if k == 0:
+        return x
+    else:
+        if end:
+            assert x.shape == y.shape[:x.ndim]
+            return x.reshape(*x.shape, *([1] * k))
+        else:
+            assert x.shape == y.shape[k:]
+            return x.reshape(*([1] * k), *x.shape)

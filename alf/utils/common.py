@@ -47,6 +47,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
 from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
+from alf.utils.tensor_utils import expand_dims_as
 
 
 def add_method(cls):
@@ -402,32 +403,6 @@ class PeriodicReset(nn.Module):
                 c()
 
             self._counter = 0
-
-
-def expand_dims_as(x, y, end=True):
-    """Expand the shape of ``x`` with extra singular dimensions.
-
-    The result is broadcastable to the shape of ``y``.
-
-    Args:
-        x (Tensor): source tensor
-        y (Tensor): target tensor. Only its shape will be used.
-        end (bool): If True, the extra dimensions are at the end of ``x``;
-            otherwise they are at the beginning.
-    Returns:
-        ``x`` with extra singular dimensions.
-    """
-    assert x.ndim <= y.ndim
-    k = y.ndim - x.ndim
-    if k == 0:
-        return x
-    else:
-        if end:
-            assert x.shape == y.shape[:x.ndim]
-            return x.reshape(*x.shape, *([1] * k))
-        else:
-            assert x.shape == y.shape[k:]
-            return x.reshape(*([1] * k), *x.shape)
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):

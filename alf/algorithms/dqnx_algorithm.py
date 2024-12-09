@@ -159,13 +159,12 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
             reward_weights[-1] = entropy_regularization
             self._reward_weights = reward_weights
 
-    def _compute_q_values(self, observation, state, replica_min=True):
+    def _compute_q_values(self, observation, state):
         """
 
         Returns:
-        - q_values:
-            replica_min==True: [B, num_actions, q_dim]
-            replica_min==False: [B, num_critic_replicas, num_actions, q_dim]
+        - q_values: [B, num_critic_replicas, num_actions, q_dim]
+        - min_q_values: min q_values across replicas, [B, num_actions, q_dim]
         - action_dist:
         - state: the updated state
         """
@@ -176,26 +175,28 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         # [B, num_critic_replicas, num_actions, q_dim]
         q_values = q_values.transpose(2, 3)
 
-        if replica_min:
-            if self.has_multidim_reward():
-                sign = self.reward_weights.sign()
-                q_values = (q_values * sign).min(dim=1)[0] * sign
-            else:
-                q_values = q_values.min(dim=1)[0]
+        if self._num_critic_replicas == 1:
+            min_q_values = q_values[:, 0, :, :]
+        elif self.has_multidim_reward():
+            sign = self.reward_weights.sign()
+            min_q_values = (q_values * sign).min(dim=1)[0] * sign
+        else:
+            min_q_values = q_values.min(dim=1)[0]
 
-        summed_q_values = q_values @ self._reward_weights
+        summed_q_values = min_q_values @ self._reward_weights
         action_logits = summed_q_values / self._entropy_regularization
         action_dist = td.Categorical(logits=action_logits)
 
-        return q_values, action_dist, state
+        return q_values, min_q_values, action_dist, state
 
     def predict_step(self, inputs: TimeStep, state: DQNXState):
-        q_values, action_dist, new_q_state = self._compute_q_values(
+        _, q_values, action_dist, new_q_state = self._compute_q_values(
             inputs.observation, state.q)
         if self._epsilon_greedy_uniform:
-            greedy_action = summed_q_values.argmax(dim=1)
+            logits = action_dist.logits
+            greedy_action = logits.argmax(dim=1)
             random_action = torch.randint_like(greedy_action, 0,
-                                               summed_q_values.size(1))
+                                               logits.size(1))
             r = torch.rand_like(greedy_action, dtype=torch.float32)
             action = torch.where(r < self._epsilon_greedy, random_action,
                                  greedy_action)
@@ -208,7 +209,7 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         return AlgStep(output=action, state=DQNXState(q=new_q_state))
 
     def rollout_step(self, inputs: TimeStep, state: DQNXState):
-        q_values, action_dist, new_q_state = self._compute_q_values(
+        _, q_values, action_dist, new_q_state = self._compute_q_values(
             inputs.observation, state.q)
         action = dist_utils.sample_action_distribution(action_dist)
         # [B, num_rewards]
@@ -238,8 +239,8 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: DQNXState,
                    rollout_info: DQNXInfo):
-        q_values, action_dist, new_q_state = self._compute_q_values(
-            inputs.observation, state.q, replica_min=False)
+        q_values, _, action_dist, new_q_state = self._compute_q_values(
+            inputs.observation, state.q)
         action = rollout_info.action
         B = torch.arange(action.shape[0])
         action_q_values = q_values[B, :, action]
