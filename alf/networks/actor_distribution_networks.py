@@ -50,7 +50,9 @@ class ActorDistributionNetworkBase(Network):
             input_tensor_spec: the tensor spec of the input.
             action_spec: the tensor spec of the action.
             encoding_network_ctor: the creator of the encoding network that does
-                the heavy lifting of the actor.
+                the heavy lifting of the actor. Called as ``encoding_network_ctor(
+                input_tensor_spec, kernel_initializer=kernel_initializer, **encoder_kwargs)``
+                to create the encoding network.
             discrete_projection_net_ctor (ProjectionNetwork): constructor that
                 generates a discrete projection network that outputs discrete
                 actions.
