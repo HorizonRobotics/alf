@@ -64,7 +64,10 @@ class QNetworkBase(Network):
             "Currently only support a single discrete action! Use "
             "CriticNetwork instead for multiple actions.")
 
+        assert action_spec.numel == 1, "Only support one-dimensional action for now!"
+
         num_actions = action_spec.maximum - action_spec.minimum + 1
+        num_actions = num_actions.item()
 
         self._use_naive_parallel_network = use_naive_parallel_network
         self._output_spec = TensorSpec((num_actions, ))
@@ -130,6 +133,8 @@ class QNetwork(QNetworkBase):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
                  use_naive_parallel_network=False,
                  name="QNetwork"):
         """Creates an instance of ``QNetwork`` for estimating action-value of
@@ -184,6 +189,8 @@ class QNetwork(QNetworkBase):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
             kernel_initializer=kernel_initializer)
 
 
