@@ -31,13 +31,18 @@ alf.config('TrainerConfig', data_transformer_ctor=RewardScaling)
 alf.config('RewardScaling', scale=0.01)
 
 # algorithm config
-alf.config('QNetwork', fc_layer_params=(100, ), use_fc_ln=True)
+alf.config(
+    'QNetwork',
+    fc_layer_params=(100, ),
+    use_fc_ln=True,
+    last_layer_init_bias_value=0)
 
 alf.config(
     'DQNXAlgorithm',
     epsilon_greedy=0.01,
     entropy_regularization=0.01,
-    separate_q_for_entropy=True,
+    alpha=0.9,
+    log_pi_clip=0,
     q_network_ctor=QNetwork,
     optimizer=alf.optimizers.Adam(lr=1e-3))
 
@@ -59,4 +64,8 @@ alf.config(
     eval_interval=50,
     confirm_checkpoint_upon_crash=False,
     debug_summaries=True,
-    summary_interval=5)
+    summarize_grads_and_vars=True,
+    summary_interval=1)
+
+alf.config('summarize_gradients', with_histogram=False)
+alf.config('summarize_variables', with_histogram=False)

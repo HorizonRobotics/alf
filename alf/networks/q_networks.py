@@ -41,6 +41,7 @@ class QNetworkBase(Network):
                  action_spec: BoundedTensorSpec,
                  encoding_network_ctor: Callable,
                  last_layer_init_weight_range=0.003,
+                 last_layer_init_bias_value=-0.2,
                  use_naive_parallel_network: bool = False,
                  name: str = "QNetworkBase",
                  **encoder_kwargs):
@@ -88,7 +89,7 @@ class QNetworkBase(Network):
             num_actions,
             activation=math_ops.identity,
             kernel_initializer=last_kernel_initializer,
-            bias_init_value=-0.2)
+            bias_init_value=last_layer_init_bias_value)
 
     def forward(self, observation, state=()):
         """Computes action values given an observation.
@@ -139,6 +140,7 @@ class QNetwork(QNetworkBase):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  last_layer_init_weight_range=0.003,
+                 last_layer_init_bias_value=-0.2,
                  use_fc_bn=False,
                  use_fc_ln=False,
                  use_naive_parallel_network=False,
@@ -200,6 +202,7 @@ class QNetwork(QNetworkBase):
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
             last_layer_init_weight_range=last_layer_init_weight_range,
+            last_layer_init_bias_value=last_layer_init_bias_value,
             kernel_initializer=kernel_initializer)
 
 

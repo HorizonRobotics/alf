@@ -249,7 +249,11 @@ def lower_bound_discounted_return(rewards,
     return rets.detach()
 
 
-def one_step_discounted_return(rewards, values, step_types, discounts):
+def one_step_discounted_return(rewards,
+                               values,
+                               step_types,
+                               discounts,
+                               time_major=True):
     """Calculate the one step discounted return  for the first T-1 steps.
 
     return = next_reward + next_discount * next_value if is not the last step;
@@ -277,8 +281,12 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     rewards = common.expand_dims_as(rewards, values)
 
     discounted_values = discounts * values
-    rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
+    if time_major:
+        rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
                  is_lasts[:-1] * discounted_values[:-1]
+    else:
+        rets = (1 - is_lasts[:, :-1]) * (rewards[:, 1:] + discounted_values[:, 1:]) + \
+                 is_lasts[:, :-1] * discounted_values[:, :-1]
     return rets.detach()
 
 

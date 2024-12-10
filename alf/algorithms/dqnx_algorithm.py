@@ -58,11 +58,10 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
                  num_critic_replicas=1,
                  entropy_regularization=0.03,
                  alpha=0.9,
-                 log_pi_clip=-.0,
+                 log_pi_clip=-1.0,
                  gamma=0.99,
                  td_lambda=0.95,
                  td_error_loss_fn=losses.element_wise_squared_loss,
-                 separate_q_for_entropy=False,
                  reward_weights=None,
                  epsilon_greedy=None,
                  epsilon_greedy_uniform=False,
@@ -91,7 +90,6 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
             gamma=0.99,
             td_lambda=0.95,
             td_error_loss_fn=losses.element_wise_squared_loss,
-            separate_q_for_entropy=False,
             reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor if reward_weights is not None.
@@ -113,12 +111,10 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         assert isinstance(action_spec, BoundedTensorSpec)
         assert action_spec.is_discrete
         assert action_spec.shape == ()
+        assert entropy_regularization > 0, "Not supported"
 
         self._num_critic_replicas = num_critic_replicas
-        self._q_dim = reward_spec.numel
-        if separate_q_for_entropy:
-            self._q_dim += 1
-        self._separate_q_for_entropy = separate_q_for_entropy
+        self._q_dim = reward_spec.numel + 1  # one for entropy part
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
@@ -150,14 +146,11 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         self._td_lambda = td_lambda
         self._td_error_loss_fn = td_error_loss_fn
 
-        if self._reward_weights is None:
-            self._reward_weights = torch.ones(self._reward_spec.numel)
-
-        if separate_q_for_entropy:
-            reward_weights = torch.zeros(self._q_dim)
+        reward_weights = torch.ones(self._q_dim)
+        if self._reward_weights is not None:
+            # User provided reward weights is for reward part only
             reward_weights[:self._reward_spec.numel] = self._reward_weights
-            reward_weights[-1] = entropy_regularization
-            self._reward_weights = reward_weights
+        self._reward_weights = reward_weights
 
     def _compute_q_values(self, observation, state):
         """
@@ -215,9 +208,7 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         # [B, num_rewards]
         v_values = torch.einsum('bar,ba->br', q_values, action_dist.probs)
 
-        entropy = ()
-        if self._entropy_regularization > 0:
-            entropy = action_dist.entropy()
+        entropy = action_dist.entropy()
 
         log_pi = ()
         if self._alpha > 0:
@@ -303,37 +294,36 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         discount = convert_device(rollout_info.discount)
         reward = convert_device(rollout_info.reward).reshape(B, T, -1)
         value = convert_device(rollout_info.v_values)
-
-        discounts = discount.unsqueeze(-1) * self._gamma
-        if self._entropy_regularization > 0:
-            entropy = convert_device(rollout_info.entropy)
-            entropy = (discount * entropy)[:, :, None]
-            if self._separate_q_for_entropy:
-                reward = torch.cat([reward, entropy], dim=-1)
-            else:
-                reward += self._entropy_regularization / self._reward_spec.numel * entropy
+        discounts = discount * self._gamma
 
         advantages = value_ops.generalized_advantage_estimation(
             rewards=reward,
-            values=value,
+            values=value[:, :, :-1],
             step_types=step_type,
             discounts=discounts,
             td_lambda=self._td_lambda,
             time_major=False)
+        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
+        target_q_values = value[:, :, :-1] + advantages
 
+        entropy = convert_device(rollout_info.entropy)
+        entropy = discount * entropy
         if self._alpha > 0:
             log_pi = convert_device(rollout_info.log_pi)[:, :-1]
             if self._log_pi_clip < 0:
                 log_pi = log_pi.clamp(
                     min=self._log_pi_clip / self._entropy_regularization)
-            if self._separate_q_for_entropy:
-                advantages[:, :, -1] += self._alpha * log_pi
-            else:
-                log_pi = log_pi[:, :, None]
-                advantages += self._entropy_regularization * self._alpha / self._reward_spec.numel * log_pi
+            entropy[:, 1:] += self._alpha * log_pi
+        target_q_m = value_ops.one_step_discounted_return(
+            rewards=self._entropy_regularization * entropy,
+            values=value[:, :, -1],
+            step_types=step_type,
+            discounts=discounts,
+            time_major=False)
+        target_q_m = torch.cat([target_q_m, value[:, -1:, -1]], dim=-1)
 
-        advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
-        target_q_values = value + advantages
+        target_q_values = torch.cat(
+            [target_q_values, target_q_m.unsqueeze(-1)], dim=-1)
         return root_inputs, rollout_info._replace(
             target_q_values=target_q_values)
 
