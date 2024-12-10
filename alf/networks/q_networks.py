@@ -40,6 +40,7 @@ class QNetworkBase(Network):
                  input_tensor_spec: alf.NestedTensorSpec,
                  action_spec: BoundedTensorSpec,
                  encoding_network_ctor: Callable,
+                 last_layer_init_weight_range=0.003,
                  use_naive_parallel_network: bool = False,
                  name: str = "QNetworkBase",
                  **encoder_kwargs):
@@ -49,6 +50,8 @@ class QNetworkBase(Network):
             action_spec : the tensor spec of the action
             encoding_network_ctor: the creator of the encoding network that does
                 the heavy lifting of the q network.
+            last_layer_init_weight_range: the weights of the last layer will be
+                initialized in this range around zero.
             use_naive_parallel_network: if True, will use
                 ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
                 might be useful in cases when the ``NaiveParallelNetwork``
@@ -75,8 +78,10 @@ class QNetworkBase(Network):
         self._encoding_net = encoding_network_ctor(
             input_tensor_spec=input_tensor_spec, **encoder_kwargs)
 
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_,
+            a=-last_layer_init_weight_range,
+            b=last_layer_init_weight_range)
 
         self._final_layer = layers.FC(
             self._encoding_net.output_spec.shape[0],
@@ -133,6 +138,7 @@ class QNetwork(QNetworkBase):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 last_layer_init_weight_range=0.003,
                  use_fc_bn=False,
                  use_fc_ln=False,
                  use_naive_parallel_network=False,
@@ -171,6 +177,8 @@ class QNetwork(QNetworkBase):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a default ``variance_scaling_initializer``
                 will be used.
+            last_layer_init_weight_range: the weights of the last layer will be
+                initialized in this range around zero.
             use_naive_parallel_network (bool): if True, will use
                 ``NaiveParallelNetwork`` when ``make_parallel`` is called. This
                 might be useful in cases when the ``NaiveParallelNetwork``
@@ -191,6 +199,7 @@ class QNetwork(QNetworkBase):
             activation=activation,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
+            last_layer_init_weight_range=last_layer_init_weight_range,
             kernel_initializer=kernel_initializer)
 
 
