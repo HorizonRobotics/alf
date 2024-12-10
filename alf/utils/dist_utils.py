@@ -1489,7 +1489,8 @@ def top_k_sample(dist: td.Categorical, k):
         Tensor: the indices of the top-k categories with shape as
             ``dist.batch_shape``
     """
-    assert isinstance(dist, td.Categorical)
+    if not isinstance(dist, td.Categorical):
+        return dist.top_k_sample(k)
     logits = dist.logits
     topk, indices = logits.topk(k, dim=-1)
     dist = td.Categorical(logits=topk)
@@ -1512,7 +1513,8 @@ def top_p_sample(dist: td.Categorical, p):
         Tensor: the indices of the selected categories with shape as
             ``dist.batch_shape``
     """
-    assert isinstance(dist, td.Categorical)
+    if not isinstance(dist, td.Categorical):
+        return dist.top_p_sample(p)
     probs, indices = dist.probs.sort(dim=-1)
     cum_probs = probs.cumsum(dim=-1)
     mask = cum_probs < 1 - p

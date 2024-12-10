@@ -205,9 +205,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             adapter_state = ()
 
         if self._top_k_sample > 0:
-            action = action_dist.top_k_sample(self._top_k_sample)
+            action = dist_utils.top_k_sample(action_dist, self._top_k_sample)
         elif self._top_p_sample > 0:
-            action = action_dist.top_p_sample(self._top_p_sample)
+            action = dist_utils.top_p_sample(action_dist, self._top_p_sample)
         else:
             action = dist_utils.epsilon_greedy_sample(action_dist,
                                                       self._epsilon_greedy)
