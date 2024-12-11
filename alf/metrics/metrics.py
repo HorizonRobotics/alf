@@ -41,10 +41,11 @@ class MetricBuffer(torch.nn.Module):
         """
         super().__init__()
         self._dtype = dtype
-        self._buf = db.DataBuffer(
-            data_spec=alf.tensor_specs.TensorSpec((), dtype=dtype),
-            capacity=max_len,
-            device='cpu')
+        self._max_len = max_len
+        self.register_buffer(
+            "_buf", torch.zeros((max_len, ), dtype=dtype, device='cpu'))
+        self.register_buffer("_current_pos",
+                             torch.zeros((), dtype=torch.int64, device='cpu'))
 
     def append(self, value):
         """Append multiple values to the buffer.
@@ -52,26 +53,37 @@ class MetricBuffer(torch.nn.Module):
         Args:
             value (Tensor): a batch of scalars with the shape :math:`[B]`.
         """
-        self._buf.add_batch(value)
+        n = value.size(0)
+        if n == 1:
+            self._buf[self._current_pos % self._max_len] = value[0]
+            self._current_pos += 1
+        else:
+            n = min(n, self._max_len)
+            pos = (self._current_pos + torch.arange(
+                n, device='cpu')) % self._max_len
+            self._buf[pos] = value[:n]
+            self._current_pos += n
 
     def mean(self):
-        if self._buf.current_size == 0:  # avoid nan
+        if self._current_pos == 0:  # avoid nan
             return torch.tensor(0, dtype=self._dtype)
-        return self._buf.get_all()[:self._buf.current_size].mean()
+        current_size = self._current_pos.clamp(max=self._max_len)
+        return self._buf[:current_size].mean()
 
     def std(self):
-        if self._buf.current_size == 0:  # avoid nan
+        if self._current_pos == 0:  # avoid nan
             return torch.tensor(0, dtype=self._dtype)
-        return self._buf.get_all()[:self._buf.current_size].std()
+        current_size = self._current_pos.clamp(max=self._max_len)
+        return self._buf[:current_size].std()
 
     def latest(self):
         """Return the value added most recently.
         """
-        assert self._buf.current_size > 0, "no valid latest value!"
-        return self._buf.get_batch_by_indices(self._buf.current_pos - 1)
+        assert self._current_pos > 0, "no valid latest value!"
+        return self._buf[(self._current_pos - 1) % self._max_len]
 
     def clear(self):
-        return self._buf.clear()
+        self._current_pos.zero_()
 
 
 class EnvironmentSteps(metric.StepMetric):
@@ -259,27 +271,23 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             """In-place update of the accumulators and mask."""
             val_valid = torch.isfinite(val)
             # If at any step the value is valid, then the acc value becomes valid
-            mask[:] = torch.where(is_first, torch.zeros_like(mask),
-                                  mask | val_valid)
+            mask[:] = torch.where(is_first, 0, mask | val_valid)
             # Only step+1 if the value is valid
-            step[:] = torch.where(is_first, torch.zeros_like(step),
+            step[:] = torch.where(is_first, 0,
                                   step + val_valid.to(self._dtype))
 
             if path.endswith("@max"):
                 # Don't max invalid values
-                val = torch.where(val_valid, val, torch.full_like(
-                    val, -np.inf))
-                acc[:] = torch.where(is_first,
-                                     torch.full_like(acc, -float('inf')),
+                val = torch.where(val_valid, val, -float('inf'))
+                acc[:] = torch.where(is_first, -float('inf'),
                                      torch.maximum(acc, val.to(self._dtype)))
             else:
                 # Don't sum invalid values
-                val = torch.where(val_valid, val, torch.zeros_like(val))
+                val = torch.where(val_valid, val, 0)
                 # Zero out batch indices where a new episode is starting.
                 # Update with new values; Ignores first step whose reward comes from
                 # the boundary transition of the last step from the previous episode.
-                acc[:] = torch.where(is_first, torch.zeros_like(acc),
-                                     acc + val.to(self._dtype))
+                acc[:] = torch.where(is_first, 0, acc + val.to(self._dtype))
 
         alf.nest.py_map_structure_with_path(_update_accumulator_, self._mask,
                                             self._steps, self._accumulator,
