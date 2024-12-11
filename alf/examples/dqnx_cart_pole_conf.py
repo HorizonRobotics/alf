@@ -42,6 +42,7 @@ alf.config(
     epsilon_greedy=0.01,
     entropy_regularization=0.01,
     alpha=0.9,
+    use_entropy_reward=False,
     log_pi_clip=0,
     q_network_ctor=QNetwork,
     optimizer=alf.optimizers.Adam(lr=1e-3))
@@ -60,7 +61,7 @@ alf.config(
     num_checkpoints=5,
     whole_replay_buffer_training=True,
     clear_replay_buffer=True,
-    evaluate=True,
+    evaluate=False,
     eval_interval=50,
     confirm_checkpoint_upon_crash=False,
     debug_summaries=True,
