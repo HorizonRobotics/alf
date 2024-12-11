@@ -343,6 +343,7 @@ class Trainer(object):
 
             if self._config.profiling:
                 pr.disable()
+                pr.dump_stats(os.path.join(self._root_dir, "profile.prof"))
                 s = io.StringIO()
                 ps = pstats.Stats(pr, stream=s).sort_stats('time')
                 ps.print_stats()
