@@ -395,7 +395,8 @@ def config1(config_name,
         override_all (bool): If True, the value of the config will be set regardless
             of any pre-existing ``mutable`` or ``sole_init`` settings. This should
             be used only when absolutely necessary (e.g., adjusting certain configs
-            such as mini_batch_size for DDP workers.)."""
+            such as mini_batch_size for DDP workers.).
+    """
     config_node = _get_config_node(config_name)
 
     if raise_if_used and config_node.is_used():
