@@ -253,12 +253,22 @@ class RingBuffer(nn.Module):
                     "There are duplicated ids in env_ids %s" % env_ids)
 
             current_pos = self._current_pos[env_ids]
-            indices = env_ids * self._max_length + self.circular(current_pos)
-            alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__(indices, bat.detach()),
-                self._flattened_buffer, batch)
+            if (current_pos == current_pos[0]).all() and (
+                    env_ids == torch.arange(self._num_envs)).all():
+                pos = self.circular(current_pos[0].item())
 
-            self._current_pos[env_ids] = current_pos + 1
+                def _set(buf, bat):
+                    buf[:, pos] = bat
+
+                alf.nest.map_structure(_set, self._buffer, batch)
+            else:
+                indices = env_ids * self._max_length + self.circular(
+                    current_pos)
+                alf.nest.map_structure(
+                    lambda buf, bat: buf.__setitem__(indices, bat.detach()),
+                    self._flattened_buffer, batch)
+
+            self._current_pos[env_ids] += 1
             current_size = self._current_size[env_ids]
             self._current_size[env_ids] = torch.clamp(
                 current_size + 1, max=self._max_length)
