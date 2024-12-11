@@ -177,7 +177,11 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
             min_q_values = q_values.min(dim=1)[0]
 
         summed_q_values = min_q_values @ self._reward_weights
-        action_logits = summed_q_values / self._entropy_regularization
+        # Need this so that the gradient imitation loss will not overwhelm the
+        # TD loss
+        action_logits = tensor_utils.scale_gradient(
+            summed_q_values,
+            self._entropy_regularization) / self._entropy_regularization
         action_dist = td.Categorical(logits=action_logits)
 
         return q_values, min_q_values, action_dist, state

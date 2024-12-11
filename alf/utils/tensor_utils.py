@@ -469,3 +469,15 @@ def expand_dims_as(x, y, end=True):
         else:
             assert x.shape == y.shape[k:]
             return x.reshape(*([1] * k), *x.shape)
+
+
+def scale_gradient(x: torch.Tensor, scale: float):
+    """Scale the gradient of x for the backward pass.
+
+    Args:
+        x: the tensor whose gradient needs to be scaled
+        scale: a scalar factor to be multiplied to the gradient
+            of `tensor`.
+    """
+    # (1 - scale) * x.detach() + scale * x
+    return torch.lerp(x.detach(), x, scale)
