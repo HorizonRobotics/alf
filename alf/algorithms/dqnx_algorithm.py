@@ -58,6 +58,7 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
                  num_critic_replicas=1,
                  entropy_regularization=0.03,
                  alpha=0.9,
+                 use_entropy_reward=True,
                  log_pi_clip=-1.0,
                  gamma=0.99,
                  td_lambda=0.95,
@@ -151,6 +152,7 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
             # User provided reward weights is for reward part only
             reward_weights[:self._reward_spec.numel] = self._reward_weights
         self._reward_weights = reward_weights
+        self._use_entropy_reward = use_entropy_reward
 
     def _compute_q_values(self, observation, state):
         """
@@ -310,21 +312,28 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
         advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
         target_q_values = value[:, :, :-1] + advantages
 
-        entropy = convert_device(rollout_info.entropy)
-        entropy = discount * entropy
-        if self._alpha > 0:
+        if self._use_entropy_reward:
+            entropy = convert_device(rollout_info.entropy)
+            entropy = discount * entropy
+            if self._alpha > 0:
+                log_pi = convert_device(rollout_info.log_pi)[:, :-1]
+                if self._log_pi_clip < 0:
+                    log_pi = log_pi.clamp(
+                        min=self._log_pi_clip / self._entropy_regularization)
+                entropy[:, 1:] += self._alpha * log_pi
+            target_q_m = value_ops.one_step_discounted_return(
+                rewards=self._entropy_regularization * entropy,
+                values=value[:, :, -1],
+                step_types=step_type,
+                discounts=discounts,
+                time_major=False)
+            target_q_m = torch.cat([target_q_m, value[:, -1:, -1]], dim=-1)
+        elif self._alpha > 0:
             log_pi = convert_device(rollout_info.log_pi)[:, :-1]
             if self._log_pi_clip < 0:
                 log_pi = log_pi.clamp(
                     min=self._log_pi_clip / self._entropy_regularization)
-            entropy[:, 1:] += self._alpha * log_pi
-        target_q_m = value_ops.one_step_discounted_return(
-            rewards=self._entropy_regularization * entropy,
-            values=value[:, :, -1],
-            step_types=step_type,
-            discounts=discounts,
-            time_major=False)
-        target_q_m = torch.cat([target_q_m, value[:, -1:, -1]], dim=-1)
+            target_q_m = self._alpha * self._entropy_regularization * log_pi
 
         target_q_values = torch.cat(
             [target_q_values, target_q_m.unsqueeze(-1)], dim=-1)
