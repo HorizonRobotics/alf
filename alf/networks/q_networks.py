@@ -40,6 +40,7 @@ class QNetworkBase(Network):
                  input_tensor_spec: alf.NestedTensorSpec,
                  action_spec: BoundedTensorSpec,
                  encoding_network_ctor: Callable,
+                 dueling: bool = False,
                  last_layer_init_weight_range=0.003,
                  last_layer_init_bias_value=-0.2,
                  use_naive_parallel_network: bool = False,
@@ -51,6 +52,7 @@ class QNetworkBase(Network):
             action_spec : the tensor spec of the action
             encoding_network_ctor: the creator of the encoding network that does
                 the heavy lifting of the q network.
+            dueling:
             last_layer_init_weight_range: the weights of the last layer will be
                 initialized in this range around zero.
             use_naive_parallel_network: if True, will use
@@ -84,9 +86,12 @@ class QNetworkBase(Network):
             a=-last_layer_init_weight_range,
             b=last_layer_init_weight_range)
 
+        dueling = 1 if dueling else 0
+        self._dueling = dueling
+
         self._final_layer = layers.FC(
             self._encoding_net.output_spec.shape[0],
-            num_actions,
+            num_actions + dueling,
             activation=math_ops.identity,
             kernel_initializer=last_kernel_initializer,
             bias_init_value=last_layer_init_bias_value)
@@ -106,6 +111,10 @@ class QNetworkBase(Network):
         """
         encoded_obs, state = self._encoding_net(observation, state)
         action_value = self._final_layer(encoded_obs)
+        if self._dueling:
+            q = action_value[..., :-1]
+            v = action_value[..., -1:]
+            action_value = q + (v - q.mean(dim=-1, keepdim=True))
         return action_value, state
 
     def make_parallel(self, n):
@@ -137,6 +146,7 @@ class QNetwork(QNetworkBase):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
+                 dueling: bool = False,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  last_layer_init_weight_range=0.003,
@@ -174,6 +184,7 @@ class QNetwork(QNetworkBase):
                 where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
+            dueling:
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
@@ -188,10 +199,11 @@ class QNetwork(QNetworkBase):
                 You have to test to see which way is faster for your particular
                 situation.
         """
-        super(QNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             action_spec,
             encoding_network_ctor=EncodingNetwork,
+            dueling=dueling,
             use_naive_parallel_network=use_naive_parallel_network,
             name=name,
             input_preprocessors=input_preprocessors,
@@ -223,6 +235,7 @@ class ParallelQNetwork(Network):
         self._final_layer = q_network._final_layer.make_parallel(n)
         self._output_spec = TensorSpec((n, ) +
                                        tuple(q_network.output_spec.shape))
+        self._dueling = q_network._dueling
 
     def forward(self, inputs, state=()):
         """Compute action values given an observation.
@@ -240,6 +253,10 @@ class ParallelQNetwork(Network):
         """
         encoded_obs, state = self._encoding_net(inputs, state)
         action_value = self._final_layer(encoded_obs)
+        if self._dueling:
+            q = action_value[..., :-1]
+            v = action_value[..., -1:]
+            action_value = q + (v - q.mean(dim=-1, keepdim=True))
         return action_value, state
 
     @property
