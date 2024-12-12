@@ -309,6 +309,7 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
             discounts=discounts,
             td_lambda=self._td_lambda,
             time_major=False)
+        # [B, T, q_dim-1]
         advantages = tensor_utils.tensor_extend_zero(advantages, dim=1)
         target_q_values = value[:, :, :-1] + advantages
 
@@ -321,15 +322,17 @@ class DQNXAlgorithm(OffPolicyAlgorithm):
                     log_pi = log_pi.clamp(
                         min=self._log_pi_clip / self._entropy_regularization)
                 entropy[:, 1:] += self._alpha * log_pi
+            # [B, T-1]
             target_q_m = value_ops.one_step_discounted_return(
                 rewards=self._entropy_regularization * entropy,
                 values=value[:, :, -1],
                 step_types=step_type,
                 discounts=discounts,
                 time_major=False)
+            # [B, T]
             target_q_m = torch.cat([target_q_m, value[:, -1:, -1]], dim=-1)
         elif self._alpha > 0:
-            log_pi = convert_device(rollout_info.log_pi)[:, :-1]
+            log_pi = convert_device(rollout_info.log_pi)
             if self._log_pi_clip < 0:
                 log_pi = log_pi.clamp(
                     min=self._log_pi_clip / self._entropy_regularization)
