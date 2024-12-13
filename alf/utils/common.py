@@ -1382,6 +1382,7 @@ def get_all_parameters(obj):
     Returns:
         list: list of (path, Parameters)
     """
+    from alf.environments.alf_environment import AlfEnvironment
     all_parameters = []
     memo = set()
     unprocessed = [(obj, '')]
@@ -1395,7 +1396,7 @@ def get_all_parameters(obj):
         if isinstance(obj, nn.Parameter):
             all_parameters.append((path, obj))
             continue
-        if isinstance(obj, torch.Tensor):
+        if isinstance(obj, (torch.Tensor, np.ndarray, AlfEnvironment)):
             continue
         if path:
             path += '.'
