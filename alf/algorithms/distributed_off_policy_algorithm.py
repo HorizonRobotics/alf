@@ -332,8 +332,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # by the parent ``RLAlgorithm``
         self.observe_for_replay = self._observe_for_replay
 
-        print("Trainer params port: ",
-              self._port + _params_port_offset + self._ddp_rank)
         self._params_socket, _ = create_zmq_socket(
             zmq.ROUTER, '*', self._port + _params_port_offset + self._ddp_rank)
         # 3 sec timeout for receiving unroller's acknowledgement
