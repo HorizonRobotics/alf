@@ -306,8 +306,12 @@ def _infer_device_type(*args):
 class SplitBatchRunner(torch.nn.Module):
     """Split the input into smaller batches and run the model on each batch.
 
+    ``SplitBatchRunner`` uses ``LeanFunction`` to run the model on smaller batches
+    so that the intermediate results can be discarded to save memory.
+
     Note that models using random number generators (e.g. DropOut) are not supported
-    for training.
+    for training. For models involving calculating statistics on a batch, using
+    SplitBatchRunner may lead to different results.
 
     Example:
 
@@ -318,7 +322,9 @@ class SplitBatchRunner(torch.nn.Module):
 
     Args:
         model (nn.Module): the model to run
-        max_batch_size (int): the maximum batch size to run the model.
+        max_batch_size (int): the maximum batch size to run the model. If negative,
+            the model will not be split into smaller batches and the original
+            forward of the model will be called.
     """
 
     def __init__(self, model, max_batch_size):
