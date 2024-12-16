@@ -39,9 +39,10 @@ alf.config(
 
 alf.config(
     'DQNXAlgorithm',
-    epsilon_greedy=0.01,
-    entropy_regularization=0.1,
-    alpha=1.0,
+    epsilon_greedy=1.0,
+    entropy_regularization=0.01,
+    alpha=0.95,
+    target_update_period=1,
     use_entropy_reward=False,
     log_pi_clip=0,
     delta_log_pi_clip=0.2,
@@ -54,6 +55,7 @@ alf.config('Agent', rl_algorithm_cls=DQNXAlgorithm)
 alf.config(
     'TrainerConfig',
     algorithm_ctor=Agent,
+    random_seed=5,
     mini_batch_length=1,
     unroll_length=32,
     mini_batch_size=128,
@@ -67,6 +69,8 @@ alf.config(
     confirm_checkpoint_upon_crash=False,
     debug_summaries=True,
     summarize_grads_and_vars=True,
+    update_counter_every_mini_batch=True,
+    clear_replay_buffer_but_keep_one_step=True,
     summary_interval=1)
 
 alf.config('summarize_gradients', with_histogram=False)
