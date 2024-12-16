@@ -373,6 +373,12 @@ class DiagMultivariateNormal(td.Independent):
     def stddev(self):
         return self.base_dist.stddev
 
+    def log_prob(self, value, summed=True):
+        if summed:
+            return self.base_dist.log_prob(value).sum(-1)
+        else:
+            return self.base_dist.log_prob(value)
+
 
 @alf.configurable(whitelist=['eps'])
 class Beta(td.Beta):
