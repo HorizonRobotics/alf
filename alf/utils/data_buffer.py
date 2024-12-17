@@ -250,11 +250,12 @@ class RingBuffer(nn.Module):
             if (env_ids.numel() == self._num_envs
                     and (self._current_pos == current_pos).all()
                     and (env_ids == self._env_ids).all()):
-                # fast path for the common case
+                # fast path for the common case when all envs have the same
+                # current_pos, and when all envs unroll the same number of steps.
                 pos = self.circular(current_pos)
 
                 def _set(buf, bat):
-                    buf[:, pos] = bat
+                    buf[:, pos] = bat.detach()
 
                 alf.nest.map_structure(_set, self._buffer, batch)
                 self._current_pos.fill_(current_pos + 1)
