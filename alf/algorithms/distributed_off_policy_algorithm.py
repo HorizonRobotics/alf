@@ -525,8 +525,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         if (self._total_updates % self._push_params_every_n_grad_updates == 0):
             # Sending params to all the connected unrollers.
             dead_unrollers = []
-            logging.info(f"Rank {self._ddp_rank} sends params to unrollers "
-                         f"{self._unrollers_to_update_params}")
+            logging.debug(f"Rank {self._ddp_rank} sends params to unrollers "
+                          f"{self._unrollers_to_update_params}")
             for unroller_id in self._unrollers_to_update_params:
                 if not self._send_params_to_unroller(unroller_id):
                     dead_unrollers.append(unroller_id)
