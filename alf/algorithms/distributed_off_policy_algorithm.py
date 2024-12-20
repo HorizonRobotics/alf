@@ -529,18 +529,20 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         steps = super()._train_iter_off_policy()
         self._total_updates += self._config.num_updates_per_train_iter
 
-        if (self._total_updates % self._push_params_every_n_grad_updates == 0):
-            # Sending params to all the connected unrollers.
-            dead_unrollers = []
-            logging.debug(f"Rank {self._ddp_rank} sends params to unrollers "
-                          f"{self._unrollers_to_update_params}")
-            for unroller_id in self._unrollers_to_update_params:
-                with record_time("time/trainer_send_params_to_unroller"):
+        with record_time("time/trainer_send_params_to_unroller"):
+            if (self._total_updates %
+                    self._push_params_every_n_grad_updates == 0):
+                # Sending params to all the connected unrollers.
+                dead_unrollers = []
+                logging.debug(
+                    f"Rank {self._ddp_rank} sends params to unrollers "
+                    f"{self._unrollers_to_update_params}")
+                for unroller_id in self._unrollers_to_update_params:
                     if not self._send_params_to_unroller(unroller_id):
                         dead_unrollers.append(unroller_id)
-            # remove dead unrollers
-            for unroller_id in dead_unrollers:
-                self._unrollers_to_update_params.remove(unroller_id)
+                # remove dead unrollers
+                for unroller_id in dead_unrollers:
+                    self._unrollers_to_update_params.remove(unroller_id)
 
         self._num_train_iters += 1
 
