@@ -33,6 +33,7 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import Experience, make_experience
 from alf.utils.per_process_context import PerProcessContext
 from alf.utils import dist_utils
+from alf.utils.summary_utils import record_time
 
 
 class UnrollerMessage(object):
@@ -170,7 +171,6 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
     ###############################
     ######### Forward calls #######
     ###############################
-    @alf.utils.common.mark_eval
     def predict_step(self, inputs, state):
         return self._core_alg.predict_step(inputs, state)
 
@@ -186,6 +186,13 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         return self._core_alg.preprocess_experience(root_inputs, rollout_info,
                                                     batch_info)
+
+    def transform_experience(self, experience: Experience):
+        # Global data transformer
+        experience = super().transform_experience(experience)
+        # In the case where core_alg has in-alg data transformer
+        experience = self._core_alg.transform_experience(experience)
+        return experience
 
     def after_update(self, root_inputs, info):
         return self._core_alg.after_update(root_inputs, info)
@@ -528,8 +535,9 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             logging.debug(f"Rank {self._ddp_rank} sends params to unrollers "
                           f"{self._unrollers_to_update_params}")
             for unroller_id in self._unrollers_to_update_params:
-                if not self._send_params_to_unroller(unroller_id):
-                    dead_unrollers.append(unroller_id)
+                with record_time("time/trainer_send_params_to_unroller"):
+                    if not self._send_params_to_unroller(unroller_id):
+                        dead_unrollers.append(unroller_id)
             # remove dead unrollers
             for unroller_id in dead_unrollers:
                 self._unrollers_to_update_params.remove(unroller_id)
