@@ -88,7 +88,8 @@ class TrainerConfig(object):
                  normalize_importance_weights_by_max: bool = False,
                  clear_replay_buffer=True,
                  clear_replay_buffer_but_keep_one_step=True,
-                 visualize_alf_tree=False):
+                 visualize_alf_tree=False,
+                 remote_training=False):
         """
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -336,6 +337,10 @@ class TrainerConfig(object):
                 weight.
             visualize_alf_tree: if True, will call graphviz to draw a model
                 structure of the algorithm.
+            remote_training: a flag preserved to indicate remote training mode.
+                It will be automatically set by ``alf.bin.train`` and users should
+                *not* set this flag. Three possible values: ['trainer', 'unroller',
+                False].
         """
         if isinstance(priority_replay_beta, float):
             assert priority_replay_beta >= 0.0, (
@@ -415,3 +420,4 @@ class TrainerConfig(object):
         self.empty_cache = empty_cache
         self.normalize_importance_weights_by_max = normalize_importance_weights_by_max
         self.visualize_alf_tree = visualize_alf_tree
+        self.remote_training = remote_training
