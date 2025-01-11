@@ -25,6 +25,7 @@ class TrainerConfig(object):
                  root_dir,
                  conf_file='',
                  ml_type='rl',
+                 version='normal',
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
@@ -94,6 +95,7 @@ class TrainerConfig(object):
         Args:
             root_dir (str): directory for saving summary and checkpoints
             ml_type (str): type of learning task, one of ['rl', 'sl']
+            version (str): version of the algorithm
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             data_transformer_ctor (Callable|list[Callable]): Function(s)
@@ -349,6 +351,7 @@ class TrainerConfig(object):
         self.root_dir = root_dir
         self.conf_file = conf_file
         self.ml_type = ml_type
+        self.version = version
         self.algorithm_ctor = algorithm_ctor
         self.data_transformer_ctor = data_transformer_ctor
         self.data_transformer = None  # to be set by Trainer
