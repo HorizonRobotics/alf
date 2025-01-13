@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from collections import deque
 from typing import Callable
 import time
 import io
@@ -203,7 +204,8 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
 
 def receive_experience_data(replay_buffer: ReplayBuffer,
                             new_unroller_ips_and_ports: mp.Queue,
-                            worker_id: int) -> None:
+                            worker_id: int,
+                            max_tmp_buffer_size: int = 2000) -> None:
     """A worker function for consistently receiving experience data from
     unrollers.
 
@@ -221,6 +223,11 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             new unrollers.
         worker_id: the id of the worker; used by each unroller to route the
             experience data.
+        max_tmp_buffer_size: the maximum size of the temporary buffer for storing
+            experience data from each unroller. If the buffer is full, the
+            experience data will be dropped from the beginning and a warning
+            message will be output. This is for CPU memory safety consideration.
+            When the warning occurs, we should reconsider unroller's
     """
     # A temporary buffer for each unroller to store exp data. Because multiple
     # unrollers might send exps to the same DDP rank at the same time, we need
@@ -248,13 +255,22 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
                 # Add the temp exp buffer to the replay buffer
                 for exp_params in unroller_exps_buffer[unroller_id]:
                     replay_buffer.add_batch(exp_params, exp_params.env_id)
-                unroller_exps_buffer[unroller_id] = []
+                # reset the temp buffer
+                unroller_exps_buffer[unroller_id] = deque(
+                    maxlen=max_tmp_buffer_size)
             else:
                 buffer = io.BytesIO(message)
                 exp_params = torch.load(buffer, map_location='cpu')
                 # Use a temp buffer to store the received exps
                 if unroller_id not in unroller_exps_buffer:
-                    unroller_exps_buffer[unroller_id] = []
+                    # init the temp buffer
+                    unroller_exps_buffer[unroller_id] = deque(
+                        maxlen=max_tmp_buffer_size)
+                if len(unroller_exps_buffer[unroller_id]
+                       ) == max_tmp_buffer_size:
+                    logging.warning(
+                        "The exp tmp buffer is full. Some exps will be dropped."
+                    )
                 unroller_exps_buffer[unroller_id].append(exp_params)
         else:
             time.sleep(0.1)
@@ -435,7 +451,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                                                           int(unroller_port)))
                     registered_unrollers.add(unroller_id)
                     logging.info(
-                        f"Rank {self._ddp_rank} registered {unroller_ip} {unroller_port}"
+                        f"Rank {self._ddp_rank} registered unroller: {unroller_ip} {unroller_port}"
                     )
 
                     if self.is_main_ddp_rank:
@@ -693,7 +709,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             self._current_worker = (
                 self._current_worker + 1) % self._num_trainer_workers
 
-    def _check_paramss_update(self) -> bool:
+    def _check_params_update(self) -> bool:
         """Returns True if params have been updated.
         """
         # Check if the params have been updated
@@ -722,7 +738,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             # get overwritten by a checkpointer.
             self._create_pull_params_subprocess()
             while True:
-                if self._check_paramss_update():
+                if self._check_params_update():
                     break
                 time.sleep(0.01)
             self._registered = True
@@ -732,5 +748,5 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             torch.cuda.empty_cache()
         # Experience will be sent to the trainer in this function
         self._unroll_iter_off_policy()
-        self._check_paramss_update()
+        self._check_params_update()
         return 0
