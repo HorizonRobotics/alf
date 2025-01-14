@@ -204,8 +204,7 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
 
 def receive_experience_data(replay_buffer: ReplayBuffer,
                             new_unroller_ips_and_ports: mp.Queue,
-                            worker_id: int,
-                            max_tmp_buffer_size: int = 2000) -> None:
+                            worker_id: int, max_tmp_buffer_size: int) -> None:
     """A worker function for consistently receiving experience data from
     unrollers.
 
@@ -227,7 +226,8 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             experience data from each unroller. If the buffer is full, the
             experience data will be dropped from the beginning and a warning
             message will be output. This is for CPU memory safety consideration.
-            When the warning occurs, we should reconsider unroller's
+            When the warning occurs, we should reconsider unroller's strategy of
+            setting ``StepType.LAST``.
     """
     # A temporary buffer for each unroller to store exp data. Because multiple
     # unrollers might send exps to the same DDP rank at the same time, we need
@@ -303,8 +303,8 @@ def pull_params_from_trainer(memory_name: str, unroller_id: str,
 
 
 @alf.configurable(whitelist=[
-    'max_utd_ratio', 'push_params_every_n_grad_updates', 'checkpoint', 'name',
-    'optimizer'
+    'max_utd_ratio', 'push_params_every_n_grad_updates',
+    'max_tmp_exp_buffer_size', 'checkpoint', 'name', 'optimizer'
 ])
 class DistributedTrainer(DistributedOffPolicyAlgorithm):
     def __init__(self,
@@ -312,6 +312,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                  *args,
                  max_utd_ratio: float = 10.,
                  push_params_every_n_grad_updates: int = 1,
+                 max_tmp_exp_buffer_size: int = 2000,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
                  optimizer: alf.optimizers.Optimizer = None,
@@ -335,6 +336,12 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                 replay buffer data, while a smaller value will lead to data wastage.
             push_params_every_n_grad_updates: push model parameters to the unroller
                 every this number of gradient updates.
+            max_tmp_exp_buffer_size: the maximum size of the temporary buffer for
+                storing experience data from each unroller. If the buffer is full,
+                the experience data will be dropped from the beginning and a warning
+                message will be output. This is for CPU memory safety consideration.
+                When the warning occurs, we should reconsider unroller's strategy of
+                setting ``StepType.LAST``.
             *args: additional args to pass to ``core_alg_ctor``.
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
@@ -351,6 +358,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             **kwargs)
 
         self._push_params_every_n_grad_updates = push_params_every_n_grad_updates
+        self._max_tmp_exp_buffer_size = max_tmp_exp_buffer_size
 
         # Ports:
         # 1. registration port: self._port + self._ddp_rank
@@ -504,7 +512,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         process = mp.Process(
             target=receive_experience_data,
             args=(self._replay_buffer, self._new_unroller_ips_and_ports,
-                  self._ddp_rank),
+                  self._ddp_rank, self._max_tmp_exp_buffer_size),
             daemon=True)
         process.start()
 
@@ -677,6 +685,8 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
 
         Every time we make sure a full episode is sent to the same DDP rank, if
         multi-gpu training is enabled on the trainer.
+
+        TODO (haonan): read the step type from ``exp.rollout_info``
         """
         # First prune exp's replay state to save communication overhead
         exp = alf.utils.common.prune_exp_replay_state(
