@@ -1067,29 +1067,36 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
         return sample
 
 
-def epsilon_greedy_sample(nested_distributions, eps=0.1):
-    """Generate greedy sample that maximizes the probability.
+def epsilon_greedy_sample(nested_distributions, eps=0.1, top_k=1):
+    """Generate greedy sample that maximizes the probability or select top-K actions.
 
     Args:
         nested_distributions (nested Distribution): distribution to sample from
         eps (float): a floating value in :math:`[0,1]`, representing the chance of
             action sampling instead of taking argmax. This can help prevent
             a dead loop in some deterministic environment like `Breakout`.
+        top_k (int): Number of top actions to select. If 1, behaves like single action sampling.
+    
     Returns:
         (nested) Tensor:
+            - If top_k=1: shape [B]
+            - If top_k>1: shape [B, top_k]
     """
-
     def greedy_fn(dist):
-        # pytorch distribution has no 'mode' operation
-        greedy_action = get_mode(dist)
-        if eps == 0.0:
-            return greedy_action
-        sample_action = dist.sample()
-        greedy_mask = torch.rand(sample_action.shape[0]) > eps
-        sample_action[greedy_mask] = greedy_action[greedy_mask]
-        return sample_action
+        if top_k == 1:
+            greedy_action = get_mode(dist)
+            if eps == 0.0:
+                return greedy_action
+            sample_action = dist.sample()
+            greedy_mask = torch.rand(sample_action.shape[0], device=sample_action.device) > eps
+            sample_action[greedy_mask] = greedy_action[greedy_mask]
+            return sample_action
+        else:
+            # Get top-k values and indices using get_topk
+            _, topk_indices = get_topk(dist, k=top_k, eps=eps)
+            return topk_indices  # Shape: [B, top_k]
 
-    if eps >= 1.0:
+    if eps >= 1.0 and top_k == 1:
         return sample_action_distribution(nested_distributions)
     else:
         return nest.map_structure(greedy_fn, nested_distributions)
@@ -1160,13 +1167,17 @@ def get_mode(dist):
     return mode
 
 
-def get_rmode(dist):
+def get_rmode(dist, temperature=0.5):
     """Get the mode of the distribution that support backpropogation.
     Note that if ``dist`` is a transformed
     distribution, the result may not be the actual mode of ``dist``.
 
     Args:
         dist (td.Distribution):
+        temperature (float): temperature for approximating argmax, e.g. using
+        algorithms like gumbel_softmax. The value should be in (0.1, 1), with 0.1
+        to approximate argmax (but causing high variance in gradient) and 1 to
+        approximate mean.
     Returns:
         The mode of the distribution. If ``dist`` is a transformed distribution,
         the result is calculated by transforming the mode of its base
@@ -1174,7 +1185,7 @@ def get_rmode(dist):
     Raises:
         NotImplementedError: if dist or its base distribution is not
             ``td.Normal``, ``StableCauchy``, ``Beta``, ``TruncatedDistribution``,
-            ``td.Independent`` or ``td.TransformedDistribution``.
+            ``td.Independent``, ``td.TransformedDistribution``, or ``td.Categorical``.
     """
     if isinstance(dist, td.normal.Normal):
         mode = dist.mean
@@ -1196,6 +1207,10 @@ def get_rmode(dist):
         mode = base_mode
         for transform in dist.transforms:
             mode = transform(mode)
+    elif isinstance(dist, td.categorical.Categorical):
+        # use gumbel_softmax to get the mode as a one-hot tensor to support backprop
+        mode = torch.nn.functional.gumbel_softmax(
+            logits=dist.logits, tau=temperature, hard=True)
     else:
         raise NotImplementedError(
             "Distribution type %s is not supported" % type(dist))
@@ -1435,3 +1450,54 @@ def calc_uniform_log_prob(spec):
     else:
         log_prob = np.sum([-np.log(M - m + 1) for m, M, _ in min_max])
     return log_prob
+
+
+def get_topk(dist, k=1, eps=0.0):
+    """Get the top-k most likely outcomes from the distribution, with optional 
+    epsilon random sampling.
+
+    Args:
+        dist (td.Distribution): The input distribution. Currently only supports
+            td.categorical.Categorical.
+        k (int): Number of top candidates to return
+        eps (float): A floating value in [0,1], representing the chance of random
+            sampling instead of taking top-k. This can help prevent deterministic
+            behavior.
+    Returns:
+        tuple:
+        - values: The logits of top-k outcomes, shape [B, k]
+        - indices: The indices of top-k outcomes, shape [B, k]
+    Raises:
+        NotImplementedError: if dist is not td.categorical.Categorical
+    """
+    if not isinstance(dist, td.categorical.Categorical):
+        raise NotImplementedError(
+            f"Distribution type {type(dist)} is not supported. "
+            "Only td.categorical.Categorical is currently supported.")
+
+    if eps >= 1.0:
+        # Pure random sampling
+        num_categories = dist.logits.shape[-1]
+        batch_size = dist.logits.shape[0] if len(dist.logits.shape) > 1 else 1
+        indices = torch.randint(0, num_categories, (batch_size, k), 
+                              device=dist.logits.device)
+        values = dist.logits.gather(-1, indices)
+        return values, indices
+    
+    # Get top-k values and indices
+    values, indices = torch.topk(dist.logits, k, dim=-1)
+    
+    if eps > 0.0:
+        # Random sampling with probability eps
+        num_categories = dist.logits.shape[-1]
+        batch_size = dist.logits.shape[0] if len(dist.logits.shape) > 1 else 1
+        random_indices = torch.randint(0, num_categories, (batch_size, k), 
+                                     device=dist.logits.device)
+        random_values = dist.logits.gather(-1, random_indices)
+        
+        # Create random mask for mixing
+        mask = torch.rand(batch_size, k, device=dist.logits.device) < eps
+        indices = torch.where(mask, random_indices, indices)
+        values = torch.where(mask, random_values, values)
+    
+    return values, indices
