@@ -146,8 +146,6 @@ class RingBuffer(nn.Module):
 
             self._buffer = alf.nest.py_map_structure_with_path(
                 _create_buffer, data_spec)
-            self._flattened_buffer = alf.nest.map_structure(
-                lambda x: x.view(-1, *x.shape[2:]), self._buffer)
 
         if allow_multiprocess:
             self.share_memory()
@@ -272,8 +270,8 @@ class RingBuffer(nn.Module):
                 indices = env_ids * self._max_length + self.circular(
                     current_pos)
                 alf.nest.map_structure(
-                    lambda buf, bat: buf.__setitem__(indices, bat.detach()),
-                    self._flattened_buffer, batch)
+                    lambda buf, bat: buf.view(-1, *buf.shape[2:]).__setitem__(
+                        indices, bat.detach()), self._buffer, batch)
 
                 self._current_pos[env_ids] += 1
                 current_size = self._current_size[env_ids]
