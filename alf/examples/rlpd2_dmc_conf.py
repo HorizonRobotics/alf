@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.rlpd_algorithm import RlpdAlgorithm
+from alf.algorithms.rlpd2_algorithm import Rlpd2Algorithm
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import AdamTF
 
@@ -29,14 +29,16 @@ critic_network_cls = partial(
     use_fc_ln=True)
 
 alf.config(
-    'Agent', optimizer=dmc_conf.optimizer, rl_algorithm_cls=RlpdAlgorithm)
+    'Agent', optimizer=dmc_conf.optimizer, rl_algorithm_cls=Rlpd2Algorithm)
 
 alf.config(
-    'RlpdAlgorithm',
+    'Rlpd2Algorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_critic_replicas=10,
     num_critic_targets=2,
+    num_aux_critics=2,
+    critic_training_weight=1.0,
     use_entropy_reward=True,
     target_update_tau=0.005)
 

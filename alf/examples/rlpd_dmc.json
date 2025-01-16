@@ -13,9 +13,10 @@
         ],
         "RlpdAlgorithm.num_critic_replicas": "[10]",
         "RlpdAlgorithm.num_critic_targets": "[2]",
-        "RlpdAlgorithm.use_entropy_reward": "[True, False]",
+        "RlpdAlgorithm.use_entropy_reward": "[True]",
         "RlpdAlgorithm.target_update_tau": "[0.005]",
-        "calc_default_target_entropy.min_prob": "[0.3]",
+        "calc_default_target_entropy.min_prob": "[0.184]",
+        "TrainerConfig.num_updates_per_train_iter": "[5, 10]",
         "TrainerConfig.random_seed": "list(range(2))"
     }
 }

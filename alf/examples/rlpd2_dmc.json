@@ -1,0 +1,24 @@
+{
+    "desc": "DM Control Tasks",
+    "version": "hopper_rlpd2_last-fc_std-ces",
+    "use_gpu": true,
+    "gpus": [
+        1
+    ],
+    "max_worker_num": 2,
+    "repeats": 1,
+    "parameters": {
+        "create_environment.env_name": [
+            "hopper-hop"
+        ],
+        "Rlpd2Algorithm.num_critic_replicas": "[5]",
+        "Rlpd2Algorithm.num_critic_targets": "[2]",
+        "Rlpd2Algorithm.num_aux_critics": "[2]",
+        "Rlpd2Algorithm.critic_training_weight": "[1.]",
+        "Rlpd2Algorithm.use_entropy_reward": "[True]",
+        "Rlpd2Algorithm.target_update_tau": "[0.005]",
+        "calc_default_target_entropy.min_prob": "[0.184]",
+        "TrainerConfig.num_updates_per_train_iter": "[5]",
+        "TrainerConfig.random_seed": "list(range(2))"
+    }
+}

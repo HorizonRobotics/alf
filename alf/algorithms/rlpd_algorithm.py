@@ -35,12 +35,6 @@ class RlpdAlgorithm(SacAlgorithm):
         Ball et al "Efficient Online Reinforcement Learning with Offline Data", arXiv:2302.02948
 
     Currently, only continuous action spaces are supported.
-
-    In addition to the entropy regularization described in the SAC paper, we
-    also support KL-Divergence regularization if a prior actor is provided.
-    In this case, the training objective is:
-        :math:`E_\pi(\sum_t \gamma^t(r_t - \alpha D_{\rm KL}(\pi(\cdot)|s_t)||\pi^0(\cdot)|s_t)))`
-    where :math:`pi^0` is the prior actor.
     """
 
     def __init__(self,
@@ -76,7 +70,6 @@ class RlpdAlgorithm(SacAlgorithm):
                  checkpoint=None,
                  debug_summaries=False,
                  name="RlpdAlgorithm"):
-        # **kwargs):
         """
         Refer to SacAlgorithm for more details for kwargs
 
