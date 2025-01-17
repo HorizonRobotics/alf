@@ -793,8 +793,9 @@ class RLAlgorithm(Algorithm):
             (config.num_env_steps == 0
              or self.get_step_metrics()[1].result() < config.num_env_steps)):
             unrolled = True
-            with (torch.set_grad_enabled(config.unroll_with_grad),
-                  torch.cuda.amp.autocast(config.enable_amp)):
+            with torch.set_grad_enabled(
+                    config.unroll_with_grad), torch.cuda.amp.autocast(
+                        config.enable_amp):
                 with record_time("time/unroll"):
                     self.eval()
                     # The period of performing unroll may not be an integer

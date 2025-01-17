@@ -271,10 +271,14 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             """In-place update of the accumulators and mask."""
             val_valid = torch.isfinite(val)
             # If at any step the value is valid, then the acc value becomes valid
-            mask[:] = torch.where(is_first, 0, mask | val_valid)
+            mask[:] = torch.where(
+                is_first, torch.tensor(
+                    0, dtype=mask.dtype, device=mask.device), mask | val_valid)
             # Only step+1 if the value is valid
-            step[:] = torch.where(is_first, 0,
-                                  step + val_valid.to(self._dtype))
+            step[:] = torch.where(
+                is_first, torch.tensor(
+                    0, dtype=step.dtype, device=step.device),
+                step + val_valid.to(self._dtype))
 
             if path.endswith("@max"):
                 # Don't max invalid values
@@ -283,11 +287,16 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                                      torch.maximum(acc, val.to(self._dtype)))
             else:
                 # Don't sum invalid values
-                val = torch.where(val_valid, val, 0)
+                val = torch.where(
+                    val_valid, val,
+                    torch.tensor(0, dtype=val.dtype, device=val.device))
                 # Zero out batch indices where a new episode is starting.
                 # Update with new values; Ignores first step whose reward comes from
                 # the boundary transition of the last step from the previous episode.
-                acc[:] = torch.where(is_first, 0, acc + val.to(self._dtype))
+                acc[:] = torch.where(
+                    is_first,
+                    torch.tensor(0, dtype=acc.dtype, device=acc.device),
+                    acc + val.to(self._dtype))
 
         alf.nest.py_map_structure_with_path(_update_accumulator_, self._mask,
                                             self._steps, self._accumulator,
