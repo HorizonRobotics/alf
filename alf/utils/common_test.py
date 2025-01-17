@@ -15,6 +15,8 @@
 from absl import logging
 from contextlib import redirect_stderr
 from io import StringIO
+import multiprocessing as mp
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -71,6 +73,64 @@ class GetAllParametersTest(alf.test.TestCase):
         for name, p in params:
             self.assertTrue(name in names)
         self.assertEqual(len(names), len(params))
+
+
+class _TestModule(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        # create a CPU tensor
+        self.x = torch.zeros([2]).to('cpu')
+        self.y = np.zeros([2])
+        if torch.cuda.is_available():
+            self.z = torch.zeros([2]).cuda()
+
+
+def _test_worker(m_):
+    m_.x[:] = 1.
+    m_.y[:] = 1.
+    if torch.cuda.is_available():
+        m_.z[:] = 1.
+
+
+def _test_tensor_sharing():
+    """This function is for testing whether tensors are automatically moved
+    to shared memory, even when ``Module.share_memory()`` or ``Tensor.share_memory_()``
+    has not been called, especially for CPU tensors.
+
+    The official documentation seems to hint that CPU tensors should be shared via
+    the explicit call ``Module.share_memory()`` or ``Tensor.share_memory_()``,
+    before being passed to a child process. However, our finding is that they will
+    be automatically moved to shared memory. This is an undocumented behavior, and
+    we want to test this for different ALF users.
+    """
+    m = _TestModule()
+    assert not m.x.is_shared()
+    if torch.cuda.is_available():
+        # CUDA tensor is always shared
+        assert m.z.is_shared()
+
+    mp.set_start_method('spawn', force=True)
+    # Change ``m`` in the child process
+    process = mp.Process(target=_test_worker, args=(m, ))
+    process.start()
+    process.join()
+
+    # numpy array should not be modified
+    assert np.allclose(m.y, np.zeros([2]))
+    # cuda tensor should be modified
+    if torch.cuda.is_available():
+        assert torch.allclose(m.z.cpu(), torch.ones([2]).cpu())
+    # check that ``m``'s tensor also been modified in the parent process
+    assert m.x.is_shared() and torch.allclose(
+        m.x,
+        torch.ones([2]).cpu()
+    ), ("Your pytorch version has a different behavior of sharing CPU tensors "
+        "between processes. Please report the version to the ALF team.")
+
+
+class TensorSharingTest(alf.test.TestCase):
+    def test_tensor_sharing(self):
+        _test_tensor_sharing()
 
 
 if __name__ == '__main__':
