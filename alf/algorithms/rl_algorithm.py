@@ -793,25 +793,25 @@ class RLAlgorithm(Algorithm):
             (config.num_env_steps == 0
              or self.get_step_metrics()[1].result() < config.num_env_steps)):
             unrolled = True
-            with (torch.set_grad_enabled(config.unroll_with_grad),
-                  torch.cuda.amp.autocast(config.enable_amp)):
-                with record_time("time/unroll"):
-                    self.eval()
-                    # The period of performing unroll may not be an integer
-                    # divider of config.summary_interval if config.unroll_length is not an
-                    # integer. In order to make sure the summary for unroll is
-                    # still written out about every summary_interval steps, we
-                    # need to remember whether summary has been written between
-                    # two unrolls.
-                    with self._ensure_rollout_summary:
-                        experience = self.unroll(unroll_length)
-                        if experience:
-                            self.summarize_rollout(experience)
-                            self.summarize_metrics()
-                            rollout_info = experience.rollout_info
-                            if config.use_root_inputs_for_after_train_iter:
-                                root_inputs = experience.time_step
-                            del experience
+            with torch.set_grad_enabled(config.unroll_with_grad):
+                with torch.cuda.amp.autocast(config.enable_amp):
+                    with record_time("time/unroll"):
+                        self.eval()
+                        # The period of performing unroll may not be an integer
+                        # divider of config.summary_interval if config.unroll_length is not an
+                        # integer. In order to make sure the summary for unroll is
+                        # still written out about every summary_interval steps, we
+                        # need to remember whether summary has been written between
+                        # two unrolls.
+                        with self._ensure_rollout_summary:
+                            experience = self.unroll(unroll_length)
+                            if experience:
+                                self.summarize_rollout(experience)
+                                self.summarize_metrics()
+                                rollout_info = experience.rollout_info
+                                if config.use_root_inputs_for_after_train_iter:
+                                    root_inputs = experience.time_step
+                                del experience
         return unrolled, root_inputs, rollout_info
 
     def _train_iter_off_policy(self):
