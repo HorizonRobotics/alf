@@ -78,7 +78,7 @@ alf.config(
     # entity="runjerry",
     # project="Actor-Bayes-Critic",
     async_eval=True,
-    initial_collect_steps=1000,
+    initial_collect_steps=10000,
     unroll_length=1,
     mini_batch_length=2,
     mini_batch_size=256,

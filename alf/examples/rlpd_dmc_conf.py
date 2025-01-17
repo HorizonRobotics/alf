@@ -26,9 +26,7 @@ actor_network_cls = dmc_conf.actor_distribution_network_cls
 critic_network_cls = partial(
     alf.networks.CriticNetwork,
     joint_fc_layer_params=dmc_conf.hidden_layers,
-    use_fc_ln=True,
-    last_use_fc_ln=True,
-    last_layer_activation=torch.relu_)
+    use_fc_ln=True)
 
 alf.config(
     'Agent', optimizer=dmc_conf.optimizer, rl_algorithm_cls=RlpdAlgorithm)
@@ -49,6 +47,7 @@ alf.config(
     algorithm_ctor=Agent,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
+    num_updates_per_train_iter=1,
     summarize_gradient_noise_scale=True,
     summarize_action_distributions=True,
     random_seed=0)
