@@ -280,23 +280,23 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                     0, dtype=step.dtype, device=step.device),
                 step + val_valid.to(self._dtype))
 
-            if path.endswith("@max"):
-                # Don't max invalid values
-                val = torch.where(val_valid, val, -float('inf'))
-                acc[:] = torch.where(is_first, -float('inf'),
-                                     torch.maximum(acc, val.to(self._dtype)))
-            else:
-                # Don't sum invalid values
-                val = torch.where(
-                    val_valid, val,
-                    torch.tensor(0, dtype=val.dtype, device=val.device))
-                # Zero out batch indices where a new episode is starting.
-                # Update with new values; Ignores first step whose reward comes from
-                # the boundary transition of the last step from the previous episode.
-                acc[:] = torch.where(
-                    is_first,
-                    torch.tensor(0, dtype=acc.dtype, device=acc.device),
-                    acc + val.to(self._dtype))
+            # if path.endswith("@max"):
+            #     # Don't max invalid values
+            #     val = torch.where(val_valid, float(val), -float('inf'))
+            #     acc[:] = torch.where(is_first, -float('inf'),
+            #                          torch.maximum(acc, val.to(self._dtype)))
+            # else:
+            #     # Don't sum invalid values
+            #     val = torch.where(
+            #         val_valid, val,
+            #         torch.tensor(0, dtype=val.dtype, device=val.device))
+            #     # Zero out batch indices where a new episode is starting.
+            #     # Update with new values; Ignores first step whose reward comes from
+            #     # the boundary transition of the last step from the previous episode.
+            #     acc[:] = torch.where(
+            #         is_first,
+            #         torch.tensor(0, dtype=acc.dtype, device=acc.device),
+            #         acc + val.to(self._dtype))
 
         alf.nest.py_map_structure_with_path(_update_accumulator_, self._mask,
                                             self._steps, self._accumulator,
