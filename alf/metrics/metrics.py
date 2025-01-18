@@ -266,9 +266,13 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                                 "(only scalar values are supported).")
 
         is_first = time_step.is_first()
+        # is_first = is_first.to(acc.device)  # Move is_first to the same device as acc
 
         def _update_accumulator_(path, mask, step, acc, val):
             """In-place update of the accumulators and mask."""
+
+            # val = val.float()
+
             val_valid = torch.isfinite(val)
             # If at any step the value is valid, then the acc value becomes valid
             mask[:] = torch.where(
@@ -282,9 +286,15 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
 
             if path.endswith("@max"):
                 # Don't max invalid values
-                val = torch.where(val_valid, val, -float('inf'))
-                acc[:] = torch.where(is_first, -float('inf'),
-                                     torch.maximum(acc, val.to(self._dtype)))
+                # Make sure val_valid is on the same device as val
+                val_valid = val_valid.to(val.device)
+
+                # Apply torch.where with consistent device
+                val = torch.where(val_valid, val.float(), torch.tensor(-float('inf'), dtype=torch.float32, device=val.device))
+
+                acc[:] = torch.where(is_first, torch.tensor(-float('inf'), dtype=acc.dtype, device=acc.device),
+                                    torch.maximum(acc, val.to(self._dtype)))
+
             else:
                 # Don't sum invalid values
                 val = torch.where(
