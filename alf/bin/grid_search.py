@@ -317,7 +317,6 @@ class GridSearch(object):
             processes=max_worker_num, maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
-        version = FLAGS.root_dir.split('/')[-1]
         for repeat in range(self._conf.repeats):
             for task_count, values in enumerate(
                     itertools.product(*param_values)):
@@ -326,7 +325,6 @@ class GridSearch(object):
                                       self._generate_run_name(
                                           parameters, task_count, repeat))
                 root_dir = common.abs_path(root_dir)
-                parameters.update({'TrainerConfig.version': version})
                 process_pool.apply_async(
                     func=self._worker,
                     args=[root_dir, parameters, device_queue],
@@ -427,7 +425,7 @@ def launch_snapshot_gridsearch():
     if not conf_file.endswith('.gin'):
         with open(FLAGS.search_config) as f:
             search_conf = json.loads(f.read())
-        version = search_conf.get('version', "default")
+        version = search_conf.get('version', "")
         # conf_name = conf_file.split('/')[-1].split('_conf.py')[0]
         root_dir = os.path.join(root_dir, version)
         os.makedirs(root_dir, exist_ok=True)
