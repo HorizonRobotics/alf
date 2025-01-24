@@ -15,6 +15,7 @@
 from absl.testing import parameterized
 from collections import namedtuple
 import itertools
+import multiprocessing as mp
 import torch
 
 import alf
@@ -695,6 +696,37 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(
             torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4),
             experience.step_type)
+
+
+def _write_to_buffer(buffer):
+    bat = torch.zeros((
+        1,
+        10,
+    ), dtype=torch.uint8, device='cpu')
+    buffer.add_batch(bat)
+
+
+class ReplayBufferSharingTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters(['fork', 'spawn'])
+    def test_spawned_process_sharing(self, start_method):
+        spec = alf.TensorSpec((10, ), dtype=torch.uint8)
+
+        buffer = ReplayBuffer(
+            data_spec=spec, num_environments=1, max_length=10, device='cpu')
+
+        original_start_method = mp.get_start_method()
+        mp.set_start_method(start_method, force=True)
+        p = mp.Process(target=_write_to_buffer, args=(buffer, ))
+        p.start()
+        p.join()
+        mp.set_start_method(original_start_method, force=True)
+
+        if start_method == 'spawn':
+            # The buffer in the main process is also changed
+            self.assertEqual(buffer.total_size, 1)
+        else:
+            # With fork, the sharing has some issue
+            self.assertEqual(buffer.total_size, 0)
 
 
 if __name__ == '__main__':
