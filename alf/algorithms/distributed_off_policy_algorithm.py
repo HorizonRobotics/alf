@@ -260,8 +260,8 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             time.sleep(0.1)
 
 
-def pull_params_from_trainer(memory_name: str, unroller_id: str,
-                             params_socket_rank: int):
+def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
+                             unroller_id: str, params_socket_rank: int):
     """ Once new params arrive, we put it in the shared memory and mark updated.
     Later after the current unroll finishes, the unroller can load the
     new params.
@@ -269,6 +269,7 @@ def pull_params_from_trainer(memory_name: str, unroller_id: str,
     Args:
         memory_name: the name of the shared memory which is used to store the
             updated params for the main process.
+        memory_lock: the lock for the shared memory write/read.
         unroller_id: the id of the unroller.
         params_socket_rank: which DDP rank will be syncing params with this unroller.
     """
@@ -281,8 +282,9 @@ def pull_params_from_trainer(memory_name: str, unroller_id: str,
     socket.send_string(UnrollerMessage.OK)
     while True:
         data = socket.recv()
-        params.buf[0] = 1
-        params.buf[1:] = data
+        with memory_lock:
+            params.buf[0] = 1
+            params.buf[1:] = data
         socket.send_string(UnrollerMessage.OK)
 
 
@@ -648,11 +650,13 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         # Initialize the update char to False (not updated)
         self._shared_alg_params.buf[0] = 0
 
+        self._shared_mem_lock = mp.Lock()
+
         mp.set_start_method('fork', force=True)
         process = mp.Process(
             target=pull_params_from_trainer,
-            args=(self._shared_alg_params.name, self._id,
-                  self._params_socket_rank),
+            args=(self._shared_alg_params.name, self._shared_mem_lock,
+                  self._id, self._params_socket_rank),
             daemon=True)
         process.start()
 
@@ -697,13 +701,17 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         """Returns True if params have been updated.
         """
         # Check if the params have been updated
-        if self._shared_alg_params.buf[0] == 1:
-            buffer = io.BytesIO(self._shared_alg_params.buf[1:])
+        buffer = None
+        with self._shared_mem_lock:
+            if self._shared_alg_params.buf[0] == 1:
+                buffer = io.BytesIO(self._shared_alg_params.buf[1:])
+        if buffer is not None:
             state_dict = torch.load(buffer, map_location='cpu')
             # We might only update part of the params
             self._core_alg.load_state_dict(state_dict, strict=False)
             logging.debug("Params updated from the trainer.")
-            self._shared_alg_params.buf[0] = 0
+            with self._shared_mem_lock:
+                self._shared_alg_params.buf[0] = 0
             return True
         return False
 
