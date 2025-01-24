@@ -117,15 +117,13 @@ def _test_tensor_sharing():
     process.join()
 
     # numpy array should not be modified
-    assert np.allclose(m.y, np.zeros([2]))
+    assert np.all(m.y == np.zeros([2]))
     # cuda tensor should be modified
     if torch.cuda.is_available():
-        assert torch.allclose(m.z.cpu(), torch.ones([2]).cpu())
+        assert torch.all(m.z.cpu() == torch.ones([2]).cpu())
     # check that ``m``'s tensor also been modified in the parent process
-    assert m.x.is_shared() and torch.allclose(
-        m.x,
-        torch.ones([2]).cpu()
-    ), ("Your pytorch version has a different behavior of sharing CPU tensors "
+    assert m.x.is_shared() and torch.all(m.x == torch.ones([2]).cpu()), (
+        "Your pytorch version has a different behavior of sharing CPU tensors "
         "between processes. Please report the version to the ALF team.")
 
     mp.set_start_method(start_method, force=True)

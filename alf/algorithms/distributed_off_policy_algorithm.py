@@ -362,7 +362,10 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignored
 
         # We always test tensor sharing among processes, because
-        # we rely on undocumented features of PyTorch
+        # we rely on undocumented features of PyTorch:
+        # 1. tensors will automatically be moved to shared memory, even without
+        #    ``Module.share_memory()`` or ``Tensor.share_memory_()`` being called.
+        # 2. only a 'spawned' subprocess is reliable for tensor sharing.
         _test_tensor_sharing()
 
     def _observe_for_replay(self, exp: Experience):
