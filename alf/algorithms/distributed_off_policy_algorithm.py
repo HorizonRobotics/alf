@@ -255,6 +255,8 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
 
             if int(exp_params.step_type) == StepType.LAST:
                 # Add the temp exp buffer to the replay buffer
+                # ``DistributedOffPolicyAlgorithm`` assumes batch_size=1
+                exp_params.env_id.zero_()
                 for i, exp_params in enumerate(
                         unroller_exps_buffer[unroller_id]):
                     replay_buffer.add_batch(exp_params, exp_params.env_id)
