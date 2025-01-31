@@ -31,6 +31,7 @@ from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops
 from alf.utils.schedulers import Scheduler
+from alf.utils.summary_utils import safe_mean_hist_summary
 
 RlpdCriticState = namedtuple(
     "RlpdCriticState", [
@@ -81,6 +82,7 @@ class Rlpd2Algorithm(SacAlgorithm):
                  num_critic_replicas=2,
                  num_critic_targets=2,
                  num_aux_critics=0,
+                 aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
                  env=None,
                  config: TrainerConfig = None,
@@ -109,6 +111,8 @@ class Rlpd2Algorithm(SacAlgorithm):
                 for computing TD target in critic training.
             num_aux_critics (int): Number of optimization-perturbed critics 
                 for critics optimization uncertainty estimation.
+            aux_critic_use_common_target (bool): whether to use the same TD target
+                critic as default critic for aux critics training.
             critic_training_weight (float): each training sample will be weighted
                 according the critic optimization std with exponent 
                 ``critic_training_weignt``.
@@ -116,6 +120,7 @@ class Rlpd2Algorithm(SacAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._num_critic_targets = num_critic_targets
         self._num_aux_critics = num_aux_critics
+        self._aux_critic_use_common_target = aux_critic_use_common_target
         self._calculate_priority = calculate_priority
         self._train_eps_greedy = train_eps_greedy
         if epsilon_greedy is None:
@@ -440,26 +445,30 @@ class Rlpd2Algorithm(SacAlgorithm):
                 replica_consensus=None,
                 apply_reward_weights=False)
 
-            with torch.no_grad():
-                target_aux_critics, target_aux_critics_state = self._compute_critics(
-                    self._target_aux_critic_networks,
-                    target_observation,
-                    action,
-                    state.target_aux_critics,
-                    replica_consensus='min',
-                    apply_reward_weights=False)
-
-            target_aux_critic = target_aux_critics.reshape(
-                target_aux_critics.shape[0], *self._reward_spec.shape)
-
-            target_aux_critic = target_aux_critic.detach()
-
             state = state._replace(
-                aux_critics=aux_critics_state,
-                target_aux_critics=target_aux_critics_state)
+                aux_critics=aux_critics_state)
             info = info._replace(
-                aux_critics=aux_critics,
-                target_aux_critic=target_aux_critic)
+                aux_critics=aux_critics)
+
+            if not self._aux_critic_use_common_target:
+                with torch.no_grad():
+                    target_aux_critics, target_aux_critics_state = self._compute_critics(
+                        self._target_aux_critic_networks,
+                        target_observation,
+                        action,
+                        state.target_aux_critics,
+                        replica_consensus='min',
+                        apply_reward_weights=False)
+
+                target_aux_critic = target_aux_critics.reshape(
+                    target_aux_critics.shape[0], *self._reward_spec.shape)
+
+                target_aux_critic = target_aux_critic.detach()
+
+                state = state._replace(
+                    target_aux_critics=target_aux_critics_state)
+                info = info._replace(
+                    target_aux_critic=target_aux_critic)
 
         return state, info
 
@@ -507,13 +516,17 @@ class Rlpd2Algorithm(SacAlgorithm):
 
         # for auxiliary critics
         if self._num_aux_critics > 0:
+            if self._aux_critic_use_common_target:
+                target_aux_critic = critic_info.target_critic
+            else:
+                target_aux_critic = critic_info.target_aux_critic
             self._aux_weights.exponential_(1.0)
             for i, l in enumerate(self._aux_critic_losses):
                 weights = self._aux_weights[i]
                 critic_losses.append(weights * l(
                     info=info,
                     value=critic_info.aux_critics[:, :, i, ...],
-                    target_value=critic_info.target_aux_critic).loss)
+                    target_value=target_aux_critic).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
@@ -526,10 +539,16 @@ class Rlpd2Algorithm(SacAlgorithm):
             q_total_std = (q_bootstrap_diff**2).mean(dim=2).sqrt()
             q_aux_diff = critic_info.aux_critics - base_q
             q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt()
-            opt_weights = q_aux_std / (q_total_std + 1e-6)
-            opt_weights = opt_weights.detach() ** self._critic_training_weight
+            # opt_weights = q_aux_std / (q_total_std + 1e-6)
+            # opt_weights = opt_weights.detach() ** self._critic_training_weight
+            opt_weights = q_aux_std.detach() ** self._critic_training_weight
             opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
             critic_loss *= opt_weights
+            if self._debug_summaries and alf.summary.should_record_summaries():
+                with alf.summary.scope(self._name):
+                    safe_mean_hist_summary("total_critic_std", q_total_std)
+                    safe_mean_hist_summary("aux_critic_std", q_aux_std)
+                    safe_mean_hist_summary("critic_opt_weights", opt_weights)
 
         # reweight training samples w.r.t. optimization uncertainty
 
