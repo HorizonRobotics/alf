@@ -46,7 +46,7 @@ alf.config(
     algorithm_ctor=Agent,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
-    num_updates_per_train_iter=1,
+    num_updates_per_train_iter=5,
     summarize_gradient_noise_scale=False,
     summarize_action_distributions=False,
     random_seed=0)
