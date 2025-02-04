@@ -81,7 +81,7 @@ class RlpdAlgorithmTestInit(alf.test.TestCase):
 class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((True, 1, 1), (False, 3, 2))
     def test_rlpd_algorithm(self, use_naive_parallel_network, reward_dim,
-                            num_critic_targets):
+                            num_sampled_critic_targets):
         num_env = 4
         config = TrainerConfig(
             root_dir="dummy",
@@ -136,7 +136,7 @@ class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             critic_network_cls=critic_network,
             use_entropy_reward=reward_dim == 1,
             num_critic_replicas=3,
-            num_critic_targets=num_critic_targets,
+            num_sampled_critic_targets=num_sampled_critic_targets,
             epsilon_greedy=0.1,
             env=env,
             config=config,
