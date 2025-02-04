@@ -168,11 +168,8 @@ class RlpdAlgorithm(SacAlgorithm):
             else:
                 critics = critics.min(dim=1)[0]
         elif replica_consensus == 'mean':
-            if self.has_multidim_reward():
-                sign = self.reward_weights.sign()
-                critics = (critics * sign).mean(dim=1) * sign
-            else:
-                critics = critics.mean(dim=1)
+            sign = self.reward_weights.sign()
+            critics = (critics * sign).mean(dim=1) * sign
 
         if apply_reward_weights and self.has_multidim_reward():
             critics = self._apply_reward_weights(critics)
