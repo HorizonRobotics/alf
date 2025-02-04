@@ -57,7 +57,7 @@ class RlpdAlgorithm(SacAlgorithm):
                  normalize_entropy_reward=False,
                  calculate_priority=False,
                  num_critic_replicas=2,
-                 num_critic_targets=2,
+                 num_sampled_critic_targets=2,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -78,12 +78,10 @@ class RlpdAlgorithm(SacAlgorithm):
                  name="RlpdAlgorithm"):
         # **kwargs):
         """
-        Refer to SacAlgorithm for more details for kwargs
+        Refer to SacAlgorithm for more details for other arguments.
 
-        Args:
-            name (str): The name of this algorithm.
-            num_critic_targets (int): Number of sampled subset of target critics
-                for computing TD target in critic training.
+            num_sampled_critic_targets (int): Number of sampled subset of target 
+                critics for computing TD target in critic training.
         """
         super().__init__(
             observation_spec=observation_spec,
@@ -120,8 +118,11 @@ class RlpdAlgorithm(SacAlgorithm):
 
         assert self._act_type == ActionType.Continuous, (
             "RLPD algorithm only supports continuous action spaces.")
+        assert num_sampled_critic_targets <= num_critic_replicas, (
+            "The number of sampled target critics should be less than or equal to"
+            "the number of replicas.")
 
-        self._num_critic_targets = num_critic_targets
+        self._num_sampled_critic_targets = num_sampled_critic_targets
 
     def _compute_critics(self,
                          critic_net,
@@ -131,6 +132,16 @@ class RlpdAlgorithm(SacAlgorithm):
                          replica_consensus='mean',
                          sample_subset=False,
                          apply_reward_weights=True):
+        """
+        The following two arguments are different from the super class.
+
+            replica_consensus (str): the methods to consensus the possibly
+                multiple (due to critic replicas) critic_net outputs. Options
+                are ['mean', 'min', None].
+            sample_subset (bool): whether to sample a subset of critics outputs 
+                before applying the ``replica_consensus``. This is only used
+                for sampling a subset of target critics for computing TD target. 
+        """
         observation = (observation, action)
         # critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
@@ -143,17 +154,12 @@ class RlpdAlgorithm(SacAlgorithm):
             critics = critics.reshape(-1, self._num_critic_replicas,
                                       *self._reward_spec.shape,
                                       *remaining_shape)
-            if self._act_type == ActionType.Discrete:
-                # permute: [B, replicas, reward_dim, num_actions]
-                #       -> [B, replicas, num_actions, reward_dim]
-                order = [0, 1, -1] + list(
-                    range(2, 2 + len(self._reward_spec.shape)))
-                critics = critics.permute(*order)
 
-        if sample_subset:
+        if sample_subset and (self._num_sampled_critic_targets <
+                              self._num_critic_replicas):
             critics = critics[:,
-                              torch.randperm(self._num_critic_replicas
-                                             )[:self._num_critic_targets], ...]
+                              torch.randperm(self._num_critic_replicas)
+                              [:self._num_sampled_critic_targets], ...]
 
         if replica_consensus == 'min':
             if self.has_multidim_reward():

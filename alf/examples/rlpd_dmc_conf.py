@@ -35,7 +35,7 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_critic_replicas=10,
-    num_critic_targets=2,
+    num_sampled_critic_targets=2,
     use_entropy_reward=True,
     target_update_tau=0.005)
 
