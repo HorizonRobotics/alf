@@ -18,8 +18,11 @@ from typing import Callable, Optional, Union
 
 import alf
 from alf.algorithms.config import TrainerConfig
-from alf.algorithms.sac_algorithm import SacAlgorithm, SacCriticState
-from alf.algorithms.sac_algorithm import ActionType, SacCriticInfo, SacInfo
+from alf.algorithms.sac_algorithm import ActionType, SacAlgorithm
+from alf.algorithms.sac_algorithm import SacState, SacCriticState
+from alf.algorithms.sac_algorithm import SacActorInfo, SacCriticInfo, SacInfo
+from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common
@@ -52,6 +55,7 @@ class RlpdAlgorithm(SacAlgorithm):
                  calculate_priority=False,
                  num_critic_replicas=2,
                  num_critic_targets=2,
+                 critic_utd_only=True,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -77,6 +81,9 @@ class RlpdAlgorithm(SacAlgorithm):
             name (str): The name of this algorithm.
             num_critic_targets (int): Number of sampled subset of target critics
                 for computing TD target in critic training.
+            critic_utd_only (bool): Whether to only update critics following the 
+                UTD setting in the ``TrainerConfig.num_updates_per_train_iter``.
+                This follows the original setting in the RLPD paper.
         """
         super().__init__(
             observation_spec=observation_spec,
@@ -115,6 +122,9 @@ class RlpdAlgorithm(SacAlgorithm):
             "RLPD algorithm only supports continuous action spaces.")
 
         self._num_critic_targets = num_critic_targets
+        self._critic_utd_only = critic_utd_only
+        self._utd = alf.config_util.get_config_value("num_updates_per_train_iter")
+        self._critic_train_counter = 0
 
     def _compute_critics(self,
                          critic_net,
@@ -136,14 +146,8 @@ class RlpdAlgorithm(SacAlgorithm):
             critics = critics.reshape(-1, self._num_critic_replicas,
                                       *self._reward_spec.shape,
                                       *remaining_shape)
-            if self._act_type == ActionType.Discrete:
-                # permute: [B, replicas, reward_dim, num_actions]
-                #       -> [B, replicas, num_actions, reward_dim]
-                order = [0, 1, -1] + list(
-                    range(2, 2 + len(self._reward_spec.shape)))
-                critics = critics.permute(*order)
 
-        if sample_subset:
+        if sample_subset and self._num_critic_targets < self._num_critic_replicas:
             critics = critics[:,
                               torch.randperm(self._num_critic_replicas
                                              )[:self._num_critic_targets], ...]
@@ -204,3 +208,63 @@ class RlpdAlgorithm(SacAlgorithm):
         info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
+
+    def train_step(self, inputs: TimeStep, state: SacState,
+                   rollout_info: SacInfo):
+        if not self._critic_utd_only:
+            return super().train_step(inputs, state, rollout_info)
+        elif self._critic_train_counter % self._utd == 0:
+            self._critic_train_counter += 1
+            return super().train_step(inputs, state, rollout_info)
+
+        assert not self._is_eval
+        self._training_started = True
+        if self._target_repr_alg is not None:
+            # We calculate the target observation first so that the peak memory
+            # usage can be reduced because its computation graph will not be kept.
+            with torch.no_grad():
+                tgt_repr_step = self._target_repr_alg.predict_step(
+                    inputs, state.target_repr)
+                target_observation = tgt_repr_step.output
+                target_repr_state = tgt_repr_step.state
+        else:
+            target_observation = inputs.observation
+            target_repr_state = ()
+        observation, new_state, info = self._repr_step("train", inputs, state,
+                                                       rollout_info.repr)
+        new_state = new_state._replace(target_repr=target_repr_state)
+
+        (action_distribution, action, critics,
+         action_state) = self._predict_action(
+             observation, state=state.action)
+
+        log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
+                                    action_distribution, action)
+
+        log_pi = sum(nest.flatten(log_pi))
+
+        if self._prior_actor is not None:
+            prior_step = self._prior_actor.train_step(inputs, ())
+            log_prior = dist_utils.compute_log_probability(
+                prior_step.output, action)
+            log_pi = log_pi - log_prior
+
+        critic_state, critic_info = self._critic_train_step(
+            observation, target_observation, state.critic, rollout_info,
+            action, action_distribution)
+        self._critic_train_counter += 1
+
+        new_state = new_state._replace(
+            action=action_state, actor=state.actor, critic=critic_state)
+
+        info = info._replace(
+            reward=inputs.reward,
+            step_type=inputs.step_type,
+            discount=inputs.discount,
+            action=rollout_info.action,
+            action_distribution=action_distribution,
+            actor=LossInfo(extra=SacActorInfo()),
+            critic=critic_info,
+            log_pi=log_pi,
+            discounted_return=rollout_info.discounted_return)
+        return AlgStep(action, new_state, info)
