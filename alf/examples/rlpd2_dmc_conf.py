@@ -38,6 +38,7 @@ alf.config(
     num_critic_replicas=10,
     num_critic_targets=2,
     num_aux_critics=2,
+    critic_utd_only=True,
     aux_critic_use_common_target=True,
     critic_training_weight=1.0,
     use_total_std_norm_ctw=False,

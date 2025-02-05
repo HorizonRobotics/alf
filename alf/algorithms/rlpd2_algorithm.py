@@ -22,7 +22,8 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.sac_algorithm import SacAlgorithm, SacActionState
+from alf.algorithms.rlpd_algorithm import RlpdAlgorithm
+from alf.algorithms.sac_algorithm import SacActionState
 from alf.algorithms.sac_algorithm import ActionType, SacInfo, SacState
 from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.data_structures import LossInfo, namedtuple
@@ -47,7 +48,7 @@ RlpdCriticInfo = namedtuple(
 
 
 @alf.configurable
-class Rlpd2Algorithm(SacAlgorithm):
+class Rlpd2Algorithm(RlpdAlgorithm):
     r"""A variant of the following RLPD algorithm:
 
     ::
@@ -82,6 +83,7 @@ class Rlpd2Algorithm(SacAlgorithm):
                  num_critic_replicas=2,
                  num_critic_targets=2,
                  num_aux_critics=0,
+                 critic_utd_only=True,
                  aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
                  use_total_std_norm_ctw=False,
@@ -105,11 +107,8 @@ class Rlpd2Algorithm(SacAlgorithm):
                  debug_summaries=False,
                  name="Rlpd2Algorithm"):
         """
-        Refer to SacAlgorithm for details of kwargs besides the following,
+        Refer to RlpdAlgorithm for details of arguments besides the following,
 
-        Args:
-            num_critic_targets (int): Number of sampled subset of target critics
-                for computing TD target in critic training.
             num_aux_critics (int): Number of optimization-perturbed critics 
                 for critics optimization uncertainty estimation.
             aux_critic_use_common_target (bool): whether to use the same TD target
@@ -131,6 +130,9 @@ class Rlpd2Algorithm(SacAlgorithm):
         self._epsilon_greedy = epsilon_greedy
         self._critic_training_weight = critic_training_weight
         self._use_total_std_norm_ctw = use_total_std_norm_ctw
+        self._critic_utd_only = critic_utd_only
+        self._utd = alf.config_util.get_config_value("num_updates_per_train_iter")
+        self._critic_train_counter = 0
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
@@ -359,56 +361,6 @@ class Rlpd2Algorithm(SacAlgorithm):
                     critic_network, self._num_aux_critics, deepcopy=True) 
 
         return critic_networks, actor_network, aux_critic_networks, act_type
-
-    def _compute_critics(self,
-                         critic_net,
-                         observation,
-                         action,
-                         critics_state,
-                         replica_consensus='mean',
-                         sample_subset=False,
-                         apply_reward_weights=True):
-        observation = (observation, action)
-        # critics shape [B, replicas]
-        critics, critics_state = critic_net(observation, state=critics_state)
-
-        # For multi-dim reward, do
-        # [B, replicas * reward_dim] -> [B, replicas, reward_dim]
-        # For scalar reward, do nothing
-        if self.has_multidim_reward():
-            remaining_shape = critics.shape[2:]
-            critics = critics.reshape(-1, self._num_critic_replicas,
-                                      *self._reward_spec.shape,
-                                      *remaining_shape)
-        if sample_subset:
-            critics = critics[:,
-                              torch.randperm(self._num_critic_replicas
-                                             )[:self._num_critic_targets], ...]
-
-        if replica_consensus == 'min':
-            if self.has_multidim_reward():
-                sign = self.reward_weights.sign()
-                critics = (critics * sign).min(dim=1)[0] * sign
-            else:
-                critics = critics.min(dim=1)[0]
-        elif replica_consensus == 'mean':
-            if self.has_multidim_reward():
-                sign = self.reward_weights.sign()
-                critics = (critics * sign).mean(dim=1) * sign
-            else:
-                critics = critics.mean(dim=1)
-
-        if apply_reward_weights and self.has_multidim_reward():
-            critics = self._apply_reward_weights(critics)
-
-        # The returns have the following shapes in different circumstances:
-        # [replica_consensus!=None, apply_reward_weights=True]
-        #   critics shape [B]
-        # [replica_consensus!=None, apply_reward_weights=False]
-        #   critics shape [B, reward_dim]
-        # [replica_consensus=None, apply_reward_weights=False]
-        #   critics shape [B, replicas, reward_dim]
-        return critics, critics_state
 
     def _critic_train_step(self, observation, target_observation,
                            state: RlpdCriticState, rollout_info: SacInfo,

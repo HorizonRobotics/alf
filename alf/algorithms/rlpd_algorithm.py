@@ -75,10 +75,8 @@ class RlpdAlgorithm(SacAlgorithm):
                  debug_summaries=False,
                  name="RlpdAlgorithm"):
         """
-        Refer to SacAlgorithm for more details for kwargs
+        Refer to SacAlgorithm for details of arguments besides the following,
 
-        Args:
-            name (str): The name of this algorithm.
             num_critic_targets (int): Number of sampled subset of target critics
                 for computing TD target in critic training.
             critic_utd_only (bool): Whether to only update critics following the 
