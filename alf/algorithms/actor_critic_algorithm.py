@@ -15,6 +15,8 @@
 
 import torch
 
+import numpy as np
+
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
@@ -30,7 +32,7 @@ ActorCriticState = namedtuple(
 ActorCriticInfo = namedtuple(
     "ActorCriticInfo", [
         "step_type", "discount", "reward", "action", "log_prob",
-        "action_distribution", "value", "reward_weights"
+        "action_distribution", "value", "reward_weights", "vis"
     ],
     default_value=())
 
@@ -136,6 +138,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._actor_network = actor_network
         self._value_network = value_network
+        self._value_curve = []
         if loss is None:
             loss = loss_class(
                 reward_dim=reward_spec.numel, debug_summaries=debug_summaries)
@@ -169,10 +172,24 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
+
+        vis_info = {}
+        RENDER_VALUE_CURVE = False
+
+        if RENDER_VALUE_CURVE:
+            value, value_state = self._value_network(
+                        inputs.observation, state=state.value)
+            self._value_curve.append(value[0].cpu().numpy())
+            value_curve_image = alf.summary.render.render_curve(name="value_curve",
+                                                                data=np.stack(self._value_curve),
+                                                                img_height=256,
+                                                                img_width=256)
+            vis_info['value_curve'] = value_curve_image
+
         return AlgStep(
             output=action,
-            state=ActorCriticState(actor=actor_state),
-            info=ActorCriticInfo(action_distribution=action_dist))
+            state=ActorCriticState(actor=actor_state, value=value_state),
+            info=ActorCriticInfo(action_distribution=action_dist, value=value, vis=vis_info))
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
