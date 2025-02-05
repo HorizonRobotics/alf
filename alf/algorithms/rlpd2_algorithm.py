@@ -84,6 +84,7 @@ class Rlpd2Algorithm(SacAlgorithm):
                  num_aux_critics=0,
                  aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
+                 use_total_std_norm_ctw=False,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -116,6 +117,8 @@ class Rlpd2Algorithm(SacAlgorithm):
             critic_training_weight (float): each training sample will be weighted
                 according the critic optimization std with exponent 
                 ``critic_training_weignt``.
+            use_total_std_norm_ctw (bool): whether to use the total std of critics 
+                to normalize the critic_training_weignt
         """
         self._num_critic_replicas = num_critic_replicas
         self._num_critic_targets = num_critic_targets
@@ -127,6 +130,7 @@ class Rlpd2Algorithm(SacAlgorithm):
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
         self._critic_training_weight = critic_training_weight
+        self._use_total_std_norm_ctw = use_total_std_norm_ctw
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
@@ -539,9 +543,10 @@ class Rlpd2Algorithm(SacAlgorithm):
             q_total_std = (q_bootstrap_diff**2).mean(dim=2).sqrt()
             q_aux_diff = critic_info.aux_critics - base_q
             q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt()
-            # opt_weights = q_aux_std / (q_total_std + 1e-6)
-            # opt_weights = opt_weights.detach() ** self._critic_training_weight
-            opt_weights = q_aux_std.detach() ** self._critic_training_weight
+            opt_weights = q_aux_std
+            if self._use_total_std_norm_ctw:
+                opt_weights = opt_weights / (q_total_std + 1e-6)
+            opt_weights = opt_weights.detach() ** self._critic_training_weight
             opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
             critic_loss *= opt_weights
             if self._debug_summaries and alf.summary.should_record_summaries():

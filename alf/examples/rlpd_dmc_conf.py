@@ -48,6 +48,6 @@ alf.config(
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
     num_updates_per_train_iter=1,
-    summarize_gradient_noise_scale=True,
-    summarize_action_distributions=True,
+    summarize_gradient_noise_scale=False,
+    summarize_action_distributions=False,
     random_seed=0)

@@ -40,6 +40,7 @@ alf.config(
     num_aux_critics=2,
     aux_critic_use_common_target=True,
     critic_training_weight=1.0,
+    use_total_std_norm_ctw=False,
     use_entropy_reward=True,
     target_update_tau=0.005)
 
@@ -51,6 +52,6 @@ alf.config(
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
     num_updates_per_train_iter=1,
-    summarize_gradient_noise_scale=True,
-    summarize_action_distributions=True,
+    summarize_gradient_noise_scale=False,
+    summarize_action_distributions=False,
     random_seed=0)
