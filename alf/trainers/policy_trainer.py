@@ -973,7 +973,7 @@ def _step(algorithm,
                                   metrics[3].latest())):
                 logging.info(
                     "+++++++++ Selective Case Discovered! +++++++++++")
-                recorder.generate_video_from_cache()
+                recorder.save_video_frames_from_cache()
             else:
                 recorder.clear_cache()
 

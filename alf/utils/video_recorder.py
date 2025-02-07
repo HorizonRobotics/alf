@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import numpy as np
+import os
+import cv2
 
 from gym.wrappers.monitoring.video_recorder import VideoRecorder as GymVideoRecorder
 from gym import error, logger
@@ -74,6 +76,7 @@ class VideoRecorder(GymVideoRecorder):
         # two caches for lazy rendering of environmental frames and pred_info
         self._frame_cache = []
         self._pred_info_cache = []
+        self._folder_index = 0
 
     def capture_frame(self, pred_info=None, is_last_step=False):
         """Render ``self.env`` and add the resulting frame to the video. Also
@@ -172,6 +175,33 @@ class VideoRecorder(GymVideoRecorder):
 
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")
+
+    def save_video_frames_from_cache(self):
+        """Generate the video from the cached frames. Also add the plot Image
+        instances extracted from cached prediction info.
+        The cache will be reset to empty afterwards.
+        """
+        dataset_path = "/home/haichaozhang/data/DATA/pytorch_alf/Hobot2_exp/dataset/cube_pickup/"
+        folder_path = os.path.join(dataset_path,  f'video_{self._folder_index}')
+        os.makedirs(folder_path, exist_ok=True)
+
+
+        for i, (frame, pred_info) in enumerate(
+                zip(self._frame_cache, self._pred_info_cache)):
+            frame = self._plot_pred_info(frame, pred_info)
+            # self._encode_frame(frame)
+
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image_path = os.path.join(folder_path, f"frame_{i}.png")
+            print(image_path)
+            cv2.imwrite(image_path, frame)
+
+
+
+        self.clear_cache()
+        self._folder_index += 1
+
+
 
     def _encode_frame(self, frame):
         """Perform encoding of the input frame

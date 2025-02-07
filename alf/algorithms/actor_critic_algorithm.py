@@ -174,7 +174,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                                                   self._epsilon_greedy)
 
         vis_info = {}
-        RENDER_VALUE_CURVE = False
+        value_state = ()
+        RENDER_VALUE_CURVE = True
 
         if RENDER_VALUE_CURVE:
             value, value_state = self._value_network(
