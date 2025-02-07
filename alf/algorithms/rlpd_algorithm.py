@@ -21,12 +21,20 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.sac_algorithm import ActionType, SacAlgorithm
 from alf.algorithms.sac_algorithm import SacState, SacCriticState
 from alf.algorithms.sac_algorithm import SacActorInfo, SacCriticInfo, SacInfo
-from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.data_structures import TimeStep, AlgStep, LossInfo, namedtuple
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import common
+from alf.utils import common, math_ops
 from alf.utils.schedulers import Scheduler
+
+RlpdInfo = namedtuple(
+    "RlpdInfo", [
+        "reward", "step_type", "discount", "action", "action_distribution",
+        "actor", "critic", "alpha", "log_pi", "discounted_return", "repr", 
+        "bootstrap_mask"
+    ],
+    default_value=())
 
 
 @alf.configurable
@@ -55,6 +63,8 @@ class RlpdAlgorithm(SacAlgorithm):
                  calculate_priority=False,
                  num_critic_replicas=2,
                  num_critic_targets=2,
+                 use_bootstrap_critics=True,
+                 bootstrap_mask_prob=0.8,
                  critic_utd_only=True,
                  env=None,
                  config: TrainerConfig = None,
@@ -79,6 +89,9 @@ class RlpdAlgorithm(SacAlgorithm):
 
             num_critic_targets (int): Number of sampled subset of target critics
                 for computing TD target in critic training.
+            use_bootstrap_critics (bool): Whether to use bootstrap critics.
+            bootstrap_mask_prob (float): the parameter of the Binomial distribution
+                for independently masking out a transition to simulate bootstrapping.
             critic_utd_only (bool): Whether to only update critics following the 
                 UTD setting in the ``TrainerConfig.num_updates_per_train_iter``.
                 This follows the original setting in the RLPD paper.
@@ -120,9 +133,51 @@ class RlpdAlgorithm(SacAlgorithm):
             "RLPD algorithm only supports continuous action spaces.")
 
         self._num_critic_targets = num_critic_targets
+        self._use_bootstrap_critics = use_bootstrap_critics
+        self._bootstrap_mask_prob = bootstrap_mask_prob
+        self._bootstrap_mask = None
         self._critic_utd_only = critic_utd_only
         self._utd = alf.config_util.get_config_value("num_updates_per_train_iter")
         self._critic_train_counter = 0
+
+    def _repr_step(self, mode, inputs: TimeStep, state: SacState, *args):
+        """
+        Args:
+            mode (str): 'predict' or 'rollout' or 'train'
+            *args: for rollout_info when mode is 'train'
+        Returns:
+            tuple:
+            - observation
+            - SacState: new_state
+            - SacInfo: info
+        """
+        if self._repr_alg is None:
+            return inputs.observation, SacState(), RlpdInfo()
+        else:
+            step_func = getattr(self._repr_alg, mode + '_step')
+            repr_step = step_func(inputs, state.repr, *args)
+            return repr_step.output, SacState(repr=repr_step.state), RlpdInfo(
+                repr=repr_step.info)
+
+    def rollout_step(self, inputs: TimeStep, state=None):
+        alg_step = super().rollout_step(inputs, state)
+        if not self._use_bootstrap_critics:
+            return alg_step
+
+        update_mask = (inputs.step_type == 0)
+        if update_mask.any():
+            # [n_env, n_bootstrap] masks for bootstrap critics
+            prob_t = torch.full(
+                (inputs.step_type.shape[0], self._num_critic_replicas),
+                self._bootstrap_mask_prob)
+            mask = torch.bernoulli(prob_t)
+            if self._bootstrap_mask is None:
+                self._bootstrap_mask = mask
+            else:
+                self._bootstrap_mask[update_mask] = mask[update_mask]
+        info = alg_step.info._replace(bootstrap_mask=self._bootstrap_mask)
+
+        return alg_step._replace(info=info)
 
     def _compute_critics(self,
                          critic_net,
@@ -208,12 +263,14 @@ class RlpdAlgorithm(SacAlgorithm):
         return state, info
 
     def train_step(self, inputs: TimeStep, state: SacState,
-                   rollout_info: SacInfo):
-        if not self._critic_utd_only:
-            return super().train_step(inputs, state, rollout_info)
-        elif self._critic_train_counter % self._utd == 0:
+                   rollout_info: RlpdInfo):
+        if not self._critic_utd_only or (
+                self._critic_train_counter % self._utd == 0):
+            alg_step = super().train_step(inputs, state, rollout_info)
             self._critic_train_counter += 1
-            return super().train_step(inputs, state, rollout_info)
+            info = alg_step.info._replace(
+                bootstrap_mask=rollout_info.bootstrap_mask)
+            return alg_step._replace(info=info)
 
         assert not self._is_eval
         self._training_started = True
@@ -264,5 +321,66 @@ class RlpdAlgorithm(SacAlgorithm):
             actor=LossInfo(extra=SacActorInfo()),
             critic=critic_info,
             log_pi=log_pi,
-            discounted_return=rollout_info.discounted_return)
+            discounted_return=rollout_info.discounted_return,
+            bootstrap_mask=rollout_info.bootstrap_mask)
         return AlgStep(action, new_state, info)
+
+    def _calc_critic_loss(self, info: RlpdInfo):
+        """
+        We need to put entropy reward in ``experience.reward`` instead of ``target_critics``
+        because in the case of multi-step TD learning, the entropy should also
+        appear in intermediate steps! This doesn't affect one-step TD loss, however.
+
+        Following the SAC official implementation,
+        https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py#L32
+        for StepType.LAST with discount=0, we mask out both the entropy reward
+        and the target Q value. The reason is that there is no guarantee of what
+        the last entropy will look like because the policy is never trained on
+        that. If the entropy is very small, the the agent might hesitate to terminate
+        the episode.
+        (There is an issue in their implementation: their "terminals" can't
+        differentiate between discount=0 (NormalEnd) and discount=1 (TimeOut).
+        In the latter case, masking should not be performed.)
+
+        When the reward is multi-dim, the entropy reward will be added to *all*
+        dims.
+        """
+        if self._use_entropy_reward:
+            with torch.no_grad():
+                log_pi = info.log_pi
+                if self._entropy_normalizer is not None:
+                    log_pi = self._entropy_normalizer.normalize(log_pi)
+                entropy_reward = nest.map_structure(
+                    lambda la, lp: -torch.exp(la) * lp, self._log_alpha,
+                    log_pi)
+                entropy_reward = sum(nest.flatten(entropy_reward))
+                discount = self._critic_losses[0].gamma * info.discount
+                info = info._replace(
+                    reward=(info.reward + common.expand_dims_as(
+                        entropy_reward * discount, info.reward)))
+
+        critic_info = info.critic
+        critic_losses = []
+        for i, l in enumerate(self._critic_losses):
+            critic_loss = l(info=info,
+                            value=critic_info.critics[:, :, i, ...],
+                            target_value=critic_info.target_critic).loss
+            if self._use_bootstrap_critics:
+                bootstrap_mask = info.bootstrap_mask[:, :, i] / self._bootstrap_mask_prob
+                critic_loss = critic_loss * bootstrap_mask
+            critic_losses.append(critic_loss)
+
+        critic_loss = math_ops.add_n(critic_losses)
+
+        if self._calculate_priority:
+            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
+            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
+            priority = (
+                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+        else:
+            priority = ()
+
+        return LossInfo(
+            loss=critic_loss,
+            priority=priority,
+            extra=critic_loss / float(self._num_critic_replicas))

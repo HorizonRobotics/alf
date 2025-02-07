@@ -37,6 +37,8 @@ alf.config(
     critic_network_cls=critic_network_cls,
     num_critic_replicas=10,
     num_critic_targets=2,
+    use_bootstrap_critics=True,
+    bootstrap_mask_prob=0.8,
     critic_utd_only=True,
     use_entropy_reward=True,
     target_update_tau=0.005)
