@@ -83,6 +83,8 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                  num_critic_replicas=2,
                  num_critic_targets=2,
                  num_aux_critics=0,
+                 use_bootstrap_critics=False,
+                 bootstrap_mask_prob=0.8,
                  critic_utd_only=True,
                  aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
@@ -122,6 +124,9 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._num_critic_targets = num_critic_targets
         self._num_aux_critics = num_aux_critics
+        self._use_bootstrap_critics = use_bootstrap_critics
+        self._bootstrap_mask_prob = bootstrap_mask_prob
+        self._bootstrap_mask = None
         self._aux_critic_use_common_target = aux_critic_use_common_target
         self._calculate_priority = calculate_priority
         self._train_eps_greedy = train_eps_greedy
@@ -465,10 +470,13 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
-            critic_losses.append(
-                l(info=info,
-                  value=critic_info.critics[:, :, i, ...],
-                  target_value=critic_info.target_critic).loss)
+            critic_loss = l(info=info,
+                            value=critic_info.critics[:, :, i, ...],
+                            target_value=critic_info.target_critic).loss
+            if self._use_bootstrap_critics:
+                bootstrap_mask = info.bootstrap_mask[:, :, i] / self._bootstrap_mask_prob
+                critic_loss = critic_loss * bootstrap_mask
+            critic_losses.append(critic_loss)
 
         # for auxiliary critics
         if self._num_aux_critics > 0:
