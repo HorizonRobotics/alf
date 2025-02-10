@@ -65,7 +65,7 @@ class RlpdAlgorithm(SacAlgorithm):
                  num_critic_targets=2,
                  use_bootstrap_critics=True,
                  bootstrap_mask_prob=0.8,
-                 critic_utd_only=True,
+                 critic_actor_utd_ratio=1,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -92,9 +92,7 @@ class RlpdAlgorithm(SacAlgorithm):
             use_bootstrap_critics (bool): Whether to use bootstrap critics.
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
                 for independently masking out a transition to simulate bootstrapping.
-            critic_utd_only (bool): Whether to only update critics following the 
-                UTD setting in the ``TrainerConfig.num_updates_per_train_iter``.
-                This follows the original setting in the RLPD paper.
+            critic_actor_utd_ratio (int): The ratio between critic UTD and actor UTD.
         """
         super().__init__(
             observation_spec=observation_spec,
@@ -136,8 +134,7 @@ class RlpdAlgorithm(SacAlgorithm):
         self._use_bootstrap_critics = use_bootstrap_critics
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._bootstrap_mask = None
-        self._critic_utd_only = critic_utd_only
-        self._utd = alf.config_util.get_config_value("num_updates_per_train_iter")
+        self._critic_actor_utd_ratio = critic_actor_utd_ratio
         self._critic_train_counter = 0
 
     def _repr_step(self, mode, inputs: TimeStep, state: SacState, *args):
@@ -264,8 +261,7 @@ class RlpdAlgorithm(SacAlgorithm):
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: RlpdInfo):
-        if not self._critic_utd_only or (
-                self._critic_train_counter % self._utd == 0):
+        if self._critic_train_counter % self._critic_actor_utd_ratio == 0:
             alg_step = super().train_step(inputs, state, rollout_info)
             self._critic_train_counter += 1
             info = alg_step.info._replace(
