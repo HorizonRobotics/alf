@@ -175,7 +175,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         vis_info = {}
         value_state = ()
-        RENDER_VALUE_CURVE = True
+        RENDER_VALUE_CURVE = False
 
         if RENDER_VALUE_CURVE:
             value, value_state = self._value_network(
@@ -187,10 +187,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                                                                 img_width=256)
             vis_info['value_curve'] = value_curve_image
 
-        return AlgStep(
-            output=action,
-            state=ActorCriticState(actor=actor_state, value=value_state),
-            info=ActorCriticInfo(action_distribution=action_dist, value=value, vis=vis_info))
+            return AlgStep(
+                output=action,
+                state=ActorCriticState(actor=actor_state, value=value_state),
+                info=ActorCriticInfo(action_distribution=action_dist, value=value, vis=vis_info))
+        else:
+            return AlgStep(
+                output=action,
+                state=ActorCriticState(actor=actor_state, value=value_state),
+                info=ActorCriticInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
