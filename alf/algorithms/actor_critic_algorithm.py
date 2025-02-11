@@ -25,6 +25,7 @@ from alf.data_structures import TimeStep, AlgStep, namedtuple
 from alf.utils import common, dist_utils, tensor_utils
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
+from alf.utils.checkpoint_utils import extract_sub_state_dict_from_checkpoint
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
@@ -162,6 +163,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._register_load_state_dict_pre_hook(_deployment_hook)
 
+        self._load_done = False
+
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
@@ -199,6 +202,14 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
+        if not self._load_done:
+            print(self._value_state_dict)
+            if self._value_state_dict:
+                self._value_network.load_state_dict(self._value_state_dict)
+            print("---after loading")
+            print( self._value_network.state_dict())
+            self._load_done = True
+
         value, value_state = self._value_network(
             inputs.observation, state=state.value)
 
@@ -229,3 +240,43 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def calc_loss(self, info: ActorCriticInfo):
         """Calculate loss."""
         return self._loss(info)
+
+
+
+    def _preload_checkpoint(self):
+        """Preload checkpoint to the algorithm, based on the specified ``checkpoint``.
+        """
+        self._value_state_dict = None
+        if self._checkpoint is not None:
+            prefix_and_path = self._checkpoint.split('@')
+            assert len(prefix_and_path) in [1,
+                                            2], ("invalid checkpoint: "
+                                                 "{}").format(prefix_and_path)
+
+            if len(prefix_and_path) == 1:
+                # only path is provided
+                checkpoint_path = prefix_and_path[0]
+                checkpoint_prefix = 'alg'
+            else:
+                checkpoint_prefix, checkpoint_path = prefix_and_path
+
+            assert 'alg' in checkpoint_prefix, "wrong prefix"
+
+            stat_dict = extract_sub_state_dict_from_checkpoint(
+                checkpoint_prefix, checkpoint_path)
+
+            print("----ppo pre-load")
+            print(stat_dict)
+            new_stat_dict = {}
+            prefix = '_value_network.'
+            for k, v in stat_dict.items():
+                if prefix in k:
+                    new_key = k[len(prefix):]
+
+                    new_stat_dict[new_key] = v
+
+            print("----after")
+            print(new_stat_dict)
+
+            self._value_state_dict = new_stat_dict
+      
