@@ -1858,8 +1858,18 @@ class Algorithm(AlgorithmInterface):
         if loss_info.priority != ():
             priority = (loss_info.priority + self._config.priority_replay_eps
                         )**self._config.priority_replay_alpha()
-            replay_buffer.update_priority(batch_info.env_ids,
-                                          batch_info.positions, priority)
+            if priority.ndim == 1:
+                replay_buffer.update_priority(batch_info.env_ids,
+                                              batch_info.positions, priority)
+            elif priority.ndim == 2:
+                for i in range(self._config.mini_batch_length):
+                    replay_buffer.update_priority(
+                        batch_info.env_ids,
+                        batch_info.positions + i, 
+                        priority[i])
+            else:
+                raise ValueError(
+                    'loss_info.priority should be of shape (B,) or (T, B).')
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope("PriorityReplay"):
                     summary_utils.add_mean_hist_summary(

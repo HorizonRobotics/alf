@@ -487,7 +487,8 @@ LossInfo = namedtuple(
         # Priority for each sample. This will be used to update the priority in
         # the replay buffer so that in the future, this sample will be sampled
         # with probability proportional to this weight powered to
-        # config.priority_replay_alpha.  If not empty, its shape should be (B,).
+        # config.priority_replay_alpha.  If not empty, its shape should be either
+        # (B,) or (T, B).
         "priority",
 
         # Gradient noise scale (scalar) that indicates the noise-to-signal value

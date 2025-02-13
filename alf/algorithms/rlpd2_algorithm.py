@@ -26,7 +26,7 @@ from alf.algorithms.rlpd_algorithm import RlpdAlgorithm
 from alf.algorithms.sac_algorithm import SacActionState
 from alf.algorithms.sac_algorithm import ActionType, SacInfo, SacState
 from alf.algorithms.sac_algorithm import _set_target_entropy
-from alf.data_structures import LossInfo, namedtuple
+from alf.data_structures import LossInfo, namedtuple, StepType
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -85,7 +85,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                  num_aux_critics=0,
                  use_bootstrap_critics=False,
                  bootstrap_mask_prob=0.8,
-                 critic_utd_only=True,
+                 critic_actor_utd_ratio=1,
                  aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
                  use_total_std_norm_ctw=False,
@@ -135,8 +135,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         self._epsilon_greedy = epsilon_greedy
         self._critic_training_weight = critic_training_weight
         self._use_total_std_norm_ctw = use_total_std_norm_ctw
-        self._critic_utd_only = critic_utd_only
-        self._utd = alf.config_util.get_config_value("num_updates_per_train_iter")
+        self._critic_actor_utd_ratio = critic_actor_utd_ratio
         self._critic_train_counter = 0
 
         original_observation_spec = observation_spec
@@ -508,20 +507,22 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                 opt_weights = opt_weights / (q_total_std + 1e-6)
             opt_weights = opt_weights.detach() ** self._critic_training_weight
             opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
-            critic_loss *= opt_weights
+            # reweight training samples w.r.t. optimization uncertainty
+            # critic_loss *= opt_weights
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope(self._name):
                     safe_mean_hist_summary("total_critic_std", q_total_std)
                     safe_mean_hist_summary("aux_critic_std", q_aux_std)
-                    safe_mean_hist_summary("critic_opt_weights", opt_weights)
-
-        # reweight training samples w.r.t. optimization uncertainty
+                    safe_mean_hist_summary("critic_opt_priority", opt_weights)
 
         if self._calculate_priority:
-            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
-            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-            priority = (
-                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+            if self._num_aux_critics > 0:
+                priority = opt_weights
+            else:
+                valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
+                valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
+                priority = (
+                    (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 
