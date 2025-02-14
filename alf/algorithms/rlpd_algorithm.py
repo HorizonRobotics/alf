@@ -13,6 +13,7 @@
 # limitations under the License.
 """RLPD Algorithm."""
 
+from enum import Enum
 import torch
 from typing import Callable, Optional, Union
 
@@ -20,7 +21,7 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.sac_algorithm import ActionType, SacAlgorithm
 from alf.algorithms.sac_algorithm import SacState, SacCriticState
-from alf.algorithms.sac_algorithm import SacActorInfo, SacCriticInfo, SacInfo
+from alf.algorithms.sac_algorithm import SacActorInfo, SacInfo
 from alf.data_structures import TimeStep, AlgStep, LossInfo, namedtuple
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
@@ -36,6 +37,11 @@ RlpdInfo = namedtuple(
     ],
     default_value=())
 
+RlpdCriticInfo = namedtuple("RlpdCriticInfo", ["critics", "target_critic"],
+                            default_value=())
+
+TrainPhase = Enum('TrainPhase', ('standard', 'critic', 'actor'))
+
 
 @alf.configurable
 class RlpdAlgorithm(SacAlgorithm):
@@ -45,7 +51,18 @@ class RlpdAlgorithm(SacAlgorithm):
 
         Ball et al "Efficient Online Reinforcement Learning with Offline Data", arXiv:2302.02948
 
-    Currently, only continuous action spaces are supported.
+    Currently, only continuous action spaces are supported. There are two differences
+    versus the above RLPD algorithm:
+
+    1. An option of using bootstrapped critics is provided. This is realized by training
+    each individual critic with independently masked experience. The masking is performed 
+    at episode level, i.e., for a bootstrapped critic, transitions from the same episode 
+    are assigned with the same mask sampled from a Binomial distribution.
+
+    2. Besides critics UTD, the actor UTD is also configurable. There are three training
+    phases for train_step. The ``standard`` phase will update both the actor and the 
+    critics. While the ``actor`` and the ``critic`` phase will only update the actor
+    and the critic respectively.
     """
 
     def __init__(self,
@@ -65,7 +82,8 @@ class RlpdAlgorithm(SacAlgorithm):
                  num_critic_targets=2,
                  use_bootstrap_critics=True,
                  bootstrap_mask_prob=0.8,
-                 critic_actor_utd_ratio=1,
+                 actor_utd: Optional[int] = None,
+                 critic_utd: Optional[int] = None,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -91,8 +109,10 @@ class RlpdAlgorithm(SacAlgorithm):
                 for computing TD target in critic training.
             use_bootstrap_critics (bool): Whether to use bootstrap critics.
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
-                for independently masking out a transition to simulate bootstrapping.
-            critic_actor_utd_ratio (int): The ratio between critic UTD and actor UTD.
+                for independently masking out transitions to simulate bootstrapping.
+                It is only useful if use_bootstrap_critics is True.
+            actor_utd: the update-to-data (UTD) ratio of actor update.
+            critic_utd: the update-to-data (UTD) ratio of critic update.
         """
         super().__init__(
             observation_spec=observation_spec,
@@ -130,12 +150,29 @@ class RlpdAlgorithm(SacAlgorithm):
         assert self._act_type == ActionType.Continuous, (
             "RLPD algorithm only supports continuous action spaces.")
 
+        if actor_utd is None and critic_utd is None:
+            self._train_phase = TrainPhase.standard
+        else:
+            total_utd = alf.config_util.get_config_value(
+                "num_updates_per_train_iter")
+            if critic_utd is not None:
+                assert critic_utd < total_utd, (
+                    "critic_utd should be less than num_updates_per_train_iter")
+                actor_utd = total_utd - critic_utd
+            else:
+                assert actor_utd < total_utd, (
+                    "actor_utd should be less than num_updates_per_train_iter")
+                critic_utd = total_utd - actor_utd
+            self._train_phase = TrainPhase.critic
+            self._actor_utd = actor_utd
+            self._critic_utd = critic_utd
+
+        self._actor_update_counter = 0
+        self._critic_update_counter = 0
         self._num_critic_targets = num_critic_targets
         self._use_bootstrap_critics = use_bootstrap_critics
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._bootstrap_mask = None
-        self._critic_actor_utd_ratio = critic_actor_utd_ratio
-        self._critic_train_counter = 0
 
     def _repr_step(self, mode, inputs: TimeStep, state: SacState, *args):
         """
@@ -227,6 +264,17 @@ class RlpdAlgorithm(SacAlgorithm):
         #   critics shape [B, replicas, reward_dim]
         return critics, critics_state
 
+    def _update_train_phase(self):
+        if self._train_phase == TrainPhase.actor:
+            if self._actor_update_counter % self._actor_utd == 0:
+                self._train_phase = TrainPhase.critic
+        elif self._train_phase == TrainPhase.critic:
+            if self._critic_update_counter % self._critic_utd == 0:
+                self._train_phase = TrainPhase.actor
+        else:
+            raise ValueError(
+                f'Train phase {self._train_phase} cannot be updated.')
+
     def _critic_train_step(self, observation, target_observation,
                            state: SacCriticState, rollout_info: SacInfo,
                            action, action_distribution):
@@ -255,15 +303,21 @@ class RlpdAlgorithm(SacAlgorithm):
 
         state = SacCriticState(
             critics=critics_state, target_critics=target_critics_state)
-        info = SacCriticInfo(critics=critics, target_critic=target_critic)
+        info = RlpdCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: RlpdInfo):
-        if self._critic_train_counter % self._critic_actor_utd_ratio == 0:
+        # Since Algorithm extracts train_info_spec from the output info
+        # of the first train_step() call, we always start with a standard 
+        # train_step to initialize Algorithm.train_info_spec such that both 
+        # actor and critic info specs are correctly extracted for the later
+        # alternating train scheme.
+        if self._train_phase == TrainPhase.standard or (
+                self._critic_update_counter == 0 and self._actor_update_counter == 0):
             alg_step = super().train_step(inputs, state, rollout_info)
-            self._critic_train_counter += 1
+            self._critic_update_counter += 1
             info = alg_step.info._replace(
                 bootstrap_mask=rollout_info.bootstrap_mask)
             return alg_step._replace(info=info)
@@ -283,11 +337,13 @@ class RlpdAlgorithm(SacAlgorithm):
             target_repr_state = ()
         observation, new_state, info = self._repr_step("train", inputs, state,
                                                        rollout_info.repr)
-        new_state = new_state._replace(target_repr=target_repr_state)
-
         (action_distribution, action, critics,
          action_state) = self._predict_action(
              observation, state=state.action)
+
+        new_state = new_state._replace(
+            action=action_state, actor=state.actor,
+            critic=state.critic, target_repr=target_repr_state)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
@@ -300,13 +356,22 @@ class RlpdAlgorithm(SacAlgorithm):
                 prior_step.output, action)
             log_pi = log_pi - log_prior
 
-        critic_state, critic_info = self._critic_train_step(
-            observation, target_observation, state.critic, rollout_info,
-            action, action_distribution)
-        self._critic_train_counter += 1
-
-        new_state = new_state._replace(
-            action=action_state, actor=state.actor, critic=critic_state)
+        if self._train_phase == TrainPhase.actor:
+            actor_state, actor_info = self._actor_train_step(
+                observation, state.actor, action, critics, log_pi,
+                action_distribution)
+            alpha_loss = self._alpha_train_step(log_pi)
+            critic_info = RlpdCriticInfo()
+            new_state = new_state._replace(actor=actor_state)
+            self._actor_update_counter += 1
+        else:
+            critic_state, critic_info = self._critic_train_step(
+                observation, target_observation, state.critic, rollout_info,
+                action, action_distribution)
+            alpha_loss = ()
+            actor_info = LossInfo(extra=SacActorInfo())
+            new_state = new_state._replace(critic=critic_state)
+            self._critic_update_counter += 1
 
         info = info._replace(
             reward=inputs.reward,
@@ -314,33 +379,31 @@ class RlpdAlgorithm(SacAlgorithm):
             discount=inputs.discount,
             action=rollout_info.action,
             action_distribution=action_distribution,
-            actor=LossInfo(extra=SacActorInfo()),
+            actor=actor_info,
             critic=critic_info,
+            alpha=alpha_loss,
             log_pi=log_pi,
             discounted_return=rollout_info.discounted_return,
             bootstrap_mask=rollout_info.bootstrap_mask)
         return AlgStep(action, new_state, info)
 
+    def calc_loss(self, info: SacInfo):
+        loss_info = super().calc_loss(info)
+        if not self._train_phase == TrainPhase.standard:
+            self._update_train_phase()
+        return loss_info
+
     def _calc_critic_loss(self, info: RlpdInfo):
         """
-        We need to put entropy reward in ``experience.reward`` instead of ``target_critics``
-        because in the case of multi-step TD learning, the entropy should also
-        appear in intermediate steps! This doesn't affect one-step TD loss, however.
+        There are two modifications compared with SAC's ``_calc_critic_loss``:
 
-        Following the SAC official implementation,
-        https://github.com/rail-berkeley/softlearning/blob/master/softlearning/algorithms/sac.py#L32
-        for StepType.LAST with discount=0, we mask out both the entropy reward
-        and the target Q value. The reason is that there is no guarantee of what
-        the last entropy will look like because the policy is never trained on
-        that. If the entropy is very small, the the agent might hesitate to terminate
-        the episode.
-        (There is an issue in their implementation: their "terminals" can't
-        differentiate between discount=0 (NormalEnd) and discount=1 (TimeOut).
-        In the latter case, masking should not be performed.)
+        1. Skip the critic loss computation if in actor train phase.
 
-        When the reward is multi-dim, the entropy reward will be added to *all*
-        dims.
+        2. Apply bootstrap mask to critic loss if ``use_bootstrap_critic``.
         """
+        if self._train_phase == TrainPhase.actor:
+            return LossInfo()
+
         if self._use_entropy_reward:
             with torch.no_grad():
                 log_pi = info.log_pi

@@ -39,7 +39,8 @@ alf.config(
     num_critic_targets=2,
     use_bootstrap_critics=True,
     bootstrap_mask_prob=0.8,
-    critic_actor_utd_ratio=1,
+    actor_utd=None,
+    critic_utd=None,
     use_entropy_reward=True,
     target_update_tau=0.005)
 
