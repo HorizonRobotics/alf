@@ -149,6 +149,9 @@ class RlpdAlgorithm(SacAlgorithm):
 
         assert self._act_type == ActionType.Continuous, (
             "RLPD algorithm only supports continuous action spaces.")
+        assert num_critic_targets <= num_critic_replicas, (
+            "The number of sampled target critics should be less than or equal to"
+            "the number of replicas.")
 
         if actor_utd is None and critic_utd is None:
             self._train_phase = TrainPhase.standard
@@ -221,6 +224,15 @@ class RlpdAlgorithm(SacAlgorithm):
                          replica_consensus='mean',
                          sample_subset=False,
                          apply_reward_weights=True):
+        """
+        The following two arguments are different from the super class.
+            replica_consensus (str): the methods to consensus the possibly
+                multiple (due to critic replicas) critic_net outputs. Options
+                are ['mean', 'min', None].
+            sample_subset (bool): whether to sample a subset of critics outputs 
+                before applying the ``replica_consensus``. This is only used
+                for sampling a subset of target critics for computing TD target. 
+        """
         observation = (observation, action)
         # critics shape [B, replicas]
         critics, critics_state = critic_net(observation, state=critics_state)
@@ -246,11 +258,7 @@ class RlpdAlgorithm(SacAlgorithm):
             else:
                 critics = critics.min(dim=1)[0]
         elif replica_consensus == 'mean':
-            if self.has_multidim_reward():
-                sign = self.reward_weights.sign()
-                critics = (critics * sign).mean(dim=1) * sign
-            else:
-                critics = critics.mean(dim=1)
+            critics = critics.mean(dim=1)
 
         if apply_reward_weights and self.has_multidim_reward():
             critics = self._apply_reward_weights(critics)
