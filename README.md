@@ -26,6 +26,7 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 |[DDPG](alf/algorithms/ddpg_algorithm.py)|Off-policy RL|Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)|
 |[QRSAC](alf/algorithms/qrsac_algorithm.py)|Off-policy RL|Dabney et al. "Distributional Reinforcement Learning with Quantile Regression" [arXiv:1710.10044](https://arxiv.org/abs/1710.10044)|
 |[SAC](alf/algorithms/sac_algorithm.py)|Off-policy RL|Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)|
+|[RLPD](alf/algorithms/rlpd_algorithm.py)|Off-policy RL|Ball et al. "Efficient Online Reinforcement Learning with Offline Data" [arXiv:2302.02948](https://arxiv.org/abs/2302.02948)|
 |[OAC](alf/algorithms/oac_algorithm.py)|Off-policy RL|Ciosek et al. "Better Exploration with Optimistic Actor-Critic" [arXiv:1910.12807](https://arxiv.org/abs/1910.12807)|
 |[HER](https://github.com/HorizonRobotics/alf/blob/911d9573866df41e9e3adf6cdd94ee03016bf5a8/alf/algorithms/data_transformer.py#L672)|Off-policy RL|Andrychowicz et al. "Hindsight Experience Replay" [arXiv:1707.01495](https://arxiv.org/abs/1707.01495)|
 |[TAAC](alf/algorithms/taac_algorithm.py)|Off-policy RL|Yu et al. "TAAC: Temporally Abstract Actor-Critic for Continuous Control" [arXiv:2104.06521](https://arxiv.org/abs/2104.06521)|
