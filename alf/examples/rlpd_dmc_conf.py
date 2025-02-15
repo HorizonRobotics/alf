@@ -35,7 +35,11 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_critic_replicas=10,
-    num_sampled_critic_targets=2,
+    num_sampled_critic_targets=1,
+    use_bootstrap_critics=False,
+    bootstrap_mask_prob=0.8,
+    actor_utd=3,
+    critic_utd=10,
     use_entropy_reward=True,
     target_update_tau=0.005)
 
@@ -46,7 +50,7 @@ alf.config(
     algorithm_ctor=Agent,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
-    num_updates_per_train_iter=5,
+    num_updates_per_train_iter=13,  # actor_utd + critic_utd
     summarize_gradient_noise_scale=False,
     summarize_action_distributions=False,
     random_seed=0)

@@ -79,16 +79,23 @@ class RlpdAlgorithmTestInit(alf.test.TestCase):
 
 
 class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters((True, 1, 1), (False, 3, 2))
-    def test_rlpd_algorithm(self, use_naive_parallel_network, reward_dim,
-                            num_sampled_critic_targets):
+    @parameterized.parameters((True, 1, 1), (False, 3, 2), (True, 1, 1, 1),
+                              (True, 2, 1, 2, True))
+    def test_rlpd_algorithm(self,
+                            use_naive_parallel_network,
+                            reward_dim,
+                            num_sampled_critic_targets,
+                            actor_utd=None,
+                            critic_utd=None,
+                            use_bootstrap_critics=False):
         num_env = 4
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
             mini_batch_length=2,
             mini_batch_size=64,
-            initial_collect_steps=500,
+            initial_collect_steps=100,
+            num_updates_per_train_iter=5,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
@@ -137,6 +144,9 @@ class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             use_entropy_reward=reward_dim == 1,
             num_critic_replicas=3,
             num_sampled_critic_targets=num_sampled_critic_targets,
+            use_bootstrap_critics=use_bootstrap_critics,
+            actor_utd=actor_utd,
+            critic_utd=critic_utd,
             epsilon_greedy=0.1,
             env=env,
             config=config,
@@ -147,7 +157,7 @@ class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             name="MyRLPD")
 
         eval_env.reset()
-        for i in range(700):
+        for i in range(200):
             alg.train_iter()
             if i < config.initial_collect_steps:
                 continue
