@@ -76,6 +76,21 @@ class RlpdAlgorithm(SacAlgorithm):
       and ``critic``, with each mode lasting for the corresponding UTD number of 
       train_iter's. Under each of the two non-standard modes, RLPD only updates either 
       the actor or the critic once per train_iter.
+
+    An exemplar config is in ``alf/examples/rlpd_dmc_conf.py``. There are several key
+    settings to be aware of:
+
+    1. In order to use a high UTD for critics and actors, the CriticNetwork has to
+    be initialized with ``use_fc_ln=True``.
+
+    2. For the alternating scheme of actor and critic update (actor_utd and critic_utd 
+    cannot be both None), the total_utd, i.e., ``TrainerConfig.num_updates_per_iter``, 
+    has to be the sum of the actual actor_utd and critic_utd we want. In this case, 
+    actor_utd will be determined by total_utd - critic_utd if critic_utd is specified; 
+    otherwise, critic_utd will be determined by total_utd - actor_utd.
+
+    3. Refer to comments in ``rlpd_dmc_conf.py`` for other config suggestions.
+
     """
 
     def __init__(self,
@@ -124,8 +139,10 @@ class RlpdAlgorithm(SacAlgorithm):
             bootstrap_mask_prob (float): the parameter of the Binomial distribution
                 for independently masking out transitions to simulate bootstrapping.
                 It is only useful if use_bootstrap_critics is True.
-            actor_utd: the update-to-data (UTD) ratio of actor update.
-            critic_utd: the update-to-data (UTD) ratio of critic update.
+            actor_utd: the update-to-data (UTD) ratio of actor update. If not None,
+                has to be an integer less than the ``num_updates_per_iter``.
+            critic_utd: the update-to-data (UTD) ratio of critic update. If not None,
+                has to be an integer less than the ``num_updates_per_iter``.
         """
         super().__init__(
             observation_spec=observation_spec,

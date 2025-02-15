@@ -25,7 +25,7 @@ actor_network_cls = dmc_conf.actor_distribution_network_cls
 critic_network_cls = partial(
     alf.networks.CriticNetwork,
     joint_fc_layer_params=dmc_conf.hidden_layers,
-    use_fc_ln=True)
+    use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
 
 alf.config(
     'Agent', optimizer=dmc_conf.optimizer, rl_algorithm_cls=RlpdAlgorithm)
@@ -35,11 +35,12 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_critic_replicas=10,
-    num_sampled_critic_targets=1,
-    use_bootstrap_critics=False,
+    num_sampled_critic_targets=1,  # should be 1 or 2 depending on tasks
+    use_bootstrap_critics=False,  # turning to True might lead to larger variance
     bootstrap_mask_prob=0.8,
     actor_utd=3,
-    critic_utd=10,
+    critic_utd=
+    10,  # the suggesting utd ratio between critic and actor is [2, 10]
     use_entropy_reward=True,
     target_update_tau=0.005)
 
