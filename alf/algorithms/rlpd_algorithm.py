@@ -479,6 +479,6 @@ class RlpdAlgorithm(SacAlgorithm):
             priority=priority,
             extra=critic_loss / float(self._num_critic_replicas))
 
-    def after_train_iter(self, inputs: TimeStep, info: RlpdInfo):
-        self._periodic_reset()
+    def after_update(self, root_inputs, info: RlpdInfo):
         self._update_train_mode()
+        super().after_update(root_inputs, info)
