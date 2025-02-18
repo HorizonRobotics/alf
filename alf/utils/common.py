@@ -1746,3 +1746,34 @@ def prune_exp_replay_state(
             state=alf.nest.prune_nest_like(
                 exp.state, train_state_spec, value_to_match=()))
     return exp
+
+
+def save_video(frames: List[np.ndarray],
+               output_file: str = "output.mp4",
+               fps: int = 30):
+    """
+    Saves a list of RGB NumPy arrays as a video file.
+
+    Args:
+        frames: list of RGB images (H, W, 3).
+        output_file: output video file path.
+        fps (int): frames per second.
+    """
+    import cv2
+    if not frames:
+        raise ValueError("The frame list is empty.")
+
+    # Get video dimensions from the first frame
+    height, width, _ = frames[0].shape
+
+    # Define the video writer (MP4 codec)
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
+    # Write frames to the video file
+    for frame in frames:
+        out.write(cv2.cvtColor(
+            frame, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV
+
+    # Release the writer
+    out.release()
