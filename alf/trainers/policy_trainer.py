@@ -15,7 +15,6 @@
 
 import abc
 from absl import logging
-import cv2
 from functools import partial
 from typing import Dict
 import math
@@ -507,27 +506,11 @@ class Trainer(object):
                 os.makedirs(video_dir, exist_ok=True)
                 # save video
                 logging.info("Saving video clip...")
-
-                height, width, _ = frames[0].shape
-                fps = 30
                 global_step = alf.summary.get_global_counter()
                 output_file = os.path.join(video_dir,
                                            f"{name}_{global_step}.mp4")
 
-                # define the video writer (codec: MP4V for .mp4 files)
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(output_file, fourcc, fps,
-                                      (width, height))
-
-                # write frames to the video file
-                for frame in frames:
-                    out.write(cv2.cvtColor(
-                        frame,
-                        cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV
-
-                # release the writer
-                out.release()
-
+                common.save_video(frames=frames, output_file=output_file)
                 self._video_clip_requested = False
 
     def _restore_checkpoint(self, checkpointer):
@@ -759,7 +742,8 @@ class RLTrainer(Trainer):
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
                 self._checkpoint_requested = False
-            elif self._video_clip_requested:
+
+            if self._video_clip_requested:
                 common.warning_once("Saving video-clip upon request...")
                 self._save_video_clip()
 
