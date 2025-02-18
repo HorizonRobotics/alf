@@ -15,6 +15,7 @@
 
 import abc
 from absl import logging
+import cv2
 from functools import partial
 from typing import Dict
 import math
@@ -317,6 +318,14 @@ class Trainer(object):
                 "Use `kill -%s %s` to request checkpoint during training." %
                 (int(signal.SIGUSR2), self._pid))
 
+        self._video_clip_requested = False
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGRTMIN, self._request_video_clip)
+            # kill -34 PID
+            logging.info(
+                "Use `kill -%s %s` to request video-clip during training." %
+                (int(signal.SIGRTMIN), self._pid))
+
         if (threading.current_thread() == threading.main_thread()
                 and PerProcessContext().ddp_rank <= 0):
             # Debugging in subprocesses is not supported because they don't have
@@ -472,6 +481,10 @@ class Trainer(object):
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
 
+    def _request_video_clip(self, signum, frame):
+        self._video_clip_requested = True
+
+
     def _request_debug(self, signum, frame):
         breakpoint()
 
@@ -481,6 +494,38 @@ class Trainer(object):
         if self._rank <= 0:
             global_step = alf.summary.get_global_counter()
             self._checkpointer.save(global_step=global_step)
+
+    def _save_video_clip(self, name: str = "video_clip"):
+        # Saving video clip is only enabled when running single process training
+        # (rank is -1) or master process of DDP training (rank is 0).
+        if self._rank <= 0:
+            env = alf.get_env()
+            # to use this function, the env.render() function should support ``online`` mode
+            frames = env.render(mode="online")
+            common.warning_once("Caching video frames...")
+            if len(frames) > 0:
+                video_dir = os.path.join(self._train_dir, 'video')
+                os.makedirs(video_dir, exist_ok=True)
+                # save video
+                logging.info("Saving video clip...")
+
+                height, width, _ = frames[0].shape
+                fps = 30
+                global_step = alf.summary.get_global_counter()
+                output_file = os.path.join(video_dir, f"{name}_{global_step}.mp4") 
+
+                # define the video writer (codec: MP4V for .mp4 files)
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+
+                # write frames to the video file
+                for frame in frames:
+                    out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV
+
+                # release the writer
+                out.release()
+
+                self._video_clip_requested = False
 
     def _restore_checkpoint(self, checkpointer):
         """Restore from saved checkpoint.
@@ -711,6 +756,10 @@ class RLTrainer(Trainer):
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
                 self._checkpoint_requested = False
+            elif self._video_clip_requested:
+                common.warning_once("Saving video-clip upon request...")
+                self._save_video_clip()
+                
 
         if self._evaluate:
             self._evaluator.wait_complete()
