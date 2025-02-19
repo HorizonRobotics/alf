@@ -481,6 +481,7 @@ class Trainer(object):
         self._checkpoint_requested = True
 
     def _request_video_clip(self, signum, frame):
+        print("---_request_video_clip")
         self._video_clip_requested = True
 
 
@@ -505,12 +506,13 @@ class Trainer(object):
             if len(frames) > 0:
                 video_dir = os.path.join(self._train_dir, 'video')
                 os.makedirs(video_dir, exist_ok=True)
-                # save video
-                logging.info("Saving video clip...")
+                global_step = alf.summary.get_global_counter()
                 output_file = os.path.join(video_dir,
                                            f"{name}_{global_step}.mp4")
 
                 common.save_video(frames=frames, output_file=output_file)
+                # save video
+                logging.info("Video is saved.")
                 self._video_clip_requested = False
 
     def _restore_checkpoint(self, checkpointer):
@@ -742,7 +744,8 @@ class RLTrainer(Trainer):
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
                 self._checkpoint_requested = False
-            elif self._video_clip_requested:
+            
+            if self._video_clip_requested:
                 common.warning_once("Saving video-clip upon request...")
                 self._save_video_clip()
                 
