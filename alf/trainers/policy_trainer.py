@@ -321,9 +321,10 @@ class Trainer(object):
         if threading.current_thread() == threading.main_thread():
             signal.signal(signal.SIGRTMIN, self._request_video_clip)
             # kill -34 PID
-            logging.info(
-                "Use `kill -%s %s` to request video-clip during training." %
-                (int(signal.SIGRTMIN), self._pid))
+            logging.info((
+                "Use `kill -%s %s` to request video-clip during training. "
+                f"The videos will be saved at `{self._train_dir}/train/video/"
+            ) % (int(signal.SIGRTMIN), self._pid))
 
         if (threading.current_thread() == threading.main_thread()
                 and PerProcessContext().ddp_rank <= 0):
