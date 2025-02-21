@@ -172,6 +172,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  target_update_tau: Union[float, Scheduler] = 0.05,
                  target_update_period: Union[int, Scheduler] = 1,
                  parameter_reset_period: Union[int, Scheduler] = -1,
+                 imitation: bool = False,
                  dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
@@ -289,6 +290,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
+        self._imitation = imitation
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
@@ -811,21 +813,26 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
-        # This sum() will reduce all dims so q_value can be any rank
-        dqda = nest_utils.grad(action, q_value.sum())
+        if not self._imitation:
+            # This sum() will reduce all dims so q_value can be any rank
+            dqda = nest_utils.grad(action, q_value.sum())
 
-        def actor_loss_fn(dqda, action):
-            if self._dqda_clipping:
-                dqda = torch.clamp(dqda, -self._dqda_clipping,
-                                   self._dqda_clipping)
-            loss = 0.5 * losses.element_wise_squared_loss(
-                (dqda + action).detach(), action)
-            return loss.sum(list(range(1, loss.ndim)))
+            def actor_loss_fn(dqda, action):
+                if self._dqda_clipping:
+                    dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                    self._dqda_clipping)
+                loss = 0.5 * losses.element_wise_squared_loss(
+                    (dqda + action).detach(), action)
+                return loss.sum(list(range(1, loss.ndim)))
 
-        actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
-        actor_loss = math_ops.add_n(nest.flatten(actor_loss))
+            actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+            actor_loss = math_ops.add_n(nest.flatten(actor_loss))
+            actor_loss = actor_loss + cont_alpha * continuous_log_pi
+        else:
+            actor_loss = -action_distribution.log_prob(action)
+            
         actor_info = LossInfo(
-            loss=actor_loss + cont_alpha * continuous_log_pi,
+            loss=actor_loss,
             extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
         return critics_state, actor_info
 
@@ -938,6 +945,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 prior_step.output, action)
             log_pi = log_pi - log_prior
 
+        if self._imitation:
+            action = rollout_info.action
         actor_state, actor_loss = self._actor_train_step(
             observation, state.actor, action, critics, log_pi,
             action_distribution)
@@ -1059,6 +1068,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                   target_value=critic_info.target_critic).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
+
+        if self._imitation:
+            critic_loss = critic_loss * 0
 
         if self._calculate_priority:
             valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
