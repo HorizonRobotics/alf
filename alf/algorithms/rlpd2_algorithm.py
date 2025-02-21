@@ -22,7 +22,7 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rlpd_algorithm import RlpdAlgorithm
+from alf.algorithms.rlpd_algorithm import RlpdAlgorithm, RlpdInfo, TrainPhase
 from alf.algorithms.sac_algorithm import SacActionState
 from alf.algorithms.sac_algorithm import ActionType, SacInfo, SacState
 from alf.algorithms.sac_algorithm import _set_target_entropy
@@ -40,8 +40,8 @@ RlpdCriticState = namedtuple(
     ],
     default_value=())
 
-RlpdCriticInfo = namedtuple(
-    "RlpdCriticInfo", [
+Rlpd2CriticInfo = namedtuple(
+    "Rlpd2CriticInfo", [
         "critics", "target_critic", "aux_critics", "target_aux_critic"
     ],
     default_value=())
@@ -85,7 +85,8 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                  num_aux_critics=0,
                  use_bootstrap_critics=False,
                  bootstrap_mask_prob=0.8,
-                 critic_actor_utd_ratio=1,
+                 actor_utd: Optional[int] = None,
+                 critic_utd: Optional[int] = None,
                  aux_critic_use_common_target=True,
                  critic_training_weight=1.0,
                  use_total_std_norm_ctw=False,
@@ -121,6 +122,25 @@ class Rlpd2Algorithm(RlpdAlgorithm):
             use_total_std_norm_ctw (bool): whether to use the total std of critics 
                 to normalize the critic_training_weignt
         """
+        if actor_utd is None and critic_utd is None:
+            self._train_phase = TrainPhase.standard
+        else:
+            total_utd = alf.config_util.get_config_value(
+                "num_updates_per_train_iter")
+            if critic_utd is not None:
+                assert critic_utd < total_utd, (
+                    "critic_utd should be less than num_updates_per_train_iter")
+                actor_utd = total_utd - critic_utd
+            else:
+                assert actor_utd < total_utd, (
+                    "actor_utd should be less than num_updates_per_train_iter")
+                critic_utd = total_utd - actor_utd
+            self._train_phase = TrainPhase.critic
+            self._actor_utd = actor_utd
+            self._critic_utd = critic_utd
+
+        self._actor_update_counter = 0
+        self._critic_update_counter = 0
         self._num_critic_replicas = num_critic_replicas
         self._num_critic_targets = num_critic_targets
         self._num_aux_critics = num_aux_critics
@@ -135,8 +155,6 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         self._epsilon_greedy = epsilon_greedy
         self._critic_training_weight = critic_training_weight
         self._use_total_std_norm_ctw = use_total_std_norm_ctw
-        self._critic_actor_utd_ratio = critic_actor_utd_ratio
-        self._critic_train_counter = 0
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
@@ -394,7 +412,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
 
         state = RlpdCriticState(
             critics=critics_state, target_critics=target_critics_state)
-        info = RlpdCriticInfo(critics=critics, target_critic=target_critic)
+        info = Rlpd2CriticInfo(critics=critics, target_critic=target_critic)
 
         if self._num_aux_critics > 0:
             aux_critics, aux_critics_state = self._compute_critics(
@@ -432,7 +450,10 @@ class Rlpd2Algorithm(RlpdAlgorithm):
 
         return state, info
 
-    def _calc_critic_loss(self, info: SacInfo):
+    def _get_default_critic_info(self):
+        return Rlpd2CriticInfo()
+
+    def _calc_critic_loss(self, info: RlpdInfo):
         """
         We need to put entropy reward in ``experience.reward`` instead of ``target_critics``
         because in the case of multi-step TD learning, the entropy should also
@@ -452,6 +473,9 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         When the reward is multi-dim, the entropy reward will be added to *all*
         dims.
         """
+        if self._train_phase == TrainPhase.actor:
+            return LossInfo()
+
         if self._use_entropy_reward:
             with torch.no_grad():
                 log_pi = info.log_pi
@@ -508,7 +532,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
             opt_weights = opt_weights.detach() ** self._critic_training_weight
             opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
             # reweight training samples w.r.t. optimization uncertainty
-            # critic_loss *= opt_weights
+            critic_loss *= opt_weights
             if self._debug_summaries and alf.summary.should_record_summaries():
                 with alf.summary.scope(self._name):
                     safe_mean_hist_summary("total_critic_std", q_total_std)
@@ -516,13 +540,10 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                     safe_mean_hist_summary("critic_opt_priority", opt_weights)
 
         if self._calculate_priority:
-            if self._num_aux_critics > 0:
-                priority = opt_weights
-            else:
-                valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
-                valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-                priority = (
-                    (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
+            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
+            priority = (
+                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 

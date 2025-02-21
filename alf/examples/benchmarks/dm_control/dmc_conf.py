@@ -68,8 +68,6 @@ critic_network_cls = partial(
 
 optimizer = AdamTF(lr=3e-4)
 
-# alf.config('calc_default_target_entropy', min_prob=0.184)
-
 alf.config(
     "TrainerConfig",
     temporally_independent_train_step=True,

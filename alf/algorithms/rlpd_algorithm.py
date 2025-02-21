@@ -279,9 +279,6 @@ class RlpdAlgorithm(SacAlgorithm):
         elif self._train_phase == TrainPhase.critic:
             if self._critic_update_counter % self._critic_utd == 0:
                 self._train_phase = TrainPhase.actor
-        else:
-            raise ValueError(
-                f'Train phase {self._train_phase} cannot be updated.')
 
     def _critic_train_step(self, observation, target_observation,
                            state: SacCriticState, rollout_info: SacInfo,
@@ -314,6 +311,9 @@ class RlpdAlgorithm(SacAlgorithm):
         info = RlpdCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
+
+    def _get_default_critic_info(self):
+        return RlpdCriticInfo()
 
     def train_step(self, inputs: TimeStep, state: SacState,
                    rollout_info: RlpdInfo):
@@ -369,7 +369,7 @@ class RlpdAlgorithm(SacAlgorithm):
                 observation, state.actor, action, critics, log_pi,
                 action_distribution)
             alpha_loss = self._alpha_train_step(log_pi)
-            critic_info = RlpdCriticInfo()
+            critic_info = self._get_default_critic_info()
             new_state = new_state._replace(actor=actor_state)
             self._actor_update_counter += 1
         else:
@@ -394,12 +394,6 @@ class RlpdAlgorithm(SacAlgorithm):
             discounted_return=rollout_info.discounted_return,
             bootstrap_mask=rollout_info.bootstrap_mask)
         return AlgStep(action, new_state, info)
-
-    def calc_loss(self, info: SacInfo):
-        loss_info = super().calc_loss(info)
-        if not self._train_phase == TrainPhase.standard:
-            self._update_train_phase()
-        return loss_info
 
     def _calc_critic_loss(self, info: RlpdInfo):
         """
@@ -451,3 +445,7 @@ class RlpdAlgorithm(SacAlgorithm):
             loss=critic_loss,
             priority=priority,
             extra=critic_loss / float(self._num_critic_replicas))
+
+    def after_update(self, root_inputs, info: RlpdInfo):
+        self._update_train_phase()
+        super().after_update(root_inputs, info)
