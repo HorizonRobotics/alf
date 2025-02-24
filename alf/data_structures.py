@@ -99,9 +99,9 @@ class TimeStep(
     - reward: a ``Tensor`` of reward values from executing 'prev_action'.
     - discount: A discount value in the range :math:`[0, 1]`.
     - observation: A (nested) ``Tensor`` for observation.
-    - prev_action: A (nested) ``Tensor`` for action from previous time step. Note that
-        it should be the action that was sent to the environment in the previous time step,
-        meaning it is in the action space defined by the environment's action_spec.
+    - prev_action: A (nested) ``Tensor`` for action generated for the previous time step.
+        Note that it should be the action that was sent to the environment, meaning it is
+        in the action space defined by the environment's action_spec.
     - env_id: A scalar ``Tensor`` of the environment ID of the time step.
     - untransformed: a nest that represents the entire time step itself *before*
       any transformation (e.g., observation or reward transformation); used for
