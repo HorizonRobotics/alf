@@ -84,6 +84,7 @@ class RlpdAlgorithm(SacAlgorithm):
                  bootstrap_mask_prob=0.8,
                  actor_utd: Optional[int] = None,
                  critic_utd: Optional[int] = None,
+                 critic_actor_utd_ratio: Optional[float] = None,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -113,6 +114,7 @@ class RlpdAlgorithm(SacAlgorithm):
                 It is only useful if use_bootstrap_critics is True.
             actor_utd: the update-to-data (UTD) ratio of actor update.
             critic_utd: the update-to-data (UTD) ratio of critic update.
+            critic_actor_utd_ratio: the ratio between critic and actor updates.
         """
         super().__init__(
             observation_spec=observation_spec,
@@ -153,8 +155,13 @@ class RlpdAlgorithm(SacAlgorithm):
             "The number of sampled target critics should be less than or equal to"
             "the number of replicas.")
 
-        if actor_utd is None and critic_utd is None:
+        if actor_utd is None and critic_utd is None and (
+                critic_actor_utd_ratio is None):
             self._train_phase = TrainPhase.standard
+        elif critic_actor_utd_ratio is not None:
+            self._train_phase = TrainPhase.critic
+            self._actor_utd = 1
+            self._critic_utd = critic_actor_utd_ratio
         else:
             total_utd = alf.config_util.get_config_value(
                 "num_updates_per_train_iter")
@@ -358,13 +365,13 @@ class RlpdAlgorithm(SacAlgorithm):
 
         log_pi = sum(nest.flatten(log_pi))
 
-        if self._prior_actor is not None:
-            prior_step = self._prior_actor.train_step(inputs, ())
-            log_prior = dist_utils.compute_log_probability(
-                prior_step.output, action)
-            log_pi = log_pi - log_prior
-
         if self._train_phase == TrainPhase.actor:
+            if self._prior_actor is not None:
+                prior_step = self._prior_actor.train_step(inputs, ())
+                log_prior = dist_utils.compute_log_probability(
+                    prior_step.output, action)
+                log_pi = log_pi - log_prior
+
             actor_state, actor_info = self._actor_train_step(
                 observation, state.actor, action, critics, log_pi,
                 action_distribution)

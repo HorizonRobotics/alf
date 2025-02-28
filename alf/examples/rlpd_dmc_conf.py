@@ -41,6 +41,7 @@ alf.config(
     bootstrap_mask_prob=0.8,
     actor_utd=None,
     critic_utd=None,
+    critic_actor_utd_ratio=None,
     use_entropy_reward=True,
     target_update_tau=0.005)
 
