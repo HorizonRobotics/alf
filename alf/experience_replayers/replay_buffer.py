@@ -27,6 +27,8 @@ from alf.utils.common import warning_once
 from alf.utils.data_buffer import atomic, RingBuffer
 from alf.utils import checkpoint_utils
 
+import time
+
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
@@ -376,7 +378,16 @@ class ReplayBuffer(RingBuffer):
                     - importance_weights: priority divided by the average of all
                         non-zero priorities in the buffer.
         """
+
+        # print("=======================BEGIN++++++++++++++++++++++")
+        # start_time = time.time()
         with alf.device(self._device):
+
+            # end_time = time.time()
+            # elapsed_time = end_time - start_time
+            # print(f"with device Elapsed time: {elapsed_time:.6f} seconds")
+            # start_time = end_time
+
             recent_batch_size = 0
             if self._recent_data_ratio > 0:
                 d = batch_length - 1 + self._num_earliest_frames_ignored
@@ -405,16 +416,39 @@ class ReplayBuffer(RingBuffer):
                 info = alf.nest.map_structure(lambda *x: torch.cat(x),
                                               recent_info, info)
 
+            # end_time = time.time()
+            # elapsed_time = end_time - start_time
+            # print(f"_uniform_sample Elapsed time: {elapsed_time:.6f} seconds")
+            # start_time = end_time
+
+
             start_pos = info.positions
             env_ids = info.env_ids
 
             idx = start_pos.reshape(-1, 1)  # [B, 1]
             idx = self.circular(
                 idx + torch.arange(batch_length).unsqueeze(0))  # [B, T]
+
+            # end_time = time.time()
+            # elapsed_time = end_time - start_time
+            # print(f"after circular start_pos Elapsed time: {elapsed_time:.6f} seconds")
+            # start_time = end_time
+
             out_env_ids = env_ids.reshape(-1, 1).expand(
                 batch_size, batch_length)  # [B, T]
+
+            # end_time = time.time()
+            # elapsed_time = end_time - start_time
+            # print(f"after env_ids.reshape( Elapsed time: {elapsed_time:.6f} seconds")
+            # start_time = end_time
+
+
             result = alf.nest.map_structure(lambda b: b[(out_env_ids, idx)],
                                             self._buffer)
+            # end_time = time.time()
+            # elapsed_time = end_time - start_time
+            # print(f"result = alf.nest.map_structur Elapsed time: {elapsed_time:.6f} seconds")
+            # start_time = end_time
 
             if alf.summary.should_record_summaries():
                 alf.summary.scalar(
@@ -429,6 +463,9 @@ class ReplayBuffer(RingBuffer):
         if alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=self)
+
+
+        # print("------------------------END-------------------------")
         return result, info
 
     def _recent_sample(self, batch_size, batch_length):
