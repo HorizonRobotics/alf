@@ -561,7 +561,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         return steps
 
 
-@alf.configurable(whitelist=['episode_length', 'name', 'optimizer'])
+@alf.configurable(
+    whitelist=['episode_length', 'name', 'optimizer', 'unroller_only'])
 class DistributedUnroller(DistributedOffPolicyAlgorithm):
     def __init__(self,
                  core_alg_ctor: Callable,
@@ -569,6 +570,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                  episode_length: int = 200,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
+                 unroller_only: bool = False,
                  debug_summaries: bool = False,
                  name: str = "DistributedUnroller",
                  **kwargs):
@@ -585,6 +587,11 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                 step type to an artificial ``StepType.LAST``, and switching.
                 For traing safety, it is recommended to always set this value to a
                 positive number.
+            unroller_only: if True, will skip the training related steps (including
+                registering to all trainer workers, _create_pull_params_subprocess,
+                _check_paramss_update observe_for_replay) and do unroll only. Therefore,
+                it won't be blocked by the trainer and is useful for visualizing the
+                unroll behaviors without training.
             *args: additional args to pass to ``core_alg_ctor``.
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
@@ -605,6 +612,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         self._episode_length = episode_length
         self._num_exps = 0
         self._is_first_step = True
+        self._unroller_only = unroller_only
 
         ip = get_local_ip()
         self._id = f"unroller-{ip}-{self._port}"
@@ -686,6 +694,9 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         Every time we make sure a full episode is sent to the same DDP rank, if
         multi-gpu training is enabled on the trainer.
         """
+        if self._unroller_only:
+            return
+
         # Get the current worker id to send the exp to
         worker_id = f'worker-{self._current_worker}'
         self._num_exps += 1
@@ -765,7 +776,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         There is actually no training happening in this function. But the unroller
         will check if there are updated params available.
         """
-        if not self._registered:
+        if not self._registered and not self._unroller_only:
             # We need lazy registration so that trainer's params has a higher
             # priority than the unroller's loaded params (if enabled).
             self._register_to_trainer()
@@ -784,5 +795,6 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             torch.cuda.empty_cache()
         # Experience will be sent to the trainer in this function
         self._unroll_iter_off_policy()
-        self._check_paramss_update()
+        if not self._unroller_only:
+            self._check_paramss_update()
         return 0
