@@ -82,7 +82,7 @@ class PreprocessorNetwork(Network):
                     assert not nest.flatten(preproc.state_spec), (
                         "stateful preprocessor is not supported: %s" %
                         type(preproc))
-                    preproc = preproc.copy()
+                    # preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
                 elif isinstance(preproc, typing.Callable):
@@ -97,6 +97,9 @@ class PreprocessorNetwork(Network):
             self._input_preprocessors = alf.nest.map_structure_up_to(
                 input_preprocessors, _return_or_copy_preprocessor,
                 input_preprocessors, input_tensor_spec)
+
+            # print(input_preprocessors)
+            # self._input_preprocessors = input_preprocessors
 
             input_tensor_spec = alf.nest.map_structure(
                 lambda net: net.output_spec, self._input_preprocessors)
