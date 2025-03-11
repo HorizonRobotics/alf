@@ -311,23 +311,32 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             # If the metric's name ends with '@step', the value will
             # be further averaged over episode length so that the
             # result is per-step value.
+            step = step[last_episode_indices]
             if path.endswith('@step'):
-                value = value / step[last_episode_indices]
+                value = value / step
             mask = mask[last_episode_indices]
-            value = value[mask]
+            value = value[mask & (step > 0)]
             if value.numel() > 0:
                 buf.append(value)
 
         # Extract the final accumulated value and do customizable processing
         # via ``_extract_and_process_acc_value``, and add the processed
         # result to buffer
-        last_episode_indices = torch.where(time_step.is_last())[0]
+        is_last = time_step.is_last()
+        last_episode_indices = torch.where(is_last)[0]
+
+        def _reset_counter_(step, acc):
+            step.masked_fill_(is_last, 0)
+            acc.masked_fill_(is_last, 0)
 
         if len(last_episode_indices) > 0:
             alf.nest.py_map_structure_with_path(_episode_end_aggregate_,
                                                 self._mask, self._steps,
                                                 self._buffer,
                                                 self._accumulator)
+
+            alf.nest.map_structure(_reset_counter_, self._steps,
+                                   self._accumulator)
 
         return time_step
 
