@@ -377,8 +377,11 @@ class Trainer(object):
             self._save_checkpoint()
             checkpoint_saved = True
         finally:
-            if (self._config.confirm_checkpoint_upon_crash
+            if (self._config.save_checkpoint_upon_crash
                     and not checkpoint_saved and self._rank <= 0):
+                self._save_checkpoint()
+            elif (self._config.confirm_checkpoint_upon_crash
+                  and not checkpoint_saved and self._rank <= 0):
                 # Prompts for checkpoint only when running single process
                 # training (rank is -1) or master process of DDP training (rank
                 # is 0).
