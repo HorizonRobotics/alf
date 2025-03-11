@@ -45,6 +45,7 @@ class TrainerConfig(object):
                  sync_progress_to_envs=False,
                  num_checkpoints=10,
                  confirm_checkpoint_upon_crash=True,
+                 save_checkpoint_upon_crash=False,
                  no_thread_env_for_conf=False,
                  evaluate=False,
                  num_evals=None,
@@ -207,6 +208,8 @@ class TrainerConfig(object):
             num_checkpoints (int): how many checkpoints to save for the training
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
+            save_checkpoint_upon_crash (bool): whether to do checkpointing after
+                crash.
             no_thread_env_for_conf (bool): not to create an unwrapped env for
                 the purpose of showing operative configurations. If True, no
                 ``ThreadEnvironment`` will ever be created, regardless of the
@@ -401,6 +404,7 @@ class TrainerConfig(object):
         self.sync_progress_to_envs = sync_progress_to_envs
         self.num_checkpoints = num_checkpoints
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
+        self.save_checkpoint_upon_crash = save_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf
         self.evaluate = evaluate
         self.num_evals = num_evals
