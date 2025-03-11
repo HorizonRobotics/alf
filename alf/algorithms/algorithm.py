@@ -1667,6 +1667,7 @@ class Algorithm(AlgorithmInterface):
         # Apply transformation and enrichment to the experience.
         experience = dist_utils.params_to_distributions(
             experience, experience_spec)
+        experience, batch_info = self.filter_experience(experience, batch_info)
         experience = alf.data_structures.add_batch_info(
             experience, batch_info, replay_buffer)
         with alf.device(experience.step_type.device.type):
