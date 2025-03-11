@@ -40,6 +40,7 @@ class TrainerConfig(object):
                  unroll_step_interval: float = 0,
                  unroll_parameter_update_period: int = 10,
                  use_rollout_state=False,
+                 store_env_info_to_replay_buffer=False,
                  temporally_independent_train_step=None,
                  mask_out_loss_for_last_step=True,
                  sync_progress_to_envs=False,
@@ -184,6 +185,10 @@ class TrainerConfig(object):
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
                 algorithm should always be a subset of the ``rollout_state_spec``.
+            store_env_info_to_replay_buffer: If True, store environment info (i.e.
+                TimeStep.env_info) to replay buffer. `env_info` is not used
+                for training in general. So default is False to save memory and
+                time.
             mask_out_loss_for_last_step (bool): If True, the loss for the last
                 step of each sequence will be masked out. For RL training,
                 the last step of each episode is usually a terminal state and
@@ -375,6 +380,7 @@ class TrainerConfig(object):
         self.unroll_step_interval = unroll_step_interval
         self.unroll_parameter_update_period = unroll_parameter_update_period
         self.use_rollout_state = use_rollout_state
+        self.store_env_info_to_replay_buffer = store_env_info_to_replay_buffer
         self.mask_out_loss_for_last_step = mask_out_loss_for_last_step
         self.temporally_independent_train_step = temporally_independent_train_step
         self.sync_progress_to_envs = sync_progress_to_envs

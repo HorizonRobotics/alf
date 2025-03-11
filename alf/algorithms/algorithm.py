@@ -435,6 +435,9 @@ class Algorithm(AlgorithmInterface):
                                             self.rollout_state_spec,
                                             self.train_state_spec)
 
+        if not self._config.store_env_info_to_replay_buffer:
+            exp = exp.update_time_step_field('env_info', ())
+
         if self._replay_buffer is None:
             self._set_replay_buffer(exp)
 

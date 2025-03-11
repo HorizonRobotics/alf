@@ -115,7 +115,7 @@ def create_environment(env_name='CartPole-v0',
             consists of the environments listed in ``env_name``.
         env_load_fn (Callable) : callable that create an environment
             If env_load_fn has attribute ``batched`` and it is True,
-            ``evn_load_fn(env_name, env_id=env_id, batch_size=batch_size_per_env)``
+            ``env_load_fn(env_name, env_id=env_id, batch_size=batch_size_per_env)``
             will be used to create the batched environment. Otherwise,
             ``env_load_fn(env_name, env_id)`` will be used to create the environment.
             env_id is the index of the environment in the batch in the range of
