@@ -115,7 +115,7 @@ def make_ddp_performer(module: torch.nn.Module,
     print(f'find_unused_parameters={find_unused_parameters}')
     return DDP(
         _MethodPerformer(module=module, perform=method),
-        device_ids=[ddp_rank],
+        device_ids=None,
         find_unused_parameters=find_unused_parameters,
         bucket_cap_mb=bucket_cap_mb)
 
