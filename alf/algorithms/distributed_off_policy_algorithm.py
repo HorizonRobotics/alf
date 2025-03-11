@@ -30,6 +30,7 @@ from multiprocessing import Manager
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.rl_algorithm import adjust_replay_buffer_length
 from alf.environments.alf_environment import AlfEnvironment
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import Experience, make_experience, StepType
@@ -90,6 +91,9 @@ def create_zmq_socket(type: int, ip: str, port: int, id: str = None):
     if id is not None:
         socket.identity = id.encode('utf-8')
     addr = 'tcp://' + ':'.join([ip, str(port)])
+    print("----addr")
+    print(addr)
+
     if ip == '*':
         socket.bind(addr)
     else:
@@ -152,6 +156,10 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         self._port = port
         self._ddp_rank = max(0, PerProcessContext().ddp_rank)
         self._num_ranks = PerProcessContext().num_processes
+
+        # _num_earliest_frames_ignored should be at the same level as transform_experience
+        self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignored
+
 
     def _opt_free_state_dict(self) -> dict:
         """Return `self._core_alg` state dict without optimizers.
@@ -489,6 +497,19 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         exp = alf.utils.common.prune_exp_replay_state(
             exp, self._use_rollout_state, self.rollout_state_spec,
             self.train_state_spec)
+        print("=======_create_data_receiver_subprocess")
+        print(self._num_earliest_frames_ignored)
+
+        print(self._config)
+
+        replay_buffer_length = adjust_replay_buffer_length(
+                        self._config, self._num_earliest_frames_ignored)
+
+        print("=====replay_buffer_length")
+        print(replay_buffer_length)
+
+        self.set_replay_buffer(1, replay_buffer_length,
+                                self._config.priority_replay)
         self._set_replay_buffer(exp)
 
         mp.set_start_method('spawn', force=True)

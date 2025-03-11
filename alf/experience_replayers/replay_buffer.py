@@ -129,6 +129,10 @@ class ReplayBuffer(RingBuffer):
             device=device,
             allow_multiprocess=allow_multiprocess,
             name=name)
+
+        print("======num_earliest_frames_ignored in buffer")
+        print(num_earliest_frames_ignored)
+        print(max_length)
         self._num_earliest_frames_ignored = num_earliest_frames_ignored
         if num_earliest_frames_ignored > 0:
             if keep_episodic_info is None:
