@@ -39,6 +39,7 @@ class CategoricalProjectionNetwork(Network):
                  logits_init_output_factor=0.1,
                  weight_opt_args=None,
                  bias_opt_args=None,
+                 disable_amp: bool = False,
                  name="CategoricalProjectionNetwork"):
         """Creates a categorical projection network that outputs a discrete
         distribution over a number of classes.
@@ -54,6 +55,7 @@ class CategoricalProjectionNetwork(Network):
                 However, you can use different FC layers such as `alf.nn.NoisyFC`.
             weight_opt_args: optimizer arguments for weight.
             bias_opt_args: optimizer arguments for bias.
+            disable_amp (bool): If True, disable automatic mixed precision.
             name (str):
         """
         unique_num_actions = np.unique(action_spec.maximum -
@@ -82,16 +84,24 @@ class CategoricalProjectionNetwork(Network):
 
         self._output_shape = output_shape
         self._projection_layer = projection_layer
+        self._disable_amp = disable_amp
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
 
     def forward(self, inputs, state=()):
-        logits, state = self._projection_layer(inputs, state)
-        logits = logits.reshape(inputs.shape[0], *self._output_shape)
-        if len(self._output_shape) > 1:
-            return td.Independent(
-                td.Categorical(logits=logits),
-                reinterpreted_batch_ndims=len(self._output_shape) - 1), state
-        else:
-            return td.Categorical(logits=logits), state
+        amp_enabled = torch.is_autocast_enabled()
+        if self._disable_amp and amp_enabled:
+            inputs = alf.layers.to_float32(inputs)
+            amp_enabled = False
+        with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
+            logits, state = self._projection_layer(inputs, state)
+            logits = logits.reshape(inputs.shape[0], *self._output_shape)
+            if len(self._output_shape) > 1:
+                return td.Independent(
+                    td.Categorical(logits=logits),
+                    reinterpreted_batch_ndims=len(self._output_shape) -
+                    1), state
+            else:
+                return td.Categorical(logits=logits), state
 
     def make_parallel(self, n):
         """Creates a ``ParallelCategoricalProjectionNetwork`` using ``n``
