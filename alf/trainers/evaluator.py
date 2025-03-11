@@ -74,10 +74,15 @@ class Evaluator(object):
                       pre_configs, num_envs, config.root_dir, seed))
             self._worker.start()
         else:
-            self._env = create_environment(
-                for_evaluation=True,
-                num_parallel_environments=num_envs,
-                seed=seed)
+            if config.shared_train_eval_env:
+                self._env = alf.get_env()
+                self._env.reset()
+                print("-------shared_train_eval_env")
+            else:
+                self._env = create_environment(
+                    for_evaluation=True,
+                    num_parallel_environments=num_envs,
+                    seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
