@@ -42,8 +42,12 @@ alf.config(
     bootstrap_mask_prob=0.8,
     actor_utd=None,
     critic_utd=None,
+    critic_actor_utd_ratio=None,
     critic_training_weight=1.0,
-    aux_critic_use_common_target=True,
+    opt_std_corrective_feedback=True,
+    use_target_critic_opt_std=True,
+    use_reweight_temperature=True,
+    min_reweight_temperature=0.1,
     use_total_std_norm_ctw=False,
     use_entropy_reward=True,
     target_update_tau=0.005)

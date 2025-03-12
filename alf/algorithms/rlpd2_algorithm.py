@@ -31,6 +31,7 @@ from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops
+from alf.utils.averager import ScalarEMAverager
 from alf.utils.schedulers import Scheduler
 from alf.utils.summary_utils import safe_mean_hist_summary
 
@@ -42,7 +43,7 @@ RlpdCriticState = namedtuple(
 
 Rlpd2CriticInfo = namedtuple(
     "Rlpd2CriticInfo", [
-        "critics", "target_critic", "aux_critics", "target_aux_critic"
+        "critics", "target_critic", "aux_critics", "target_aux_critics"
     ],
     default_value=())
 
@@ -87,7 +88,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                  bootstrap_mask_prob=0.8,
                  actor_utd: Optional[int] = None,
                  critic_utd: Optional[int] = None,
-                 aux_critic_use_common_target=True,
+                 critic_actor_utd_ratio: Optional[float] = None,
                  critic_training_weight=1.0,
                  use_total_std_norm_ctw=False,
                  env=None,
@@ -98,6 +99,11 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
                  max_log_alpha=None,
+                 opt_std_corrective_feedback=True,
+                 use_target_critic_opt_std=True,
+                 use_reweight_temperature=True,
+                 initial_reweight_temperature=10.0,
+                 min_reweight_temperature=0.1,
                  target_update_tau: Union[float, Scheduler] = 0.05,
                  target_update_period: Union[int, Scheduler] = 1,
                  parameter_reset_period: Union[int, Scheduler] = -1,
@@ -114,16 +120,29 @@ class Rlpd2Algorithm(RlpdAlgorithm):
 
             num_aux_critics (int): Number of optimization-perturbed critics 
                 for critics optimization uncertainty estimation.
-            aux_critic_use_common_target (bool): whether to use the same TD target
-                critic as default critic for aux critics training.
             critic_training_weight (float): each training sample will be weighted
                 according the critic optimization std with exponent 
                 ``critic_training_weignt``.
             use_total_std_norm_ctw (bool): whether to use the total std of critics 
-                to normalize the critic_training_weignt
+                to normalize the critic_training_weignt.
+            opt_std_corrective_feedback (bool): whether to use critic optimization
+                std for DisCor-style corrective feedback in weighted critic learning.
+            use_target_critic_opt_std (bool): whether to use target critics for 
+                computing the optimization std.
+            use_reweight_temperature (bool): whether to use a temperature for
+                reweighting training samples based on critic optimization std. 
+            initial_reweight_temperature (float): the initial temperature for reweighting
+                training samples based on critic optimization std. This temperature
+                will be updated via an exponential moving average of the training 
+                batch mean of critic optimization std.
         """
-        if actor_utd is None and critic_utd is None:
+        if actor_utd is None and critic_utd is None and (
+                critic_actor_utd_ratio is None):
             self._train_phase = TrainPhase.standard
+        elif critic_actor_utd_ratio is not None:
+            self._train_phase = TrainPhase.critic
+            self._actor_utd = 1
+            self._critic_utd = critic_actor_utd_ratio
         else:
             total_utd = alf.config_util.get_config_value(
                 "num_updates_per_train_iter")
@@ -147,7 +166,8 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         self._use_bootstrap_critics = use_bootstrap_critics
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._bootstrap_mask = None
-        self._aux_critic_use_common_target = aux_critic_use_common_target
+        self._opt_std_corrective_feedback = opt_std_corrective_feedback
+        self._use_target_critic_opt_std = use_target_critic_opt_std
         self._calculate_priority = calculate_priority
         self._train_eps_greedy = train_eps_greedy
         if epsilon_greedy is None:
@@ -308,6 +328,12 @@ class Rlpd2Algorithm(RlpdAlgorithm):
         self._repr_alg = repr_alg
         self._target_repr_alg = target_repr_alg
 
+        self._use_reweight_temperature = use_reweight_temperature
+        self._min_reweight_temperature = min_reweight_temperature
+        self._reweight_temperature = ScalarEMAverager(
+            target_update_tau)
+            # target_update_tau, init_value=initial_reweight_temperature)
+
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
 
@@ -428,25 +454,22 @@ class Rlpd2Algorithm(RlpdAlgorithm):
             info = info._replace(
                 aux_critics=aux_critics)
 
-            if not self._aux_critic_use_common_target:
+            if self._use_target_critic_opt_std:
                 with torch.no_grad():
                     target_aux_critics, target_aux_critics_state = self._compute_critics(
                         self._target_aux_critic_networks,
                         target_observation,
                         action,
                         state.target_aux_critics,
-                        replica_consensus='min',
+                        replica_consensus=None,
                         apply_reward_weights=False)
 
-                target_aux_critic = target_aux_critics.reshape(
-                    target_aux_critics.shape[0], *self._reward_spec.shape)
-
-                target_aux_critic = target_aux_critic.detach()
+                target_aux_critics = target_aux_critics.detach()
 
                 state = state._replace(
                     target_aux_critics=target_aux_critics_state)
                 info = info._replace(
-                    target_aux_critic=target_aux_critic)
+                    target_aux_critics=target_aux_critics)
 
         return state, info
 
@@ -501,43 +524,75 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                 critic_loss = critic_loss * bootstrap_mask
             critic_losses.append(critic_loss)
 
-        # for auxiliary critics
+        # for auxiliary critics, use the same target critic as default critics
         if self._num_aux_critics > 0:
-            if self._aux_critic_use_common_target:
-                target_aux_critic = critic_info.target_critic
-            else:
-                target_aux_critic = critic_info.target_aux_critic
             self._aux_weights.exponential_(1.0)
             for i, l in enumerate(self._aux_critic_losses):
                 weights = self._aux_weights[i]
                 critic_losses.append(weights * l(
                     info=info,
                     value=critic_info.aux_critics[:, :, i, ...],
-                    target_value=target_aux_critic).loss)
+                    target_value=critic_info.target_critic).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
         # compute the std of target_aux_critics as the estimation of 
         # optimization uncertainty
         if self._num_aux_critics > 0:
-            base_q = critic_info.critics[:, :, :1, ...]
-            q_bootstrap = critic_info.critics[:, :, 1:, ...]
-            q_bootstrap_diff = q_bootstrap - base_q
-            q_total_std = (q_bootstrap_diff**2).mean(dim=2).sqrt()
-            q_aux_diff = critic_info.aux_critics - base_q
-            q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt()
-            opt_weights = q_aux_std
-            if self._use_total_std_norm_ctw:
-                opt_weights = opt_weights / (q_total_std + 1e-6)
-            opt_weights = opt_weights.detach() ** self._critic_training_weight
-            opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
-            # reweight training samples w.r.t. optimization uncertainty
-            critic_loss *= opt_weights
-            if self._debug_summaries and alf.summary.should_record_summaries():
-                with alf.summary.scope(self._name):
-                    safe_mean_hist_summary("total_critic_std", q_total_std)
-                    safe_mean_hist_summary("aux_critic_std", q_aux_std)
-                    safe_mean_hist_summary("critic_opt_priority", opt_weights)
+            if self._opt_std_corrective_feedback:
+                if self._use_target_critic_opt_std:
+                    q_base = critic_info.target_critic.unsqueeze(2)
+                    q_aux_diff = critic_info.target_aux_critics - q_base
+                    q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt().detach()
+                    # Extract the last [T-1, B] entries for nonzero critic_loss
+                    q_opt_std = q_aux_std[1:]
+                else:
+                    q_base = critic_info.critics[:, :, :1, ...]
+                    q_aux_diff = critic_info.aux_critics - q_base
+                    q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt().detach()
+                    # Extract the first [T-1, B] entries for nonzero critic_loss
+                    q_opt_std = q_aux_std[:-1]
+
+                # update temperature
+                if self._use_reweight_temperature:
+                    # mean_q_aux_std = q_aux_std.mean()
+                    # temperature = self._reweight_temperature.average(mean_q_aux_std)
+                    temperature = max(
+                        self._min_reweight_temperature, 
+                        self._reweight_temperature.average(q_opt_std.mean()))
+                else:
+                    temperature = 1.0
+                # all_weights = torch.exp(
+                #     -self._critic_training_weight * q_aux_std / temperature)
+                # reweights = all_weights[:-1]
+                reweights = torch.exp(
+                    -self._critic_training_weight * q_opt_std / temperature)
+                reweights = reweights * reweights.numel() / reweights.sum()
+                critic_loss[:-1] *= reweights
+                if self._debug_summaries and alf.summary.should_record_summaries():
+                    with alf.summary.scope(self._name):
+                        alf.summary.scalar("rewight_temperature", temperature)
+                        safe_mean_hist_summary("q_aux_std", q_opt_std)
+                        safe_mean_hist_summary("critic_weights", reweights)
+            else:
+                base_q = critic_info.critics[:, :, :1, ...]
+                q_bootstrap = critic_info.critics[:, :, 1:, ...]
+                q_bootstrap_diff = q_bootstrap - base_q
+                q_total_std = (q_bootstrap_diff**2).mean(dim=2).sqrt()
+                q_aux_diff = critic_info.aux_critics - base_q
+                q_aux_std = (q_aux_diff**2).mean(dim=2).sqrt()
+                opt_weights = q_aux_std
+                if self._use_total_std_norm_ctw:
+                    opt_weights = opt_weights / (q_total_std + 1e-6)
+                opt_weights = opt_weights.detach() ** self._critic_training_weight
+                opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
+                # reweight training samples w.r.t. optimization uncertainty
+                critic_loss *= opt_weights
+                if self._debug_summaries and alf.summary.should_record_summaries():
+                    with alf.summary.scope(self._name):
+                        safe_mean_hist_summary("total_critic_std", q_total_std)
+                        safe_mean_hist_summary("aux_critic_std", q_aux_std)
+                        safe_mean_hist_summary("critic_opt_priority", opt_weights)
 
         if self._calculate_priority:
             valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
