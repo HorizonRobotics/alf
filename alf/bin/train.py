@@ -85,6 +85,10 @@ def _define_flags():
                       'Whether to run in a remote trainer mode.')
     flags.DEFINE_bool('as_remote_unroller', False,
                       'Whether to run in a remote unroller mode.')
+    flags.DEFINE_integer(
+        'port', 8080, 'The port of the http server for'
+        'handling requests. The handler can be registered by calling '
+        'alf.trainers.http_server.register_endpoint.')
     flags.mark_flag_as_required('root_dir')
 
 

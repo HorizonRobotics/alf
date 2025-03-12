@@ -15,6 +15,7 @@
 
 import abc
 from absl import logging
+from absl import flags
 from functools import partial
 from typing import Dict
 import math
@@ -41,6 +42,7 @@ from alf.data_structures import StepType, make_experience
 from alf.environments.utils import create_environment
 from alf.nest import map_structure
 from alf.tensor_specs import TensorSpec
+from alf.trainers.http_server import start_server, register_endpoint, CustomRequestHandler
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils import math_ops
@@ -300,6 +302,14 @@ class Trainer(object):
         self._random_seed = config.random_seed
         self._rank = ddp_rank
         self._pid = None
+        # Run server in a separate thread
+        if self._rank <= 0 and hasattr(flags.FLAGS, "port"):
+            self._server_thread = threading.Thread(
+                target=partial(start_server, port=flags.FLAGS.port),
+                daemon=True)
+            self._server_thread.start()
+            register_endpoint("/checkpoint", self.handle_checkpoint_request,
+                              "Request a checkpoint")
 
     def train(self):
         """Perform training."""
@@ -488,6 +498,10 @@ class Trainer(object):
 
     def _request_debug(self, signum, frame):
         breakpoint()
+
+    def handle_checkpoint_request(self, request: CustomRequestHandler):
+        self._checkpoint_requested = True
+        request.send_text("Checkpoint requested")
 
     def _save_checkpoint(self):
         # Saving checkpoint is only enabled when running single process training
@@ -753,6 +767,9 @@ class RLTrainer(Trainer):
 
         if self._evaluate:
             self._evaluator.wait_complete()
+
+        if self._rank >= 0:
+            torch.distributed.barrier()
 
     def _need_to_evaluate(self, iter_num):
         if not self._evaluate:
