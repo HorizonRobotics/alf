@@ -303,7 +303,7 @@ class Trainer(object):
         self._rank = ddp_rank
         self._pid = None
         # Run server in a separate thread
-        if self._rank <= 0 and hasattr(flags.FLAGS, "port") is not None:
+        if self._rank <= 0 and hasattr(flags.FLAGS, "port"):
             self._server_thread = threading.Thread(
                 target=partial(start_server, port=flags.FLAGS.port),
                 daemon=True)
