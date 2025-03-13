@@ -75,6 +75,7 @@ class Evaluator(object):
             self._worker.start()
         else:
             if config.shared_train_eval_env:
+                assert not self._async, "should not use async_eval in shared_train_eval_env mode"
                 self._env = alf.get_env()
                 self._env.reset()
             else:
