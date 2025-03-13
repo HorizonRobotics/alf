@@ -339,7 +339,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             **kwargs)
 
         self._push_params_every_n_grad_updates = push_params_every_n_grad_updates
-        self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignore
 
         # Ports:
         # 1. registration port: self._port + self._ddp_rank
@@ -362,6 +361,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # Cannot directly use ``alf.summary.get_global_counter()`` because it
         # may be incremented every mini-batch
         self._num_train_iters = 0
+        # respect core_alg's replay buffer setting
+        self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignored
 
         # We always test tensor sharing among processes, because
         # we rely on undocumented features of PyTorch
