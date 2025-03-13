@@ -1748,6 +1748,30 @@ def prune_exp_replay_state(
     return exp
 
 
+def prune_exp_replay_env_info(
+        exp: 'Experience',
+        env_info_spec: alf.NestedTensorSpec = None) -> 'Experience':
+    """Prune an experience's env_info according to the ``env_info_spec``.
+
+    Args:
+        exp: The experience whose env_info field is to be pruned.
+        env_info_spec: The env_info spec. If None, will replace the env_info field with {}.
+
+    Returns:
+        An experience whose env_info is pruned.
+    """
+    if env_info_spec is None:
+        env_info_spec = {}
+
+
+    env_info = exp.time_step.env_info
+    pruned_env_info=alf.nest.prune_nest_like(
+            env_info, env_info_spec, value_to_match=())
+
+    exp = exp.update_time_step_field(field="env_info", new_value=pruned_env_info)
+    return exp
+
+
 def save_video(frames: List[np.ndarray],
                output_file: str = "output.mp4",
                fps: int = 30):
