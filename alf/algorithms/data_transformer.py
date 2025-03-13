@@ -326,7 +326,6 @@ class FrameStacker(DataTransformer):
             episode_begin_positions = episode_begin_positions.unsqueeze(-1)
             # [B, stack_size - 1]
             prev_positions = torch.max(prev_positions, episode_begin_positions)
-     
             # [B]
             valid_prev = prev_positions[:,
                                         0] >= replay_buffer.get_earliest_position(
