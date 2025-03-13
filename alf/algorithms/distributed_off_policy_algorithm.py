@@ -363,9 +363,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # respect core_alg's replay buffer setting
         self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignored
 
-        print("-----self._num_earliest_frames_ignored")
-        print(self._num_earliest_frames_ignored)
-
         # We always test tensor sharing among processes, because
         # we rely on undocumented features of PyTorch
         _test_tensor_sharing()
@@ -625,9 +622,6 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
 
         # Whether this unroller has registered to all trainer workers
         self._registered = False
-        # respect core_alg's replay buffer setting
-        self._num_earliest_frames_ignored = self._core_alg._num_earliest_frames_ignored
-
 
     def _register_to_trainer(self):
         """Create a REQ socket and query the number of workers, ip address, and
