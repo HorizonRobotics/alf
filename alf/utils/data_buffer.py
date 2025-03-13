@@ -102,6 +102,7 @@ class RingBuffer(nn.Module):
         self._num_envs = num_environments
         self._device = device
         self._allow_multiprocess = allow_multiprocess
+        self._data_spec = data_spec
         # allows outside to stop enqueue and dequeue processes from waiting
         self._stop = Event()
         if allow_multiprocess:
@@ -154,6 +155,11 @@ class RingBuffer(nn.Module):
     def device(self):
         """The device where the data is stored in."""
         return self._device
+
+    @property
+    def data_spec(self):
+        """The spec of a single item that can be stored in this buffer."""
+        return self._data_spec
 
     def circular(self, pos):
         """Mod pos by _max_length to get the actual index in the _buffer."""
