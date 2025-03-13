@@ -491,6 +491,12 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         exp = alf.utils.common.prune_exp_replay_state(
             exp, self._use_rollout_state, self.rollout_state_spec,
             self.train_state_spec)
+        # we do not save env_info to replay buffer for the following reasons:
+        # 1) avoid env_info mismatch and allow the distributed unroller to have
+        # a customized env_info for tb summarization, 2) reduce communication overhead,
+
+        # 3) reduce memory usage for the replay buffer
+        exp = alf.utils.common.prune_exp_replay_env_info(exp)
         self._set_replay_buffer(exp)
 
         mp.set_start_method('spawn', force=True)
@@ -719,6 +725,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         exp = alf.utils.common.prune_exp_replay_state(
             exp, self._use_rollout_state, self.rollout_state_spec,
             self.train_state_spec)
+        exp = alf.utils.common.prune_exp_replay_env_info(exp)
         # Need to convert the experience to params because it might contain distributions.
         exp_params = dist_utils.distributions_to_params(exp)
         # Use torch's save to serialize
