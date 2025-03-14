@@ -776,7 +776,15 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         There is actually no training happening in this function. But the unroller
         will check if there are updated params available.
         """
-        if not self._registered and not self._unroller_only:
+        # Copied from super().train_iter()
+        if self._config.empty_cache:
+            torch.cuda.empty_cache()
+
+        if self._unroller_only:
+            self._unroller_iter_off_policy()
+            return 0
+
+        if not self._registered:
             # We need lazy registration so that trainer's params has a higher
             # priority than the unroller's loaded params (if enabled).
             self._register_to_trainer()
@@ -790,11 +798,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                 time.sleep(0.01)
             self._registered = True
 
-        # Copied from super().train_iter()
-        if self._config.empty_cache:
-            torch.cuda.empty_cache()
         # Experience will be sent to the trainer in this function
         self._unroll_iter_off_policy()
-        if not self._unroller_only:
-            self._check_paramss_update()
+        self._check_paramss_update()
         return 0
