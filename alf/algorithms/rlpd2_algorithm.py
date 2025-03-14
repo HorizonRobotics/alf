@@ -569,7 +569,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                     -self._critic_training_weight * q_opt_std / temperature)
                 reweights = reweights * reweights.numel() / reweights.sum()
                 critic_loss[:-1] *= reweights
-                if self._debug_summaries and alf.summary.should_record_summaries():
+                if self._debug_summaries:
                     with alf.summary.scope(self._name):
                         alf.summary.scalar("rewight_temperature", temperature)
                         safe_mean_hist_summary("q_aux_std", q_opt_std)
@@ -588,7 +588,7 @@ class Rlpd2Algorithm(RlpdAlgorithm):
                 opt_weights = opt_weights * opt_weights.numel() / opt_weights.sum()
                 # reweight training samples w.r.t. optimization uncertainty
                 critic_loss *= opt_weights
-                if self._debug_summaries and alf.summary.should_record_summaries():
+                if self._debug_summaries:
                     with alf.summary.scope(self._name):
                         safe_mean_hist_summary("total_critic_std", q_total_std)
                         safe_mean_hist_summary("aux_critic_std", q_aux_std)
