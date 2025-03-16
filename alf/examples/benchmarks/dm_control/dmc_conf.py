@@ -86,5 +86,6 @@ alf.config(
     num_eval_episodes=5,
     debug_summaries=True,
     summarize_grads_and_vars=False,
-    num_summaries=1000,
+    # num_summaries=1000,
+    update_counter_every_mini_batch=True,
     replay_buffer_length=int(1e5))
