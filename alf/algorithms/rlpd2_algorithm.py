@@ -65,7 +65,13 @@ class Rlpd2Algorithm(RlpdAlgorithm):
     2. Optimization uncertainty/std of the critics is estimated by maintaining 
     auxiliary critics that are trained with perturbed TD learning. This optimization 
     uncertainty is further used to determined the importance weights of training
-    sampled during critics training.
+    sampled during critics training. if opt_std_corrective_feedback is True, the
+    critic optmization uncertainty is used for correction feedback similar to the
+    following paper:
+
+    :: Kumar et al "DisCor: Corrective Feedback in Reinforcement Learning via 
+    Distribution Correction", arXiv: 2003.07305
+
     """
 
     def __init__(self,
