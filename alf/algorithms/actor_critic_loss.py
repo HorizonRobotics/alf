@@ -172,6 +172,7 @@ class ActorCriticLoss(Loss):
                     alf.summary.scalar("values" + suffix, v.mean())
                     alf.summary.scalar("returns" + suffix, r.mean())
                     safe_mean_hist_summary('advantages' + suffix, adv)
+                    safe_mean_hist_summary("td_error" + suffix, r - v)
                     alf.summary.scalar(
                         "explained_variance_of_return_by_value" + suffix,
                         tensor_utils.explained_variance(v, r))

@@ -1141,6 +1141,9 @@ def save_config(alf_config_file):
     conf_file_name = os.path.basename(_ROOT_CONF_FILE)
     conf_root_dir = os.path.dirname(_ROOT_CONF_FILE)
 
+    config_is_from_root_dir = os.path.abspath(
+        _ROOT_CONF_FILE) == os.path.abspath(alf_config_file)
+
     pre_configs = get_handled_pre_configs()
     config = ''
     config += "import alf\n"
@@ -1152,10 +1155,20 @@ def save_config(alf_config_file):
             else:
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
-    config += f"config = alf.import_config('{config_dirname}/{conf_file_name}')\n"
+
+    if config_is_from_root_dir:
+        # In this case, we only update pre_config section and leave the rest unchanged.
+        config += _CONF_FILES[_ROOT_CONF_FILE].split("\n")[-2] + "\n"
+    else:
+        # make sure to change the other branch if the format after pre_config changes
+        config += f"config = alf.import_config('{config_dirname}/{conf_file_name}')\n"
+
     f = open(alf_config_file, 'w')
     f.write(config)
     f.close()
+
+    if config_is_from_root_dir:
+        return
 
     for conf_file, content in _CONF_FILES.items():
         if conf_file.startswith(conf_root_dir):

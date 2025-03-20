@@ -394,7 +394,7 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for rollout.
 
         Args:
-            experience: experience collected from ``rollout_step()``.
+            experience: [T, B, ...], experience collected from ``rollout_step()``.
             custom_summary: when specified it is a function that will be called every
                time when this ``summarize_rollout`` hook is called. This provides
                a convenient way for the user to extend ``summarize_rollout`` from
