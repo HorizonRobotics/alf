@@ -94,6 +94,11 @@ class CategoricalProjectionNetwork(Network):
         with torch.cuda.amp.autocast(amp_enabled, dtype=self._amp_dtype):
             logits, state = self._projection_layer(inputs, state)
             logits = logits.reshape(inputs.shape[0], *self._output_shape)
+            isfinite = torch.isfinite(logits).all(dim=-1, keepdim=True)
+            if not isfinite.all():
+                alf.summary.scalar("error/logits_is_not_finite",
+                                   (~isfinite).sum())
+                logits = torch.where(isfinite, logits, 0.0)
             if len(self._output_shape) > 1:
                 return td.Independent(
                     td.Categorical(logits=logits),
