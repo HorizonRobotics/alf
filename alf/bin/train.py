@@ -208,7 +208,7 @@ def training_worker(rank: int,
     """
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
-        _setup_device(rank)
+        _setup_device()
         if world_size > 1:
             # Specialization for distributed mode
             # Recover the flags when spawned as a sub process
