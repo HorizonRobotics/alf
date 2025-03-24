@@ -112,15 +112,11 @@ def _setup_logging(rank: int, log_dir: str):
     logging.use_absl_handler()
 
 
-def _setup_device(rank: int = 0):
+def _setup_device():
     """Setup the GPU device for each process
 
     All tensors of the calling process will use the GPU with the
     specified rank by default.
-
-    Args:
-        rank (int): The ID of the process among all of the DDP processes
-
     """
     if torch.cuda.is_available():
         alf.set_default_device('cuda')
