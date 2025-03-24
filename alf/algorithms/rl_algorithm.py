@@ -625,6 +625,17 @@ class RLAlgorithm(Algorithm):
         original_reward_list.append(time_step.reward)
         return store_exp_time
 
+    def reset_state(self):
+        """Reset the state of the algorithm.
+
+        RLAlgorithm maintains some states such as the current time step, policy
+        state, and transform state. When the environment is reset, these states
+        should be reset as well.
+        """
+        self._current_time_step = None
+        self._current_policy_state = None
+        self._current_transform_state = None
+
     def _sync_unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
