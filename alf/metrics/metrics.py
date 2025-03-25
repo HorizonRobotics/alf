@@ -33,7 +33,7 @@ class MetricBuffer(torch.nn.Module):
     """A metric buffer for computing average metric values. The buffer is assumed
     to store only scalar values."""
 
-    def __init__(self, max_len, dtype):
+    def __init__(self, max_len, dtype, device='cpu'):
         """
         Args:
             max_len (int): maximum length of the buffer
@@ -43,9 +43,10 @@ class MetricBuffer(torch.nn.Module):
         self._dtype = dtype
         self._max_len = max_len
         self.register_buffer(
-            "_buf", torch.zeros((max_len, ), dtype=dtype, device='cpu'))
+            "_buf", torch.zeros((max_len, ), dtype=dtype, device=device))
         self.register_buffer("_current_pos",
-                             torch.zeros((), dtype=torch.int64, device='cpu'))
+                             torch.zeros((), dtype=torch.int64, device=device))
+        self._device = device
 
     def append(self, value):
         """Append multiple values to the buffer.
@@ -60,7 +61,7 @@ class MetricBuffer(torch.nn.Module):
         else:
             n = min(n, self._max_len)
             pos = (self._current_pos + torch.arange(
-                n, device='cpu')) % self._max_len
+                n, device=self._device)) % self._max_len
             self._buf[pos] = value[:n]
             self._current_pos += n
 
@@ -183,7 +184,8 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                  prefix='Metrics',
                  dtype=torch.float32,
                  buffer_size=10,
-                 example_time_step=None):
+                 example_time_step=None,
+                 device='cpu'):
         """
         Args:
             name (str):
@@ -199,39 +201,40 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
         super(AverageEpisodicAggregationMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
         if example_time_step is None:
-            example_metric_value = torch.zeros((), device='cpu')
+            example_metric_value = torch.zeros((), device=device)
         else:
             example_metric_value = self._extract_metric_values(
                 example_time_step.cpu())
         self._batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._buffer_size = buffer_size
-        self._initialize(example_metric_value)
+        self._initialize(example_metric_value, device)
 
         # ``self._current_step`` will be set to zero for the first step, and is
         # added by one otherwise. Therefore, at the episode end, its value
         # equals to episode length - 1.
-        self._current_step = torch.zeros(self._batch_size, device='cpu')
+        self._current_step = torch.zeros(self._batch_size, device=device)
 
     def _extract_metric_values(self, time_step):
         """Extract metrics from the time step. The return can be a nest."""
         raise NotImplementedError()
 
-    def _initialize(self, example_metric_value):
+    def _initialize(self, example_metric_value, device):
         def _init_buf(val):
-            return MetricBuffer(max_len=self._buffer_size, dtype=self._dtype)
+            return MetricBuffer(
+                max_len=self._buffer_size, dtype=self._dtype, device=device)
 
         def _init_acc(val):
             accumulator = torch.zeros(
-                self._batch_size, dtype=self._dtype, device='cpu')
+                self._batch_size, dtype=self._dtype, device=device)
             return accumulator
 
         def _init_mask(val):
             return torch.zeros(
-                self._batch_size, dtype=torch.bool, device='cpu')
+                self._batch_size, dtype=torch.bool, device=device)
 
         def _init_step(val):
             return torch.zeros(
-                self._batch_size, dtype=self._dtype, device='cpu')
+                self._batch_size, dtype=self._dtype, device=device)
 
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
         self._accumulator = alf.nest.map_structure(_init_acc,
@@ -625,7 +628,8 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
                  prefix="Metrics",
                  dtype=torch.float32,
                  fields: List[str] = None,
-                 buffer_size=10):
+                 buffer_size=10,
+                 device='cpu'):
         """
         Args:
             fields: a list of fields to include in the average env info metric.
@@ -637,7 +641,8 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
             dtype=dtype,
             prefix=prefix,
             buffer_size=buffer_size,
-            example_time_step=example_time_step)
+            example_time_step=example_time_step,
+            device=device)
 
     def _extract_metric_values(self, time_step):
         if self._fields is None:
