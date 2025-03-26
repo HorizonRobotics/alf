@@ -94,8 +94,6 @@ def _define_flags():
     flags.DEFINE_integer('nccl_timeout', 10,
                          'The timeout for NCCL operations in minutes.')
     flags.mark_flag_as_required('root_dir')
-    flags.DEFINE_integer('local-rank', None,
-                         'Local rank passed from distributed launcher')
 
 
 FLAGS = flags.FLAGS
