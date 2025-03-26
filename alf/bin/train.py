@@ -223,7 +223,7 @@ def training_worker(rank: int,
             interpreted as "non distributed mode".
         conf_file (str): Path to the training configuration.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
-        paras_queue (mp.Queue): a shared Queue for checking the consistency of model parameters
+        paras_queue (Queue): a shared Queue for checking the consistency of model parameters
             in different worker processes, if multi-gpu training is used.
     """
     try:
@@ -288,7 +288,7 @@ def training_worker_multi_node(local_rank: int,
             interpreted as "non distributed mode".
         conf_file (str): Path to the training configuration.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
-        paras_queue: a shared Queue for checking the consistency of model parameters
+        paras_queue (Queue): a shared Queue for checking the consistency of model parameters
             in different worker processes, if multi-gpu training is used.
     """
     try:
@@ -423,7 +423,6 @@ def main(_):
         local_rank = int(os.environ['LOCAL_RANK'])
         rank = int(os.environ['RANK'])
         world_size = int(os.environ['WORLD_SIZE'])
-        print("local_rank: {} | rank: {} | world_size: {}".format(local_rank, rank, world_size))
 
         try:
             # Create a shared queue for checking the consistency of the parameters
