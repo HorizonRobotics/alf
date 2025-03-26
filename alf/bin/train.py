@@ -268,7 +268,7 @@ def training_worker(rank: int,
     finally:
         # Note that each training worker will have its own child processes
         # running the environments. In the case when training worker process
-        # finishes ealier (e.g. when it raises an exception), it will hang
+        # finishes earlier (e.g. when it raises an exception), it will hang
         # instead of quitting unless all child processes are killed.
         alf.close_env()
 
