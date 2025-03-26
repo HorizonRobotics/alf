@@ -223,7 +223,7 @@ def training_worker(rank: int,
             interpreted as "non distributed mode".
         conf_file (str): Path to the training configuration.
         root_dir (str): Path to the directory for writing logs/summaries/checkpoints.
-        paras_queue: a shared Queue for checking the consistency of model parameters
+        paras_queue (mp.Queue): a shared Queue for checking the consistency of model parameters
             in different worker processes, if multi-gpu training is used.
     """
     try:
