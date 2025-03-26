@@ -101,6 +101,19 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
+def check_valid_launch():
+    # must use torch.distributed.launch in multi-node-multi-gpu mode
+    required_keys = {"RANK", "LOCAL_RANK", "WORLD_SIZE"}
+    env_keys = set(os.environ.keys())
+
+    if FLAGS.distributed == 'multi-node-multi-gpu':
+        missing = required_keys - env_keys
+        assert not missing, f"Missing environment variables for distributed launch: {missing}"
+    else:
+        extra = required_keys & env_keys
+        assert not extra, f"Unexpected environment variables for non-distributed launch: {extra}"
+
+
 def _setup_logging(rank: int, log_dir: str):
     """Setup logging for each process
 
@@ -283,18 +296,18 @@ def training_worker_multi_node(local_rank: int,
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
         _setup_device(local_rank)
-        if world_size > 1:
-            # Specialization for distributed mode
-            dist.init_process_group('nccl', rank=rank, world_size=world_size)
-            # Recover the flags when spawned as a sub process
-            # _define_flags()
-            FLAGS(sys.argv, known_only=True)
-            FLAGS.mark_as_parsed()
-            # Set the rank and total number of processes for distributed training.
-            PerProcessContext().set_distributed(
-                rank=rank, local_rank=local_rank, num_processes=world_size)
-            assert paras_queue is not None
-            PerProcessContext().set_paras_queue(paras_queue)
+
+        # Specialization for distributed mode
+        dist.init_process_group('nccl', rank=rank, world_size=world_size)
+        # Recover the flags when spawned as a sub process
+        # _define_flags()
+        FLAGS(sys.argv, known_only=True)
+        FLAGS.mark_as_parsed()
+        # Set the rank and total number of processes for distributed training.
+        PerProcessContext().set_distributed(
+            rank=rank, local_rank=local_rank, num_processes=world_size)
+        assert paras_queue is not None
+        PerProcessContext().set_paras_queue(paras_queue)
 
         # Make PerProcessContext read-only.
         PerProcessContext().finalize()
@@ -329,7 +342,11 @@ def main(_):
 
     conf_file = common.get_conf_file()
 
-    if FLAGS.store_snapshot and int(os.environ['RANK']) == 0:
+    # check if launched with right command
+    check_valid_launch()
+
+    if FLAGS.store_snapshot and (FLAGS.distributed != 'multi-node-multi-gpu'
+                                 or int(os.environ.get('RANK', -1)) == 0):
         common.generate_alf_snapshot(common.alf_root(), conf_file, root_dir)
 
     # FLAGS.distributed is guaranteed to be one of the possible values.

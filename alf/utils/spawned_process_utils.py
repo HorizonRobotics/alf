@@ -27,7 +27,11 @@ from alf.environments.alf_environment import AlfEnvironment
 
 class SpawnedProcessContext(NamedTuple):
     """Stores context information inherited from the main process.
-
+    
+    Args:
+        ddp_num_procs (int): number of ddp processes.
+        ddp_rank (int): the ID of the process in the whole training. 
+        local_rank (int): the ID of the process on a node.
     """
     ddp_num_procs: int
     ddp_rank: int

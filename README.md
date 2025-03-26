@@ -125,8 +125,11 @@ To launch single-node multi-gpu training, set the 'multi-gpu' argument
 python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR --distributed multi-gpu
 ```
 
-To launch multi-node multi-gpu training, we use torch distirbuted launch module. The 'local_rank' for each process can be obtained from 'PerProcessContext' class, which can be used to assign gpu for your environment if you wish. To start training, run the following command on the host machine:
+To launch multi-node multi-gpu training, we use torch distirbuted launch module. The 'local_rank' for each process can be obtained from 'PerProcessContext' class, which can be used to assign gpu for your environment if you wish. For details on how PyTorch assign 'local_rank' and 'ddp_rank', please refer to the [documentation](https://github.com/pytorch/pytorch/blob/main/torch/distributed/launch.py).  To start training, run the following command on the host machine:
 ```bash
+export NCCL_SOCKET_IFNAME=SOCKET # find in ifconfig
+export NCCL_IB_DISABLE=1
+
 python -m torch.distributed.launch \
     --nproc_per_node=NGPU_ON_NODE \
     --nnodes=NUMBER_OF_NODES \

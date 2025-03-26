@@ -49,6 +49,7 @@ class PerProcessContext(object):
 
         Args:
             rank (int): the ID of the process
+            local_rank (int): ID of process on a node
             num_processes (int): the total number of processes
         """
         if self._read_only:
