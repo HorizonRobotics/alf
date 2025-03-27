@@ -121,11 +121,11 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
             *args: args to pass to ``core_alg_ctor``.
             **kwargs: kwargs to pass to ``core_alg_ctor``.
         """
-        # No need to pass ``config`` or ``env`` to core alg
+        # Need to pass ``config`` or ``env`` to core alg following the standard algorithm interface
         core_alg = core_alg_ctor(
             *args,
-            config=None,
-            env=None,
+            config=config,
+            env=env,
             debug_summaries=debug_summaries,
             **kwargs)
         assert not core_alg.on_policy, (
