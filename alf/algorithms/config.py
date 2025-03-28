@@ -51,6 +51,7 @@ class TrainerConfig(object):
                  epsilon_greedy=0.,
                  eval_uncertainty=False,
                  num_eval_episodes=10,
+                 num_eval_steps=0,
                  num_eval_environments: int = 1,
                  async_eval: bool = True,
                  shared_train_eval_env: bool = False,
@@ -224,7 +225,8 @@ class TrainerConfig(object):
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
             eval_uncertainty (bool): whether to evaluate uncertainty after training.
-            num_eval_episodes (int) : number of episodes for one evaluation.
+            num_eval_episodes (int): number of episodes for one evaluation.
+            num_eval_steps (int): number of environmental steps for evaluation.
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
                 process. Note that this may use more memory.
@@ -386,6 +388,7 @@ class TrainerConfig(object):
         self.epsilon_greedy = epsilon_greedy
         self.eval_uncertainty = eval_uncertainty
         self.num_eval_episodes = num_eval_episodes
+        self.num_eval_steps = as_scheduler(num_eval_steps)
         self.num_eval_environments = num_eval_environments
         self.async_eval = async_eval
         self.shared_train_eval_env = shared_train_eval_env
