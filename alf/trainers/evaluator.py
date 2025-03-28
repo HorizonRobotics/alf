@@ -76,7 +76,7 @@ class Evaluator(object):
         else:
             if config.shared_train_eval_env:
                 self._env = alf.get_env()
-                self._env.reset()
+                # self._env.reset()
                 print("-------shared_train_eval_env")
             else:
                 self._env = create_environment(
