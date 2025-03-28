@@ -175,6 +175,11 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
     trainer_conf = policy_trainer.TrainerConfig(
         root_dir=root_dir, conf_file=conf_file)
 
+    if trainer_conf.ddp_paras_check_interval > 0 and world_size > 1 and local_rank >= 0:
+        raise NotImplementedError(
+                "ddp_paras_check currently not supported under multi-node multi-gpu training"
+            )
+
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
         if FLAGS.as_remote_trainer or FLAGS.as_remote_unroller:
@@ -201,13 +206,6 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
         raise ValueError("Unsupported ml_type: %s" % trainer_conf.ml_type)
 
     trainer.train()
-
-
-def _training_worker_helper(rank: int, *args, **kwargs):
-    # Helper to start the training worker with the correct rank
-    # so that rank 0 is from the main process and the rest are
-    # from the spawned processes.
-    training_worker(rank + 1, *args, **kwargs)
 
 
 def training_worker(rank: int,

@@ -808,12 +808,6 @@ class RLTrainer(Trainer):
             return
 
         proc_cxt = PerProcessContext()
-        if (proc_cxt.is_distributed and proc_cxt.local_rank >= 0
-                and self._config.ddp_paras_check_interval > 0):
-            raise NotImplementedError(
-                "ddp_paras_check currently not supported under multi-node multi-gpu training"
-            )
-
         if not (proc_cxt.is_distributed
                 and self._config.ddp_paras_check_interval > 0
                 # Assume that DDP will make sure that this modulo check won't
