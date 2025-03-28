@@ -446,7 +446,10 @@ def evaluate(env: AlfEnvironment,
         total_num = steps_per_env
         # additional steps required after ``steps_per_env`` parallel steps over ``batch_size`` envs
         additional_steps = num_eval_steps - steps_per_env * batch_size
-        
+        # indices of the environment that will take one additional step
+        additional_step_indices = torch.arange(batch_size) < additional_steps
+        no_additional_step_indices = ~additional_step_indices
+
     time_step = common.get_initial_time_step(env)
     done = False
     while not done:
@@ -485,12 +488,14 @@ def evaluate(env: AlfEnvironment,
             if counter < total_num and counter + batch_size > total_num:
                 # (batch_size - additional_steps) number of environments are ready for summarization
                 # reserve the first ``additional_steps`` envs till the next step
-                time_step.step_type[additional_steps:] = StepType.LAST
+                time_step.step_type[no_additional_step_indices] = StepType.LAST
             elif counter > total_num:
                 if additional_steps > 0:
                     # additional_steps number of steps are ready here
-                    time_step.step_type[:additional_steps] = StepType.LAST
-                    time_step.step_type[additional_steps:] = StepType.FIRST
+                    time_step.step_type[
+                        additional_step_indices] = StepType.LAST
+                    time_step.step_type[
+                        no_additional_step_indices] = StepType.FIRST
                     counter += additional_steps
                     additional_steps = 0
                 else:
