@@ -307,9 +307,12 @@ class Trainer(object):
             self._server_thread = threading.Thread(
                 target=partial(start_server, port=flags.FLAGS.port),
                 daemon=True)
+            logging.info(f"Server port for request handling: {flags.FLAGS.port}.")
             self._server_thread.start()
             register_endpoint("/checkpoint", self.handle_checkpoint_request,
                               "Request a checkpoint")
+            register_endpoint("/evaluation", self.handle_evaluation_request,
+                        "Request evaluation")
 
     def train(self):
         """Perform training."""
@@ -320,6 +323,7 @@ class Trainer(object):
             self._pid = os.getpid()
 
         self._checkpoint_requested = False
+        self._evaluation_requested = False
         if threading.current_thread() == threading.main_thread():
             signal.signal(signal.SIGUSR2, self._request_checkpoint)
             # kill -12 PID
@@ -502,6 +506,10 @@ class Trainer(object):
     def handle_checkpoint_request(self, request: CustomRequestHandler):
         self._checkpoint_requested = True
         request.send_text("Checkpoint requested")
+
+    def handle_evaluation_request(self, request: CustomRequestHandler):
+        self._evaluation_requested = True
+        request.send_text("Evaluation requested")
 
     def _save_checkpoint(self):
         # Saving checkpoint is only enabled when running single process training
@@ -705,7 +713,7 @@ class RLTrainer(Trainer):
         else:
             time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
-        if self._evaluate and iter_num == 0:
+        if self._evaluate and (iter_num == 0 or self._evaluation_requested):
             self._eval()
 
         if self._evaluate:
@@ -778,7 +786,12 @@ class RLTrainer(Trainer):
             # Evaluate before exiting so that the eval curve shown in TB
             # will align with the final iter/env_step.
             return True
-        if self._config.num_evals is None:
+        if self._evaluation_requested:
+            # if there is a evaluation request (e.g. set via the http request), then
+            # should run evaluation
+            self._evaluation_requested = False
+            return True
+        elif self._config.num_evals is None:
             return iter_num % self._eval_interval == 0
         return self.progress(
         ) * self._config.num_evals > self._num_evals_performed + 1
