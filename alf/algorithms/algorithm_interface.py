@@ -234,6 +234,23 @@ class AlgorithmInterface(nn.Module):
         """
         raise NotImplementedError()
 
+    def filter_experience(self, experience, batch_info):
+        """Filter the experience before passing it to ``preprocess_experience()``.
+
+        Args:
+            experience (Experience): experience collected during ``unroll()``.
+                The shapes of tensors in experience are assumed to be :math:`(B, T, ...)`.
+            batch_info (BatchInfo): information about this batch of data.
+                The shapes of tensors in batch_info are assumed to be :math:`(B,)`.
+        Returns:
+            Experience: filtered experience. The shapes of tensors in experience
+                should be :math:`(B', T', ...)` where :math:`B'` and :math:`T'` are
+                are the new batch size and time length after filtering.
+            BatchInfo: the batch info corresponding to the filtered experience
+                The shapes of tensors in batch_info should be :math:`(B',)`.
+        """
+        return experience, batch_info
+
     def preprocess_experience(self, root_inputs, rollout_info, batch_info):
         """This function is called on the experiences obtained from a replay
         buffer. An example usage of this function is to calculate advantages and

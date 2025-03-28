@@ -167,7 +167,8 @@ class Algorithm(AlgorithmInterface):
         if config:
             self._temporally_independent_train_step = config.temporally_independent_train_step
             self.use_rollout_state = config.use_rollout_state
-            if config.enable_amp and torch.cuda.is_available():
+            if (config.enable_amp and torch.cuda.is_available()
+                    and config.amd_dtype == torch.float16):
                 self._grad_scaler = torch.cuda.amp.GradScaler()
         if self._temporally_independent_train_step is None:
             self._temporally_independent_train_step = (len(
@@ -1478,6 +1479,12 @@ class Algorithm(AlgorithmInterface):
         # is only lazily created later when online RL training started.
         if (self._replay_buffer and
                 self._replay_buffer.total_size < config.initial_collect_steps):
+            assert (
+                self._replay_buffer.num_environments *
+                self._replay_buffer.max_length >= config.initial_collect_steps
+            ), ("The replay buffer is too small to store the initial_collect_steps"
+                f"({config.initial_collect_steps}) samples. Please increase the"
+                " replay buffer length or reduce the initial_collect_steps.")
             return 0
 
         def _replay():
@@ -1667,6 +1674,7 @@ class Algorithm(AlgorithmInterface):
         # Apply transformation and enrichment to the experience.
         experience = dist_utils.params_to_distributions(
             experience, experience_spec)
+        experience, batch_info = self.filter_experience(experience, batch_info)
         experience = alf.data_structures.add_batch_info(
             experience, batch_info, replay_buffer)
         with alf.device(experience.step_type.device.type):
@@ -1879,7 +1887,8 @@ class Algorithm(AlgorithmInterface):
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
         """
-        with torch.cuda.amp.autocast(self._config.enable_amp):
+        with torch.cuda.amp.autocast(
+                self._config.enable_amp, dtype=self._config.amp_dtype):
             train_info, loss_info = self._compute_train_info_and_loss_info(
                 experience)
 
@@ -2086,7 +2095,8 @@ class Algorithm(AlgorithmInterface):
         length = alf.nest.get_nest_size(offline_experience, dim=0)
 
         if self._RL_train:
-            with torch.cuda.amp.autocast(self._config.enable_amp):
+            with torch.cuda.amp.autocast(
+                    self._config.enable_amp, dtype=self._config.amp_dtype):
                 train_info, loss_info = self._compute_train_info_and_loss_info(
                     experience)
                 self._update_priority(loss_info, batch_info,

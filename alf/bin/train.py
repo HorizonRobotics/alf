@@ -53,6 +53,8 @@ replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_pa
 from absl import app
 from absl import flags
 from absl import logging
+import datetime
+import multiprocessing
 import os
 import sys
 import torch
@@ -89,6 +91,8 @@ def _define_flags():
         'port', 8080, 'The port of the http server for'
         'handling requests. The handler can be registered by calling '
         'alf.trainers.http_server.register_endpoint.')
+    flags.DEFINE_integer('nccl_timeout', 10,
+                         'The timeout for NCCL operations in minutes.')
     flags.mark_flag_as_required('root_dir')
 
 
@@ -108,19 +112,14 @@ def _setup_logging(rank: int, log_dir: str):
     logging.use_absl_handler()
 
 
-def _setup_device(rank: int = 0):
+def _setup_device():
     """Setup the GPU device for each process
 
     All tensors of the calling process will use the GPU with the
     specified rank by default.
-
-    Args:
-        rank (int): The ID of the process among all of the DDP processes
-
     """
     if torch.cuda.is_available():
         alf.set_default_device('cuda')
-        torch.cuda.set_device(rank)
 
 
 def _setup_remote_configs_if_needed():
@@ -191,13 +190,6 @@ def _train(root_dir, rank=0, world_size=1):
     trainer.train()
 
 
-def _training_worker_helper(rank: int, *args, **kwargs):
-    # Helper to start the training worker with the correct rank
-    # so that rank 0 is from the main process and the rest are
-    # from the spawned processes.
-    training_worker(rank + 1, *args, **kwargs)
-
-
 def training_worker(rank: int,
                     world_size: int,
                     conf_file: str,
@@ -216,15 +208,19 @@ def training_worker(rank: int,
     """
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
-        _setup_device(rank)
+        _setup_device()
         if world_size > 1:
             # Specialization for distributed mode
-            dist.init_process_group('nccl', rank=rank, world_size=world_size)
             # Recover the flags when spawned as a sub process
             if rank > 0:
                 _define_flags()
                 FLAGS(sys.argv, known_only=True)
                 FLAGS.mark_as_parsed()
+            dist.init_process_group(
+                'nccl',
+                rank=rank,
+                world_size=world_size,
+                timeout=datetime.timedelta(minutes=FLAGS.nccl_timeout))
             # Set the rank and total number of processes for distributed training.
             PerProcessContext().set_distributed(
                 rank=rank, num_processes=world_size)
@@ -291,19 +287,45 @@ def main(_):
                 # The other process will communicate with the authoritative
                 # process via network protocol on localhost:port.
                 os.environ['MASTER_PORT'] = str(port)
+                CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES')
+                if CUDA_VISIBLE_DEVICES is None:
+                    devices = list(range(world_size))
+                else:
+                    devices = CUDA_VISIBLE_DEVICES.split(',')
+                    assert len(devices) == world_size
+                    devices = [int(d) for d in devices]
+
+                processes = []
+                mp_ctx = multiprocessing.get_context('spawn')
                 # We spawn the processes for rank-1 and above and use the main
                 # process for rank-0 so that we can request debug session
                 # for the main process. We need to do this because the debug
                 # session cannot be started in a subprocess.
-                context = mp.spawn(
-                    _training_worker_helper,
-                    args=(world_size, conf_file, root_dir, paras_queue),
-                    join=False,
-                    nprocs=world_size - 1,
-                    start_method='spawn')
+                for i in range(1, world_size):
+                    # We use CUDA_VISIBLE_DEVICES instead of torch.cuda.set_device(rank) in
+                    # the training_worker to specify the GPU because we want to
+                    # actually only make the specified GPU visible to the process.
+                    # This is because some other user of cuda (e.g. Taichi) may
+                    # only use the first GPU. If multiple GPUs are visible to the
+                    # process, all the processes will compete for the first GPU.
+                    os.environ['CUDA_VISIBLE_DEVICES'] = str(devices[i])
+                    process = mp_ctx.Process(
+                        target=training_worker,
+                        args=(i, world_size, conf_file, root_dir, paras_queue),
+                        name=f"DDP_worker-{i}")
+                    process.start()
+                    processes.append(process)
+
+                # Restore the original CUDA_VISIBLE_DEVICES
+                if CUDA_VISIBLE_DEVICES is not None:
+                    os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
+                else:
+                    os.environ.pop('CUDA_VISIBLE_DEVICES', None)
+
                 training_worker(0, world_size, conf_file, root_dir,
                                 paras_queue)
-                context.join()
+                for process in processes:
+                    process.join()
         except KeyboardInterrupt:
             pass
         except Exception as e:

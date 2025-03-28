@@ -625,6 +625,17 @@ class RLAlgorithm(Algorithm):
         original_reward_list.append(time_step.reward)
         return store_exp_time
 
+    def reset_state(self):
+        """Reset the state of the algorithm.
+
+        RLAlgorithm maintains some states such as the current time step, policy
+        state, and transform state. When the environment is reset, these states
+        should be reset as well.
+        """
+        self._current_time_step = None
+        self._current_policy_state = None
+        self._current_transform_state = None
+
     def _sync_unroll(self, unroll_length: int):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
@@ -729,7 +740,8 @@ class RLAlgorithm(Algorithm):
     @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def _compute_train_info_and_loss_info_on_policy(self, unroll_length):
         with record_time("time/unroll"):
-            with torch.cuda.amp.autocast(self._config.enable_amp):
+            with torch.cuda.amp.autocast(
+                    self._config.enable_amp, dtype=self._config.amp_dtype):
                 experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
@@ -795,7 +807,7 @@ class RLAlgorithm(Algorithm):
             unrolled = True
             with torch.set_grad_enabled(
                     config.unroll_with_grad), torch.cuda.amp.autocast(
-                        config.enable_amp):
+                        config.enable_amp, dtype=self._config.amp_dtype):
                 with record_time("time/unroll"):
                     self.eval()
                     # The period of performing unroll may not be an integer

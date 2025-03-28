@@ -91,10 +91,9 @@ class _MethodPerformer(torch.nn.Module):
         return self._perform(*args, **kwargs)
 
 
-@alf.configurable
+@alf.configurable(whitelist=['find_unused_parameters', 'bucket_cap_mb'])
 def make_ddp_performer(module: torch.nn.Module,
                        method,
-                       ddp_rank: int,
                        find_unused_parameters: bool = False,
                        bucket_cap_mb: int = 25):
     """Creates a DDP wrapped MethodPerformer.
@@ -115,7 +114,7 @@ def make_ddp_performer(module: torch.nn.Module,
     print(f'find_unused_parameters={find_unused_parameters}')
     return DDP(
         _MethodPerformer(module=module, perform=method),
-        device_ids=[ddp_rank],
+        device_ids=None,
         find_unused_parameters=find_unused_parameters,
         bucket_cap_mb=bucket_cap_mb)
 
@@ -204,8 +203,7 @@ def data_distributed_when(
             performer = module_to_wrap._ddp_performer_map.get(
                 method.__name__, None)
             if performer is None:
-                performer = make_ddp_performer(module_to_wrap, method,
-                                               ddp_rank)
+                performer = make_ddp_performer(module_to_wrap, method)
                 module_to_wrap._ddp_performer_map[method.__name__] = performer
             return performer(*args[1:], **kwargs)
 

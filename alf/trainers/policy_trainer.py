@@ -539,7 +539,6 @@ class Trainer(object):
             # They only appear after one training iteration. So we need to run
             # train_iter() once before loading the checkpoint
             self._algorithm.train_iter()
-
         try:
             recovered_global_step = checkpointer.load()
             self._trainer_progress.update()
@@ -691,6 +690,7 @@ class RLTrainer(Trainer):
     def _train(self):
         env = alf.get_env()
         env.reset()
+        self._algorithm.reset_state()
         iter_num = int(self._trainer_progress._iter_num)
         training_setting_summarized = False
 

@@ -427,6 +427,10 @@ class RingBuffer(nn.Module):
     def num_environments(self):
         return self._num_envs
 
+    @property
+    def max_length(self):
+        return self._max_length
+
     def get_earliest_position(self, env_ids):
         """The earliest position that is still in the replay buffer.
 

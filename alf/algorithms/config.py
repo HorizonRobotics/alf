@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Optional, Callable
+import torch
 import alf
 from alf.utils.schedulers import as_scheduler
 
@@ -65,6 +66,7 @@ class TrainerConfig(object):
                  debug_summaries=False,
                  profiling=False,
                  enable_amp=False,
+                 amp_dtype=torch.float16,
                  code_snapshots=None,
                  summarize_grads_and_vars=False,
                  summarize_gradient_noise_scale=False,
@@ -262,6 +264,8 @@ class TrainerConfig(object):
                 This can makes the training faster if the algorithm is GPU intensive.
                 However, the result may be different (mostly likely due to random
                 fluctuation).
+            amp_dtype: One of (torch.float16 or torch.bfloat16). Use for the dtype of
+                automatic mixed precision when ``enable_amp`` is True.
             code_snapshots (list[str]): an optional list of code files to write
                 to tensorboard text. Note: the code file path should be relative
                 to "<ALF_ROOT>/alf", e.g., "algorithms/agent.py". This can be
@@ -395,6 +399,7 @@ class TrainerConfig(object):
         self.debug_summaries = debug_summaries
         self.profiling = profiling
         self.enable_amp = enable_amp
+        self.amp_dtype = amp_dtype
         self.code_snapshots = code_snapshots
         self.summarize_grads_and_vars = summarize_grads_and_vars
         self.summarize_gradient_noise_scale = summarize_gradient_noise_scale

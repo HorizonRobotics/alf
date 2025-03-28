@@ -115,7 +115,8 @@ class StepScheduler(Scheduler):
                  progress_type,
                  schedule,
                  warm_up_period: Number = 0,
-                 start: Number = 0):
+                 start: Number = 0,
+                 scale: float = 1.0):
         """
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
@@ -127,9 +128,11 @@ class StepScheduler(Scheduler):
                 first value (i.e schedule[0][0]) for a duration of ``warm_up_period``
                 starting from ``start``. The value before ``start`` will be 0.
             start: see ``warm_up_period``
+            scale: the values in the schedule will be scaled by this factor.
         """
         super().__init__(progress_type)
         self._progresses, self._values = zip(*schedule)
+        self._values = [value * scale for value in self._values]
         self._index = 0
         self._warm_up_period = warm_up_period
         self._start = start
@@ -160,7 +163,7 @@ class StepScheduler(Scheduler):
 class LinearScheduler(Scheduler):
     """The value is linearly changed in each defined region of progress."""
 
-    def __init__(self, progress_type, schedule):
+    def __init__(self, progress_type, schedule, scale: float = 1.0):
         """
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
@@ -169,6 +172,7 @@ class LinearScheduler(Scheduler):
                 and progress[i], a linear interpolation between value[i-1] and
                 value[i] will be used. progress[0] must be 0. If the current
                 progress is greater than progress[-1], value[-1] will be used.
+            scale: the values in the schedule will be scaled by this factor.
         """
         super().__init__(progress_type)
         assert schedule[0][
@@ -178,6 +182,7 @@ class LinearScheduler(Scheduler):
         ) >= 2, "There should be at least two (progress, value) pairs"
         self._progresses, self._values = zip(*schedule)
         self._index = 1
+        self._values = [value * scale for value in self._values]
 
     def __call__(self):
         progress = self.progress()

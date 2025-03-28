@@ -236,6 +236,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
         self._enable_amp = enable_amp
+        self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
         self._model = model
         self._num_unroll_steps = num_unroll_steps
         self._td_steps = td_steps
@@ -305,7 +306,7 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 transformer)
 
     def predict_step(self, time_step: TimeStep, state):
-        with torch.cuda.amp.autocast(self._enable_amp):
+        with torch.cuda.amp.autocast(self._enable_amp, dtype=self._amp_dtype):
             return AlgStep(
                 output=self._model.initial_representation(
                     time_step.observation),
@@ -353,7 +354,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             obs = alf.nest.map_structure(lambda x: x.reshape(-1, *x.shape[2:]),
                                          info.target.observation)
             with torch.no_grad():
-                with torch.cuda.amp.autocast(self._enable_amp):
+                with torch.cuda.amp.autocast(
+                        self._enable_amp, dtype=self._amp_dtype):
                     target_repr = self._model._representation_net(obs)[0]
             # [B, R+1, ...]
             target_repr = target_repr.reshape(-1, self._num_unroll_steps + 1,
@@ -840,7 +842,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             game_overs = convert_device(game_overs)
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
-            with torch.cuda.amp.autocast(self._enable_amp):
+            with torch.cuda.amp.autocast(
+                    self._enable_amp, dtype=self._amp_dtype):
                 latent = self._target_model.initial_representation(
                     exp1.observation)
                 exp1 = exp1._replace(
@@ -865,7 +868,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             # 2. Calculate the value of the next n2 steps so that n2-step return
             # can be computed.
             if not self._full_reanalyze:
-                with torch.cuda.amp.autocast(self._enable_amp):
+                with torch.cuda.amp.autocast(
+                        self._enable_amp, dtype=self._amp_dtype):
                     model_output = self._target_model.initial_inference(
                         exp2.observation)
                 values2 = model_output.value.reshape(batch_size, n2)
