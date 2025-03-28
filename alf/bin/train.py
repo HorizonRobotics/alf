@@ -178,8 +178,8 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
     if trainer_conf.ddp_paras_check_interval > 0 and world_size > 1 and local_rank >= 0:
         # world_size > 1 means ddp mode, local_rank >= 0 means multi-node multi-gpu
         raise NotImplementedError(
-                "ddp_paras_check currently not supported under multi-node multi-gpu training"
-            )
+            "ddp_paras_check currently not supported under multi-node multi-gpu training"
+        )
 
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
