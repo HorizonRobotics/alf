@@ -124,7 +124,7 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         # No need to pass ``config`` or ``env`` to core alg
         core_alg = core_alg_ctor(
             *args,
-            config=None,
+            config=config,
             env=None,
             debug_summaries=debug_summaries,
             **kwargs)
