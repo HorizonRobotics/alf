@@ -292,7 +292,7 @@ def training_worker_multi_node(local_rank: int,
     """
     try:
         _setup_logging(log_dir=root_dir, rank=rank)
-        _setup_device(local_rank)
+        _setup_device()
 
         # Specialization for distributed mode
         dist.init_process_group('nccl', rank=rank, world_size=world_size)
@@ -428,13 +428,15 @@ def main(_):
             # in different work processes.
             manager = mp.Manager()
             paras_queue = manager.Queue()
-            training_worker_multi_node(
-                local_rank=local_rank,
-                rank=rank,
-                world_size=world_size,
-                conf_file=conf_file,
-                root_dir=root_dir,
-                paras_queue=paras_queue)
+            CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES')
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
+            training_worker_multi_node(local_rank=local_rank, rank=rank, world_size=world_size,
+                                       conf_file=conf_file, root_dir=root_dir, paras_queue=paras_queue)
+            # Restore the original CUDA_VISIBLE_DEVICES
+            if CUDA_VISIBLE_DEVICES is not None:
+                os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
+            else:
+                os.environ.pop('CUDA_VISIBLE_DEVICES', None)
         except KeyboardInterrupt:
             pass
         except Exception as e:

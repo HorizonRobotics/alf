@@ -130,7 +130,7 @@ To launch multi-node multi-gpu training, we use torch distributed launch module.
 export NCCL_SOCKET_IFNAME=SOCKET # find in ifconfig
 export NCCL_IB_DISABLE=1
 
-python -m torch.distributed.launch \
+torchrun \
     --nproc_per_node=NGPU_ON_NODE \
     --nnodes=NUMBER_OF_NODES \
     --node_rank=NODE_RANK \
