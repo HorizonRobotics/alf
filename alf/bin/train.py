@@ -430,8 +430,13 @@ def main(_):
             paras_queue = manager.Queue()
             CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES')
             os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
-            training_worker_multi_node(local_rank=local_rank, rank=rank, world_size=world_size,
-                                       conf_file=conf_file, root_dir=root_dir, paras_queue=paras_queue)
+            training_worker_multi_node(
+                local_rank=local_rank,
+                rank=rank,
+                world_size=world_size,
+                conf_file=conf_file,
+                root_dir=root_dir,
+                paras_queue=paras_queue)
             # Restore the original CUDA_VISIBLE_DEVICES
             if CUDA_VISIBLE_DEVICES is not None:
                 os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
