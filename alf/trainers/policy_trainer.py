@@ -713,7 +713,8 @@ class RLTrainer(Trainer):
         else:
             time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
-        if self._evaluate and (iter_num == 0 or self._evaluation_requested):
+        if self._evaluate and (self._config.num_eval_episodes or self._config.num_eval_steps()) and \
+                (iter_num == 0 or self._evaluation_requested):
             self._eval()
 
         if self._evaluate:
@@ -782,6 +783,10 @@ class RLTrainer(Trainer):
     def _need_to_evaluate(self, iter_num):
         if not self._evaluate:
             return False
+    
+        if not (self._config.num_eval_episodes or self._config.num_eval_steps()):
+            return False
+        
         if self.progress() >= 1:
             # Evaluate before exiting so that the eval curve shown in TB
             # will align with the final iter/env_step.
