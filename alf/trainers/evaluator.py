@@ -445,57 +445,59 @@ def evaluate(env: AlfEnvironment,
     else:
         episode_mode = False
         num_eval_steps = num_steps()
-        assert num_eval_steps > 0
+        assert num_eval_steps >= 0
         # adjust the ``num_eval_steps`` so that all the envs will have the same number of steps
         num_eval_steps = math.ceil(num_eval_steps / batch_size) * batch_size
         total_num = num_eval_steps
 
     time_step = common.get_initial_time_step(env)
 
-    while counter < total_num:
-        if episode_mode:
-            # For parallel play, we cannot naively pick the first finished `num_episodes`
-            # episodes to estimate the average return (or other statistics) as it can be
-            # biased towards short episodes. Instead, we stick to using the first
-            # episodes_per_env episodes from each environment to calculate the
-            # statistics and ignore the potentially extra episodes from each environment.
-            invalid = env_episodes >= episodes_per_env
-            # Force the step_type of the extra episodes to be StepType.FIRST so that
-            # these time steps do not affect metrics as the metrics are only updated
-            # at StepType.LAST. The metric computation uses cpu version of time_step.
-            time_step.cpu().step_type[invalid] = StepType.FIRST
-        else:
-            # env step mode
-            if counter + batch_size >= total_num:
-                time_step.cpu().step_type[torch.arange(
-                    batch_size)] = StepType.LAST
-                time_step.step_type[torch.arange(batch_size)] = StepType.LAST
+    if total_num > 0:
+        # run eval for ``total_num`` and then reset env in the end; otherwise, return zero metrics
+        while counter < total_num:
+            if episode_mode:
+                # For parallel play, we cannot naively pick the first finished `num_episodes`
+                # episodes to estimate the average return (or other statistics) as it can be
+                # biased towards short episodes. Instead, we stick to using the first
+                # episodes_per_env episodes from each environment to calculate the
+                # statistics and ignore the potentially extra episodes from each environment.
+                invalid = env_episodes >= episodes_per_env
+                # Force the step_type of the extra episodes to be StepType.FIRST so that
+                # these time steps do not affect metrics as the metrics are only updated
+                # at StepType.LAST. The metric computation uses cpu version of time_step.
+                time_step.cpu().step_type[invalid] = StepType.FIRST
+            else:
+                # env step mode
+                if counter + batch_size >= total_num:
+                    time_step.cpu().step_type[torch.arange(
+                        batch_size)] = StepType.LAST
+                    time_step.step_type[torch.arange(batch_size)] = StepType.LAST
 
-        next_time_step, policy_step, trans_state = policy_trainer._step(
-            algorithm=algorithm,
-            env=env,
-            time_step=time_step,
-            policy_state=policy_state,
-            trans_state=trans_state,
-            metrics=metrics)
+            next_time_step, policy_step, trans_state = policy_trainer._step(
+                algorithm=algorithm,
+                env=env,
+                time_step=time_step,
+                policy_state=policy_state,
+                trans_state=trans_state,
+                metrics=metrics)
 
-        if episode_mode:
-            time_step.step_type[invalid] = StepType.FIRST
+            if episode_mode:
+                time_step.step_type[invalid] = StepType.FIRST
 
-            for i in range(batch_size):
-                if time_step.step_type[i] == StepType.LAST:
-                    env_episodes[i] += 1
-                    counter += 1
-        else:
-            counter += batch_size
+                for i in range(batch_size):
+                    if time_step.step_type[i] == StepType.LAST:
+                        env_episodes[i] += 1
+                        counter += 1
+            else:
+                counter += batch_size
 
-        policy_state = policy_step.state
-        time_step = next_time_step
-        if job_queue is not None:
-            job = job_queue.peek()
-            if job is not None and job.type == "stop":
-                logging.info("Received stop signal. Aborting evaluation.")
-                return None
-    env.reset()
+            policy_state = policy_step.state
+            time_step = next_time_step
+            if job_queue is not None:
+                job = job_queue.peek()
+                if job is not None and job.type == "stop":
+                    logging.info("Received stop signal. Aborting evaluation.")
+                    return None
+        env.reset()
     return metrics
 
