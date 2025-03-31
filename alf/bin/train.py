@@ -429,7 +429,14 @@ def main(_):
             manager = mp.Manager()
             paras_queue = manager.Queue()
             CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES')
-            os.environ['CUDA_VISIBLE_DEVICES'] = str(local_rank)
+            if CUDA_VISIBLE_DEVICES is None:
+                num_devices = torch.cuda.device_count()
+                devices = [d for d in range(num_devices)]
+            else:
+                devices = CUDA_VISIBLE_DEVICES.split(',')
+                devices = [int(d) for d in devices]
+            assert local_rank < len(devices)
+            os.environ['CUDA_VISIBLE_DEVICES'] = str(devices[local_rank])
             training_worker_multi_node(
                 local_rank=local_rank,
                 rank=rank,
