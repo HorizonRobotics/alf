@@ -26,6 +26,7 @@ from alf.tensor_specs import TensorSpec
 
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
 from .preprocessors import CosineEmbeddingPreprocessor
+from alf.networks.neural_graphs.relational_transformer import RelationalTransformer
 
 
 def _check_action_specs_for_critic_networks(
@@ -183,6 +184,13 @@ class CriticNetwork(EncodingNetwork):
         if observation_action_combiner is None:
             observation_action_combiner = alf.layers.NestConcat(dim=-1)
 
+        if output_tensor_spec is None:
+            last_layer_size = None
+            last_layer_activation = None
+        else:
+            last_layer_size = output_tensor_spec.numel
+            last_layer_activation = last_layer_activation
+
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             output_tensor_spec=output_tensor_spec,
@@ -193,7 +201,7 @@ class CriticNetwork(EncodingNetwork):
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
-            last_layer_size=output_tensor_spec.numel,
+            last_layer_size=last_layer_size,
             last_activation=last_layer_activation,
             last_kernel_initializer=last_kernel_initializer,
             last_use_fc_bn=last_use_fc_bn,
@@ -211,6 +219,108 @@ class CriticNetwork(EncodingNetwork):
             return alf.networks.NaiveParallelNetwork(self, n)
         else:
             return super().make_parallel(n, True)
+
+
+@alf.configurable
+class FuncCriticNetwork(EncodingNetwork):
+    """Creates an instance of ``FuncCriticNetwork`` for estimating action-value of
+
+    The network take a tuple of (actor_params, (observation, action)) as input to 
+    computes the action-value for the given an observation under input actor.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=TensorSpec(()),
+                 actor_kwargs={},
+                 actor_encoder_ctor=None,
+                 actor_encoding_dim=64,
+                 observation_input_processors=None,
+                 observation_input_processors_ctor=None,
+                 observation_preprocessing_combiner=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_input_processors=None,
+                 action_input_processors_ctor=None,
+                 action_preprocessing_combiner=None,
+                 action_fc_layer_params=None,
+                 observation_action_combiner=None,
+                 obs_action_joint_fc_layer_params=None,
+                 actor_obs_action_combiner=None,
+                 actor_obs_action_joint_fc_layer_params=None,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
+                 last_use_fc_bn=False,
+                 last_use_fc_ln=False,
+                 last_layer_activation=math_ops.identity,
+                 use_naive_parallel_network=False,
+                 name="FuncCriticNetwork"):
+
+        actor_spec, obs_action_spec = input_tensor_spec
+
+        if actor_encoder_ctor is None:
+            actor_encoder_ctor = RelationalTransformer 
+
+        weight_spec, bias_spec = actor_spec
+
+        actor_layer_layout = [
+            weight_spec[0].shape[1]] + [b.shape[0] for b in bias_spec] 
+
+        # actor encoder: actor_encoding_dim
+        # obs_action_encoder: CriticNetwork (output_dim = actor_encoding_dim)
+        # actor_obs_action_combiner: CrossBatchConcat
+        # CrossBatchConcat: respect_second_batch
+        # super: preprocessing_combiner=actor_obs_action_combiner
+
+        actor_encoder = actor_encoder_ctor(
+            layer_sizes=actor_layer_layout,
+            d_out=actor_encoding_dim,
+            param_net_kwargs=actor_kwargs)
+
+        obs_action_encoder = CriticNetwork(
+            obs_action_spec,
+            output_tensor_spec=None,
+            observation_input_processors=observation_input_processors,
+            observation_input_processors_ctor=observation_input_processors_ctor,
+            observation_preprocessing_combiner=observation_preprocessing_combiner,
+            observation_fc_layer_params=observation_fc_layer_params,
+            observation_fc_layer_params=observation_fc_layer_params,
+            action_input_processors=action_input_processors,
+            action_input_processors_ctor=action_input_processors_ctor,
+            action_preprocessing_combiner=action_preprocessing_combiner,
+            action_fc_layer_params=action_fc_layer_params,
+            observation_action_combiner=observation_action_combiner,
+            joint_fc_layer_params=obs_action_joint_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
+            name=name + ".obs_action_encoder")
+
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.003, b=0.003)
+
+        if actor_obs_action_combiner is None:
+            actor_obs_action_combiner = CrossBatchConcat()
+
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            output_tensor_spec=output_tensor_spec,
+            input_preprocessors=(actor_encoder, obs_action_encoder),
+            preprocessing_combiner=actor_obs_action_combiner,
+            fc_layer_params=actor_obs_action_joint_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
+            last_layer_size=output_tensor_spec.numel,
+            last_activation=last_layer_activation,
+            last_kernel_initializer=last_kernel_initializer,
+            last_use_fc_bn=last_use_fc_bn,
+            last_use_fc_ln=last_use_fc_ln,
+            name=name)
 
 
 @alf.configurable

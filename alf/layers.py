@@ -767,14 +767,20 @@ class ParallelFC(nn.Module):
         if self._use_bn:
             self._bn.reset_parameters()
 
-    def forward(self, inputs):
+    def forward(self, inputs, id=None):
         """Forward
 
         Args:
             inputs (torch.Tensor): with shape ``[B, n, input_size]`` or ``[B, input_size]``
+            id (None|int): index of the parallel member to forward inputs
         Returns:
             torch.Tensor with shape ``[B, n, output_size]``
         """
+        if id is not None:
+            assert inputs.ndim == 2, (
+                f"inputs must have shape (B, d) for id={id}")
+            return self._selective_forward(inputs, id=id)
+
         n, k, l = self._weight.shape
         if inputs.ndim == 2:
             assert inputs.shape[1] == l, (
@@ -815,6 +821,22 @@ class ParallelFC(nn.Module):
             y1 = y.reshape(-1, n * k)
             y1 = self._bn(y1)
             y = y1.view(-1, n, k)
+        return self._activation(y)
+
+    def _selective_forward(self, inputs, id):
+        """Forward using a selective member of the parallel layer.
+        """
+        weight = self._weight[id]
+        if self._use_bias:
+            y = torch.addmm(self._bias, inputs, weight.t())
+        else:
+            y = inputs.matmul(self._weight.t())
+        if self._use_ln:
+            if not self._use_bias:
+                self._ln.bias.data.zero_()
+            y = self._ln(y)
+        if self._use_bn:
+            y = self._bn(y)
         return self._activation(y)
 
     @property
@@ -2043,7 +2065,7 @@ class ParamFC(nn.Module):
         pos = self.weight_length
         if self._use_bias:
             bias = theta[:, pos:pos + self.bias_length]
-            self._set_bias(bias, reinitialize=reinitialize)
+            self.update_bias(bias, reinitialize=reinitialize)
             pos = pos + self.bias_length
         if self._use_ln:
             norm_theta = theta[:, pos:]
@@ -2061,6 +2083,19 @@ class ParamFC(nn.Module):
         """
         weight = weight.view(self._n_groups, self._output_size,
                              self._input_size)
+        self.update_weight(weight, reinitialize=reinitialize)
+
+    def update_weight(self, weight, reinitialize=False):
+        """Update the weight from a weight tensor or a batch of weight tensors.
+
+        Args:
+            weight (torch.Tensor): with shape ``[B, D_out, D_in]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D_out``: D_out of the weight
+                - ``D_in``: D_in of the weight
+            reinitialize (bool): whether to reinitialize self._weight
+        """
         if reinitialize:
             for i in range(self._n_groups):
                 if self._kernel_initializer is None:
@@ -2073,7 +2108,7 @@ class ParamFC(nn.Module):
 
         self._weight = weight
 
-    def _set_bias(self, bias, reinitialize=False):
+    def update_bias(self, bias, reinitialize=False):
         """Store a bias tensor or batch of bias tensors.
 
         Args:

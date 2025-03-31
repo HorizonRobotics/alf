@@ -29,6 +29,7 @@ from alf.initializers import variance_scaling_init
 from alf.networks import Network
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops, spec_utils
+import alf.utils.math_ops as math_ops
 
 
 @alf.configurable
@@ -275,3 +276,125 @@ class ActorRNNNetwork(ActorNetworkBase):
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
+
+
+@alf.configurable
+class ActorFCNetwork(Network):
+    def __init__(self,
+                 input_tensor_spec: TensorSpec,
+                 action_spec: BoundedTensorSpec,
+                 fc_layer_params=None,
+                 n_groups=None,
+                 use_bias=True,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 last_kernel_initializer=None,
+                 name="ActorFCNetwork"):
+        """Creates an instance of ``ActorFCNetwork`` for ``BafcAlgorithm``.
+
+        Args:
+            input_tensor_spec (TensorSpec): the tensor spec of the input.
+            action_spec (BoundedTensorSpec): the tensor spec of the action.
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
+                FC layer sizes.
+            n_groups (int): number of parallel groups.
+            activation (nn.functional): activation used for hidden layers. The
+                last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a ``variance_scaling_initializer``
+                with uniform distribution will be used.
+            last_kernel_initializer (Callable): initializer for the last layer.
+            name (str): name of the network
+        """
+        super().__init__(input_tensor_spec, name=name)
+
+        assert input_tensor_spec.ndim == 1, \
+            "The input shape {} should be like (N,)!".format(
+                input_tensor_spec.shape)
+        input_size = input_tensor_spec.shape[0]
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=math.sqrt(1.0 / 3),
+                mode='fan_in',
+                distribution='uniform')
+
+        self._fc_layers = nn.ModuleList()
+        if fc_layer_params is None:
+            fc_layer_params = []
+        else:
+            assert isinstance(fc_layer_params, tuple)
+            fc_layer_params = list(fc_layer_params)
+
+        for size in fc_layer_params:
+            self._fc_layers.append(
+                layers.ParallelFC(
+                    input_size,
+                    size,
+                    n=n_groups,
+                    activation=activation,
+                    use_bias=use_bias,
+                    kernel_initializer=kernel_initializer))
+            input_size = size
+
+        if last_kernel_initializer is None:
+            last_kernel_initializer = functools.partial(
+                torch.nn.init.uniform_, a=-0.003, b=0.003)
+
+        self._fc_layers.append(
+            layers.ParallelFC(
+                input_size,
+                action_spec.shape[0],
+                n=n_groups,
+                activation=math_ops.identity,
+                use_bias=use_bias,
+                kernel_initializer=last_kernel_initializer))
+
+        self._output_spec = action_spec
+        self._weight_params = [m.weight for m in self._fc_layers]
+        self._bias_params = [m.bias for m in self._fc_layers]
+        self._actor_kwargs = {
+            "input_tensor_spec": input_tensor_spec,
+            "action_spec": action_spec,
+            "fc_layer_params": fc_layer_params,
+            "n_groups": n_groups,
+            "use_bias": use_bias,
+            "activation": activation,
+            "kernel_initializer": kernel_initializer,
+            "last_kernel_initializer": last_kernel_initializer}
+
+    @property
+    def weight_params(self):
+        """Get the list of weight tensors. 
+
+        Returns:
+            list[torch.Tensor]: list of weight tensors for each FC layer. Each
+                weight tensor has shape (n, output_size, input_size).
+        """
+        return self._weight_params
+
+    @property
+    def bias_params(self):
+        """Get the list of bias tensors. 
+
+        Returns:
+            list[torch.Tensor]: list of bias tensors for each FC layer. Each
+                weight tensor has shape (n, output_size).
+        """
+        return self._bias_params
+
+    @property
+    def actor_kwargs(self):
+        return self._actor_kwargs
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (Tensor):
+            state: not used, just keeps the interface same with other networks.
+        """
+        x = inputs
+        for fc_l in self._fc_layers:
+            x = fc_l(x)
+        return x, state

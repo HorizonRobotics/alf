@@ -23,6 +23,7 @@ from alf.layers import ParamFC, ParamConv2D
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
+import alf.utils.math_ops as math_ops
 
 
 @alf.configurable
@@ -178,8 +179,9 @@ class ParamNetwork(Network):
                  last_activation=None,
                  last_use_bias=True,
                  last_use_ln=False,
+                 last_kernel_initializer=None,
                  name="ParamNetwork"):
-        """A network with Fc and conv2D layers that does not maintain its own
+        """A network with FC and conv2D layers that does not maintain its own
         network parameters, but accepts them from users. If the given parameter
         tensor has an extra batch dimension (first dimension), it performs
         parallel operations.
@@ -198,7 +200,7 @@ class ParamNetwork(Network):
             use_conv_ln (bool): whether use layer normalization for conv layers.
             use_fc_bias (bool): whether use bias for fc layers.
             use_fc_ln (bool): whether use layer normalization for fc layers.
-            n_groups (int): number of parallel groups, must be specified if ``use_bn``
+            n_groups (int): number of parallel groups, must be specified if ``use_ln``
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
             last_layer_size (int): an optional size of an additional layer
@@ -210,6 +212,7 @@ class ParamNetwork(Network):
                 specified explicitly.
             last_use_bias (bool): whether use bias for the additional layer.
             last_use_fn (bool): whether use layer normalization for the additional layer.
+            last_kernel_initializer (Callable): initializer for the last layer.
             name (str):
         """
 
@@ -267,8 +270,10 @@ class ParamNetwork(Network):
             input_size = size
 
         if last_layer_size is not None or last_activation is not None:
-            assert last_layer_size is not None and last_activation is not None, \
-            "Both last_layer_param and last_activation need to be specified!"
+            assert last_layer_size is not None and last_activation is not None, (
+                "Both last_layer_param and last_activation need to be specified!")
+            if last_kernel_initializer is None:
+                last_kernel_initializer = kernel_initializer
             self._fc_layers.append(
                 ParamFC(
                     input_size,
@@ -277,11 +282,21 @@ class ParamNetwork(Network):
                     use_bias=last_use_bias,
                     use_ln=last_use_ln,
                     n_groups=n_groups,
-                    kernel_initializer=kernel_initializer))
+                    kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
         self._output_spec = TensorSpec((input_size, ),
                                        dtype=self._input_tensor_spec.dtype)
+        self._weight_params = [m.weight for m in self._fc_layers]
+        self._bias_params = [m.bias for m in self._fc_layers]
+
+    @property
+    def weight_params(self):
+        return self._weight_params
+
+    @property
+    def bias_params(self):
+        return self._bias_params
 
     @property
     def param_length(self):
@@ -330,6 +345,19 @@ class ParamNetwork(Network):
                 fc_theta[:, pos:pos + param_length], reinitialize=reinitialize)
             pos = pos + param_length
 
+    def update_parameters(self, weight_params, bias_params, reinitialize=False):
+        """Update weights and biases of all layers.
+
+        Args:
+            weight_params (list): list of weight parameters for ``_fc_layers``, 
+                should have shape ``[B, D_out, D_in]``.
+            bias_params (list): list of bias parameters for ``_fc_layers``.
+            reinitialize (bool): whether to reinitialize parameters of each layer.
+        """
+        for fc_l, w, b in zip(self._fc_layers, weight_params, bias_params):
+            fc_l.update_weight(w, reinitialize=reinitialize)
+            fc_l.update_bias(b, reinitialize=reinitialize)
+
     def forward(self, inputs, state=()):
         """
         Args:
@@ -342,3 +370,61 @@ class ParamNetwork(Network):
         for fc_l in self._fc_layers:
             x = fc_l(x)
         return x, state
+
+
+@alf.configurable
+class ActorParamNetwork(ParamNetwork):
+    """An actor network used by ``BafcAlgorithm``. It maintains separately its
+    network parameters as nn.Parameters and its network archetecture as a
+    ``ParamNetwork``.
+
+    Currently, only deterministic actor networks with FC layers are supported.
+    """
+
+    def __init__(self, 
+                 input_tensor_spec: TensorSpec, 
+                 action_spec: BoundedTensorSpec,
+                 fc_layer_params=None,
+                 n_groups=None,
+                 use_bias=True,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 last_kernel_initializer=None,
+                 name="ActorParamNetwork"):
+        """
+        Args:
+            input_tensor_spec: the tensor spec of the input.
+            action_spec: the tensor spec of the action.
+            fc_layer_params (tuple[int]): a tuple of integers representing 
+                FC layer sizes.
+            n_groups (int): number of parallel groups.
+            use_bias (bool): whether use bias for fc layers.
+            activation (torch.nn.functional): activation for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
+            last_kernel_initializer (Callable): initializer for the last layer.
+            name: name of the network
+        """
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=math.sqrt(1.0 / 3),
+                mode='fan_in',
+                distribution='uniform')
+
+        if last_kernel_initializer is None:
+            last_kernel_initializer = functools.partial(
+                torch.nn.init.uniform_, a=-0.003, b=0.003)
+
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            fc_layer_params=fc_layer_params,
+            use_fc_bias=use_bias,
+            use_fc_ln=False,
+            n_groups=n_groups,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            last_layer_size=action_spec.shape[0],
+            last_activation=math_ops.identity,
+            last_use_bias=use_bias,
+            last_use_ln=False,
+            last_kernel_initializer=last_kernel_initializer)
